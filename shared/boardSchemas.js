@@ -1,17 +1,68 @@
 import { BOARD_TYPES, BOARD_TYPE_LABELS } from './constants.js'
 
-// 17개 보드 타입별 콘텐츠 스키마
+// 보드 타입별 콘텐츠 스키마 — TADDs-DIE 모형
 export const BOARD_SCHEMAS = {
-  // ─── 1단계: 주제 탐색 및 선정 ───
+  // ─── T-1: 팀 비전, 설계 방향, 협력 방식 설정 ───
+  team_vision: {
+    fields: [
+      { key: 'vision', label: '팀 비전', type: 'textarea' },
+      { key: 'design_direction', label: '설계 방향', type: 'textarea' },
+      { key: 'target_students', label: '대상 학생', type: 'text' },
+      { key: 'subjects_involved', label: '참여 교과', type: 'tags' },
+    ],
+    empty: { vision: '', design_direction: '', target_students: '', subjects_involved: [] },
+  },
+
+  collaboration_agreement: {
+    fields: [
+      { key: 'communication_method', label: '소통 방법', type: 'text' },
+      { key: 'meeting_frequency', label: '회의 빈도', type: 'text' },
+      { key: 'decision_method', label: '의사결정 방식', type: 'text' },
+      { key: 'agreements', label: '협력 약속', type: 'list' },
+    ],
+    empty: { communication_method: '', meeting_frequency: '', decision_method: '', agreements: [] },
+  },
+
+  // ─── T-2: 역할, 필요 자원, 규칙, 일정 등 팀 활동 환경 조성 ───
+  team_roles: {
+    fields: [
+      { key: 'members', label: '팀원 역할', type: 'table',
+        columns: [
+          { key: 'name', label: '교사명' },
+          { key: 'subject', label: '담당 교과' },
+          { key: 'role', label: '팀 내 역할' },
+          { key: 'strength', label: '전문성/강점' },
+        ],
+      },
+    ],
+    empty: { members: [] },
+  },
+
+  team_schedule: {
+    fields: [
+      { key: 'milestones', label: '팀 활동 일정', type: 'table',
+        columns: [
+          { key: 'phase', label: '단계' },
+          { key: 'task', label: '활동 내용' },
+          { key: 'deadline', label: '완료 기한' },
+          { key: 'responsible', label: '담당자' },
+        ],
+      },
+      { key: 'ground_rules', label: '팀 규칙', type: 'list' },
+    ],
+    empty: { milestones: [], ground_rules: [] },
+  },
+
+  // ─── A-1: 주제 목록 작성과 최종 주제 선정 기준 ───
   topic_exploration: {
     fields: [
       { key: 'main_topic', label: '핵심 주제', type: 'text' },
       { key: 'sub_topics', label: '세부 주제 후보', type: 'list' },
+      { key: 'selection_criteria', label: '선정 기준', type: 'list' },
       { key: 'life_connection', label: '삶과의 연결', type: 'textarea' },
-      { key: 'subjects_involved', label: '관련 교과', type: 'tags' },
       { key: 'rationale', label: '선정 근거', type: 'textarea' },
     ],
-    empty: { main_topic: '', sub_topics: [], life_connection: '', subjects_involved: [], rationale: '' },
+    empty: { main_topic: '', sub_topics: [], selection_criteria: [], life_connection: '', rationale: '' },
   },
 
   inquiry_questions: {
@@ -23,7 +74,7 @@ export const BOARD_SCHEMAS = {
     empty: { essential_question: '', sub_questions: [], student_perspective: '' },
   },
 
-  // ─── 2단계: 교육과정 분석 및 성취기준 매핑 ───
+  // ─── A-2: 주제 관련 내용과 역량 분석을 통한 목표 설정 ───
   standard_mapping: {
     fields: [
       { key: 'mappings', label: '교과-성취기준 매핑', type: 'table',
@@ -34,13 +85,15 @@ export const BOARD_SCHEMAS = {
           { key: 'connection', label: '주제와의 연결' },
         ],
       },
+      { key: 'learning_objectives', label: '학습 목표', type: 'list' },
     ],
-    empty: { mappings: [] },
+    empty: { mappings: [], learning_objectives: [] },
   },
 
   cross_subject_links: {
     fields: [
       { key: 'big_idea', label: '핵심 개념 (Big Idea)', type: 'text' },
+      { key: 'competencies', label: '공통 역량', type: 'tags' },
       { key: 'links', label: '교과 간 연계', type: 'table',
         columns: [
           { key: 'from_subject', label: '교과 A' },
@@ -51,10 +104,25 @@ export const BOARD_SCHEMAS = {
         ],
       },
     ],
-    empty: { big_idea: '', links: [] },
+    empty: { big_idea: '', competencies: [], links: [] },
   },
 
-  // ─── 3단계: 수업 구조 설계 ───
+  // ─── Ds-1: 평가 계획에 따른 교수학습 활동 설계 ───
+  assessment_plan: {
+    fields: [
+      { key: 'assessments', label: '평가 항목', type: 'table',
+        columns: [
+          { key: 'name', label: '평가명' },
+          { key: 'type', label: '평가 유형' },
+          { key: 'timing', label: '평가 시기' },
+          { key: 'target_standards', label: '대상 성취기준' },
+          { key: 'method', label: '평가 방법' },
+        ],
+      },
+    ],
+    empty: { assessments: [] },
+  },
+
   lesson_flow: {
     fields: [
       { key: 'total_hours', label: '총 차시', type: 'number' },
@@ -69,21 +137,6 @@ export const BOARD_SCHEMAS = {
       },
     ],
     empty: { total_hours: 0, lessons: [] },
-  },
-
-  teacher_roles: {
-    fields: [
-      { key: 'roles', label: '교사 역할 분담', type: 'table',
-        columns: [
-          { key: 'lesson_num', label: '차시' },
-          { key: 'lead_teacher', label: '주 수업 교사' },
-          { key: 'lead_role', label: '주 교사 역할' },
-          { key: 'support_teacher', label: '보조 교사' },
-          { key: 'support_role', label: '보조 역할' },
-        ],
-      },
-    ],
-    empty: { roles: [] },
   },
 
   core_activities: {
@@ -101,20 +154,20 @@ export const BOARD_SCHEMAS = {
     empty: { activities: [] },
   },
 
-  // ─── 4단계: 평가 설계 ───
-  assessment_plan: {
+  // ─── Ds-2: 수업 활동에 필요한 자원과 스캐폴딩 설계 ───
+  teacher_roles: {
     fields: [
-      { key: 'assessments', label: '평가 항목', type: 'table',
+      { key: 'roles', label: '교사 역할 분담', type: 'table',
         columns: [
-          { key: 'name', label: '평가명' },
-          { key: 'type', label: '평가 유형' },
-          { key: 'timing', label: '평가 시기' },
-          { key: 'target_standards', label: '대상 성취기준' },
-          { key: 'method', label: '평가 방법' },
+          { key: 'lesson_num', label: '차시' },
+          { key: 'lead_teacher', label: '주 수업 교사' },
+          { key: 'lead_role', label: '주 교사 역할' },
+          { key: 'support_teacher', label: '보조 교사' },
+          { key: 'support_role', label: '보조 역할' },
         ],
       },
     ],
-    empty: { assessments: [] },
+    empty: { roles: [] },
   },
 
   rubric: {
@@ -132,21 +185,22 @@ export const BOARD_SCHEMAS = {
     empty: { criteria: [] },
   },
 
-  assessment_mapping: {
+  scaffolding: {
     fields: [
-      { key: 'mappings', label: '평가-성취기준 매핑', type: 'table',
+      { key: 'strategies', label: '스캐폴딩 전략', type: 'table',
         columns: [
-          { key: 'assessment_name', label: '평가 항목' },
-          { key: 'standard_code', label: '성취기준 코드' },
-          { key: 'subject', label: '교과' },
-          { key: 'evaluation_focus', label: '평가 초점' },
+          { key: 'activity', label: '대상 활동' },
+          { key: 'student_level', label: '학생 수준' },
+          { key: 'scaffold_type', label: '지원 유형' },
+          { key: 'description', label: '구체적 지원' },
+          { key: 'fade_plan', label: '점진적 제거 계획' },
         ],
       },
     ],
-    empty: { mappings: [] },
+    empty: { strategies: [] },
   },
 
-  // ─── 5단계: 자료 및 환경 준비 ───
+  // ─── DI-1: 수업에 활용할 자료 수집 및 개발 ───
   student_worksheets: {
     fields: [
       { key: 'worksheets', label: '활동지 목록', type: 'table',
@@ -192,7 +246,7 @@ export const BOARD_SCHEMAS = {
     empty: { tools: [] },
   },
 
-  // ─── 6단계: 실행 계획 및 점검 ───
+  // ─── DI-2: 수업 실행 후 자료 수집 ───
   execution_timeline: {
     fields: [
       { key: 'timeline', label: '실행 일정', type: 'table',
@@ -223,29 +277,60 @@ export const BOARD_SCHEMAS = {
     empty: { items: [] },
   },
 
-  growth_simulation: {
+  observation_log: {
     fields: [
-      { key: 'profiles', label: '학생 유형별 예상 성장', type: 'table',
+      { key: 'observations', label: '수업 관찰 기록', type: 'table',
         columns: [
-          { key: 'student_type', label: '학생 유형' },
-          { key: 'starting_point', label: '출발점' },
-          { key: 'expected_growth', label: '기대 성장' },
-          { key: 'support_strategy', label: '지원 전략' },
+          { key: 'lesson_num', label: '차시' },
+          { key: 'observer', label: '관찰자' },
+          { key: 'focus', label: '관찰 초점' },
+          { key: 'findings', label: '관찰 내용' },
+          { key: 'suggestions', label: '제안 사항' },
         ],
       },
     ],
-    empty: { profiles: [] },
+    empty: { observations: [] },
   },
 
-  // ─── 7단계: 성찰 및 개선 ───
+  // ─── E-1: 단계별 활동에 대한 수시 평가 및 환류 ───
+  formative_feedback: {
+    fields: [
+      { key: 'feedback_items', label: '수시 평가 기록', type: 'table',
+        columns: [
+          { key: 'phase', label: '해당 단계' },
+          { key: 'what_observed', label: '관찰 사항' },
+          { key: 'feedback', label: '피드백 내용' },
+          { key: 'action_taken', label: '조치 사항' },
+        ],
+      },
+    ],
+    empty: { feedback_items: [] },
+  },
+
+  stage_reflection: {
+    fields: [
+      { key: 'reflections', label: '단계별 성찰', type: 'table',
+        columns: [
+          { key: 'phase', label: '단계' },
+          { key: 'what_worked', label: '잘된 점' },
+          { key: 'what_didnt', label: '아쉬운 점' },
+          { key: 'lesson_learned', label: '배운 점' },
+        ],
+      },
+    ],
+    empty: { reflections: [] },
+  },
+
+  // ─── E-2: 수업 목표와 팀 비전에 근거한 종합평가 ───
   reflection_notes: {
     fields: [
+      { key: 'goal_achievement', label: '목표 달성도', type: 'textarea' },
+      { key: 'vision_alignment', label: '팀 비전 부합도', type: 'textarea' },
+      { key: 'student_growth', label: '학생 성장 분석', type: 'textarea' },
       { key: 'what_worked', label: '잘된 점', type: 'list' },
       { key: 'what_didnt', label: '아쉬운 점', type: 'list' },
-      { key: 'student_responses', label: '학생 반응', type: 'textarea' },
-      { key: 'principle_review', label: '원칙별 적용 평가', type: 'textarea' },
     ],
-    empty: { what_worked: [], what_didnt: [], student_responses: '', principle_review: '' },
+    empty: { goal_achievement: '', vision_alignment: '', student_growth: '', what_worked: [], what_didnt: [] },
   },
 
   improvements: {

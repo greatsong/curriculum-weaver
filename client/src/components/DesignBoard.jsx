@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { STAGES, BOARD_TYPES, BOARD_TYPE_LABELS } from 'curriculum-weaver-shared/constants.js'
+import { STAGES, PHASES, BOARD_TYPES, BOARD_TYPE_LABELS } from 'curriculum-weaver-shared/constants.js'
 import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
 import { useStageStore } from '../stores/stageStore'
 import { useChatStore } from '../stores/chatStore'
@@ -9,6 +9,7 @@ export default function DesignBoard({ sessionId, stage }) {
   const { boards, loading, applyBoardSuggestion, updateBoard } = useStageStore()
   const { boardSuggestions, sendMessage } = useChatStore()
   const stageInfo = STAGES.find((s) => s.id === stage)
+  const phaseInfo = PHASES.find((p) => p.id === stageInfo?.phase)
   const boardTypes = BOARD_TYPES[stage] || []
 
   if (loading) {
@@ -23,8 +24,17 @@ export default function DesignBoard({ sessionId, stage }) {
     <div className="space-y-4">
       {/* 단계 헤더 */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-center gap-2 mb-1">
+          {phaseInfo && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded"
+              style={{ color: phaseInfo.color, backgroundColor: `${phaseInfo.color}15` }}>
+              {stageInfo?.code}
+            </span>
+          )}
+          <span className="text-xs text-gray-400">{phaseInfo?.name}</span>
+        </div>
         <h2 className="text-lg font-bold text-gray-900">
-          {stage}단계: {stageInfo?.name}
+          {stageInfo?.name}
         </h2>
         <p className="text-sm text-gray-500 mt-1">{stageInfo?.description}</p>
       </div>

@@ -1,44 +1,118 @@
-// 7단계 융합 수업 설계 워크플로
+// TADDs-DIE 협력적 수업 설계 모형 — 5단계 10하위단계
+export const PHASES = [
+  { id: 'T',  name: '팀 준비하기',       icon: 'Users',      color: '#8b5cf6' },
+  { id: 'A',  name: '분석하기',          icon: 'Search',     color: '#3b82f6' },
+  { id: 'Ds', name: '설계하기',          icon: 'Compass',    color: '#22c55e' },
+  { id: 'DI', name: '개발·실행하기',     icon: 'Rocket',     color: '#f59e0b' },
+  { id: 'E',  name: '성찰·평가하기',     icon: 'RefreshCw',  color: '#ef4444' },
+]
+
 export const STAGES = [
-  { id: 1, name: '주제 탐색 및 선정', shortName: '주제 탐색', icon: 'Search', description: '융합 수업의 핵심 주제와 탐구 질문을 정하는 단계' },
-  { id: 2, name: '교육과정 분석 및 성취기준 매핑', shortName: '교육과정 분석', icon: 'Map', description: '관련 교과의 성취기준을 탐색하고 연결하는 단계' },
-  { id: 3, name: '수업 구조 설계', shortName: '수업 구조', icon: 'Building2', description: '차시 구성, 활동 흐름, 교사 역할을 설계하는 단계' },
-  { id: 4, name: '평가 설계', shortName: '평가 설계', icon: 'BarChart3', description: '성취기준 기반 평가 계획과 루브릭을 만드는 단계' },
-  { id: 5, name: '자료 및 환경 준비', shortName: '자료 준비', icon: 'Package', description: '학생 활동지, 교구, 디지털 도구 등을 준비하는 단계' },
-  { id: 6, name: '실행 계획 및 점검', shortName: '실행 점검', icon: 'Rocket', description: '일정, 공간, 사전 준비 등 실행 계획을 확정하는 단계' },
-  { id: 7, name: '성찰 및 개선', shortName: '성찰', icon: 'RefreshCw', description: '수업 실행 후 성찰하고 다음 설계에 반영하는 단계' },
+  // ─── T: 팀 준비하기 ───
+  { id: 1, code: 'T-1', phase: 'T',
+    name: '팀 비전, 설계 방향, 협력 방식 설정',
+    shortName: '비전·방향',
+    icon: 'Target',
+    description: '팀의 비전과 설계 방향을 공유하고, 협력 방식을 합의하는 단계' },
+  { id: 2, code: 'T-2', phase: 'T',
+    name: '역할, 필요 자원, 규칙, 일정 등 팀 활동 환경 조성',
+    shortName: '환경 조성',
+    icon: 'Settings',
+    description: '역할 분담, 필요 자원, 규칙, 일정 등 팀 활동 환경을 조성하는 단계' },
+
+  // ─── A: 분석하기 ───
+  { id: 3, code: 'A-1', phase: 'A',
+    name: '주제 목록 작성과 최종 주제 선정을 위한 기준 선정',
+    shortName: '주제 선정',
+    icon: 'Search',
+    description: '주제 후보를 탐색하고, 선정 기준을 세워 최종 주제를 결정하는 단계' },
+  { id: 4, code: 'A-2', phase: 'A',
+    name: '주제 관련 내용과 역량 분석을 통한 목표 설정',
+    shortName: '내용·목표 분석',
+    icon: 'Map',
+    description: '주제에 관련된 교과별 내용과 역량을 분석하고 학습 목표를 설정하는 단계' },
+
+  // ─── Ds: 설계하기 ───
+  { id: 5, code: 'Ds-1', phase: 'Ds',
+    name: '평가 계획에 따른 교수학습 활동 설계',
+    shortName: '활동 설계',
+    icon: 'Building2',
+    description: '평가 계획을 먼저 수립하고, 이에 맞는 교수학습 활동을 설계하는 단계' },
+  { id: 6, code: 'Ds-2', phase: 'Ds',
+    name: '수업 활동에 필요한 자원과 스캐폴딩 설계',
+    shortName: '지원 설계',
+    icon: 'BarChart3',
+    description: '수업 활동을 지원하는 자원, 교사 역할, 스캐폴딩을 설계하는 단계' },
+
+  // ─── DI: 개발·실행하기 ───
+  { id: 7, code: 'DI-1', phase: 'DI',
+    name: '수업에 활용할 자료 수집 및 개발',
+    shortName: '자료 개발',
+    icon: 'Package',
+    description: '활동지, 교구, 디지털 도구 등 수업 자료를 수집·개발하는 단계' },
+  { id: 8, code: 'DI-2', phase: 'DI',
+    name: '수업 실행 후 자료 수집',
+    shortName: '수업 실행',
+    icon: 'Play',
+    description: '설계한 수업을 실행하고 학생 반응·산출물 등 자료를 수집하는 단계' },
+
+  // ─── E: 성찰·평가하기 ───
+  { id: 9, code: 'E-1', phase: 'E',
+    name: '단계별 활동에 대한 수시 평가 및 환류',
+    shortName: '수시 평가',
+    icon: 'RotateCcw',
+    description: '각 단계 활동에 대해 수시로 평가하고 결과를 환류하는 단계' },
+  { id: 10, code: 'E-2', phase: 'E',
+    name: '수업 목표와 팀 비전에 근거한 종합평가',
+    shortName: '종합평가',
+    icon: 'Award',
+    description: '수업 목표와 팀 비전에 비추어 전체 과정을 종합적으로 평가하는 단계' },
 ]
 
 // 단계별 설계 보드 유형
 export const BOARD_TYPES = {
-  1: ['topic_exploration', 'inquiry_questions'],
-  2: ['standard_mapping', 'cross_subject_links'],
-  3: ['lesson_flow', 'teacher_roles', 'core_activities'],
-  4: ['assessment_plan', 'rubric', 'assessment_mapping'],
-  5: ['student_worksheets', 'resource_list', 'digital_tools'],
-  6: ['execution_timeline', 'checklist', 'growth_simulation'],
-  7: ['reflection_notes', 'improvements'],
+  1: ['team_vision', 'collaboration_agreement'],
+  2: ['team_roles', 'team_schedule'],
+  3: ['topic_exploration', 'inquiry_questions'],
+  4: ['standard_mapping', 'cross_subject_links'],
+  5: ['assessment_plan', 'lesson_flow', 'core_activities'],
+  6: ['teacher_roles', 'rubric', 'scaffolding'],
+  7: ['student_worksheets', 'resource_list', 'digital_tools'],
+  8: ['execution_timeline', 'checklist', 'observation_log'],
+  9: ['formative_feedback', 'stage_reflection'],
+  10: ['reflection_notes', 'improvements'],
 }
 
 // 보드 유형 레이블
 export const BOARD_TYPE_LABELS = {
+  // T단계
+  team_vision: '팀 비전·설계 방향',
+  collaboration_agreement: '협력 방식 합의',
+  team_roles: '역할 분담',
+  team_schedule: '팀 활동 일정',
+  // A단계
   topic_exploration: '주제 탐색',
   inquiry_questions: '탐구 질문',
   standard_mapping: '성취기준 매핑표',
   cross_subject_links: '교과 간 연계',
-  lesson_flow: '차시 구성표',
-  teacher_roles: '교사 역할 분담',
-  core_activities: '핵심 활동',
+  // Ds단계
   assessment_plan: '평가 계획',
+  lesson_flow: '차시 구성표',
+  core_activities: '핵심 활동',
+  teacher_roles: '교사 역할 분담',
   rubric: '루브릭',
-  assessment_mapping: '평가-성취기준 매핑',
+  scaffolding: '스캐폴딩 계획',
+  // DI단계
   student_worksheets: '학생 활동지',
   resource_list: '필요 자원 목록',
   digital_tools: '디지털 도구 안내',
   execution_timeline: '실행 일정표',
   checklist: '사전 점검 체크리스트',
-  growth_simulation: '학생 성장 시뮬레이션',
-  reflection_notes: '수업 성찰 기록',
+  observation_log: '수업 관찰 기록',
+  // E단계
+  formative_feedback: '수시 평가·환류',
+  stage_reflection: '단계별 성찰',
+  reflection_notes: '종합 성찰 기록',
   improvements: '개선 사항',
 }
 

@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { STAGES, BOARD_TYPES } from 'curriculum-weaver-shared/constants.js'
+import { STAGES, PHASES, BOARD_TYPES } from 'curriculum-weaver-shared/constants.js'
 import { getBoardSchemaForPrompt } from 'curriculum-weaver-shared/boardSchemas.js'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -9,11 +9,13 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
  */
 function buildSystemPrompt({ session, principles, standards, materials, boards, stage }) {
   const stageInfo = STAGES.find((s) => s.id === stage) || STAGES[0]
+  const phaseInfo = PHASES.find((p) => p.id === stageInfo.phase)
   const parts = []
 
   // 역할 정의
-  parts.push(`당신은 융합 수업 설계 전문 AI 공동설계자(Co-Designer)입니다.
-교사들과 함께 수업을 설계하며, 설계 원칙에 기반하여 안내합니다.
+  parts.push(`당신은 협력적 수업 설계 전문 AI 공동설계자(Co-Designer)입니다.
+TADDs-DIE 모형(팀 준비 → 분석 → 설계 → 개발·실행 → 성찰·평가)에 따라
+교사들과 함께 교과 융합 프로젝트 수업을 설계합니다.
 항상 한국어로 응답하며, 존댓말을 사용합니다.
 응답은 간결하고 실용적으로 합니다.
 결정은 반드시 교사가 하고, 당신은 근거 있는 제안을 합니다.`)
@@ -27,7 +29,7 @@ ${session.description ? `설명: ${session.description}` : ''}`)
 
   // 현재 단계
   parts.push(`[현재 설계 단계]
-${stageInfo.id}단계: ${stageInfo.name}
+${phaseInfo?.name || ''} > ${stageInfo.code}: ${stageInfo.name}
 ${stageInfo.description}`)
 
   // 해당 단계 원칙

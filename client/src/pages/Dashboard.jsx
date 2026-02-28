@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Users, Clock, ArrowRight, Database, HelpCircle, Globe } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
-import { STAGES } from 'curriculum-weaver-shared/constants.js'
+import { STAGES, PHASES } from 'curriculum-weaver-shared/constants.js'
 import Tutorial from '../components/Tutorial'
 
 export default function Dashboard() {
@@ -165,14 +165,20 @@ export default function Dashboard() {
                   onClick={() => navigate(`/session/${session.id}`)}
                   className="flex items-center gap-3 sm:gap-4 bg-white rounded-xl border border-gray-200 p-4 sm:p-5 hover:border-blue-300 hover:shadow-md transition text-left w-full group"
                 >
-                  <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-2xl shrink-0">
-                    {stage.icon === 'Search' ? '🔍' : stage.icon === 'Map' ? '🗺️' : stage.icon === 'Building2' ? '🏗️' : stage.icon === 'BarChart3' ? '📊' : stage.icon === 'Package' ? '📦' : stage.icon === 'Rocket' ? '🚀' : '🔄'}
-                  </div>
+                  {(() => {
+                    const phase = PHASES.find(p => p.id === stage.phase)
+                    return (
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold shrink-0"
+                        style={{ backgroundColor: `${phase?.color || '#3b82f6'}15`, color: phase?.color || '#3b82f6' }}>
+                        {stage.code}
+                      </div>
+                    )
+                  })()}
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-gray-900 truncate">{session.title}</h3>
                     <p className="text-sm text-gray-500 flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1">
                       <Clock size={14} />
-                      <span>{stage.id}단계: {stage.shortName}</span>
+                      <span>{stage.code}: {stage.shortName}</span>
                       <span className="text-xs text-gray-400 hidden sm:inline">코드: {session.invite_code}</span>
                     </p>
                   </div>
