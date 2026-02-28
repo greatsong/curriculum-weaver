@@ -3,11 +3,15 @@ import { STAGES, PHASES, BOARD_TYPES, BOARD_TYPE_LABELS } from 'curriculum-weave
 import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
 import { useStageStore } from '../stores/stageStore'
 import { useChatStore } from '../stores/chatStore'
-import { FileText, Sparkles, Check, X, Edit3, MessageSquarePlus, Plus, Trash2 } from 'lucide-react'
+import { useSessionStore } from '../stores/sessionStore'
+import { socket } from '../lib/socket'
+import { FileText, Check, X, Edit3, MessageSquarePlus, Plus, Trash2 } from 'lucide-react'
 
 export default function DesignBoard({ sessionId, stage }) {
-  const { boards, loading, applyBoardSuggestion, updateBoard } = useStageStore()
+  const { boards, loading, updateBoard } = useStageStore()
   const { boardSuggestions, sendMessage } = useChatStore()
+  const members = useSessionStore((s) => s.members)
+  const isHost = members.find((m) => m.socketId === socket.id)?.isHost ?? false
   const stageInfo = STAGES.find((s) => s.id === stage)
   const phaseInfo = PHASES.find((p) => p.id === stageInfo?.phase)
   const boardTypes = BOARD_TYPES[stage] || []
@@ -50,16 +54,10 @@ export default function DesignBoard({ sessionId, stage }) {
             boardType={boardType}
             board={board}
             suggestion={suggestion}
-            sessionId={sessionId}
-            stage={stage}
-            onApply={async (content) => {
-              await applyBoardSuggestion(sessionId, stage, boardType, content)
-            }}
+            isHost={isHost}
             onUpdate={async (content) => {
               if (board?.id) {
                 await updateBoard(board.id, content)
-              } else {
-                await applyBoardSuggestion(sessionId, stage, boardType, content)
               }
             }}
             onRequestAI={() => {
@@ -74,7 +72,7 @@ export default function DesignBoard({ sessionId, stage }) {
 }
 
 // ─── 보드 카드 ───
-function BoardCard({ boardType, board, suggestion, onApply, onUpdate, onRequestAI }) {
+function BoardCard({ boardType, board, suggestion, isHost, onUpdate, onRequestAI }) {
   const [editing, setEditing] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const label = BOARD_TYPE_LABELS[boardType] || boardType
@@ -92,11 +90,11 @@ function BoardCard({ boardType, board, suggestion, onApply, onUpdate, onRequestA
           <span className="text-xs text-gray-400">v{board.version}</span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          {hasContent && !editing && (
+          {hasContent && !editing && isHost && (
             <button
               onClick={() => setEditing(true)}
               className="p-1 text-gray-400 hover:text-blue-600 rounded transition"
-              title="편집"
+              title="편집 (호스트 전용)"
             >
               <Edit3 size={14} />
             </button>
@@ -104,15 +102,9 @@ function BoardCard({ boardType, board, suggestion, onApply, onUpdate, onRequestA
         </div>
       </div>
 
-      {/* AI 제안 배너 */}
+      {/* AI 자동 반영 알림 */}
       {suggestion && !dismissed && (
         <SuggestionBanner
-          suggestion={suggestion}
-          schema={schema}
-          onApply={() => {
-            onApply(suggestion.content)
-            setDismissed(true)
-          }}
           onDismiss={() => setDismissed(true)}
         />
       )}
@@ -134,23 +126,14 @@ function BoardCard({ boardType, board, suggestion, onApply, onUpdate, onRequestA
         ) : (
           <div className="text-center py-8 text-gray-400">
             <p className="text-sm">아직 내용이 없습니다</p>
-            <p className="text-xs mt-1 mb-3">AI와 대화하면서 이 보드를 채워나가세요</p>
-            <div className="flex justify-center gap-2">
-              <button
-                onClick={onRequestAI}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
-              >
-                <MessageSquarePlus size={14} />
-                AI에게 이 보드 내용 요청
-              </button>
-              <button
-                onClick={() => setEditing(true)}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
-              >
-                <Edit3 size={14} />
-                직접 작성
-              </button>
-            </div>
+            <p className="text-xs mt-1 mb-3">AI와 대화하면 자동으로 이 보드가 채워집니다</p>
+            <button
+              onClick={onRequestAI}
+              className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition mx-auto"
+            >
+              <MessageSquarePlus size={14} />
+              AI에게 이 보드 내용 요청
+            </button>
           </div>
         )}
       </div>
@@ -158,45 +141,21 @@ function BoardCard({ boardType, board, suggestion, onApply, onUpdate, onRequestA
   )
 }
 
-// ─── AI 제안 배너 ───
-function SuggestionBanner({ suggestion, schema, onApply, onDismiss }) {
-  const [showPreview, setShowPreview] = useState(false)
-
+// ─── AI 자동 반영 알림 배너 ───
+function SuggestionBanner({ onDismiss }) {
   return (
-    <div className="mx-5 mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-      <div className="flex items-start gap-2">
-        <Sparkles size={16} className="text-amber-600 mt-0.5 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-amber-800">
-            AI가 이 보드에 내용을 제안했습니다
-          </p>
-          {showPreview && schema && (
-            <div className="mt-3 p-3 bg-white rounded-lg border border-amber-100">
-              <BoardRenderer schema={schema} content={suggestion.content} />
-            </div>
-          )}
-          <div className="flex items-center gap-2 mt-2">
-            <button
-              onClick={onApply}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition"
-            >
-              <Check size={12} />
-              반영하기
-            </button>
-            <button
-              onClick={() => setShowPreview(!showPreview)}
-              className="px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-100 rounded-lg transition"
-            >
-              {showPreview ? '미리보기 닫기' : '미리보기'}
-            </button>
-            <button
-              onClick={onDismiss}
-              className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg transition"
-            >
-              무시
-            </button>
-          </div>
-        </div>
+    <div className="mx-5 mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+      <div className="flex items-center gap-2">
+        <Check size={16} className="text-green-600 shrink-0" />
+        <p className="flex-1 text-sm font-medium text-green-800">
+          AI 대화 내용이 보드에 자동 반영되었습니다
+        </p>
+        <button
+          onClick={onDismiss}
+          className="p-1 text-green-600 hover:text-green-800 rounded transition"
+        >
+          <X size={14} />
+        </button>
       </div>
     </div>
   )

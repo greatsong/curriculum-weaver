@@ -13,9 +13,10 @@ import MemberList from '../components/MemberList'
 import StandardSearch from '../components/StandardSearch'
 import Tutorial from '../components/Tutorial'
 
-// 닉네임 입력 모달
+// 닉네임 + 과목 입력 모달
 function NicknameModal({ onConfirm }) {
   const [name, setName] = useState('')
+  const [subject, setSubject] = useState('')
   const inputRef = useRef(null)
 
   useEffect(() => {
@@ -25,8 +26,10 @@ function NicknameModal({ onConfirm }) {
   const handleSubmit = (e) => {
     e.preventDefault()
     const nickname = name.trim() || `교사${Math.floor(Math.random() * 100)}`
+    const subjectName = subject.trim() || ''
     localStorage.setItem('cw_nickname', nickname)
-    onConfirm(nickname)
+    localStorage.setItem('cw_subject', subjectName)
+    onConfirm({ name: nickname, subject: subjectName })
   }
 
   return (
@@ -41,18 +44,27 @@ function NicknameModal({ onConfirm }) {
             <UserCircle size={32} className="text-blue-500" />
           </div>
           <div className="text-center">
-            <h2 className="text-lg font-semibold text-gray-900">닉네임 설정</h2>
-            <p className="text-sm text-gray-500 mt-1">다른 선생님에게 표시될 이름이에요</p>
+            <h2 className="text-lg font-semibold text-gray-900">참여자 정보</h2>
+            <p className="text-sm text-gray-500 mt-1">다른 선생님에게 표시될 정보예요</p>
           </div>
         </div>
-        <input
-          ref={inputRef}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="예: 김교사, 과학쌤"
-          maxLength={10}
-          className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
-        />
+        <div className="space-y-3">
+          <input
+            ref={inputRef}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="닉네임 (예: 김교사, 과학쌤)"
+            maxLength={10}
+            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+          />
+          <input
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="담당 과목 또는 전공 (예: 과학, 국어)"
+            maxLength={15}
+            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+          />
+        </div>
         <button
           type="submit"
           className="w-full mt-4 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition"
@@ -60,7 +72,7 @@ function NicknameModal({ onConfirm }) {
           입장하기
         </button>
         <p className="text-xs text-gray-400 text-center mt-3">
-          비워두면 자동으로 이름이 생성돼요
+          닉네임을 비워두면 자동 생성돼요
         </p>
       </form>
     </div>
@@ -72,12 +84,13 @@ export default function SessionPage() {
   const navigate = useNavigate()
   const { currentSession, fetchSession, updateStage, setMembers } = useSessionStore()
   const { loadBoards, loadStandards, loadMaterials, loadPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset } = useStageStore()
-  const { loadMessages, subscribe, unsubscribe } = useChatStore()
+  const { loadMessages, subscribe, unsubscribe, boardSuggestions } = useChatStore()
   const [showStandardSearch, setShowStandardSearch] = useState(false)
   const [showTutorial, setShowTutorial] = useState(
     () => !localStorage.getItem('cw_tutorial_done')
   )
   const [activePanel, setActivePanel] = useState('chat')
+  const [boardUpdated, setBoardUpdated] = useState(false)
   const [needsNickname, setNeedsNickname] = useState(
     () => !localStorage.getItem('cw_nickname')
   )
@@ -90,11 +103,11 @@ export default function SessionPage() {
   }, [sessionId])
 
   // 소켓 연결 (닉네임 확정 후)
-  const connectSocket = useCallback((nickname) => {
+  const connectSocket = useCallback(({ name: nickname, subject: subjectName }) => {
     if (joinedRef.current) return
     joinedRef.current = true
 
-    joinSession(sessionId, { name: nickname })
+    joinSession(sessionId, { name: nickname, subject: subjectName || '' })
     subscribe(sessionId)
     subscribeBoardUpdates()
 
@@ -124,16 +137,29 @@ export default function SessionPage() {
 
   // 이미 닉네임이 있으면 바로 연결
   useEffect(() => {
-    const saved = localStorage.getItem('cw_nickname')
-    if (saved) connectSocket(saved)
+    const savedName = localStorage.getItem('cw_nickname')
+    const savedSubject = localStorage.getItem('cw_subject') || ''
+    if (savedName) connectSocket({ name: savedName, subject: savedSubject })
     return () => joinedRef.cleanup?.()
   }, [sessionId, connectSocket])
 
   // 닉네임 모달에서 확인
-  const handleNicknameConfirm = (nickname) => {
+  const handleNicknameConfirm = (info) => {
     setNeedsNickname(false)
-    connectSocket(nickname)
+    connectSocket(info)
   }
+
+  // 보드 자동 반영 시 모바일 알림 뱃지
+  useEffect(() => {
+    if (boardSuggestions.length > 0 && activePanel !== 'board') {
+      setBoardUpdated(true)
+    }
+  }, [boardSuggestions, activePanel])
+
+  // 보드 탭 전환 시 뱃지 제거
+  useEffect(() => {
+    if (activePanel === 'board') setBoardUpdated(false)
+  }, [activePanel])
 
   // 단계 변경 시 해당 단계 데이터 로드
   useEffect(() => {
@@ -254,7 +280,7 @@ export default function SessionPage() {
           <button
             key={tab.id}
             onClick={() => setActivePanel(tab.id)}
-            className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition min-h-[56px] justify-center ${
+            className={`relative flex-1 flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition min-h-[56px] justify-center ${
               activePanel === tab.id
                 ? 'text-blue-600 bg-blue-50 border-t-2 border-blue-600'
                 : 'text-gray-500 hover:text-gray-700'
@@ -262,6 +288,9 @@ export default function SessionPage() {
           >
             <tab.Icon size={20} />
             {tab.label}
+            {tab.id === 'board' && boardUpdated && (
+              <span className="absolute top-1.5 right-1/4 w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse" />
+            )}
           </button>
         ))}
       </div>

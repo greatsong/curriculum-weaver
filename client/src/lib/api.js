@@ -119,7 +119,7 @@ export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardS
         const parsed = JSON.parse(data)
         if (parsed.type === 'text') onText?.(parsed.content)
         else if (parsed.type === 'principles') onPrinciples?.(parsed.principles)
-        else if (parsed.type === 'board_suggestions') onBoardSuggestions?.(parsed.suggestions)
+        else if (parsed.type === 'board_suggestions') onBoardSuggestions?.(parsed.suggestions, parsed.appliedBoards)
         else if (parsed.type === 'error') onError?.(parsed.message)
       } catch {
         // 파싱 실패 무시

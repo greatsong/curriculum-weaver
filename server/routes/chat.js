@@ -99,12 +99,16 @@ chatRouter.post('/message', async (req, res) => {
       },
     })
 
-    // 보드 업데이트 추출
+    // 보드 업데이트 추출 및 자동 반영
     const { cleanText, updates } = extractBoardUpdates(fullResponse)
 
-    // 보드 제안이 있으면 SSE 이벤트로 전송
     if (updates.length > 0) {
-      res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.BOARD_SUGGESTIONS, suggestions: updates })}\n\n`)
+      // 보드에 자동 저장 (upsert)
+      const appliedBoards = updates.map((u) =>
+        Boards.upsert(session_id, stage, u.board_type, u.content)
+      )
+      // 적용된 보드 데이터를 클라이언트에 전송
+      res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.BOARD_SUGGESTIONS, suggestions: updates, appliedBoards })}\n\n`)
     }
 
     // 클린 텍스트만 스토어에 저장

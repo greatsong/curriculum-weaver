@@ -52,7 +52,9 @@ io.on('connection', (socket) => {
     if (!sessionMembers.has(sessionId)) {
       sessionMembers.set(sessionId, new Map())
     }
-    const userInfo = { ...user, socketId: socket.id }
+    // 첫 번째 참여자를 호스트로 지정
+    const isHost = sessionMembers.get(sessionId).size === 0
+    const userInfo = { ...user, socketId: socket.id, isHost }
     sessionMembers.get(sessionId).set(socket.id, userInfo)
 
     // 현재 접속자 목록을 룸 전체에 전송

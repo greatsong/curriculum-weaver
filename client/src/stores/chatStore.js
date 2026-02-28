@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { apiGet, apiPost, apiStreamPost } from '../lib/api'
 import { socket } from '../lib/socket'
+import { useStageStore } from './stageStore'
 
 // AI 응답에서 <board_update> 마커를 제거
 function stripBoardMarkers(text) {
@@ -72,8 +73,17 @@ export const useChatStore = create((set, get) => ({
         set((state) => ({ streamingText: state.streamingText + text }))
       },
       onPrinciples: () => {},
-      onBoardSuggestions: (suggestions) => {
+      onBoardSuggestions: (suggestions, appliedBoards) => {
         set({ boardSuggestions: suggestions || [] })
+        // 서버에서 자동 반영된 보드를 stageStore에 즉시 업데이트
+        if (appliedBoards?.length > 0) {
+          const stageState = useStageStore.getState()
+          const updatedBoards = { ...stageState.boards }
+          for (const board of appliedBoards) {
+            updatedBoards[board.board_type] = board
+          }
+          useStageStore.setState({ boards: updatedBoards })
+        }
       },
       onDone: () => {
         const streamedText = get().streamingText

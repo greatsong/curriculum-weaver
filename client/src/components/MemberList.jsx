@@ -1,4 +1,4 @@
-import { Users } from 'lucide-react'
+import { Users, Crown } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
 
 const COLORS = [
@@ -27,15 +27,19 @@ export default function MemberList() {
       <div className="flex items-center gap-1 overflow-hidden">
         {members.map((member, i) => {
           const color = COLORS[i % COLORS.length]
+          const label = member.subject
+            ? `${member.name}(${member.subject})`
+            : member.name
           return (
             <div
               key={member.socketId}
               className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full ${color.bg} shrink-0`}
-              title={member.name}
+              title={member.isHost ? `${label} · 호스트` : label}
             >
+              {member.isHost && <Crown size={10} className={color.text} />}
               <div className={`w-2 h-2 rounded-full ${color.dot}`} />
-              <span className={`text-xs font-medium ${color.text} max-w-[4rem] truncate`}>
-                {member.name}
+              <span className={`text-xs font-medium ${color.text} max-w-[6rem] truncate`}>
+                {label}
               </span>
             </div>
           )
