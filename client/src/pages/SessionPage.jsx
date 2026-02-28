@@ -4,6 +4,7 @@ import { ArrowLeft, Share2, BookMarked, HelpCircle, MessageSquare, LayoutDashboa
 import { useSessionStore } from '../stores/sessionStore'
 import { useStageStore } from '../stores/stageStore'
 import { useChatStore } from '../stores/chatStore'
+import { socket, joinSession, leaveSession } from '../lib/socket'
 import StageNav from '../components/StageNav'
 import ChatPanel from '../components/ChatPanel'
 import DesignBoard from '../components/DesignBoard'
@@ -15,9 +16,9 @@ import Tutorial from '../components/Tutorial'
 export default function SessionPage() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
-  const { currentSession, fetchSession, updateStage } = useSessionStore()
-  const { loadBoards, loadStandards, loadMaterials, loadPrinciples, reset } = useStageStore()
-  const { loadMessages, unsubscribe } = useChatStore()
+  const { currentSession, fetchSession, updateStage, setMembers } = useSessionStore()
+  const { loadBoards, loadStandards, loadMaterials, loadPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset } = useStageStore()
+  const { loadMessages, subscribe, unsubscribe } = useChatStore()
   const [showStandardSearch, setShowStandardSearch] = useState(false)
   const [showTutorial, setShowTutorial] = useState(
     () => !localStorage.getItem('cw_tutorial_done')
@@ -28,8 +29,33 @@ export default function SessionPage() {
     fetchSession(sessionId)
     loadMessages(sessionId)
 
+    // Socket.IO 세션 입장
+    const nickname = `교사 ${Math.random().toString(36).slice(2, 6)}`
+    joinSession(sessionId, { name: nickname })
+
+    // 채팅 + 보드 구독
+    subscribe(sessionId)
+    subscribeBoardUpdates()
+
+    // Socket.IO 이벤트 리스너
+    const handleMembersUpdated = (members) => setMembers(members)
+    const handleStageUpdated = (stage) => {
+      useSessionStore.setState((state) => ({
+        currentSession: state.currentSession
+          ? { ...state.currentSession, current_stage: stage }
+          : null,
+      }))
+    }
+
+    socket.on('members_updated', handleMembersUpdated)
+    socket.on('stage_updated', handleStageUpdated)
+
     return () => {
+      leaveSession(sessionId)
       unsubscribe()
+      unsubscribeBoardUpdates()
+      socket.off('members_updated', handleMembersUpdated)
+      socket.off('stage_updated', handleStageUpdated)
       reset()
     }
   }, [sessionId])

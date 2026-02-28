@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { apiGet, apiPost, apiPut } from '../lib/api'
+import { socket } from '../lib/socket'
 
 export const useStageStore = create((set, get) => ({
   boards: {},
@@ -23,9 +24,22 @@ export const useStageStore = create((set, get) => ({
     }
   },
 
-  // 테스트 모드: Supabase Realtime 대신 no-op
-  subscribeBoardUpdates: () => {},
-  unsubscribeBoardUpdates: () => {},
+  // Socket.IO 보드 업데이트 리스너
+  subscribeBoardUpdates: () => {
+    const handler = (board) => {
+      set((state) => ({
+        boards: { ...state.boards, [board.board_type]: board },
+      }))
+    }
+    socket.on('board_changed', handler)
+    set({ _boardHandler: handler })
+  },
+
+  unsubscribeBoardUpdates: () => {
+    const handler = get()._boardHandler
+    if (handler) socket.off('board_changed', handler)
+    set({ _boardHandler: null })
+  },
 
   // 보드 업데이트
   updateBoard: async (boardId, content) => {
@@ -33,6 +47,9 @@ export const useStageStore = create((set, get) => ({
     set((state) => ({
       boards: { ...state.boards, [data.board_type]: data },
     }))
+    // 다른 사용자에게 보드 변경 브로드캐스트
+    const sessionId = data.session_id
+    socket.emit('board_updated', { sessionId, board: data })
   },
 
   // AI 제안 보드 반영 (upsert)
@@ -46,6 +63,8 @@ export const useStageStore = create((set, get) => ({
     set((state) => ({
       boards: { ...state.boards, [data.board_type]: data },
     }))
+    // 다른 사용자에게 보드 변경 브로드캐스트
+    socket.emit('board_updated', { sessionId, board: data })
   },
 
   // 성취기준 로드
@@ -79,6 +98,8 @@ export const useStageStore = create((set, get) => ({
   },
 
   reset: () => {
-    set({ boards: {}, standards: [], materials: [], principles: [] })
+    const handler = get()._boardHandler
+    if (handler) socket.off('board_changed', handler)
+    set({ boards: {}, standards: [], materials: [], principles: [], _boardHandler: null })
   },
 }))

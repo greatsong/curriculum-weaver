@@ -1,11 +1,13 @@
 import { create } from 'zustand'
 import { apiGet, apiPost, apiPut } from '../lib/api'
+import { socket } from '../lib/socket'
 
 export const useSessionStore = create((set, get) => ({
   sessions: [],
   currentSession: null,
   loading: false,
   error: null,
+  members: [],
 
   fetchSessions: async () => {
     set({ loading: true, error: null })
@@ -42,8 +44,12 @@ export const useSessionStore = create((set, get) => ({
   updateStage: async (sessionId, stage) => {
     const data = await apiPut(`/api/sessions/${sessionId}`, { current_stage: stage })
     set({ currentSession: data })
+    // 다른 사용자에게 단계 변경 브로드캐스트
+    socket.emit('stage_changed', { sessionId, stage })
     return data
   },
 
-  clearCurrent: () => set({ currentSession: null }),
+  setMembers: (members) => set({ members }),
+
+  clearCurrent: () => set({ currentSession: null, members: [] }),
 }))

@@ -1,5 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
+import { createServer } from 'http'
+import { Server } from 'socket.io'
 import helmet from 'helmet'
 import cors from 'cors'
 import { initStore } from './lib/store.js'
@@ -15,19 +17,100 @@ const defaultSessionId = initStore()
 console.log(`  기본 세션 ID: ${defaultSessionId}`)
 
 const app = express()
+const server = createServer(app)
 const PORT = process.env.PORT || 4007
 
-app.use(helmet())
-
+// CORS 허용 origin 목록
 const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:4006')
   .split(',')
   .map((o) => o.trim())
 
+function checkOrigin(origin) {
+  const isVercelPreview = origin?.endsWith('.vercel.app')
+  return !origin || allowedOrigins.includes(origin) || isVercelPreview
+}
+
+// Socket.IO
+const io = new Server(server, {
+  cors: {
+    origin: (origin, callback) => {
+      callback(null, checkOrigin(origin))
+    },
+  },
+})
+
+// 세션별 접속자 관리 (sessionId -> Map<socketId, user>)
+const sessionMembers = new Map()
+
+io.on('connection', (socket) => {
+  let currentSessionId = null
+
+  socket.on('join_session', ({ sessionId, user }) => {
+    currentSessionId = sessionId
+    socket.join(sessionId)
+
+    if (!sessionMembers.has(sessionId)) {
+      sessionMembers.set(sessionId, new Map())
+    }
+    const userInfo = { ...user, socketId: socket.id }
+    sessionMembers.get(sessionId).set(socket.id, userInfo)
+
+    // 현재 접속자 목록을 룸 전체에 전송
+    const members = [...sessionMembers.get(sessionId).values()]
+    io.to(sessionId).emit('members_updated', members)
+    socket.to(sessionId).emit('member_joined', userInfo)
+  })
+
+  socket.on('leave_session', ({ sessionId }) => {
+    socket.leave(sessionId)
+    if (sessionMembers.has(sessionId)) {
+      const user = sessionMembers.get(sessionId).get(socket.id)
+      sessionMembers.get(sessionId).delete(socket.id)
+      const members = [...sessionMembers.get(sessionId).values()]
+      io.to(sessionId).emit('members_updated', members)
+      if (user) socket.to(sessionId).emit('member_left', user)
+      if (sessionMembers.get(sessionId).size === 0) {
+        sessionMembers.delete(sessionId)
+      }
+    }
+    currentSessionId = null
+  })
+
+  socket.on('new_message', ({ sessionId, message }) => {
+    socket.to(sessionId).emit('message_added', message)
+  })
+
+  socket.on('ai_response_done', ({ sessionId, message }) => {
+    socket.to(sessionId).emit('message_added', message)
+  })
+
+  socket.on('board_updated', ({ sessionId, board }) => {
+    socket.to(sessionId).emit('board_changed', board)
+  })
+
+  socket.on('stage_changed', ({ sessionId, stage }) => {
+    socket.to(sessionId).emit('stage_updated', stage)
+  })
+
+  socket.on('disconnect', () => {
+    if (currentSessionId && sessionMembers.has(currentSessionId)) {
+      const user = sessionMembers.get(currentSessionId).get(socket.id)
+      sessionMembers.get(currentSessionId).delete(socket.id)
+      const members = [...sessionMembers.get(currentSessionId).values()]
+      io.to(currentSessionId).emit('members_updated', members)
+      if (user) io.to(currentSessionId).emit('member_left', user)
+      if (sessionMembers.get(currentSessionId).size === 0) {
+        sessionMembers.delete(currentSessionId)
+      }
+    }
+  })
+})
+
+app.use(helmet())
+
 app.use(cors({
   origin: (origin, callback) => {
-    // Vercel 프리뷰 URL 패턴 허용
-    const isVercelPreview = origin?.endsWith('.vercel.app')
-    if (!origin || allowedOrigins.includes(origin) || isVercelPreview) {
+    if (checkOrigin(origin)) {
       callback(null, true)
     } else {
       callback(new Error(`CORS 차단: ${origin}`))
@@ -61,6 +144,7 @@ app.use((err, req, res, next) => {
   })
 })
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`커리큘럼 위버 서버: http://localhost:${PORT}`)
+  console.log(`  Socket.IO 실시간 협업 활성화`)
 })
