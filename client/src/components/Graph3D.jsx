@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Search, X, RotateCcw, ChevronRight, Link2, Send, MessageCircle, List, Plus, Check, Crosshair } from 'lucide-react'
+import { ArrowLeft, Search, X, RotateCcw, ChevronLeft, ChevronRight, Link2, Send, MessageCircle, List, Plus, Check, Crosshair } from 'lucide-react'
 import { apiGet, apiPost, API_BASE } from '../lib/api'
 
 const SUBJECT_COLORS = {
@@ -57,6 +57,7 @@ export default function Graph3D({ embedded = false }) {
   const chatScrollRef = useRef(null)
   const [focusMode, setFocusMode] = useState(false)
   const [hoveredLink, setHoveredLink] = useState(null)
+  const [searchIndex, setSearchIndex] = useState(-1)
 
   // 채팅 자동 스크롤
   useEffect(() => {
@@ -145,27 +146,46 @@ export default function Graph3D({ embedded = false }) {
     return { nodes, links }
   }, [graphData, filterSubject, filterLinkType, nodeSubjectMap, focusMode, selectedNode])
 
-  // 검색 + 하이라이트
-  useEffect(() => {
-    if (!graphData || !searchQuery.trim()) {
-      setHighlightNodes(new Set())
-      setHighlightLinks(new Set())
-      return
-    }
+  // 검색 결과 (원점에서 가까운 순 정렬)
+  const sortedSearchResults = useMemo(() => {
+    if (!graphData || !searchQuery.trim()) return []
     const q = searchQuery.toLowerCase()
     const matched = graphData.nodes.filter(n =>
       n.code?.toLowerCase().includes(q) || n.subject?.toLowerCase().includes(q) ||
       n.content?.toLowerCase().includes(q) || n.area?.toLowerCase().includes(q) ||
       n.grade_group?.toLowerCase().includes(q)
     )
-    const nodeIds = new Set(matched.map(n => n.id))
+    return matched.sort((a, b) =>
+      Math.hypot(a.fx || 0, a.fy || 0, a.fz || 0) - Math.hypot(b.fx || 0, b.fy || 0, b.fz || 0)
+    )
+  }, [graphData, searchQuery])
+
+  // 검색 + 하이라이트
+  useEffect(() => {
+    if (sortedSearchResults.length === 0) {
+      setHighlightNodes(new Set())
+      setHighlightLinks(new Set())
+      setSearchIndex(-1)
+      return
+    }
+    const nodeIds = new Set(sortedSearchResults.map(n => n.id))
     const linkSet = new Set()
     graphData.links.forEach((l, i) => {
       if (nodeIds.has(getLinkSourceId(l)) || nodeIds.has(getLinkTargetId(l))) linkSet.add(i)
     })
     setHighlightNodes(nodeIds)
     setHighlightLinks(linkSet)
-  }, [searchQuery, graphData])
+  }, [sortedSearchResults, graphData])
+
+  // 검색 시 첫 번째 결과로 자동 이동 (디바운스)
+  useEffect(() => {
+    if (sortedSearchResults.length === 0) return
+    const timer = setTimeout(() => {
+      setSearchIndex(0)
+      navigateToNode(sortedSearchResults[0])
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [sortedSearchResults])
 
   const subjects = useMemo(() => {
     if (!graphData) return []
@@ -233,6 +253,17 @@ export default function Graph3D({ embedded = false }) {
     return map
   }, [graphData, nodeSubjectMap])
 
+  // 노드로 카메라 이동 (항상 선택)
+  const navigateToNode = useCallback((node) => {
+    setSelectedNode(node)
+    if (fgRef.current) {
+      const x = node.fx ?? node.x ?? 0, y = node.fy ?? node.y ?? 0, z = node.fz ?? node.z ?? 0
+      const dist = Math.hypot(x, y, z) || 1
+      const ratio = 1 + 120 / dist
+      fgRef.current.cameraPosition({ x: x * ratio, y: y * ratio, z: z * ratio }, { x, y, z }, 1000)
+    }
+  }, [])
+
   const focusNode = useCallback((node) => {
     setSelectedNode(prev => prev?.id === node.id ? null : node)
     if (fgRef.current) {
@@ -246,6 +277,21 @@ export default function Graph3D({ embedded = false }) {
       )
     }
   }, [filteredData])
+
+  // 검색 결과 이전/다음 이동
+  const goSearchPrev = useCallback(() => {
+    if (sortedSearchResults.length === 0) return
+    const idx = Math.max(0, searchIndex - 1)
+    setSearchIndex(idx)
+    navigateToNode(sortedSearchResults[idx])
+  }, [sortedSearchResults, searchIndex, navigateToNode])
+
+  const goSearchNext = useCallback(() => {
+    if (sortedSearchResults.length === 0) return
+    const idx = Math.min(sortedSearchResults.length - 1, searchIndex + 1)
+    setSearchIndex(idx)
+    navigateToNode(sortedSearchResults[idx])
+  }, [sortedSearchResults, searchIndex, navigateToNode])
 
   const selectedLinks = useMemo(() => {
     if (!selectedNode || !graphData) return []
@@ -641,7 +687,21 @@ export default function Graph3D({ embedded = false }) {
               </div>
               <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
                 <span>{listItems.length}개 성취기준</span>
-                {searchQuery && <span className="text-blue-400">"{searchQuery}" 검색 중</span>}
+                {searchQuery && sortedSearchResults.length > 0 ? (
+                  <div className="flex items-center gap-1">
+                    <button onClick={goSearchPrev} disabled={searchIndex <= 0}
+                      className="p-0.5 rounded hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed">
+                      <ChevronLeft size={14} className="text-blue-400" />
+                    </button>
+                    <span className="text-blue-400 tabular-nums min-w-[3ch] text-center">{searchIndex + 1}/{sortedSearchResults.length}</span>
+                    <button onClick={goSearchNext} disabled={searchIndex >= sortedSearchResults.length - 1}
+                      className="p-0.5 rounded hover:bg-gray-600 disabled:opacity-30 disabled:cursor-not-allowed">
+                      <ChevronRight size={14} className="text-blue-400" />
+                    </button>
+                  </div>
+                ) : searchQuery ? (
+                  <span className="text-gray-500">결과 없음</span>
+                ) : null}
               </div>
             </div>
 
