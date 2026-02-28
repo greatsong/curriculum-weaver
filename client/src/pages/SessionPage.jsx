@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Share2, BookMarked } from 'lucide-react'
+import { ArrowLeft, Share2, BookMarked, HelpCircle, MessageSquare, LayoutDashboard, BookOpen } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useStageStore } from '../stores/stageStore'
 import { useChatStore } from '../stores/chatStore'
@@ -10,6 +10,7 @@ import DesignBoard from '../components/DesignBoard'
 import PrinciplePanel from '../components/PrinciplePanel'
 import MemberList from '../components/MemberList'
 import StandardSearch from '../components/StandardSearch'
+import Tutorial from '../components/Tutorial'
 
 export default function SessionPage() {
   const { sessionId } = useParams()
@@ -18,6 +19,10 @@ export default function SessionPage() {
   const { loadBoards, loadStandards, loadMaterials, loadPrinciples, reset } = useStageStore()
   const { loadMessages, unsubscribe } = useChatStore()
   const [showStandardSearch, setShowStandardSearch] = useState(false)
+  const [showTutorial, setShowTutorial] = useState(
+    () => !localStorage.getItem('cw_tutorial_done')
+  )
+  const [activePanel, setActivePanel] = useState('chat')
 
   useEffect(() => {
     fetchSession(sessionId)
@@ -58,30 +63,46 @@ export default function SessionPage() {
     )
   }
 
+  const MOBILE_TABS = [
+    { id: 'chat', label: '채팅', Icon: MessageSquare },
+    { id: 'board', label: '설계보드', Icon: LayoutDashboard },
+    { id: 'principles', label: '원칙', Icon: BookOpen },
+  ]
+
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
       {/* 상단 헤더 */}
-      <header className="bg-white border-b border-gray-200 px-4 py-2 flex items-center gap-3 shrink-0">
-        <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600">
+      <header className="bg-white border-b border-gray-200 px-2 sm:px-4 py-2 flex items-center gap-1.5 sm:gap-3 shrink-0">
+        <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600 min-w-[44px] min-h-[44px] flex items-center justify-center">
           <ArrowLeft size={20} />
         </button>
-        <h1 className="font-semibold text-gray-900 truncate flex-1">{currentSession.title}</h1>
-        <MemberList />
+        <h1 className="font-semibold text-gray-900 truncate flex-1 text-sm sm:text-base">{currentSession.title}</h1>
+        <span className="hidden sm:block"><MemberList /></span>
         <button
           onClick={() => setShowStandardSearch(true)}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg transition"
+          className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg transition min-h-[44px]"
           title="성취기준 탐색"
         >
-          <BookMarked size={14} />
-          성취기준
+          <BookMarked size={16} />
+          <span className="hidden sm:inline">성취기준</span>
         </button>
         <button
           onClick={handleCopyInvite}
-          className="flex items-center gap-1 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition"
+          className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition min-h-[44px]"
           title="초대 코드 복사"
         >
-          <Share2 size={14} />
-          초대
+          <Share2 size={16} />
+          <span className="hidden sm:inline">초대</span>
+        </button>
+        <button
+          onClick={() => {
+            localStorage.removeItem('cw_tutorial_done')
+            setShowTutorial(true)
+          }}
+          className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition min-w-[44px] min-h-[44px] flex items-center justify-center"
+          title="튜토리얼 다시 보기"
+        >
+          <HelpCircle size={18} />
         </button>
       </header>
 
@@ -91,22 +112,57 @@ export default function SessionPage() {
         onStageChange={handleStageChange}
       />
 
-      {/* 메인 콘텐츠 */}
+      {/* 메인 콘텐츠 — 데스크톱: 3패널, 모바일: 탭 전환 */}
       <div className="flex-1 flex overflow-hidden">
         {/* 좌측: 채팅 */}
-        <div className="w-[400px] border-r border-gray-200 flex flex-col bg-white shrink-0">
+        <div className={`
+          ${activePanel === 'chat' ? 'flex' : 'hidden'}
+          md:flex
+          w-full md:w-[400px]
+          border-r-0 md:border-r border-gray-200
+          flex-col bg-white md:shrink-0
+        `}>
           <ChatPanel sessionId={sessionId} stage={currentSession.current_stage} />
         </div>
 
         {/* 중앙: 설계 보드 */}
-        <div className="flex-1 overflow-auto p-4">
+        <div className={`
+          ${activePanel === 'board' ? 'block' : 'hidden'}
+          md:block
+          flex-1 overflow-auto p-3 sm:p-4
+          w-full
+        `}>
           <DesignBoard sessionId={sessionId} stage={currentSession.current_stage} />
         </div>
 
         {/* 우측: 원칙 패널 */}
-        <div className="w-[280px] border-l border-gray-200 bg-white overflow-auto shrink-0">
+        <div className={`
+          ${activePanel === 'principles' ? 'block' : 'hidden'}
+          md:block
+          w-full md:w-[280px]
+          border-l-0 md:border-l border-gray-200
+          bg-white overflow-auto md:shrink-0
+        `}>
           <PrinciplePanel stage={currentSession.current_stage} />
         </div>
+      </div>
+
+      {/* 모바일 하단 탭 바 */}
+      <div className="md:hidden flex border-t border-gray-200 bg-white shrink-0 safe-bottom">
+        {MOBILE_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActivePanel(tab.id)}
+            className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition min-h-[56px] justify-center ${
+              activePanel === tab.id
+                ? 'text-blue-600 bg-blue-50 border-t-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <tab.Icon size={20} />
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {/* 성취기준 검색 모달 */}
@@ -118,6 +174,11 @@ export default function SessionPage() {
             loadStandards(sessionId)
           }}
         />
+      )}
+
+      {/* 튜토리얼 오버레이 */}
+      {showTutorial && (
+        <Tutorial onComplete={() => setShowTutorial(false)} />
       )}
     </div>
   )

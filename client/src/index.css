@@ -7,3 +7,8 @@ html, body {
 * {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* 노치 기기 safe area 대응 */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}

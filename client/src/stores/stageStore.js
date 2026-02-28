@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { apiGet, apiPut } from '../lib/api'
+import { apiGet, apiPost, apiPut } from '../lib/api'
 
 export const useStageStore = create((set, get) => ({
   boards: {},
@@ -30,6 +30,19 @@ export const useStageStore = create((set, get) => ({
   // 보드 업데이트
   updateBoard: async (boardId, content) => {
     const data = await apiPut(`/api/boards/${boardId}`, { content })
+    set((state) => ({
+      boards: { ...state.boards, [data.board_type]: data },
+    }))
+  },
+
+  // AI 제안 보드 반영 (upsert)
+  applyBoardSuggestion: async (sessionId, stage, boardType, content) => {
+    const data = await apiPost('/api/boards', {
+      session_id: sessionId,
+      stage,
+      board_type: boardType,
+      content,
+    })
     set((state) => ({
       boards: { ...state.boards, [data.board_type]: data },
     }))

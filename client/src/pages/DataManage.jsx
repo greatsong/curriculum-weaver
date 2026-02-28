@@ -114,7 +114,7 @@ export default function DataManage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-3">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
           <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600">
             <ArrowLeft size={20} />
           </button>
@@ -123,12 +123,12 @@ export default function DataManage() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* 통계 */}
         {stats && (
           <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
             <h2 className="font-semibold text-gray-800 mb-3">현재 데이터</h2>
-            <div className="flex items-center gap-6 text-sm">
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-sm">
               <div>
                 <span className="text-2xl font-bold text-blue-600">{stats.total}</span>
                 <span className="text-gray-500 ml-1">개 성취기준</span>
@@ -155,7 +155,7 @@ export default function DataManage() {
         )}
 
         {/* 탭 */}
-        <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-fit">
+        <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-full sm:w-fit overflow-x-auto">
           {[
             { id: 'upload', label: '데이터 업로드' },
             { id: 'browse', label: '성취기준 보기' },
@@ -164,7 +164,7 @@ export default function DataManage() {
             <button
               key={t.id}
               onClick={() => { setTab(t.id); if (t.id === 'graph') loadGraph() }}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition ${
+              className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-sm font-medium transition min-h-[44px] whitespace-nowrap ${
                 tab === t.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -184,22 +184,22 @@ export default function DataManage() {
               </p>
 
               {/* 파일 업로드 버튼 */}
-              <div className="flex gap-3 mb-3">
-                <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition cursor-pointer text-sm font-medium">
+              <div className="flex flex-wrap gap-2 sm:gap-3 mb-3">
+                <label className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition cursor-pointer text-sm font-medium w-full sm:w-auto min-h-[44px]">
                   <Upload size={16} />
                   JSON 파일 선택
                   <input type="file" accept=".json" onChange={handleFileUpload} className="hidden" />
                 </label>
                 <button
                   onClick={() => setJsonInput(SAMPLE_JSON)}
-                  className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition text-sm"
+                  className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition text-sm w-full sm:w-auto min-h-[44px]"
                 >
                   예시 채우기
                 </button>
                 <button
                   onClick={handleExport}
                   disabled={!stats?.total}
-                  className="flex items-center gap-1 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition text-sm disabled:opacity-50"
+                  className="flex items-center justify-center gap-1 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition text-sm disabled:opacity-50 w-full sm:w-auto min-h-[44px]"
                 >
                   <Download size={14} />
                   현재 데이터 내보내기
@@ -272,36 +272,57 @@ export default function DataManage() {
         {/* 성취기준 보기 탭 */}
         {tab === 'browse' && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="overflow-auto max-h-[60vh]">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 sticky top-0">
-                  <tr>
-                    <th className="text-left px-4 py-2 text-gray-500 font-medium">코드</th>
-                    <th className="text-left px-4 py-2 text-gray-500 font-medium">교과</th>
-                    <th className="text-left px-4 py-2 text-gray-500 font-medium">학년군</th>
-                    <th className="text-left px-4 py-2 text-gray-500 font-medium">영역</th>
-                    <th className="text-left px-4 py-2 text-gray-500 font-medium">내용</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
+            {allStandards.length === 0 ? (
+              <div className="text-center py-12 text-gray-400">
+                <Database size={32} className="mx-auto mb-2 opacity-50" />
+                <p>성취기준 데이터가 없습니다</p>
+              </div>
+            ) : (
+              <>
+                {/* 모바일: 카드 레이아웃 */}
+                <div className="md:hidden overflow-auto max-h-[60vh] p-3 space-y-3">
                   {allStandards.map((std) => (
-                    <tr key={std.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 font-mono text-xs text-blue-600 whitespace-nowrap">{std.code}</td>
-                      <td className="px-4 py-2 whitespace-nowrap">{std.subject}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-500">{std.grade_group}</td>
-                      <td className="px-4 py-2 whitespace-nowrap text-gray-500">{std.area}</td>
-                      <td className="px-4 py-2 text-gray-700">{std.content}</td>
-                    </tr>
+                    <div key={std.id} className="bg-white border border-gray-200 rounded-lg p-3 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs text-blue-600 font-bold">{std.code}</span>
+                        <span className="text-xs text-gray-500">{std.grade_group}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 bg-gray-100 rounded text-xs font-medium">{std.subject}</span>
+                        <span className="text-xs text-gray-400">{std.area}</span>
+                      </div>
+                      <p className="text-sm text-gray-700 leading-relaxed">{std.content}</p>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-              {allStandards.length === 0 && (
-                <div className="text-center py-12 text-gray-400">
-                  <Database size={32} className="mx-auto mb-2 opacity-50" />
-                  <p>성취기준 데이터가 없습니다</p>
                 </div>
-              )}
-            </div>
+
+                {/* 데스크톱: 테이블 레이아웃 */}
+                <div className="hidden md:block overflow-auto max-h-[60vh]">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-4 py-2 text-gray-500 font-medium">코드</th>
+                        <th className="text-left px-4 py-2 text-gray-500 font-medium">교과</th>
+                        <th className="text-left px-4 py-2 text-gray-500 font-medium">학년군</th>
+                        <th className="text-left px-4 py-2 text-gray-500 font-medium">영역</th>
+                        <th className="text-left px-4 py-2 text-gray-500 font-medium">내용</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {allStandards.map((std) => (
+                        <tr key={std.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 font-mono text-xs text-blue-600 whitespace-nowrap">{std.code}</td>
+                          <td className="px-4 py-2 whitespace-nowrap">{std.subject}</td>
+                          <td className="px-4 py-2 whitespace-nowrap text-gray-500">{std.grade_group}</td>
+                          <td className="px-4 py-2 whitespace-nowrap text-gray-500">{std.area}</td>
+                          <td className="px-4 py-2 text-gray-700">{std.content}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -320,7 +341,7 @@ export default function DataManage() {
                     const target = graphData.nodes.find((n) => n.id === link.target)
                     if (!source || !target) return null
                     return (
-                      <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg text-xs">
+                      <div key={i} className="flex flex-wrap items-center gap-1.5 sm:gap-2 p-2 bg-gray-50 rounded-lg text-xs">
                         <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-mono">{source.code}</span>
                         <span className="text-gray-400">{source.subject}</span>
                         <span className="text-gray-300">→</span>

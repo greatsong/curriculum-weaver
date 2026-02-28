@@ -4,6 +4,25 @@ import { buildAIResponse } from '../services/aiAgent.js'
 import { Sessions, Messages, Boards, Materials, Principles } from '../lib/store.js'
 import { SSE_EVENTS } from 'curriculum-weaver-shared/constants.js'
 
+/**
+ * AI 응답에서 <board_update> 블록을 추출하고 클린 텍스트를 분리
+ */
+function extractBoardUpdates(text) {
+  const updates = []
+  const regex = /<board_update\s+type="([^"]+)">\s*([\s\S]*?)\s*<\/board_update>/g
+  let match
+  while ((match = regex.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(match[2])
+      updates.push({ board_type: match[1], content: parsed })
+    } catch (e) {
+      console.warn('보드 업데이트 JSON 파싱 실패:', match[1], e.message)
+    }
+  }
+  const cleanText = text.replace(/<board_update\s+type="[^"]+">[\s\S]*?<\/board_update>/g, '').trim()
+  return { cleanText, updates }
+}
+
 export const chatRouter = Router()
 // chatRouter.use(requireAuth)
 
@@ -80,11 +99,19 @@ chatRouter.post('/message', async (req, res) => {
       },
     })
 
-    // AI 응답을 스토어에 저장
-    if (fullResponse) {
+    // 보드 업데이트 추출
+    const { cleanText, updates } = extractBoardUpdates(fullResponse)
+
+    // 보드 제안이 있으면 SSE 이벤트로 전송
+    if (updates.length > 0) {
+      res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.BOARD_SUGGESTIONS, suggestions: updates })}\n\n`)
+    }
+
+    // 클린 텍스트만 스토어에 저장
+    if (cleanText) {
       Messages.add(session_id, {
         sender_type: 'ai',
-        content: fullResponse,
+        content: cleanText,
         stage_context: stage,
         principles_used: principlesUsed,
       })

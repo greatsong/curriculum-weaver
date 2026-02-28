@@ -66,7 +66,10 @@ export default function ChatPanel({ sessionId, stage }) {
           <div className="flex justify-start">
             <div className="max-w-[85%] bg-gray-100 text-gray-800 rounded-2xl rounded-bl-md px-4 py-2.5 text-sm leading-relaxed">
               <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm max-w-none">
-                {streamingText}
+                {streamingText
+                  .replace(/<board_update\s+type="[^"]*">[\s\S]*?<\/board_update>/g, '')
+                  .replace(/<board_update[\s\S]*$/g, '')
+                  .trim() || '...'}
               </ReactMarkdown>
               <span className="inline-block w-1.5 h-4 bg-blue-500 animate-pulse ml-0.5" />
             </div>
@@ -87,18 +90,17 @@ export default function ChatPanel({ sessionId, stage }) {
       </div>
 
       {/* 입력 영역 */}
-      <form onSubmit={handleSend} className="border-t border-gray-200 p-3 flex gap-2">
+      <form onSubmit={handleSend} className="border-t border-gray-200 p-2 sm:p-3 flex gap-2">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="메시지를 입력하세요..."
-          disabled={streaming}
-          className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white disabled:opacity-50"
+          placeholder={streaming ? "AI 응답 중... 메시지를 미리 입력할 수 있습니다" : "메시지를 입력하세요..."}
+          className="flex-1 px-3 py-2.5 sm:py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white min-h-[44px]"
         />
         <button
           type="submit"
           disabled={streaming || !input.trim()}
-          className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          className="p-2.5 sm:p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed min-w-[44px] min-h-[44px] flex items-center justify-center"
         >
           <Send size={18} />
         </button>

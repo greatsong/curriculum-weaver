@@ -83,7 +83,7 @@ export async function apiDelete(path) {
 /**
  * SSE 스트리밍 POST 요청 (AI 채팅용)
  */
-export async function apiStreamPost(path, body, { onText, onPrinciples, onDone, onError }) {
+export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardSuggestions, onDone, onError }) {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -119,6 +119,7 @@ export async function apiStreamPost(path, body, { onText, onPrinciples, onDone, 
         const parsed = JSON.parse(data)
         if (parsed.type === 'text') onText?.(parsed.content)
         else if (parsed.type === 'principles') onPrinciples?.(parsed.principles)
+        else if (parsed.type === 'board_suggestions') onBoardSuggestions?.(parsed.suggestions)
         else if (parsed.type === 'error') onError?.(parsed.message)
       } catch {
         // 파싱 실패 무시

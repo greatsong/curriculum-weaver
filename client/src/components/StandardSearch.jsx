@@ -75,19 +75,19 @@ export default function StandardSearch({ sessionId, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/40 sm:flex sm:items-center sm:justify-center z-50" onClick={onClose}>
+      <div className="bg-white h-full sm:h-auto sm:rounded-xl sm:shadow-2xl w-full sm:max-w-3xl sm:max-h-[80vh] sm:mx-4 flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* 헤더 */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+        <div className="flex items-center justify-between px-3 sm:px-5 py-3 sm:py-4 border-b border-gray-200">
+          <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
             <BookMarked size={20} className="text-blue-600" />
             성취기준 탐색
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 min-w-[44px] min-h-[44px] flex items-center justify-center -mr-2"><X size={20} /></button>
         </div>
 
         {/* 검색 필터 */}
-        <div className="px-5 py-3 border-b border-gray-100 flex gap-3">
+        <div className="px-3 sm:px-5 py-3 border-b border-gray-100 flex flex-col sm:flex-row gap-2 sm:gap-3">
           <div className="flex-1 relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -109,7 +109,7 @@ export default function StandardSearch({ sessionId, onClose }) {
         </div>
 
         {/* 결과 */}
-        <div className="flex-1 overflow-auto p-5">
+        <div className="flex-1 overflow-auto p-3 sm:p-5">
           {/* 세션에 추가된 성취기준 */}
           {sessionStandards.length > 0 && (
             <div className="mb-6">
@@ -183,7 +183,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                         e.stopPropagation()
                         added ? removeStandard(std.id) : addStandard(std.id)
                       }}
-                      className={`shrink-0 p-1.5 rounded-lg transition ${
+                      className={`shrink-0 p-2.5 sm:p-1.5 rounded-lg transition min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center ${
                         added
                           ? 'bg-green-100 text-green-600 hover:bg-red-100 hover:text-red-600'
                           : 'bg-gray-100 text-gray-400 hover:bg-blue-100 hover:text-blue-600'

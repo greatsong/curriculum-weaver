@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Users, Clock, ArrowRight, Database } from 'lucide-react'
+import { Plus, Users, Clock, ArrowRight, Database, HelpCircle } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
 import { STAGES } from 'curriculum-weaver-shared/constants.js'
+import Tutorial from '../components/Tutorial'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -12,6 +13,7 @@ export default function Dashboard() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [inviteCode, setInviteCode] = useState('')
+  const [showTutorial, setShowTutorial] = useState(false)
 
   useEffect(() => {
     fetchSessions()
@@ -48,33 +50,43 @@ export default function Dashboard() {
     <div className="min-h-screen bg-gray-50">
       {/* 헤더 */}
       <header className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-2xl">🧶</span>
             <h1 className="text-xl font-bold text-gray-900">커리큘럼 위버</h1>
           </div>
-          <span className="text-sm text-gray-400">테스트 모드</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowTutorial(true)}
+              className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+              title="튜토리얼 다시 보기"
+            >
+              <HelpCircle size={14} />
+              가이드
+            </button>
+            <span className="text-sm text-gray-400">테스트 모드</span>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* 액션 버튼 */}
-        <div className="flex gap-3 mb-8">
+        <div className="flex flex-wrap gap-3 mb-8">
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium w-full sm:w-auto min-h-[44px]"
           >
             <Plus size={18} /> 새 설계 세션
           </button>
           <button
             onClick={() => setShowJoin(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium w-full sm:w-auto min-h-[44px]"
           >
             <Users size={18} /> 초대 코드로 참여
           </button>
           <button
             onClick={() => navigate('/data')}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium w-full sm:w-auto min-h-[44px]"
           >
             <Database size={18} /> 교육과정 데이터
           </button>
@@ -83,7 +95,7 @@ export default function Dashboard() {
         {/* 세션 생성 모달 */}
         {showCreate && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowCreate(false)}>
-            <form onSubmit={handleCreate} onClick={(e) => e.stopPropagation()} className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <form onSubmit={handleCreate} onClick={(e) => e.stopPropagation()} className="bg-white rounded-xl p-4 sm:p-6 w-full max-w-md mx-4 sm:mx-auto shadow-2xl max-h-[90vh] overflow-auto">
               <h2 className="text-lg font-bold mb-4">새 설계 세션 만들기</h2>
               <input
                 value={title}
@@ -110,7 +122,7 @@ export default function Dashboard() {
         {/* 참여 모달 */}
         {showJoin && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowJoin(false)}>
-            <form onSubmit={handleJoin} onClick={(e) => e.stopPropagation()} className="bg-white rounded-xl p-6 w-full max-w-sm shadow-2xl">
+            <form onSubmit={handleJoin} onClick={(e) => e.stopPropagation()} className="bg-white rounded-xl p-4 sm:p-6 w-full max-w-sm mx-4 sm:mx-auto shadow-2xl">
               <h2 className="text-lg font-bold mb-4">세션 참여하기</h2>
               <input
                 value={inviteCode}
@@ -145,17 +157,17 @@ export default function Dashboard() {
                 <button
                   key={session.id}
                   onClick={() => navigate(`/session/${session.id}`)}
-                  className="flex items-center gap-4 bg-white rounded-xl border border-gray-200 p-5 hover:border-blue-300 hover:shadow-md transition text-left w-full group"
+                  className="flex items-center gap-3 sm:gap-4 bg-white rounded-xl border border-gray-200 p-4 sm:p-5 hover:border-blue-300 hover:shadow-md transition text-left w-full group"
                 >
                   <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-2xl shrink-0">
                     {stage.icon === 'Search' ? '🔍' : stage.icon === 'Map' ? '🗺️' : stage.icon === 'Building2' ? '🏗️' : stage.icon === 'BarChart3' ? '📊' : stage.icon === 'Package' ? '📦' : stage.icon === 'Rocket' ? '🚀' : '🔄'}
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-gray-900 truncate">{session.title}</h3>
-                    <p className="text-sm text-gray-500 flex items-center gap-2 mt-1">
+                    <p className="text-sm text-gray-500 flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1">
                       <Clock size={14} />
-                      {stage.id}단계: {stage.shortName}
-                      <span className="text-xs text-gray-400">코드: {session.invite_code}</span>
+                      <span>{stage.id}단계: {stage.shortName}</span>
+                      <span className="text-xs text-gray-400 hidden sm:inline">코드: {session.invite_code}</span>
                     </p>
                   </div>
                   <ArrowRight size={20} className="text-gray-300 group-hover:text-blue-500 transition" />
@@ -165,6 +177,11 @@ export default function Dashboard() {
           </div>
         )}
       </main>
+
+      {/* 튜토리얼 오버레이 */}
+      {showTutorial && (
+        <Tutorial onComplete={() => setShowTutorial(false)} />
+      )}
     </div>
   )
 }

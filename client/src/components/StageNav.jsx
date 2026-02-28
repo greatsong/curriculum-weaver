@@ -7,7 +7,7 @@ const STAGE_ICONS = {
 
 export default function StageNav({ currentStage, onStageChange, completedStages = [] }) {
   return (
-    <nav className="bg-white border-b border-gray-200 px-4 py-2 shrink-0">
+    <nav className="bg-white border-b border-gray-200 px-2 sm:px-4 py-1.5 sm:py-2 shrink-0">
       <div className="flex items-center gap-1 overflow-x-auto">
         {STAGES.map((stage, i) => {
           const isActive = stage.id === currentStage
@@ -19,7 +19,7 @@ export default function StageNav({ currentStage, onStageChange, completedStages 
               key={stage.id}
               onClick={() => onStageChange(stage.id)}
               className={`
-                flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all
+                flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-all min-h-[44px]
                 ${isActive
                   ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-200'
                   : isCompleted

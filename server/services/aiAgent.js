@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { STAGES } from 'curriculum-weaver-shared/constants.js'
+import { STAGES, BOARD_TYPES } from 'curriculum-weaver-shared/constants.js'
+import { getBoardSchemaForPrompt } from 'curriculum-weaver-shared/boardSchemas.js'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -39,6 +40,28 @@ ${principleText}
 
 위 원칙들은 단순 참고가 아니라, 당신의 모든 제안과 피드백의 기준입니다.
 교사의 설계가 원칙에 부합하는지 항상 점검하되, 자연스러운 질문이나 제안으로 가이드하세요.`)
+  }
+
+  // 보드 업데이트 지침
+  const stageBoardTypes = BOARD_TYPES[stage] || []
+  if (stageBoardTypes.length > 0) {
+    const schemaText = getBoardSchemaForPrompt(stage)
+    parts.push(`[설계 보드 업데이트 규칙]
+교사와 구체적인 설계 내용을 논의할 때, 보드에 반영할 구조화된 데이터를 아래 형식으로 포함하세요:
+
+<board_update type="보드타입">
+{JSON 데이터}
+</board_update>
+
+이 단계의 보드 타입과 데이터 구조:
+${schemaText}
+
+중요:
+- 교사가 구체적으로 설계 내용을 논의하거나 요청할 때만 포함하세요.
+- 일반적인 인사, 질문, 간단한 의견에는 포함하지 마세요.
+- 하나의 응답에 여러 보드 업데이트를 포함할 수 있습니다.
+- JSON은 반드시 위 구조를 따르세요. 배열 필드에는 실제 항목을 채우세요.
+- 자연스러운 설명 뒤에 "이 내용을 보드에 반영하시겠어요?"라고 확인하세요.`)
   }
 
   // 선택된 성취기준
