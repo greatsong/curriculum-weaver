@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Share2, BookMarked, HelpCircle, MessageSquare, LayoutDashboard, BookOpen } from 'lucide-react'
+import { ArrowLeft, Share2, BookMarked, HelpCircle, MessageSquare, LayoutDashboard, BookOpen, UserCircle } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useStageStore } from '../stores/stageStore'
 import { useChatStore } from '../stores/chatStore'
@@ -13,6 +13,60 @@ import MemberList from '../components/MemberList'
 import StandardSearch from '../components/StandardSearch'
 import Tutorial from '../components/Tutorial'
 
+// 닉네임 입력 모달
+function NicknameModal({ onConfirm }) {
+  const [name, setName] = useState('')
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    const nickname = name.trim() || `교사${Math.floor(Math.random() * 100)}`
+    localStorage.setItem('cw_nickname', nickname)
+    onConfirm(nickname)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+      <form
+        onSubmit={handleSubmit}
+        className="relative bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm p-6"
+      >
+        <div className="flex flex-col items-center gap-3 mb-5">
+          <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center">
+            <UserCircle size={32} className="text-blue-500" />
+          </div>
+          <div className="text-center">
+            <h2 className="text-lg font-semibold text-gray-900">닉네임 설정</h2>
+            <p className="text-sm text-gray-500 mt-1">다른 선생님에게 표시될 이름이에요</p>
+          </div>
+        </div>
+        <input
+          ref={inputRef}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="예: 김교사, 과학쌤"
+          maxLength={10}
+          className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+        />
+        <button
+          type="submit"
+          className="w-full mt-4 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition"
+        >
+          입장하기
+        </button>
+        <p className="text-xs text-gray-400 text-center mt-3">
+          비워두면 자동으로 이름이 생성돼요
+        </p>
+      </form>
+    </div>
+  )
+}
+
 export default function SessionPage() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
@@ -24,24 +78,26 @@ export default function SessionPage() {
     () => !localStorage.getItem('cw_tutorial_done')
   )
   const [activePanel, setActivePanel] = useState('chat')
+  const [needsNickname, setNeedsNickname] = useState(
+    () => !localStorage.getItem('cw_nickname')
+  )
+  const joinedRef = useRef(false)
 
+  // 세션 데이터 로드 (닉네임과 무관)
   useEffect(() => {
     fetchSession(sessionId)
     loadMessages(sessionId)
+  }, [sessionId])
 
-    // Socket.IO 세션 입장 (닉네임은 localStorage에 저장)
-    let nickname = localStorage.getItem('cw_nickname')
-    if (!nickname) {
-      nickname = prompt('닉네임을 입력하세요 (예: 김교사)', '') || `교사${Math.floor(Math.random() * 100)}`
-      localStorage.setItem('cw_nickname', nickname)
-    }
+  // 소켓 연결 (닉네임 확정 후)
+  const connectSocket = useCallback((nickname) => {
+    if (joinedRef.current) return
+    joinedRef.current = true
+
     joinSession(sessionId, { name: nickname })
-
-    // 채팅 + 보드 구독
     subscribe(sessionId)
     subscribeBoardUpdates()
 
-    // Socket.IO 이벤트 리스너
     const handleMembersUpdated = (members) => setMembers(members)
     const handleStageUpdated = (stage) => {
       useSessionStore.setState((state) => ({
@@ -54,15 +110,30 @@ export default function SessionPage() {
     socket.on('members_updated', handleMembersUpdated)
     socket.on('stage_updated', handleStageUpdated)
 
-    return () => {
+    // cleanup 함수를 ref에 저장
+    joinedRef.cleanup = () => {
       leaveSession(sessionId)
       unsubscribe()
       unsubscribeBoardUpdates()
       socket.off('members_updated', handleMembersUpdated)
       socket.off('stage_updated', handleStageUpdated)
       reset()
+      joinedRef.current = false
     }
   }, [sessionId])
+
+  // 이미 닉네임이 있으면 바로 연결
+  useEffect(() => {
+    const saved = localStorage.getItem('cw_nickname')
+    if (saved) connectSocket(saved)
+    return () => joinedRef.cleanup?.()
+  }, [sessionId, connectSocket])
+
+  // 닉네임 모달에서 확인
+  const handleNicknameConfirm = (nickname) => {
+    setNeedsNickname(false)
+    connectSocket(nickname)
+  }
 
   // 단계 변경 시 해당 단계 데이터 로드
   useEffect(() => {
@@ -194,6 +265,9 @@ export default function SessionPage() {
           </button>
         ))}
       </div>
+
+      {/* 닉네임 입력 모달 */}
+      {needsNickname && <NicknameModal onConfirm={handleNicknameConfirm} />}
 
       {/* 성취기준 검색 모달 */}
       {showStandardSearch && (
