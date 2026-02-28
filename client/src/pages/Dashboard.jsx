@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Users, Clock, ArrowRight, Database, HelpCircle } from 'lucide-react'
+import { Plus, Users, Clock, ArrowRight, Database, HelpCircle, Globe } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
 import { STAGES } from 'curriculum-weaver-shared/constants.js'
 import Tutorial from '../components/Tutorial'
@@ -89,6 +89,12 @@ export default function Dashboard() {
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium w-full sm:w-auto min-h-[44px]"
           >
             <Database size={18} /> 교육과정 데이터
+          </button>
+          <button
+            onClick={() => navigate('/graph')}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition font-medium w-full sm:w-auto min-h-[44px]"
+          >
+            <Globe size={18} /> 3D 교육과정 그래프
           </button>
         </div>
 

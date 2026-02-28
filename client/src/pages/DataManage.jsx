@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Upload, Database, Trash2, Download, CheckCircle, AlertCircle } from 'lucide-react'
 import { apiGet, apiPost, apiDelete } from '../lib/api'
+
+const Graph3D = lazy(() => import('../components/Graph3D'))
 
 const SAMPLE_JSON = `{
   "standards": [
@@ -32,7 +34,6 @@ export default function DataManage() {
   const [result, setResult] = useState(null)
   const [tab, setTab] = useState('upload') // 'upload' | 'browse' | 'graph'
   const [allStandards, setAllStandards] = useState([])
-  const [graphData, setGraphData] = useState(null)
 
   useEffect(() => {
     loadStats()
@@ -91,11 +92,6 @@ export default function DataManage() {
     await apiDelete('/api/standards/all')
     setResult({ success: true, message: '모든 데이터가 초기화되었습니다.' })
     loadStats()
-  }
-
-  const loadGraph = async () => {
-    const data = await apiGet('/api/standards/graph')
-    setGraphData(data)
   }
 
   const handleExport = () => {
@@ -163,7 +159,7 @@ export default function DataManage() {
           ].map((t) => (
             <button
               key={t.id}
-              onClick={() => { setTab(t.id); if (t.id === 'graph') loadGraph() }}
+              onClick={() => setTab(t.id)}
               className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-sm font-medium transition min-h-[44px] whitespace-nowrap ${
                 tab === t.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
@@ -326,46 +322,19 @@ export default function DataManage() {
           </div>
         )}
 
-        {/* 그래프 탭 */}
+        {/* 그래프 탭 — 3D 시각화 */}
         {tab === 'graph' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            {graphData ? (
-              <>
-                <div className="flex items-center gap-4 mb-4 text-sm text-gray-500">
-                  <span>노드: {graphData.nodes.length}개</span>
-                  <span>연결: {graphData.links.length}개</span>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" style={{ height: '75vh' }}>
+            <Suspense fallback={
+              <div className="flex items-center justify-center h-full text-gray-400">
+                <div className="text-center">
+                  <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-sm">3D 그래프 로딩 중...</p>
                 </div>
-                <div className="space-y-2 max-h-[50vh] overflow-auto">
-                  {graphData.links.map((link, i) => {
-                    const source = graphData.nodes.find((n) => n.id === link.source)
-                    const target = graphData.nodes.find((n) => n.id === link.target)
-                    if (!source || !target) return null
-                    return (
-                      <div key={i} className="flex flex-wrap items-center gap-1.5 sm:gap-2 p-2 bg-gray-50 rounded-lg text-xs">
-                        <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-mono">{source.code}</span>
-                        <span className="text-gray-400">{source.subject}</span>
-                        <span className="text-gray-300">→</span>
-                        <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded">
-                          {link.link_type === 'cross_subject' ? '교과연계'
-                            : link.link_type === 'same_concept' ? '동일개념'
-                            : link.link_type === 'prerequisite' ? '선수학습'
-                            : link.link_type === 'application' ? '적용'
-                            : link.link_type}
-                        </span>
-                        <span className="text-gray-300">→</span>
-                        <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded font-mono">{target.code}</span>
-                        <span className="text-gray-400">{target.subject}</span>
-                        <span className="text-gray-400 ml-auto">{link.rationale}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </>
-            ) : (
-              <div className="text-center py-8 text-gray-400">
-                그래프 데이터를 로딩 중...
               </div>
-            )}
+            }>
+              <Graph3D embedded />
+            </Suspense>
           </div>
         )}
       </main>
