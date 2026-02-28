@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Search, X, RotateCcw, ChevronLeft, ChevronRight, Link2, Send, MessageCircle, List, Plus, Check, Crosshair } from 'lucide-react'
+import { ArrowLeft, Search, X, RotateCcw, ChevronLeft, ChevronRight, Link2, Send, MessageCircle, List, Plus, Check, Crosshair, HelpCircle, Sparkles } from 'lucide-react'
 import { apiGet, apiPost, API_BASE } from '../lib/api'
 
 const SUBJECT_COLORS = {
@@ -32,7 +32,8 @@ export default function Graph3D({ embedded = false }) {
   const [graphData, setGraphData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selectedNode, setSelectedNode] = useState(null)
-  const [filterSubject, setFilterSubject] = useState('')
+  const [selectedSubjects, setSelectedSubjects] = useState(new Set())
+  const [minOverlap, setMinOverlap] = useState(2) // 최소 교차 과목 수
   const [filterLinkType, setFilterLinkType] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [highlightNodes, setHighlightNodes] = useState(new Set())
@@ -43,6 +44,15 @@ export default function Graph3D({ embedded = false }) {
     return !embedded
   })
   const [sidebarTab, setSidebarTab] = useState('list') // 'list' | 'chat'
+  // 과목 토글 핸들러
+  const toggleSubject = useCallback((subject) => {
+    setSelectedSubjects(prev => {
+      const next = new Set(prev)
+      if (next.has(subject)) next.delete(subject)
+      else next.add(subject)
+      return next
+    })
+  }, [])
   const containerRef = useRef(null)
   const fgRef = useRef()
   const [dimensions, setDimensions] = useState({ width: 800, height: 500 })
@@ -117,9 +127,31 @@ export default function Graph3D({ embedded = false }) {
       return srcSubject !== tgtSubject
     })
 
-    if (filterSubject) {
-      const nodeIds = new Set(nodes.filter(n => n.subject === filterSubject).map(n => n.id))
-      links = links.filter(l => nodeIds.has(getLinkSourceId(l)) || nodeIds.has(getLinkTargetId(l)))
+    // 멀티 과목 필터
+    if (selectedSubjects.size > 0) {
+      // 선택 과목 노드들 사이의 연결만 우선 필터
+      const selNodeIds = new Set(nodes.filter(n => selectedSubjects.has(n.subject)).map(n => n.id))
+      links = links.filter(l => selNodeIds.has(getLinkSourceId(l)) && selNodeIds.has(getLinkTargetId(l)))
+
+      // minOverlap >= 3: 각 노드가 연결된 '선택 과목 수(자신 포함)'가 minOverlap 이상인 노드만
+      if (selectedSubjects.size >= 3 && minOverlap >= 3) {
+        const nodeConnectedSubjects = new Map() // nodeId → Set<subject>
+        nodes.filter(n => selNodeIds.has(n.id)).forEach(n => {
+          nodeConnectedSubjects.set(n.id, new Set([n.subject]))
+        })
+        links.forEach(l => {
+          const srcId = getLinkSourceId(l), tgtId = getLinkTargetId(l)
+          const srcSubj = nodeSubjectMap.get(srcId), tgtSubj = nodeSubjectMap.get(tgtId)
+          if (nodeConnectedSubjects.has(srcId)) nodeConnectedSubjects.get(srcId).add(tgtSubj)
+          if (nodeConnectedSubjects.has(tgtId)) nodeConnectedSubjects.get(tgtId).add(srcSubj)
+        })
+        const hubNodeIds = new Set()
+        nodeConnectedSubjects.forEach((subjs, nodeId) => {
+          if (subjs.size >= minOverlap) hubNodeIds.add(nodeId)
+        })
+        links = links.filter(l => hubNodeIds.has(getLinkSourceId(l)) || hubNodeIds.has(getLinkTargetId(l)))
+      }
+
       const connectedIds = new Set()
       links.forEach(l => { connectedIds.add(getLinkSourceId(l)); connectedIds.add(getLinkTargetId(l)) })
       nodes = nodes.filter(n => connectedIds.has(n.id))
@@ -144,7 +176,7 @@ export default function Graph3D({ embedded = false }) {
     }
 
     return { nodes, links }
-  }, [graphData, filterSubject, filterLinkType, nodeSubjectMap, focusMode, selectedNode])
+  }, [graphData, selectedSubjects, minOverlap, filterLinkType, nodeSubjectMap, focusMode, selectedNode])
 
   // 검색 결과 (원점에서 가까운 순 정렬)
   const sortedSearchResults = useMemo(() => {
@@ -203,9 +235,9 @@ export default function Graph3D({ embedded = false }) {
         n.grade_group?.toLowerCase().includes(q)
       )
     }
-    if (filterSubject) items = items.filter(n => n.subject === filterSubject)
+    if (selectedSubjects.size > 0) items = items.filter(n => selectedSubjects.has(n.subject))
     return [...items].sort((a, b) => a.subject.localeCompare(b.subject) || a.code.localeCompare(b.code))
-  }, [graphData, searchQuery, filterSubject])
+  }, [graphData, searchQuery, selectedSubjects])
 
   const linkCountMap = useMemo(() => {
     if (!graphData) return new Map()
@@ -301,7 +333,7 @@ export default function Graph3D({ embedded = false }) {
   }, [selectedNode, graphData])
 
   const handleReset = () => {
-    setFilterSubject(''); setFilterLinkType(''); setSearchQuery(''); setFocusMode(false)
+    setSelectedSubjects(new Set()); setMinOverlap(2); setFilterLinkType(''); setSearchQuery(''); setFocusMode(false)
     setSelectedNode(null); setHighlightNodes(new Set()); setHighlightLinks(new Set())
     if (fgRef.current) fgRef.current.cameraPosition({ x: 0, y: 0, z: 300 }, { x: 0, y: 0, z: 0 }, 1000)
   }
@@ -330,7 +362,7 @@ export default function Graph3D({ embedded = false }) {
               code: selectedNode.code, subject: selectedNode.subject,
               content: selectedNode.content, area: selectedNode.area,
             } : null,
-            filterSubject: filterSubject || null,
+            filterSubject: selectedSubjects.size > 0 ? [...selectedSubjects].join(', ') : null,
             neighborCodes: selectedNode ? selectedLinks.map(link => {
               const srcId = getLinkSourceId(link)
               const tgtId = getLinkTargetId(link)
@@ -459,11 +491,31 @@ export default function Graph3D({ embedded = false }) {
           )}
           <h2 className="text-sm font-medium text-gray-200 hidden sm:block">교과 간 연결 탐색</h2>
           <div className="flex items-center gap-1.5 ml-auto">
-            <select value={filterSubject} onChange={(e) => setFilterSubject(e.target.value)}
-              className="px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded-lg text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">전체 교과</option>
-              {subjects.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            {selectedSubjects.size > 0 && (
+              <span className="flex items-center gap-1.5">
+                {/* 모바일: 선택 개수만, 데스크톱: 과목명 나열 */}
+                <span className="px-2 py-1 bg-blue-900/60 text-blue-300 rounded-lg text-[11px] font-medium">
+                  <span className="sm:hidden">{selectedSubjects.size}개 교과</span>
+                  <span className="hidden sm:inline">{[...selectedSubjects].join(' × ')}</span>
+                </span>
+                {selectedSubjects.size >= 3 && (
+                  <span className="flex items-center bg-gray-700 rounded-lg overflow-hidden">
+                    {Array.from({ length: selectedSubjects.size - 1 }, (_, i) => i + 2).map(n => (
+                      <button key={n}
+                        onClick={() => setMinOverlap(n)}
+                        className={`px-1.5 py-1 text-[11px] font-bold transition ${
+                          minOverlap === n
+                            ? 'bg-amber-600 text-white'
+                            : 'text-gray-400 hover:text-white hover:bg-gray-600'
+                        }`}
+                        title={`${n}개 이상 과목이 교차하는 노드만 표시`}>
+                        {n}{n < selectedSubjects.size ? '+' : ''}
+                      </button>
+                    ))}
+                  </span>
+                )}
+              </span>
+            )}
             <select value={filterLinkType} onChange={(e) => setFilterLinkType(e.target.value)}
               className="px-2 py-1.5 text-xs bg-gray-700 border border-gray-600 rounded-lg text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 hidden sm:block">
               <option value="">전체 연결</option>
@@ -490,15 +542,25 @@ export default function Graph3D({ embedded = false }) {
           </div>
         </div>
 
-        {/* 교과 범례 */}
+        {/* 교과 범례 (멀티 셀렉트) */}
         <div className="flex gap-x-1 gap-y-0.5 px-3 py-1.5 bg-gray-800/80 border-b border-gray-700/50 text-[11px] z-10 shrink-0 overflow-x-auto">
-          {subjects.map(s => (
-            <button key={s} onClick={() => setFilterSubject(prev => prev === s ? '' : s)}
-              className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition whitespace-nowrap ${filterSubject === s ? 'bg-gray-600 text-white font-bold' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}>
-              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: SUBJECT_COLORS[s] || '#9ca3af' }} />
-              {s}
-            </button>
-          ))}
+          {subjects.map(s => {
+            const isActive = selectedSubjects.has(s)
+            return (
+              <button key={s} onClick={() => toggleSubject(s)}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition whitespace-nowrap ${
+                  isActive
+                    ? 'text-white font-bold ring-1 ring-white/40'
+                    : selectedSubjects.size > 0
+                      ? 'text-gray-600 hover:text-gray-300 hover:bg-gray-700'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
+                }`}
+                style={isActive ? { backgroundColor: SUBJECT_COLORS[s] + '33' } : undefined}>
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: SUBJECT_COLORS[s] || '#9ca3af' }} />
+                {s}
+              </button>
+            )
+          })}
           <span className="text-gray-600 mx-1 shrink-0">|</span>
           {Object.entries(LINK_TYPE_LABELS).map(([k, v]) => (
             <button key={k} onClick={() => setFilterLinkType(prev => prev === k ? '' : k)}
@@ -627,8 +689,8 @@ export default function Graph3D({ embedded = false }) {
             )
           })()}
           <div className="absolute bottom-3 left-3 text-[10px] sm:text-[11px] text-gray-500 bg-gray-800/80 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg">
-            <span className="hidden sm:inline">드래그: 회전 · 스크롤: 확대/축소 · 노드 클릭: 상세</span>
-            <span className="sm:hidden">터치: 회전 · 핀치: 확대 · 탭: 상세</span>
+            <span className="hidden sm:inline">드래그: 회전 · 스크롤: 확대/축소 · 노드 클릭: 상세 · 상단 교과: 멀티 선택</span>
+            <span className="sm:hidden">터치: 회전 · 핀치: 확대 · 탭: 상세 · 교과 탭: 멀티 선택</span>
           </div>
         </div>
       </div>
@@ -650,6 +712,12 @@ export default function Graph3D({ embedded = false }) {
 
         {/* 탭 헤더 */}
         <div className="flex border-b border-gray-700 shrink-0">
+          <button onClick={() => setSidebarTab('guide')}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition ${
+              sidebarTab === 'guide' ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-750' : 'text-gray-500 hover:text-gray-300'
+            }`}>
+            <HelpCircle size={14} /> 가이드
+          </button>
           <button onClick={() => setSidebarTab('list')}
             className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition ${
               sidebarTab === 'list' ? 'text-blue-400 border-b-2 border-blue-400 bg-gray-750' : 'text-gray-500 hover:text-gray-300'
@@ -668,6 +736,102 @@ export default function Graph3D({ embedded = false }) {
             )}
           </button>
         </div>
+
+        {/* 가이드 탭 */}
+        {sidebarTab === 'guide' && (
+          <div className="flex-1 overflow-auto min-h-0 p-4 space-y-5 text-sm text-gray-300">
+            {/* 사용 시나리오 */}
+            <section>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">이렇게 활용해보세요</h3>
+              <div className="space-y-2">
+                <div className="bg-gray-700/50 rounded-lg p-3">
+                  <p className="font-medium text-blue-300 text-xs mb-1">시나리오 1 — 융합 수업 교과 탐색</p>
+                  <p className="text-xs text-gray-400 leading-relaxed">
+                    과학과 수학을 선택해서 두 교과가 어떤 성취기준으로 연결되는지 확인하고,
+                    거기에 정보 교과를 추가해 3교과 융합의 허브 성취기준을 발견해보세요.
+                  </p>
+                </div>
+                <div className="bg-gray-700/50 rounded-lg p-3">
+                  <p className="font-medium text-blue-300 text-xs mb-1">시나리오 2 — 주제 중심 연결 발견</p>
+                  <p className="text-xs text-gray-400 leading-relaxed">
+                    검색창에 "기후변화", "데이터", "에너지" 같은 주제를 입력하면
+                    관련 성취기준이 하이라이트돼요. 어떤 교과들이 연결되는지 한눈에 파악!
+                  </p>
+                </div>
+                <div className="bg-gray-700/50 rounded-lg p-3">
+                  <p className="font-medium text-blue-300 text-xs mb-1">시나리오 3 — AI와 새 연결 발견</p>
+                  <p className="text-xs text-gray-400 leading-relaxed">
+                    노드를 선택한 뒤 AI 탐색 탭에서 질문하면,
+                    아직 그래프에 없는 새로운 교과 간 연결을 AI가 제안해줘요.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* 기능 사용 팁 */}
+            <section>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">기능 사용 팁</h3>
+              <div className="space-y-1.5 text-xs">
+                <div className="flex gap-2 items-start">
+                  <span className="shrink-0 w-5 h-5 rounded bg-blue-900/60 text-blue-300 flex items-center justify-center text-[10px] font-bold mt-0.5">1</span>
+                  <div>
+                    <p className="font-medium text-gray-200">교과 멀티 선택</p>
+                    <p className="text-gray-500">상단 바에서 교과 버튼을 여러 개 눌러 조합의 교차 연결만 필터링</p>
+                  </div>
+                </div>
+                <div className="flex gap-2 items-start">
+                  <span className="shrink-0 w-5 h-5 rounded bg-blue-900/60 text-blue-300 flex items-center justify-center text-[10px] font-bold mt-0.5">2</span>
+                  <div>
+                    <p className="font-medium text-gray-200">조합 수 조절</p>
+                    <p className="text-gray-500">3개 이상 선택 시 2+/3+/N 버튼으로 허브 성취기준만 골라보기</p>
+                  </div>
+                </div>
+                <div className="flex gap-2 items-start">
+                  <span className="shrink-0 w-5 h-5 rounded bg-blue-900/60 text-blue-300 flex items-center justify-center text-[10px] font-bold mt-0.5">3</span>
+                  <div>
+                    <p className="font-medium text-gray-200">포커스 모드</p>
+                    <p className="text-gray-500">조준 버튼을 누르면 선택한 노드의 1홉 이웃만 집중 탐색</p>
+                  </div>
+                </div>
+                <div className="flex gap-2 items-start">
+                  <span className="shrink-0 w-5 h-5 rounded bg-blue-900/60 text-blue-300 flex items-center justify-center text-[10px] font-bold mt-0.5">4</span>
+                  <div>
+                    <p className="font-medium text-gray-200">AI 탐색</p>
+                    <p className="text-gray-500">선택한 과목·노드 맥락을 AI가 자동 파악, 새 연결을 추천</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* 인사이트 기대 */}
+            <section>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">이런 인사이트를 발견할 수 있어요</h3>
+              <div className="space-y-1.5 text-xs text-gray-400">
+                <p className="flex gap-1.5 items-start"><span className="text-amber-400 shrink-0">*</span> "이 과학 성취기준이 수학·정보 3과목에 걸쳐 연결되네!"</p>
+                <p className="flex gap-1.5 items-start"><span className="text-amber-400 shrink-0">*</span> "기후변화 주제로 과학×사회×도덕 융합이 가능하겠다"</p>
+                <p className="flex gap-1.5 items-start"><span className="text-amber-400 shrink-0">*</span> "데이터 분석이 수학·과학·정보·사회를 관통하는 핵심이구나"</p>
+                <p className="flex gap-1.5 items-start"><span className="text-amber-400 shrink-0">*</span> "AI가 추천한 국어-과학 연결이 토론 수업에 딱이다!"</p>
+              </div>
+            </section>
+
+            {/* 세션 만들기 CTA */}
+            <section className="border-t border-gray-700 pt-4">
+              <p className="text-xs text-gray-500 mb-2">탐색한 교과와 성취기준으로 바로 융합 수업 설계를 시작하세요.</p>
+              <button
+                onClick={() => {
+                  const params = new URLSearchParams()
+                  if (selectedSubjects.size > 0) params.set('subjects', [...selectedSubjects].join(','))
+                  if (selectedNode) params.set('standard', selectedNode.code)
+                  const url = params.toString() ? `/?${params}` : '/'
+                  navigate?.(url)
+                }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
+                <Sparkles size={16} />
+                새 설계 세션 만들기
+              </button>
+            </section>
+          </div>
+        )}
 
         {/* 목록 탭 */}
         {sidebarTab === 'list' && (

@@ -34,6 +34,32 @@ curriculum-weaver/
 - 클라이언트: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 - 서버: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`
 
+## TODO: Auth 구현 계획
+
+현재 테스트 모드 (인증 없음). 아래 순서로 전환:
+
+1. **클라이언트 Supabase Auth 연결**
+   - `client/src/lib/supabase.js` 활성화
+   - Google OAuth 로그인 UI 추가 (Dashboard 헤더)
+   - `api.js`의 `getHeaders()`에 `Authorization: Bearer ${session.access_token}` 추가
+
+2. **서버 JWT 미들웨어 활성화**
+   - `server/middleware/auth.js`의 `requireAuth` 주석 해제
+   - `server/routes/sessions.js`에서 `sessionsRouter.use(requireAuth)` 활성화
+   - `req.user.id`로 creator_id 설정
+
+3. **권한 적용**
+   - 세션 삭제/아카이브: creator_id === req.user.id 검증
+   - 세션 참여: session_members에 user_id 추가
+   - 인메모리 store → Supabase Admin 클라이언트로 전환
+
+4. **RLS 활성화** (이미 마이그레이션에 정의됨)
+   - `ds_creator_all`: 생성자만 수정/삭제
+   - `ds_member_select`: 멤버만 조회
+   - `is_session_member()` 함수 활용
+
+관련 파일: `server/middleware/auth.js`, `server/lib/supabaseAdmin.js`, `supabase/migrations/00002_rls_policies.sql`
+
 ## 컨벤션
 - UI 텍스트/주석: 한국어
 - 코드(변수명, 함수명): 영어
