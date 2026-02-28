@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Users, Clock, ArrowRight, Database, HelpCircle, Globe, Archive, RotateCcw, Trash2 } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
+import Logo from '../components/Logo'
 import { STAGES, PHASES } from 'curriculum-weaver-shared/constants.js'
 import Tutorial from '../components/Tutorial'
 
@@ -66,7 +67,7 @@ export default function Dashboard() {
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">🧶</span>
+            <Logo size={32} />
             <h1 className="text-xl font-bold text-gray-900">커리큘럼 위버</h1>
           </div>
           <div className="flex items-center gap-2">
@@ -217,7 +218,7 @@ export default function Dashboard() {
           <div className="text-center py-12 text-gray-400">로딩 중...</div>
         ) : sessions.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-xl border border-gray-200">
-            <div className="text-4xl mb-3">🧶</div>
+            <Logo size={48} className="mx-auto mb-1 opacity-60" />
             <p className="text-gray-500 mb-2">아직 설계 세션이 없습니다</p>
             <p className="text-sm text-gray-400">새 세션을 만들거나 초대 코드로 참여하세요</p>
           </div>
