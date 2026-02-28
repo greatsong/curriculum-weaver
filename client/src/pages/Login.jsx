@@ -9,7 +9,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
+      <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 w-full max-w-md mx-4 sm:mx-auto text-center">
         <div className="text-5xl mb-4">🧶</div>
         <h1 className="text-2xl font-bold text-gray-900 mb-2">커리큘럼 위버</h1>
         <p className="text-gray-500 mb-8">
