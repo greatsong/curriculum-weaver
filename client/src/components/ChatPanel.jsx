@@ -31,7 +31,7 @@ export default function ChatPanel({ sessionId, stage }) {
         {messages.length === 0 && !streaming && (
           <div className="text-center text-gray-400 mt-8">
             <p className="text-3xl mb-2">💬</p>
-            <p className="text-sm">AI 공동설계자와 대화를 시작하세요</p>
+            <p className="text-sm">AI 조교와 대화를 시작하세요</p>
             <p className="text-xs mt-1">현재 단계의 설계 원칙에 기반하여 안내합니다</p>
           </div>
         )}
@@ -50,7 +50,7 @@ export default function ChatPanel({ sessionId, stage }) {
                 </p>
               )}
               {msg.sender_type === 'ai' && (
-                <p className="text-[11px] text-gray-400 mb-0.5 px-1">AI 공동설계자</p>
+                <p className="text-[11px] text-gray-400 mb-0.5 px-1">AI 조교</p>
               )}
               <div
                 className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
