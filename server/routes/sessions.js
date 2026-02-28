@@ -8,9 +8,13 @@ export const sessionsRouter = Router()
 // 테스트 모드: 인증 없이 사용
 // sessionsRouter.use(requireAuth)
 
-// 세션 목록 조회
+// 세션 목록 조회 (status 필터 지원)
 sessionsRouter.get('/', async (req, res) => {
-  const sessions = Sessions.list()
+  const { status } = req.query
+  let sessions = Sessions.list()
+  if (status) {
+    sessions = sessions.filter((s) => s.status === status)
+  }
   res.json(sessions)
 })
 
@@ -54,6 +58,13 @@ sessionsRouter.put('/:id', async (req, res) => {
   const session = Sessions.update(req.params.id, updateData)
   if (!session) return res.status(404).json({ error: '세션을 찾을 수 없습니다.' })
   res.json(session)
+})
+
+// 세션 삭제
+sessionsRouter.delete('/:id', async (req, res) => {
+  const deleted = Sessions.delete(req.params.id)
+  if (!deleted) return res.status(404).json({ error: '세션을 찾을 수 없습니다.' })
+  res.json({ success: true })
 })
 
 // 세션에 연결된 성취기준 조회

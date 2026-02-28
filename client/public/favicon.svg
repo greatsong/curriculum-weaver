@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="35%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="white" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="white" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 배경 -->
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+  <rect width="64" height="64" rx="16" fill="url(#shine)"/>
+
+  <!-- 실 A: 왼위→오아래 (\ 방향) — 아래 레이어 -->
+  <!-- 교차점 전 -->
+  <path d="M14 14 C20 20, 26 26, 29 29" stroke="#fbbf24" stroke-width="7" stroke-linecap="round" fill="none"/>
+  <!-- 교차점 후 -->
+  <path d="M35 35 C40 40, 44 44, 50 50" stroke="#fbbf24" stroke-width="7" stroke-linecap="round" fill="none"/>
+
+  <!-- 실 B: 오위→왼아래 (/ 방향) — 위 레이어 (연속, A 위를 지남) -->
+  <path d="M50 14 C44 20, 38 26, 32 32 C26 38, 20 44, 14 50" stroke="white" stroke-width="7" stroke-linecap="round" fill="none"/>
+
+  <!-- 교차점 빛 -->
+  <circle cx="32" cy="32" r="3" fill="white" fill-opacity="0.35"/>
+</svg>

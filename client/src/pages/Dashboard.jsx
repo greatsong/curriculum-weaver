@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Users, Clock, ArrowRight, Database, HelpCircle, Globe } from 'lucide-react'
+import { Plus, Users, Clock, ArrowRight, Database, HelpCircle, Globe, Archive, RotateCcw, Trash2 } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
 import { STAGES, PHASES } from 'curriculum-weaver-shared/constants.js'
 import Tutorial from '../components/Tutorial'
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { sessions, loading, fetchSessions, createSession, joinSession } = useSessionStore()
+  const { sessions, loading, fetchSessions, createSession, joinSession, archiveSession, restoreSession, deleteSession, statusFilter, setStatusFilter } = useSessionStore()
   const [showCreate, setShowCreate] = useState(false)
   const [showJoin, setShowJoin] = useState(false)
   const [title, setTitle] = useState('')
@@ -20,7 +20,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchSessions()
-  }, [fetchSessions])
+  }, [fetchSessions, statusFilter])
 
   const handleCreate = async (e) => {
     e.preventDefault()
@@ -191,7 +191,28 @@ export default function Dashboard() {
         )}
 
         {/* 세션 목록 */}
-        <h2 className="text-lg font-semibold text-gray-800 mb-4">설계 세션</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-800">설계 세션</h2>
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+            {[
+              { key: 'active', label: '진행 중' },
+              { key: 'archived', label: '아카이브' },
+              { key: 'all', label: '전체' },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setStatusFilter(tab.key)}
+                className={`px-3 py-1 text-sm rounded-md transition ${
+                  statusFilter === tab.key
+                    ? 'bg-white text-gray-900 shadow-sm font-medium'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
         {loading ? (
           <div className="text-center py-12 text-gray-400">로딩 중...</div>
         ) : sessions.length === 0 ? (
@@ -208,7 +229,11 @@ export default function Dashboard() {
                 <button
                   key={session.id}
                   onClick={() => navigate(`/session/${session.id}`)}
-                  className="flex items-center gap-3 sm:gap-4 bg-white rounded-xl border border-gray-200 p-4 sm:p-5 hover:border-blue-300 hover:shadow-md transition text-left w-full group"
+                  className={`flex items-center gap-3 sm:gap-4 rounded-xl border p-4 sm:p-5 hover:shadow-md transition text-left w-full group ${
+                    session.status === 'archived'
+                      ? 'bg-gray-50 border-gray-200 opacity-70 hover:opacity-100 hover:border-gray-300'
+                      : 'bg-white border-gray-200 hover:border-blue-300'
+                  }`}
                 >
                   {(() => {
                     const phase = PHASES.find(p => p.id === stage.phase)
@@ -227,7 +252,38 @@ export default function Dashboard() {
                       <span className="text-xs text-gray-400 hidden sm:inline">코드: {session.invite_code}</span>
                     </p>
                   </div>
-                  <ArrowRight size={20} className="text-gray-300 group-hover:text-blue-500 transition" />
+                  <div className="flex items-center gap-1 shrink-0">
+                    {session.status === 'archived' ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); restoreSession(session.id) }}
+                        className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition"
+                        title="복원"
+                      >
+                        <RotateCcw size={16} />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); archiveSession(session.id) }}
+                        className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
+                        title="아카이브"
+                      >
+                        <Archive size={16} />
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (confirm('이 세션을 완전히 삭제하시겠습니까? 복구할 수 없습니다.')) {
+                          deleteSession(session.id)
+                        }
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                      title="삭제"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                    <ArrowRight size={20} className="text-gray-300 group-hover:text-blue-500 transition ml-1" />
+                  </div>
                 </button>
               )
             })}

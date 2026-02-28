@@ -111,6 +111,20 @@ export const Sessions = {
     return session
   },
 
+  delete: (id) => {
+    const session = sessions.get(id)
+    if (!session) return false
+    sessions.delete(id)
+    messages.delete(id)
+    materials.delete(id)
+    sessionStandards.delete(id)
+    // 보드 삭제
+    for (const key of boards.keys()) {
+      if (key.startsWith(`${id}:`)) boards.delete(key)
+    }
+    return true
+  },
+
   findByInviteCode: (code) => {
     for (const s of sessions.values()) {
       if (s.invite_code === code.toUpperCase()) return s
