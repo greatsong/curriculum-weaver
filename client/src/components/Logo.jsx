@@ -1,9 +1,9 @@
 /**
  * 커리큘럼 위버 로고
- * 파비콘과 동일한 직조(weave) 모티프 — 두 실의 오버/언더 교차
+ * 3가닥 과목 실(초록·파랑·앰버) + 1가닥 AI 실(흰색)의 직조 패턴
+ * AI 실이 과목 실을 오버/언더로 엮어 융합 수업을 표현
  */
 export default function Logo({ size = 32, className = '' }) {
-  // 고유 ID: 동일 페이지에 여러 로고가 있어도 그라디언트 충돌 방지
   const id = `cw-logo-${size}`
 
   return (
@@ -24,43 +24,33 @@ export default function Logo({ size = 32, className = '' }) {
           <stop offset="0%" stopColor="white" stopOpacity="0.12" />
           <stop offset="100%" stopColor="white" stopOpacity="0" />
         </radialGradient>
-        <linearGradient id={`${id}-gold`} x1="14" y1="14" x2="50" y2="50" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#fde68a" />
-          <stop offset="100%" stopColor="#f59e0b" />
-        </linearGradient>
       </defs>
 
       {/* 배경 */}
       <rect width="64" height="64" rx="16" fill={`url(#${id}-bg)`} />
       <rect width="64" height="64" rx="16" fill={`url(#${id}-shine)`} />
 
-      {/* 실 A (골드): 왼위→오아래 — 아래 레이어, 교차점에서 끊김 */}
-      <path
-        d="M14 14 C18 18, 24 24, 28.5 28.5"
-        stroke={`url(#${id}-gold)`}
-        strokeWidth="7"
-        strokeLinecap="round"
-        fill="none"
-      />
-      <path
-        d="M35.5 35.5 C40 40, 46 46, 50 50"
-        stroke={`url(#${id}-gold)`}
-        strokeWidth="7"
-        strokeLinecap="round"
-        fill="none"
-      />
+      {/* ── 레이어 1: 과목 실 (AI가 위로 지나가는 것들) ── */}
 
-      {/* 실 B (흰색): 오위→왼아래 — 위 레이어, 연속으로 A 위를 지남 */}
-      <path
-        d="M50 14 C46 18, 38 26, 32 32 C26 38, 18 46, 14 50"
-        stroke="white"
-        strokeWidth="7"
-        strokeLinecap="round"
-        fill="none"
-      />
+      {/* 과목 실 1 — 초록 (#34d399): AI가 위를 지나므로 끊김 */}
+      <path d="M10 20 Q19 16, 27 18.5" stroke="#34d399" strokeWidth="5.5" strokeLinecap="round" fill="none" />
+      <path d="M37 21.5 Q45 24, 54 20" stroke="#34d399" strokeWidth="5.5" strokeLinecap="round" fill="none" />
 
-      {/* 교차점 글로우 */}
-      <circle cx="32" cy="32" r="3.5" fill="white" fillOpacity="0.3" />
+      {/* 과목 실 3 — 앰버 (#fbbf24): AI가 위를 지나므로 끊김 */}
+      <path d="M10 44 Q19 40, 27 42.5" stroke="#fbbf24" strokeWidth="5.5" strokeLinecap="round" fill="none" />
+      <path d="M37 45.5 Q45 48, 54 44" stroke="#fbbf24" strokeWidth="5.5" strokeLinecap="round" fill="none" />
+
+      {/* ── 레이어 2: AI 실 상단 (초록 위를 지남) ── */}
+      <path d="M32 10 C33 15, 31 21, 32 26" stroke="white" strokeWidth="5" strokeLinecap="round" fill="none" />
+
+      {/* ── 레이어 3: 과목 실 2 — 파랑 (#60a5fa): AI 위에 그려짐 (AI가 아래를 지남) ── */}
+      <path d="M10 32 Q22 27, 32 32 Q42 37, 54 32" stroke="#60a5fa" strokeWidth="5.5" strokeLinecap="round" fill="none" />
+
+      {/* ── 레이어 4: AI 실 하단 (앰버 위를 지남) ── */}
+      <path d="M32 38 C31 43, 33 49, 32 54" stroke="white" strokeWidth="5" strokeLinecap="round" fill="none" />
+
+      {/* AI 힌트: 미세한 스파클 (과하지 않게) */}
+      <path d="M36 13 L36.7 12 L37.5 13 L36.7 14Z" fill="white" fillOpacity="0.45" />
     </svg>
   )
 }
