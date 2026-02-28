@@ -13,9 +13,10 @@ import MemberList from '../components/MemberList'
 import StandardSearch from '../components/StandardSearch'
 import Tutorial from '../components/Tutorial'
 
-// 닉네임 + 과목 입력 모달
+// 참여자 정보 입력 모달 (초대 코드로 참여 시)
 function NicknameModal({ onConfirm }) {
   const [name, setName] = useState('')
+  const [affiliation, setAffiliation] = useState('')
   const [subject, setSubject] = useState('')
   const inputRef = useRef(null)
 
@@ -26,10 +27,10 @@ function NicknameModal({ onConfirm }) {
   const handleSubmit = (e) => {
     e.preventDefault()
     const nickname = name.trim() || `교사${Math.floor(Math.random() * 100)}`
-    const subjectName = subject.trim() || ''
+    const displaySubject = [affiliation.trim(), subject.trim()].filter(Boolean).join(' · ') || ''
     localStorage.setItem('cw_nickname', nickname)
-    localStorage.setItem('cw_subject', subjectName)
-    onConfirm({ name: nickname, subject: subjectName })
+    localStorage.setItem('cw_subject', displaySubject)
+    onConfirm({ name: nickname, subject: displaySubject })
   }
 
   return (
@@ -53,14 +54,21 @@ function NicknameModal({ onConfirm }) {
             ref={inputRef}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="닉네임 (예: 김교사, 과학쌤)"
+            placeholder="이름 또는 닉네임 (예: 김교사)"
             maxLength={10}
+            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+          />
+          <input
+            value={affiliation}
+            onChange={(e) => setAffiliation(e.target.value)}
+            placeholder="소속 (예: ○○초등학교)"
+            maxLength={20}
             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
           />
           <input
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            placeholder="담당 과목 또는 전공 (예: 과학, 국어)"
+            placeholder="담당 과목 또는 전공 (예: 과학)"
             maxLength={15}
             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
           />

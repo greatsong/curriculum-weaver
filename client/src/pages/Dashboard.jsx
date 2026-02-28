@@ -12,6 +12,9 @@ export default function Dashboard() {
   const [showJoin, setShowJoin] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [hostName, setHostName] = useState('')
+  const [hostAffiliation, setHostAffiliation] = useState('')
+  const [hostSubject, setHostSubject] = useState('')
   const [inviteCode, setInviteCode] = useState('')
   const [showTutorial, setShowTutorial] = useState(false)
 
@@ -21,12 +24,23 @@ export default function Dashboard() {
 
   const handleCreate = async (e) => {
     e.preventDefault()
-    if (!title.trim()) return
+    if (!title.trim() || !hostName.trim()) return
     try {
+      // 호스트 정보를 localStorage에 저장 (SessionPage에서 사용)
+      const nickname = hostName.trim()
+      const affiliation = hostAffiliation.trim()
+      const subject = hostSubject.trim()
+      const displaySubject = [affiliation, subject].filter(Boolean).join(' · ') || ''
+      localStorage.setItem('cw_nickname', nickname)
+      localStorage.setItem('cw_subject', displaySubject)
+
       const session = await createSession({ title: title.trim(), description: description.trim() })
       setShowCreate(false)
       setTitle('')
       setDescription('')
+      setHostName('')
+      setHostAffiliation('')
+      setHostSubject('')
       navigate(`/session/${session.id}`)
     } catch (err) {
       alert(`세션 생성 실패: ${err.message}`)
@@ -103,12 +117,43 @@ export default function Dashboard() {
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowCreate(false)}>
             <form onSubmit={handleCreate} onClick={(e) => e.stopPropagation()} className="bg-white rounded-xl p-4 sm:p-6 w-full max-w-md mx-4 sm:mx-auto shadow-2xl max-h-[90vh] overflow-auto">
               <h2 className="text-lg font-bold mb-4">새 설계 세션 만들기</h2>
+
+              {/* 호스트 정보 */}
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">호스트 정보</p>
+              <input
+                value={hostName}
+                onChange={(e) => setHostName(e.target.value)}
+                placeholder="이름 또는 닉네임 *"
+                maxLength={10}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoFocus
+                required
+              />
+              <div className="flex gap-2 mb-4">
+                <input
+                  value={hostAffiliation}
+                  onChange={(e) => setHostAffiliation(e.target.value)}
+                  placeholder="소속 (예: ○○초등학교)"
+                  maxLength={20}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  value={hostSubject}
+                  onChange={(e) => setHostSubject(e.target.value)}
+                  placeholder="과목/전공"
+                  maxLength={10}
+                  className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* 세션 정보 */}
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">세션 정보</p>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="세션 제목 (예: 3학년 기후변화 융합수업)"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                autoFocus
+                placeholder="세션 제목 (예: 3학년 기후변화 융합수업) *"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
               />
               <textarea
                 value={description}
