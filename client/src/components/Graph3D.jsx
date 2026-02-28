@@ -23,6 +23,10 @@ const LINK_TYPE_COLORS = {
   application: '#22c55e', extension: '#a855f7',
 }
 
+// link의 source/target이 객체(force-graph가 변환)일 수도 있으므로 ID를 안전하게 추출
+const getLinkSourceId = (l) => typeof l.source === 'object' ? l.source?.id : l.source
+const getLinkTargetId = (l) => typeof l.target === 'object' ? l.target?.id : l.target
+
 export default function Graph3D({ embedded = false }) {
   const navigate = !embedded ? useNavigate() : null
   const [graphData, setGraphData] = useState(null)
@@ -33,7 +37,11 @@ export default function Graph3D({ embedded = false }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [highlightNodes, setHighlightNodes] = useState(new Set())
   const [highlightLinks, setHighlightLinks] = useState(new Set())
-  const [sidebarOpen, setSidebarOpen] = useState(!embedded)
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    // 모바일에서는 사이드바 기본 닫힘
+    if (typeof window !== 'undefined' && window.innerWidth < 640) return false
+    return !embedded
+  })
   const [sidebarTab, setSidebarTab] = useState('list') // 'list' | 'chat'
   const containerRef = useRef(null)
   const fgRef = useRef()
@@ -101,23 +109,23 @@ export default function Graph3D({ embedded = false }) {
     if (!graphData) return null
     let nodes = graphData.nodes
     let links = graphData.links.filter(l => {
-      const srcSubject = nodeSubjectMap.get(l.source)
-      const tgtSubject = nodeSubjectMap.get(l.target)
+      const srcSubject = nodeSubjectMap.get(getLinkSourceId(l))
+      const tgtSubject = nodeSubjectMap.get(getLinkTargetId(l))
       return srcSubject !== tgtSubject
     })
 
     if (filterSubject) {
       const nodeIds = new Set(nodes.filter(n => n.subject === filterSubject).map(n => n.id))
-      links = links.filter(l => nodeIds.has(l.source) || nodeIds.has(l.target))
+      links = links.filter(l => nodeIds.has(getLinkSourceId(l)) || nodeIds.has(getLinkTargetId(l)))
       const connectedIds = new Set()
-      links.forEach(l => { connectedIds.add(l.source); connectedIds.add(l.target) })
+      links.forEach(l => { connectedIds.add(getLinkSourceId(l)); connectedIds.add(getLinkTargetId(l)) })
       nodes = nodes.filter(n => connectedIds.has(n.id))
     }
 
     if (filterLinkType) {
       links = links.filter(l => l.link_type === filterLinkType)
       const connectedIds = new Set()
-      links.forEach(l => { connectedIds.add(l.source); connectedIds.add(l.target) })
+      links.forEach(l => { connectedIds.add(getLinkSourceId(l)); connectedIds.add(getLinkTargetId(l)) })
       nodes = nodes.filter(n => connectedIds.has(n.id))
     }
 
@@ -140,7 +148,7 @@ export default function Graph3D({ embedded = false }) {
     const nodeIds = new Set(matched.map(n => n.id))
     const linkSet = new Set()
     graphData.links.forEach((l, i) => {
-      if (nodeIds.has(l.source) || nodeIds.has(l.target)) linkSet.add(i)
+      if (nodeIds.has(getLinkSourceId(l)) || nodeIds.has(getLinkTargetId(l))) linkSet.add(i)
     })
     setHighlightNodes(nodeIds)
     setHighlightLinks(linkSet)
@@ -170,9 +178,11 @@ export default function Graph3D({ embedded = false }) {
     if (!graphData) return new Map()
     const map = new Map()
     graphData.links.forEach(l => {
-      if (nodeSubjectMap.get(l.source) !== nodeSubjectMap.get(l.target)) {
-        map.set(l.source, (map.get(l.source) || 0) + 1)
-        map.set(l.target, (map.get(l.target) || 0) + 1)
+      const srcId = getLinkSourceId(l)
+      const tgtId = getLinkTargetId(l)
+      if (nodeSubjectMap.get(srcId) !== nodeSubjectMap.get(tgtId)) {
+        map.set(srcId, (map.get(srcId) || 0) + 1)
+        map.set(tgtId, (map.get(tgtId) || 0) + 1)
       }
     })
     return map
@@ -185,13 +195,15 @@ export default function Graph3D({ embedded = false }) {
     // 각 노드의 교차 교과 연결 교과명 수집
     const connectedSubjects = new Map()
     graphData.links.forEach(l => {
-      const srcSubject = nodeSubjectMap.get(l.source)
-      const tgtSubject = nodeSubjectMap.get(l.target)
+      const srcId = getLinkSourceId(l)
+      const tgtId = getLinkTargetId(l)
+      const srcSubject = nodeSubjectMap.get(srcId)
+      const tgtSubject = nodeSubjectMap.get(tgtId)
       if (srcSubject && tgtSubject && srcSubject !== tgtSubject) {
-        if (!connectedSubjects.has(l.source)) connectedSubjects.set(l.source, new Set())
-        if (!connectedSubjects.has(l.target)) connectedSubjects.set(l.target, new Set())
-        connectedSubjects.get(l.source).add(tgtSubject)
-        connectedSubjects.get(l.target).add(srcSubject)
+        if (!connectedSubjects.has(srcId)) connectedSubjects.set(srcId, new Set())
+        if (!connectedSubjects.has(tgtId)) connectedSubjects.set(tgtId, new Set())
+        connectedSubjects.get(srcId).add(tgtSubject)
+        connectedSubjects.get(tgtId).add(srcSubject)
       }
     })
     graphData.nodes.forEach(node => {
@@ -225,9 +237,7 @@ export default function Graph3D({ embedded = false }) {
   const selectedLinks = useMemo(() => {
     if (!selectedNode || !graphData) return []
     return graphData.links.filter(l => {
-      const src = typeof l.source === 'object' ? l.source.id : l.source
-      const tgt = typeof l.target === 'object' ? l.target.id : l.target
-      return src === selectedNode.id || tgt === selectedNode.id
+      return getLinkSourceId(l) === selectedNode.id || getLinkTargetId(l) === selectedNode.id
     })
   }, [selectedNode, graphData])
 
@@ -391,26 +401,27 @@ export default function Graph3D({ embedded = false }) {
               <span className="px-1.5 py-0.5 bg-gray-700 rounded">{filteredData?.links.length || 0} 연결</span>
             </div>
             <button onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="sm:hidden p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition">
-              <Search size={16} />
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition"
+              title={sidebarOpen ? '패널 닫기' : '패널 열기'}>
+              {sidebarOpen ? <X size={16} /> : <List size={16} />}
             </button>
           </div>
         </div>
 
         {/* 교과 범례 */}
-        <div className="flex flex-wrap gap-x-1 gap-y-0.5 px-3 py-1.5 bg-gray-800/80 border-b border-gray-700/50 text-[11px] z-10 shrink-0">
+        <div className="flex gap-x-1 gap-y-0.5 px-3 py-1.5 bg-gray-800/80 border-b border-gray-700/50 text-[11px] z-10 shrink-0 overflow-x-auto">
           {subjects.map(s => (
             <button key={s} onClick={() => setFilterSubject(prev => prev === s ? '' : s)}
-              className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition ${filterSubject === s ? 'bg-gray-600 text-white font-bold' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}>
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SUBJECT_COLORS[s] || '#9ca3af' }} />
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition whitespace-nowrap ${filterSubject === s ? 'bg-gray-600 text-white font-bold' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}>
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: SUBJECT_COLORS[s] || '#9ca3af' }} />
               {s}
             </button>
           ))}
-          <span className="text-gray-600 mx-1">|</span>
+          <span className="text-gray-600 mx-1 shrink-0">|</span>
           {Object.entries(LINK_TYPE_LABELS).map(([k, v]) => (
             <button key={k} onClick={() => setFilterLinkType(prev => prev === k ? '' : k)}
-              className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition ${filterLinkType === k ? 'bg-gray-600 text-white font-bold' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}>
-              <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: LINK_TYPE_COLORS[k] }} />
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition whitespace-nowrap ${filterLinkType === k ? 'bg-gray-600 text-white font-bold' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'}`}>
+              <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: LINK_TYPE_COLORS[k] }} />
               {v}
             </button>
           ))}
@@ -501,16 +512,27 @@ export default function Graph3D({ embedded = false }) {
               <button onClick={handleReset} className="ml-2 text-blue-400 hover:underline">초기화</button>
             </div>
           )}
-          <div className="absolute bottom-3 left-3 text-[11px] text-gray-500 bg-gray-800/80 px-3 py-2 rounded-lg">
-            드래그: 회전 · 스크롤: 확대/축소 · 노드 클릭: 상세
+          <div className="absolute bottom-3 left-3 text-[10px] sm:text-[11px] text-gray-500 bg-gray-800/80 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg">
+            <span className="hidden sm:inline">드래그: 회전 · 스크롤: 확대/축소 · 노드 클릭: 상세</span>
+            <span className="sm:hidden">터치: 회전 · 핀치: 확대 · 탭: 상세</span>
           </div>
         </div>
       </div>
 
+      {/* 모바일 사이드바 백드롭 */}
+      {sidebarOpen && (
+        <div
+          className="sm:hidden fixed inset-0 bg-black/40 z-10"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* 오른쪽 패널 */}
-      <div className={`${sidebarOpen ? 'w-80 sm:w-96' : 'w-0'} transition-all duration-200 border-l border-gray-700 bg-gray-800 flex flex-col overflow-hidden shrink-0 ${
-        sidebarOpen ? '' : 'border-l-0'
-      } ${!embedded && sidebarOpen ? 'absolute sm:relative right-0 top-0 bottom-0 z-20' : ''}`}>
+      <div className={`
+        transition-all duration-200 border-l border-gray-700 bg-gray-800 flex flex-col overflow-hidden shrink-0
+        ${sidebarOpen ? 'w-[85vw] sm:w-80 md:w-96' : 'w-0 border-l-0'}
+        ${sidebarOpen ? 'fixed sm:relative right-0 top-0 bottom-0 z-20' : ''}
+      `}>
 
         {/* 탭 헤더 */}
         <div className="flex border-b border-gray-700 shrink-0">
@@ -755,12 +777,13 @@ export default function Graph3D({ embedded = false }) {
         )}
       </div>
 
-      {/* 사이드바 토글 */}
-      <button onClick={() => setSidebarOpen(!sidebarOpen)}
-        className="hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 z-30 items-center justify-center w-5 h-12 bg-gray-700 hover:bg-gray-600 rounded-l-lg transition text-gray-400 hover:text-white"
-        style={{ right: sidebarOpen ? (embedded ? '320px' : '384px') : '0' }}>
-        <ChevronRight size={14} className={`transition-transform ${sidebarOpen ? '' : 'rotate-180'}`} />
-      </button>
+      {/* 사이드바 토글 (데스크톱만) */}
+      {!sidebarOpen && (
+        <button onClick={() => setSidebarOpen(true)}
+          className="hidden sm:flex absolute right-0 top-1/2 -translate-y-1/2 z-30 items-center justify-center w-5 h-12 bg-gray-700 hover:bg-gray-600 rounded-l-lg transition text-gray-400 hover:text-white">
+          <ChevronRight size={14} className="rotate-180" />
+        </button>
+      )}
     </div>
   )
 }
