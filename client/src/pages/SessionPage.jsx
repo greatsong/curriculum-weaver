@@ -205,7 +205,7 @@ export default function SessionPage() {
   ]
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden" style={{ height: '100dvh' }}>
       {/* 상단 헤더 */}
       <header className="bg-white border-b border-gray-200 px-2 sm:px-4 py-2 flex items-center gap-1.5 sm:gap-3 shrink-0">
         <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600 min-w-[44px] min-h-[44px] flex items-center justify-center">
