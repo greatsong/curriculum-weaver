@@ -137,7 +137,7 @@ export const Sessions = {
 export const Messages = {
   list: (sessionId) => messages.get(sessionId) || [],
 
-  add: (sessionId, { sender_type, content, stage_context, principles_used }) => {
+  add: (sessionId, { sender_type, content, stage_context, principles_used, sender_name, sender_subject }) => {
     const msg = {
       id: uuid(),
       session_id: sessionId,
@@ -145,6 +145,8 @@ export const Messages = {
       content,
       stage_context: stage_context || null,
       principles_used: principles_used || [],
+      sender_name: sender_name || null,
+      sender_subject: sender_subject || null,
       created_at: new Date().toISOString(),
     }
     if (!messages.has(sessionId)) messages.set(sessionId, [])

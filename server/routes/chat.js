@@ -34,7 +34,7 @@ chatRouter.get('/:sessionId', async (req, res) => {
 
 // 교사 메시지 저장
 chatRouter.post('/teacher', async (req, res) => {
-  const { session_id, content, stage } = req.body
+  const { session_id, content, stage, sender_name, sender_subject } = req.body
   if (!session_id || !content?.trim()) {
     return res.status(400).json({ error: '세션 ID와 메시지 내용이 필요합니다.' })
   }
@@ -43,6 +43,8 @@ chatRouter.post('/teacher', async (req, res) => {
     sender_type: 'teacher',
     content: content.trim(),
     stage_context: stage,
+    sender_name: sender_name || '교사',
+    sender_subject: sender_subject || '',
   })
   res.status(201).json(msg)
 })

@@ -41,22 +41,34 @@ export default function ChatPanel({ sessionId, stage }) {
             key={msg.id}
             className={`flex ${msg.sender_type === 'teacher' ? 'justify-end' : 'justify-start'}`}
           >
-            <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                msg.sender_type === 'teacher'
-                  ? 'bg-blue-600 text-white rounded-br-md'
-                  : msg.sender_type === 'ai'
-                    ? 'bg-gray-100 text-gray-800 rounded-bl-md'
-                    : 'bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-bl-md'
-              }`}
-            >
-              {msg.sender_type === 'ai' ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm max-w-none">
-                  {msg.content}
-                </ReactMarkdown>
-              ) : (
-                msg.content
+            <div className={`max-w-[85%] ${msg.sender_type === 'teacher' ? 'text-right' : ''}`}>
+              {/* 발신자 이름 표시 */}
+              {msg.sender_type === 'teacher' && msg.sender_name && (
+                <p className="text-[11px] text-gray-400 mb-0.5 px-1">
+                  {msg.sender_name}
+                  {msg.sender_subject ? ` · ${msg.sender_subject}` : ''}
+                </p>
               )}
+              {msg.sender_type === 'ai' && (
+                <p className="text-[11px] text-gray-400 mb-0.5 px-1">AI 공동설계자</p>
+              )}
+              <div
+                className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                  msg.sender_type === 'teacher'
+                    ? 'bg-blue-600 text-white rounded-br-md'
+                    : msg.sender_type === 'ai'
+                      ? 'bg-gray-100 text-gray-800 rounded-bl-md'
+                      : 'bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-bl-md'
+                }`}
+              >
+                {msg.sender_type === 'ai' ? (
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm max-w-none">
+                    {msg.content}
+                  </ReactMarkdown>
+                ) : (
+                  msg.content
+                )}
+              </div>
             </div>
           </div>
         ))}

@@ -48,11 +48,15 @@ export const useChatStore = create((set, get) => ({
 
   // 교사 메시지 저장 + AI 응답 요청
   sendMessage: async (sessionId, content, stage) => {
-    // 1) 교사 메시지를 API로 저장
+    // 1) 교사 메시지를 API로 저장 (발신자 정보 포함)
+    const senderName = localStorage.getItem('cw_nickname') || '교사'
+    const senderSubject = localStorage.getItem('cw_subject') || ''
     const teacherMsg = await apiPost('/api/chat/teacher', {
       session_id: sessionId,
       content,
       stage,
+      sender_name: senderName,
+      sender_subject: senderSubject,
     })
 
     // 메시지 목록에 즉시 추가
@@ -81,6 +85,8 @@ export const useChatStore = create((set, get) => ({
           const updatedBoards = { ...stageState.boards }
           for (const board of appliedBoards) {
             updatedBoards[board.board_type] = board
+            // 다른 사용자에게 보드 변경 브로드캐스트
+            socket.emit('board_updated', { sessionId, board })
           }
           useStageStore.setState({ boards: updatedBoards })
         }
