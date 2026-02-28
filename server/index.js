@@ -25,7 +25,9 @@ const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:4006')
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Vercel 프리뷰 URL 패턴 허용
+    const isVercelPreview = origin?.endsWith('.vercel.app')
+    if (!origin || allowedOrigins.includes(origin) || isVercelPreview) {
       callback(null, true)
     } else {
       callback(new Error(`CORS 차단: ${origin}`))
