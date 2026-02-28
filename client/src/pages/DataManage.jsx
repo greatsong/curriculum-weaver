@@ -3,7 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Upload, Database, Trash2, Download, CheckCircle, AlertCircle } from 'lucide-react'
 import { apiGet, apiPost, apiDelete } from '../lib/api'
 
-const Graph3D = lazy(() => import('../components/Graph3D'))
+const Graph3D = lazy(() =>
+  import('../components/Graph3D').catch(() => {
+    window.location.reload()
+    return { default: () => null }
+  })
+)
 
 const SAMPLE_JSON = `{
   "standards": [

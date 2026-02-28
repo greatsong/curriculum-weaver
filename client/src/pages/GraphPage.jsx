@@ -1,6 +1,11 @@
 import { lazy, Suspense } from 'react'
 
-const Graph3D = lazy(() => import('../components/Graph3D'))
+const Graph3D = lazy(() =>
+  import('../components/Graph3D').catch(() => {
+    window.location.reload()
+    return { default: () => null }
+  })
+)
 
 export default function GraphPage() {
   return (

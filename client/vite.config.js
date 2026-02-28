@@ -26,6 +26,8 @@ export default defineConfig({
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
           'vendor-supabase': ['@supabase/supabase-js'],
           'vendor-graph': ['react-force-graph-2d'],
+          'vendor-three': ['three'],
+          'vendor-graph3d': ['react-force-graph-3d'],
         },
       },
     },
