@@ -29,8 +29,12 @@ export default function SessionPage() {
     fetchSession(sessionId)
     loadMessages(sessionId)
 
-    // Socket.IO 세션 입장
-    const nickname = `교사 ${Math.random().toString(36).slice(2, 6)}`
+    // Socket.IO 세션 입장 (닉네임은 localStorage에 저장)
+    let nickname = localStorage.getItem('cw_nickname')
+    if (!nickname) {
+      nickname = prompt('닉네임을 입력하세요 (예: 김교사)', '') || `교사${Math.floor(Math.random() * 100)}`
+      localStorage.setItem('cw_nickname', nickname)
+    }
     joinSession(sessionId, { name: nickname })
 
     // 채팅 + 보드 구독
@@ -103,7 +107,7 @@ export default function SessionPage() {
           <ArrowLeft size={20} />
         </button>
         <h1 className="font-semibold text-gray-900 truncate flex-1 text-sm sm:text-base">{currentSession.title}</h1>
-        <span className="hidden sm:block"><MemberList /></span>
+        <MemberList />
         <button
           onClick={() => setShowStandardSearch(true)}
           className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg transition min-h-[44px]"
