@@ -106,7 +106,7 @@ standardsRouter.delete('/all', async (req, res) => {
  * AI가 전체 성취기준과 연결 데이터를 읽고, 새로운 교과 간 연결을 추천합니다.
  */
 standardsRouter.post('/graph/chat', async (req, res) => {
-  const { message, history = [] } = req.body
+  const { message, history = [], context = {} } = req.body
   if (!message?.trim()) {
     return res.status(400).json({ error: '메시지가 필요합니다.' })
   }
@@ -155,7 +155,11 @@ link_type 종류: cross_subject(교과연계), same_concept(동일개념), prere
 ${standardsSummary}
 
 [현재 교과 간 연결 ${crossLinks.length}개]
-${linksSummary}`
+${linksSummary}${context.selectedNode ? `
+
+[교사의 현재 탐색 컨텍스트]
+선택한 성취기준: ${context.selectedNode.code} [${context.selectedNode.subject}/${context.selectedNode.area}] ${context.selectedNode.content}${context.neighborCodes?.length > 0 ? `\n이 성취기준의 현재 연결: ${context.neighborCodes.join(', ')}` : ''}
+이 성취기준을 중심으로 답변해주세요. 선택된 노드와 관련된 새로운 교과 간 연결을 우선 제안하세요.` : ''}${context.filterSubject ? `\n현재 교과 필터: ${context.filterSubject} (이 교과와 관련된 연결을 우선 탐색해주세요)` : ''}`
 
     const messages = []
     for (const msg of history.slice(-10)) {

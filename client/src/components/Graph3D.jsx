@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Search, X, RotateCcw, ChevronRight, Link2, Send, MessageCircle, List, Plus, Check } from 'lucide-react'
+import { ArrowLeft, Search, X, RotateCcw, ChevronRight, Link2, Send, MessageCircle, List, Plus, Check, Crosshair } from 'lucide-react'
 import { apiGet, apiPost, API_BASE } from '../lib/api'
 
 const SUBJECT_COLORS = {
@@ -55,6 +55,8 @@ export default function Graph3D({ embedded = false }) {
   const [suggestedLinks, setSuggestedLinks] = useState([])
   const [addedLinks, setAddedLinks] = useState(new Set())
   const chatScrollRef = useRef(null)
+  const [focusMode, setFocusMode] = useState(false)
+  const [hoveredLink, setHoveredLink] = useState(null)
 
   // 채팅 자동 스크롤
   useEffect(() => {
@@ -129,8 +131,19 @@ export default function Graph3D({ embedded = false }) {
       nodes = nodes.filter(n => connectedIds.has(n.id))
     }
 
+    // 포커스 모드: 선택 노드의 1홉 이웃만 표시
+    if (focusMode && selectedNode) {
+      const egoLinks = links.filter(l =>
+        getLinkSourceId(l) === selectedNode.id || getLinkTargetId(l) === selectedNode.id
+      )
+      const egoNodeIds = new Set([selectedNode.id])
+      egoLinks.forEach(l => { egoNodeIds.add(getLinkSourceId(l)); egoNodeIds.add(getLinkTargetId(l)) })
+      nodes = nodes.filter(n => egoNodeIds.has(n.id))
+      links = egoLinks
+    }
+
     return { nodes, links }
-  }, [graphData, filterSubject, filterLinkType, nodeSubjectMap])
+  }, [graphData, filterSubject, filterLinkType, nodeSubjectMap, focusMode, selectedNode])
 
   // 검색 + 하이라이트
   useEffect(() => {
@@ -242,7 +255,7 @@ export default function Graph3D({ embedded = false }) {
   }, [selectedNode, graphData])
 
   const handleReset = () => {
-    setFilterSubject(''); setFilterLinkType(''); setSearchQuery('')
+    setFilterSubject(''); setFilterLinkType(''); setSearchQuery(''); setFocusMode(false)
     setSelectedNode(null); setHighlightNodes(new Set()); setHighlightLinks(new Set())
     if (fgRef.current) fgRef.current.cameraPosition({ x: 0, y: 0, z: 300 }, { x: 0, y: 0, z: 0 }, 1000)
   }
@@ -263,7 +276,24 @@ export default function Graph3D({ embedded = false }) {
       const res = await fetch(`${API_BASE}/api/standards/graph/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history: chatMessages }),
+        body: JSON.stringify({
+          message: text,
+          history: chatMessages,
+          context: {
+            selectedNode: selectedNode ? {
+              code: selectedNode.code, subject: selectedNode.subject,
+              content: selectedNode.content, area: selectedNode.area,
+            } : null,
+            filterSubject: filterSubject || null,
+            neighborCodes: selectedNode ? selectedLinks.map(link => {
+              const srcId = getLinkSourceId(link)
+              const tgtId = getLinkTargetId(link)
+              const otherId = srcId === selectedNode.id ? tgtId : srcId
+              const other = graphData?.nodes.find(n => n.id === otherId)
+              return other ? `${other.code}(${other.subject})` : null
+            }).filter(Boolean) : [],
+          },
+        }),
       })
 
       if (!res.ok) {
@@ -393,10 +423,16 @@ export default function Graph3D({ embedded = false }) {
               <option value="">전체 연결</option>
               {Object.entries(LINK_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
+            <button onClick={() => setFocusMode(!focusMode)}
+              className={`p-1.5 rounded-lg transition ${focusMode ? 'text-blue-400 bg-blue-900/50' : 'text-gray-400 hover:text-white hover:bg-gray-700'}`}
+              title={focusMode ? '포커스 모드 끄기' : '포커스 모드 (선택 노드 중심)'}>
+              <Crosshair size={16} />
+            </button>
             <button onClick={handleReset} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition" title="초기화">
               <RotateCcw size={16} />
             </button>
             <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 ml-1">
+              {focusMode && <span className="px-1.5 py-0.5 bg-blue-900/50 text-blue-400 rounded text-[10px]">포커스</span>}
               <span className="px-1.5 py-0.5 bg-gray-700 rounded">{filteredData?.nodes.length || 0} 노드</span>
               <span className="px-1.5 py-0.5 bg-gray-700 rounded">{filteredData?.links.length || 0} 연결</span>
             </div>
@@ -501,6 +537,7 @@ export default function Graph3D({ embedded = false }) {
                 return `${src?.code || '?'} → ${LINK_TYPE_LABELS[link.link_type] || link.link_type} → ${tgt?.code || '?'}\n${link.rationale || ''}`
               }}
               onNodeClick={focusNode}
+              onLinkHover={(link) => setHoveredLink(link || null)}
               backgroundColor="#111827"
               showNavInfo={false}
               cooldownTicks={filteredData.nodes[0]?.fx !== undefined ? 0 : 100}
@@ -512,6 +549,37 @@ export default function Graph3D({ embedded = false }) {
               <button onClick={handleReset} className="ml-2 text-blue-400 hover:underline">초기화</button>
             </div>
           )}
+          {/* 링크 호버 인사이트 */}
+          {hoveredLink && (() => {
+            const src = typeof hoveredLink.source === 'object' ? hoveredLink.source : graphData.nodes.find(n => n.id === hoveredLink.source)
+            const tgt = typeof hoveredLink.target === 'object' ? hoveredLink.target : graphData.nodes.find(n => n.id === hoveredLink.target)
+            return (
+              <div className="absolute bottom-12 left-3 right-3 sm:right-auto sm:max-w-sm bg-gray-800/95 border border-gray-600 rounded-lg p-3 z-10 pointer-events-none">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="px-1.5 py-0.5 rounded text-white text-[10px] font-medium"
+                    style={{ backgroundColor: LINK_TYPE_COLORS[hoveredLink.link_type] || '#6b7280' }}>
+                    {LINK_TYPE_LABELS[hoveredLink.link_type] || hoveredLink.link_type}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs mb-1.5">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SUBJECT_COLORS[src?.subject] || '#9ca3af' }} />
+                    <span className="font-mono text-blue-400">{src?.code}</span>
+                    <span className="text-gray-500">{src?.subject}</span>
+                  </span>
+                  <span className="text-gray-500">↔</span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SUBJECT_COLORS[tgt?.subject] || '#9ca3af' }} />
+                    <span className="font-mono text-blue-400">{tgt?.code}</span>
+                    <span className="text-gray-500">{tgt?.subject}</span>
+                  </span>
+                </div>
+                {hoveredLink.rationale && (
+                  <p className="text-[11px] text-gray-300 leading-relaxed">{hoveredLink.rationale}</p>
+                )}
+              </div>
+            )
+          })()}
           <div className="absolute bottom-3 left-3 text-[10px] sm:text-[11px] text-gray-500 bg-gray-800/80 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg">
             <span className="hidden sm:inline">드래그: 회전 · 스크롤: 확대/축소 · 노드 클릭: 상세</span>
             <span className="sm:hidden">터치: 회전 · 핀치: 확대 · 탭: 상세</span>
