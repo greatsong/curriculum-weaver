@@ -232,12 +232,22 @@ function TableRenderer({ columns, data }) {
 function ListRenderer({ items }) {
   if (!Array.isArray(items) || items.length === 0) return null
 
+  const toText = (item) => {
+    if (typeof item === 'string') return item
+    if (item && typeof item === 'object') {
+      // {"rule": "..."} 같은 단일 키 객체 → 값만 추출
+      const values = Object.values(item).filter((v) => typeof v === 'string' && v.trim())
+      if (values.length > 0) return values.join(' — ')
+    }
+    return String(item)
+  }
+
   return (
     <ul className="space-y-1">
       {items.map((item, i) => (
         <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
           <span className="text-blue-400 mt-1 shrink-0">•</span>
-          <span>{typeof item === 'string' ? item : JSON.stringify(item)}</span>
+          <span>{toText(item)}</span>
         </li>
       ))}
     </ul>

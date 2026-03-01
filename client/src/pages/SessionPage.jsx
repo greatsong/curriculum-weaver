@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Share2, BookMarked, HelpCircle, MessageSquare, LayoutDashboard, BookOpen, UserCircle } from 'lucide-react'
+import { Share2, BookMarked, HelpCircle, MessageSquare, LayoutDashboard, BookOpen, UserCircle, Download } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useStageStore } from '../stores/stageStore'
 import { useChatStore } from '../stores/chatStore'
@@ -12,6 +12,7 @@ import DesignBoard from '../components/DesignBoard'
 import PrinciplePanel from '../components/PrinciplePanel'
 import MemberList from '../components/MemberList'
 import StandardSearch from '../components/StandardSearch'
+import ReportDownload from '../components/ReportDownload'
 import Tutorial from '../components/Tutorial'
 
 // 참여자 정보 입력 모달 (초대 코드로 참여 시)
@@ -100,6 +101,7 @@ export default function SessionPage() {
   )
   const [activePanel, setActivePanel] = useState('chat')
   const [boardUpdated, setBoardUpdated] = useState(false)
+  const [showReport, setShowReport] = useState(false)
   const [needsNickname, setNeedsNickname] = useState(
     () => !localStorage.getItem('cw_nickname')
   )
@@ -235,6 +237,14 @@ export default function SessionPage() {
         <h1 className="font-semibold text-gray-900 truncate flex-1 text-sm sm:text-base">{currentSession.title}</h1>
         <MemberList />
         <button
+          onClick={() => setShowReport(true)}
+          className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-sm text-purple-600 hover:bg-purple-50 rounded-lg transition min-h-[44px]"
+          title="결과 보고서 다운로드"
+        >
+          <Download size={16} />
+          <span className="hidden sm:inline">보고서</span>
+        </button>
+        <button
           onClick={() => setShowStandardSearch(true)}
           className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg transition min-h-[44px]"
           title="성취기준 탐색"
@@ -335,6 +345,15 @@ export default function SessionPage() {
             setShowStandardSearch(false)
             loadStandards(sessionId)
           }}
+        />
+      )}
+
+      {/* 보고서 다운로드 모달 */}
+      {showReport && (
+        <ReportDownload
+          sessionId={sessionId}
+          sessionTitle={currentSession.title}
+          onClose={() => setShowReport(false)}
         />
       )}
 

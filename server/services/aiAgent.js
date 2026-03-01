@@ -107,7 +107,8 @@ ${schemaText}
 4. JSON의 모든 필드를 채우세요. 배열 필드에는 실제 항목을 넣으세요.
 5. 하나의 응답에 여러 보드를 동시에 업데이트할 수 있습니다.
 6. 일반적인 인사나 단순 질문에는 포함하지 마세요.
-7. <board_update> 블록은 응답의 맨 앞에 배치하세요. 보드 데이터가 잘리지 않도록 설명 텍스트보다 먼저 출력합니다.
+7. <board_update> 블록은 응답 텍스트 뒤에 배치하세요. 보드 데이터가 잘리지 않도록 텍스트 설명은 간결하게 작성하세요.
+   특히 table 타입 데이터(차시, 활동 등)가 많을 때는 텍스트에서 전체를 나열하지 말고 핵심만 요약한 뒤 <board_update> 블록에 상세 데이터를 넣으세요.
 8. 확인을 구하지 마세요. 내용이 합의되면 바로 <board_update>를 출력하세요.
 9. list 타입 필드(agreements, ground_rules, sub_topics, what_worked 등)에는 반드시 순수 문자열 배열을 사용하세요.
    올바른 예: ["항목1", "항목2"]
@@ -247,6 +248,12 @@ export async function buildAIResponse(context, { onText, onError }) {
       if (event.type === 'content_block_delta' && event.delta?.text) {
         onText(event.delta.text)
       }
+    }
+
+    // 응답 잘림 감지
+    const finalMessage = await stream.finalMessage()
+    if (finalMessage.stop_reason === 'max_tokens') {
+      console.warn('⚠️ AI 응답이 max_tokens에 도달하여 잘렸습니다. board_update가 누락되었을 수 있습니다.')
     }
   } catch (error) {
     console.error('Claude API 오류:', error)

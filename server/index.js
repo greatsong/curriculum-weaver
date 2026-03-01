@@ -11,6 +11,7 @@ import { materialsRouter } from './routes/materials.js'
 import { standardsRouter } from './routes/standards.js'
 import { boardsRouter } from './routes/boards.js'
 import { principlesRouter } from './routes/principles.js'
+import { reportRouter } from './routes/report.js'
 
 // 인메모리 스토어 초기화
 const defaultSessionId = initStore()
@@ -149,6 +150,7 @@ app.use('/api/materials', materialsRouter)
 app.use('/api/standards', standardsRouter)
 app.use('/api/boards', boardsRouter)
 app.use('/api/principles', principlesRouter)
+app.use('/api/report', reportRouter)
 
 // 에러 핸들러
 app.use((err, req, res, next) => {
