@@ -126,7 +126,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'curriculum-weaver',
-    version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || 'local',
+    version: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) || process.env.RAILWAY_ENVIRONMENT || 'local',
   })
 })
 
