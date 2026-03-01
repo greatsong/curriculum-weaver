@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { apiGet, apiPost, apiStreamPost } from '../lib/api'
 import { socket } from '../lib/socket'
 import { useStageStore } from './stageStore'
+import { useSessionStore } from './sessionStore'
 
 // AI 응답에서 <board_update> 및 <stage_advance> 마커를 제거
 function stripXmlMarkers(text) {
@@ -131,9 +132,11 @@ export const useChatStore = create((set, get) => ({
 
     set({ streaming: true, streamingText: '' })
 
+    const members = useSessionStore.getState().members || []
     await apiStreamPost('/api/chat/stage-intro', {
       session_id: sessionId,
       stage,
+      members: members.map((m) => ({ name: m.name, subject: m.subject })),
     }, {
       onText: (text) => {
         set((state) => ({ streamingText: state.streamingText + text }))

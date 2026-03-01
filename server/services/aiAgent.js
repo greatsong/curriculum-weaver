@@ -172,11 +172,23 @@ export async function buildStageIntroResponse(context, { onText, onError }) {
   const phaseInfo = PHASES.find((p) => p.id === stageInfo.phase)
   const hint = STAGE_INTRO_HINTS[context.stage] || stageInfo.description
 
+  // 멤버 정보 포맷
+  const members = context.members || []
+  const memberNames = members.map((m) => {
+    const name = m.name || '교사'
+    const subject = m.subject ? ` (${m.subject})` : ''
+    return `${name}${subject}`
+  })
+  const memberInfo = memberNames.length > 0
+    ? `\n현재 참여 중인 선생님: ${memberNames.join(', ')}`
+    : ''
+
   const systemPrompt = `당신은 협력적 수업 설계 전문 AI 조교입니다.
 교사들이 새로운 설계 단계에 진입했습니다. 이 단계를 간결하게 안내해주세요.
 
 [규칙]
 - 3~4문장 이내로 짧고 친근하게 안내합니다.
+- 참여 중인 선생님이 있다면, 이름을 불러 반갑게 인사하며 시작합니다.
 - 이 단계에서 무엇을 하는지, 어떤 보드를 채울지 핵심만 알려줍니다.
 - 첫 질문 하나를 던져 대화를 시작합니다.
 - <board_update>나 <stage_advance> 블록은 절대 포함하지 마세요.
@@ -184,12 +196,12 @@ export async function buildStageIntroResponse(context, { onText, onError }) {
 
   const userMessage = `[${phaseInfo?.name || ''} > ${stageInfo.code}: ${stageInfo.name}] 단계에 진입했습니다.
 이 단계 안내: ${hint}
-${context.sessionTitle ? `세션: ${context.sessionTitle}` : ''}
+${context.sessionTitle ? `세션: ${context.sessionTitle}` : ''}${memberInfo}
 간결하게 이 단계를 안내하고, 시작 질문을 던져주세요.`
 
   try {
     const stream = client.messages.stream({
-      model: 'claude-sonnet-4-6-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 500,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
@@ -234,7 +246,7 @@ export async function buildAIResponse(context, { onText, onError }) {
 
   try {
     const stream = client.messages.stream({
-      model: 'claude-sonnet-4-6-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: systemPrompt,
       messages,

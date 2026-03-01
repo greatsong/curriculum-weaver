@@ -104,6 +104,7 @@ export default function SessionPage() {
     () => !localStorage.getItem('cw_nickname')
   )
   const joinedRef = useRef(false)
+  const introRequestedRef = useRef(false)
 
   // 세션 데이터 로드 (닉네임과 무관)
   useEffect(() => {
@@ -120,7 +121,21 @@ export default function SessionPage() {
     subscribe(sessionId)
     subscribeBoardUpdates()
 
-    const handleMembersUpdated = (members) => setMembers(members)
+    const handleMembersUpdated = (members) => {
+      setMembers(members)
+      // 세션 첫 진입 시(호스트) AI 인트로 자동 요청
+      if (!introRequestedRef.current) {
+        introRequestedRef.current = true
+        // 기존 AI/교사 메시지가 없으면 인트로 요청 (시스템 환영 메시지는 제외)
+        const msgs = useChatStore.getState().messages
+        const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
+        if (!hasContent) {
+          const session = useSessionStore.getState().currentSession
+          const stage = session?.current_stage || 1
+          setTimeout(() => requestStageIntro(sessionId, stage), 500)
+        }
+      }
+    }
     const handleStageUpdated = (stage) => {
       useSessionStore.setState((state) => ({
         currentSession: state.currentSession
@@ -141,6 +156,7 @@ export default function SessionPage() {
       socket.off('stage_updated', handleStageUpdated)
       reset()
       joinedRef.current = false
+      introRequestedRef.current = false
     }
   }, [sessionId])
 

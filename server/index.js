@@ -4,7 +4,7 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 import helmet from 'helmet'
 import cors from 'cors'
-import { initStore } from './lib/store.js'
+import { initStore, Messages } from './lib/store.js'
 import { sessionsRouter } from './routes/sessions.js'
 import { chatRouter } from './routes/chat.js'
 import { materialsRouter } from './routes/materials.js'
@@ -61,6 +61,18 @@ io.on('connection', (socket) => {
     const members = [...sessionMembers.get(sessionId).values()]
     io.to(sessionId).emit('members_updated', members)
     socket.to(sessionId).emit('member_joined', userInfo)
+
+    // 새 멤버 환영 시스템 메시지 생성
+    const userName = user.name || '교사'
+    const userSubject = user.subject ? ` (${user.subject})` : ''
+    const welcomeContent = isHost
+      ? `${userName}${userSubject} 선생님, 환영합니다! 🎉 세션을 개설해 주셨군요. 다른 선생님들이 참여하시면 함께 수업을 설계해 보아요.`
+      : `${userName}${userSubject} 선생님이 참여하셨습니다! 🙌 반갑습니다, 함께 멋진 수업을 설계해 봐요!`
+    const welcomeMsg = Messages.add(sessionId, {
+      sender_type: 'system',
+      content: welcomeContent,
+    })
+    io.to(sessionId).emit('message_added', welcomeMsg)
   })
 
   socket.on('leave_session', ({ sessionId }) => {

@@ -54,6 +54,13 @@ export default function ChatPanel({ sessionId, stage, onStageChange }) {
         )}
 
         {messages.map((msg) => (
+          msg.sender_type === 'system' ? (
+            <div key={msg.id} className="flex justify-center">
+              <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-full px-4 py-1.5">
+                {msg.content}
+              </p>
+            </div>
+          ) : (
           <div
             key={msg.id}
             className={`flex ${msg.sender_type === 'teacher' ? 'justify-end' : 'justify-start'}`}
@@ -88,6 +95,7 @@ export default function ChatPanel({ sessionId, stage, onStageChange }) {
               </div>
             </div>
           </div>
+          )
         ))}
 
         {/* 스트리밍 중인 AI 응답 */}
