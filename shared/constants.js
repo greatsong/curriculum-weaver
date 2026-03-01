@@ -131,6 +131,7 @@ export const SSE_EVENTS = {
   PROGRESS: 'progress',
   PRINCIPLES: 'principles',
   BOARD_SUGGESTIONS: 'board_suggestions',
+  STAGE_ADVANCE: 'stage_advance',
   ERROR: 'error',
   DONE: 'done',
 }

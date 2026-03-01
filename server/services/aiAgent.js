@@ -10,15 +10,23 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 function buildSystemPrompt({ session, principles, standards, materials, boards, stage }) {
   const stageInfo = STAGES.find((s) => s.id === stage) || STAGES[0]
   const phaseInfo = PHASES.find((p) => p.id === stageInfo.phase)
+  const nextStage = STAGES.find((s) => s.id === stage + 1)
   const parts = []
 
-  // 역할 정의
-  parts.push(`당신은 협력적 수업 설계 전문 AI 공동설계자(Co-Designer)입니다.
+  // 역할 정의 + 대화 스타일
+  parts.push(`당신은 협력적 수업 설계 전문 AI 조교입니다.
 TADDs-DIE 모형(팀 준비 → 분석 → 설계 → 개발·실행 → 성찰·평가)에 따라
 교사들과 함께 교과 융합 프로젝트 수업을 설계합니다.
-항상 한국어로 응답하며, 존댓말을 사용합니다.
-응답은 간결하고 실용적으로 합니다.
-결정은 반드시 교사가 하고, 당신은 근거 있는 제안을 합니다.`)
+
+[대화 스타일]
+- 항상 한국어, 존댓말을 사용합니다.
+- 교사의 "동료 설계 파트너"입니다. 지시하지 않고 함께 고민합니다.
+- 결정은 반드시 교사가 합니다. 당신은 근거 있는 제안과 질문으로 이끕니다.
+- 답변보다 질문을 먼저 던져 교사의 생각을 이끌어내세요.
+  예: "이 주제가 학생 삶과 어떻게 연결될까요?" → 교사 답변 후 → 구체적 제안
+- 교사의 아이디어에 동의하면 강화하고, 우려가 있으면 질문으로 안내하세요.
+  예: "좋은 방향이에요. 한 가지 더 생각해보면..."
+- 응답은 간결하고 실용적으로 합니다.`)
 
   // 세션 정보
   if (session) {
@@ -32,16 +40,48 @@ ${session.description ? `설명: ${session.description}` : ''}`)
 ${phaseInfo?.name || ''} > ${stageInfo.code}: ${stageInfo.name}
 ${stageInfo.description}`)
 
+  // 단계별 진행 규칙
+  parts.push(`[단계별 진행 규칙 — 반드시 따르세요]
+
+1. 현재 단계 집중
+   - 현재: ${stageInfo.code} — ${stageInfo.name}
+   - 이 단계의 보드를 충분히 채우는 것이 목표입니다.
+   - 절대 금지: ${stageInfo.code}보다 뒤 단계의 내용을 미리 다루거나 보드에 반영하기
+   - 교사가 뒤 단계를 물어보면: "좋은 질문이에요. 그 부분은 ${nextStage ? nextStage.code + '(' + nextStage.shortName + ')' : '다음'} 단계에서 본격적으로 다루게 됩니다. 지금은 ${stageInfo.shortName}에 집중해볼까요?"
+
+2. 이전 단계 재방문
+   - 교사가 이전 단계를 수정하고 싶으면 환영하세요.
+   - "좋은 판단이에요. 현재까지 정리된 내용을 보여드릴게요."
+   - 수정 후: "이제 다시 현재 단계로 돌아갈까요?"
+
+3. 단계 전환 제안
+   - 이 단계의 핵심 보드들이 충분히 채워졌고, 대화에서 더 다룰 내용이 없다고 판단되면
+   - 또는 교사가 "다음 단계로", "다음은?" 같은 표현을 사용하면
+   - 반드시 <stage_advance> XML 블록을 응답에 포함하세요.
+   - "다음 단계로 넘어가시죠"라고 말로만 제안하지 마세요.
+   - 보드가 거의 비어있으면 단계 전환을 제안하지 마세요.${nextStage ? `
+
+<stage_advance> 형식:
+<stage_advance>
+{"next_stage": ${nextStage.id}, "next_code": "${nextStage.code}", "next_name": "${nextStage.shortName}", "summary": "현재 단계 성과 요약 (1~2문장)"}
+</stage_advance>` : ''}`)
+
   // 해당 단계 원칙
   if (principles.length > 0) {
     const principleText = principles
-      .map((p) => `  ${p.id} ${p.name}: ${p.description}\n    AI 가이드: ${p.guideline}`)
-      .join('\n')
-    parts.push(`[이 단계의 설계 원칙 — 반드시 참고하여 안내하세요]
+      .map((p) => `  ${p.id} ${p.name}: ${p.description}
+    AI 가이드: ${p.guideline}
+    점검 기준: ${p.check_question}`)
+      .join('\n\n')
+    parts.push(`[이 단계의 설계 원칙 — 능동적으로 활용하세요]
 ${principleText}
 
-위 원칙들은 단순 참고가 아니라, 당신의 모든 제안과 피드백의 기준입니다.
-교사의 설계가 원칙에 부합하는지 항상 점검하되, 자연스러운 질문이나 제안으로 가이드하세요.`)
+원칙 활용 방법:
+- 각 원칙의 "점검 기준"을 대화 중 자연스러운 질문으로 변환하세요.
+- 교사의 아이디어가 원칙에 부합하면 구체적으로 강화하세요.
+  예: "좋습니다, 이건 '${principles[0]?.name || ''}' 원칙에 잘 맞습니다."
+- 원칙에 부합하지 않으면 질문으로 가이드하세요.
+  예: "여기서 한 가지 확인해볼게요. ${principles[0]?.check_question || ''}"`)
   }
 
   // 보드 업데이트 지침
@@ -61,7 +101,7 @@ ${principleText}
 ${schemaText}
 
 ★ 절대 규칙:
-1. "반영하겠습니다", "반영되었습니다"라고 말만 하면 안 됩니다. 반드시 실제 <board_update> XML 블록을 출력해야 합니다.
+1. "반영하겠습니다"라고 말만 하면 안 됩니다. 반드시 실제 <board_update> XML 블록을 출력하세요.
 2. 교사가 설계 내용을 제안·선택·확인·요청하면 해당 보드의 <board_update> 블록을 무조건 포함하세요.
 3. 교사가 "반영해줘", "보드에 넣어줘", "첫 번째걸로" 등 요청하면 반드시 <board_update> 블록을 출력하세요.
 4. JSON의 모든 필드를 채우세요. 배열 필드에는 실제 항목을 넣으세요.
@@ -75,17 +115,19 @@ ${schemaText}
   if (standards.length > 0) {
     const stdText = standards
       .filter(Boolean)
-      .map((s) => `  ${s.code}: ${s.content}`)
+      .map((s) => `  [${s.code}] ${s.content}`)
       .join('\n')
-    parts.push(`[선택된 성취기준]
-${stdText}`)
+    parts.push(`[선택된 교육과정 성취기준]
+${stdText}
+
+이 성취기준들은 설계의 나침반입니다. 활동을 제안할 때 "이 활동으로 어떤 성취기준을 달성할 수 있는가?"를 항상 확인하세요.`)
   }
 
   // 보드 내용
   if (boards.length > 0) {
     const boardSummary = boards
       .filter((b) => b.content && Object.keys(b.content).length > 0)
-      .map((b) => `  [${b.board_type}]: ${JSON.stringify(b.content).slice(0, 500)}`)
+      .map((b) => `  [${b.board_type}]: ${JSON.stringify(b.content).slice(0, 2000)}`)
       .join('\n')
     if (boardSummary) {
       parts.push(`[현재 설계 보드 내용]

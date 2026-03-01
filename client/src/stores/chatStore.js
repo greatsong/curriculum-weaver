@@ -3,10 +3,11 @@ import { apiGet, apiPost, apiStreamPost } from '../lib/api'
 import { socket } from '../lib/socket'
 import { useStageStore } from './stageStore'
 
-// AI 응답에서 <board_update> 마커를 제거
-function stripBoardMarkers(text) {
+// AI 응답에서 <board_update> 및 <stage_advance> 마커를 제거
+function stripXmlMarkers(text) {
   return text
     .replace(/<board_update\s+type="[^"]*">[\s\S]*?<\/board_update>/g, '')
+    .replace(/<stage_advance>[\s\S]*?<\/stage_advance>/g, '')
     .trim()
 }
 
@@ -15,6 +16,7 @@ export const useChatStore = create((set, get) => ({
   streaming: false,
   streamingText: '',
   boardSuggestions: [],
+  stageAdvanceSuggestion: null,
 
   // Socket.IO 이벤트 리스너 등록
   subscribe: (sessionId) => {
@@ -33,7 +35,7 @@ export const useChatStore = create((set, get) => ({
   unsubscribe: () => {
     const handler = get()._messageHandler
     if (handler) socket.off('message_added', handler)
-    set({ messages: [], boardSuggestions: [], _messageHandler: null })
+    set({ messages: [], boardSuggestions: [], stageAdvanceSuggestion: null, _messageHandler: null })
   },
 
   // 이전 메시지 로드 (API 사용)
@@ -66,7 +68,7 @@ export const useChatStore = create((set, get) => ({
     socket.emit('new_message', { sessionId, message: teacherMsg })
 
     // 2) AI 응답 요청 (SSE 스트리밍)
-    set({ streaming: true, streamingText: '', boardSuggestions: [] })
+    set({ streaming: true, streamingText: '', boardSuggestions: [], stageAdvanceSuggestion: null })
 
     await apiStreamPost('/api/chat/message', {
       session_id: sessionId,
@@ -91,9 +93,12 @@ export const useChatStore = create((set, get) => ({
           useStageStore.setState({ boards: updatedBoards })
         }
       },
+      onStageAdvance: (data) => {
+        set({ stageAdvanceSuggestion: data })
+      },
       onDone: () => {
         const streamedText = get().streamingText
-        const cleanText = stripBoardMarkers(streamedText)
+        const cleanText = stripXmlMarkers(streamedText)
         if (cleanText) {
           const aiMsg = {
             id: `ai-${Date.now()}`,
@@ -121,4 +126,5 @@ export const useChatStore = create((set, get) => ({
   },
 
   clearBoardSuggestions: () => set({ boardSuggestions: [] }),
+  clearStageAdvance: () => set({ stageAdvanceSuggestion: null }),
 }))

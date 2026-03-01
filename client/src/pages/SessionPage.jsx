@@ -257,7 +257,7 @@ export default function SessionPage() {
           border-r-0 md:border-r border-gray-200
           flex-col bg-white md:shrink-0
         `}>
-          <ChatPanel sessionId={sessionId} stage={currentSession.current_stage} />
+          <ChatPanel sessionId={sessionId} stage={currentSession.current_stage} onStageChange={handleStageChange} />
         </div>
 
         {/* 중앙: 설계 보드 */}

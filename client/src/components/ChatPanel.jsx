@@ -1,18 +1,28 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send } from 'lucide-react'
+import { Send, ArrowRight } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useChatStore } from '../stores/chatStore'
 
-export default function ChatPanel({ sessionId, stage }) {
-  const { messages, streaming, streamingText, sendMessage } = useChatStore()
+// 스트리밍 텍스트에서 XML 마커 제거 (완성된 블록 + 미완성 블록)
+function cleanStreamingText(text) {
+  return text
+    .replace(/<board_update\s+type="[^"]*">[\s\S]*?<\/board_update>/g, '')
+    .replace(/<stage_advance>[\s\S]*?<\/stage_advance>/g, '')
+    .replace(/<board_update[\s\S]*$/g, '')
+    .replace(/<stage_advance[\s\S]*$/g, '')
+    .trim() || '...'
+}
+
+export default function ChatPanel({ sessionId, stage, onStageChange }) {
+  const { messages, streaming, streamingText, sendMessage, stageAdvanceSuggestion, clearStageAdvance } = useChatStore()
   const [input, setInput] = useState('')
   const scrollRef = useRef(null)
 
   // 자동 스크롤
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, streamingText])
+  }, [messages, streamingText, stageAdvanceSuggestion])
 
   const handleSend = async (e) => {
     e.preventDefault()
@@ -22,6 +32,13 @@ export default function ChatPanel({ sessionId, stage }) {
     setInput('')
     // API로 교사 메시지 저장 + AI 응답 요청
     await sendMessage(sessionId, text, stage)
+  }
+
+  const handleStageAdvance = () => {
+    if (stageAdvanceSuggestion?.next_stage && onStageChange) {
+      onStageChange(stageAdvanceSuggestion.next_stage)
+      clearStageAdvance()
+    }
   }
 
   return (
@@ -78,10 +95,7 @@ export default function ChatPanel({ sessionId, stage }) {
           <div className="flex justify-start">
             <div className="max-w-[85%] bg-gray-100 text-gray-800 rounded-2xl rounded-bl-md px-4 py-2.5 text-sm leading-relaxed">
               <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm max-w-none">
-                {streamingText
-                  .replace(/<board_update\s+type="[^"]*">[\s\S]*?<\/board_update>/g, '')
-                  .replace(/<board_update[\s\S]*$/g, '')
-                  .trim() || '...'}
+                {cleanStreamingText(streamingText)}
               </ReactMarkdown>
               <span className="inline-block w-1.5 h-4 bg-blue-500 animate-pulse ml-0.5" />
             </div>
@@ -95,6 +109,32 @@ export default function ChatPanel({ sessionId, stage }) {
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 단계 전환 제안 카드 */}
+        {stageAdvanceSuggestion && !streaming && (
+          <div className="mx-auto max-w-[90%]">
+            <div className="bg-gradient-to-r from-violet-50 to-blue-50 border border-violet-200 rounded-xl p-4">
+              <p className="text-sm text-gray-700 mb-2">
+                {stageAdvanceSuggestion.summary}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleStageAdvance}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 transition"
+                >
+                  {stageAdvanceSuggestion.next_code} {stageAdvanceSuggestion.next_name}으로 이동
+                  <ArrowRight size={14} />
+                </button>
+                <button
+                  onClick={clearStageAdvance}
+                  className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-white/60 rounded-lg transition"
+                >
+                  계속 작업하기
+                </button>
               </div>
             </div>
           </div>

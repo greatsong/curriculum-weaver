@@ -23,6 +23,23 @@ function extractBoardUpdates(text) {
   return { cleanText, updates }
 }
 
+/**
+ * AI 응답에서 <stage_advance> 블록을 추출
+ */
+function extractStageAdvance(text) {
+  const regex = /<stage_advance>\s*([\s\S]*?)\s*<\/stage_advance>/g
+  const match = regex.exec(text)
+  if (!match) return { cleanText: text, stageAdvance: null }
+  try {
+    const stageAdvance = JSON.parse(match[1])
+    const cleanText = text.replace(/<stage_advance>[\s\S]*?<\/stage_advance>/g, '').trim()
+    return { cleanText, stageAdvance }
+  } catch (e) {
+    console.warn('단계 전환 JSON 파싱 실패:', e.message)
+    return { cleanText: text, stageAdvance: null }
+  }
+}
+
 export const chatRouter = Router()
 // chatRouter.use(requireAuth)
 
@@ -102,7 +119,7 @@ chatRouter.post('/message', async (req, res) => {
     })
 
     // 보드 업데이트 추출 및 자동 반영
-    const { cleanText, updates } = extractBoardUpdates(fullResponse)
+    const { cleanText: afterBoards, updates } = extractBoardUpdates(fullResponse)
 
     if (updates.length > 0) {
       // 보드에 자동 저장 (upsert)
@@ -111,6 +128,13 @@ chatRouter.post('/message', async (req, res) => {
       )
       // 적용된 보드 데이터를 클라이언트에 전송
       res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.BOARD_SUGGESTIONS, suggestions: updates, appliedBoards })}\n\n`)
+    }
+
+    // 단계 전환 제안 추출
+    const { cleanText, stageAdvance } = extractStageAdvance(afterBoards)
+
+    if (stageAdvance) {
+      res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.STAGE_ADVANCE, ...stageAdvance })}\n\n`)
     }
 
     // 클린 텍스트만 스토어에 저장
