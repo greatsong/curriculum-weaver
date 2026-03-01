@@ -34,15 +34,15 @@ export const STAGES = [
 
   // ─── Ds: 설계하기 ───
   { id: 5, code: 'Ds-1', phase: 'Ds',
-    name: '평가 계획에 따른 교수학습 활동 설계',
+    name: '문제 상황 설정과 교수학습 활동 설계',
     shortName: '활동 설계',
     icon: 'Building2',
-    description: '평가 계획을 먼저 수립하고, 이에 맞는 교수학습 활동을 설계하는 단계' },
+    description: '실세계 기반 문제 상황을 설정하고, 학습활동을 설계하는 단계' },
   { id: 6, code: 'Ds-2', phase: 'Ds',
-    name: '수업 활동에 필요한 자원과 스캐폴딩 설계',
+    name: '도구·스캐폴딩·평가 지원 설계',
     shortName: '지원 설계',
     icon: 'BarChart3',
-    description: '수업 활동을 지원하는 자원, 교사 역할, 스캐폴딩을 설계하는 단계' },
+    description: '학습활동을 지원하는 도구, 스캐폴딩, 과정중심평가를 설계하는 단계' },
 
   // ─── DI: 개발·실행하기 ───
   { id: 7, code: 'DI-1', phase: 'DI',
@@ -75,7 +75,7 @@ export const BOARD_TYPES = {
   2: ['team_roles', 'team_schedule'],
   3: ['topic_exploration', 'inquiry_questions'],
   4: ['standard_mapping', 'cross_subject_links'],
-  5: ['assessment_plan', 'lesson_flow', 'core_activities'],
+  5: ['problem_situation', 'assessment_plan', 'lesson_flow', 'core_activities'],
   6: ['teacher_roles', 'rubric', 'scaffolding'],
   7: ['student_worksheets', 'resource_list', 'digital_tools'],
   8: ['execution_timeline', 'checklist', 'observation_log'],
@@ -96,6 +96,7 @@ export const BOARD_TYPE_LABELS = {
   standard_mapping: '성취기준 매핑표',
   cross_subject_links: '교과 간 연계',
   // Ds단계
+  problem_situation: '문제 상황',
   assessment_plan: '평가 계획',
   lesson_flow: '차시 구성표',
   core_activities: '핵심 활동',

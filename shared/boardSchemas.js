@@ -107,7 +107,18 @@ export const BOARD_SCHEMAS = {
     empty: { big_idea: '', competencies: [], links: [] },
   },
 
-  // ─── Ds-1: 평가 계획에 따른 교수학습 활동 설계 ───
+  // ─── Ds-1: 문제 상황 설정과 교수학습 활동 설계 ───
+  problem_situation: {
+    fields: [
+      { key: 'situation', label: '문제 상황 (실세계 맥락)', type: 'textarea' },
+      { key: 'learning_content', label: '학습 내용 및 산출물', type: 'textarea' },
+      { key: 'audience', label: '청중', type: 'text' },
+      { key: 'student_action', label: '학생 행위 (캠페인, 제안서 등)', type: 'textarea' },
+      { key: 'data_source', label: '실제 데이터 출처', type: 'text' },
+    ],
+    empty: { situation: '', learning_content: '', audience: '', student_action: '', data_source: '' },
+  },
+
   assessment_plan: {
     fields: [
       { key: 'assessments', label: '평가 항목', type: 'table',

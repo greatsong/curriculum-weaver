@@ -81,6 +81,43 @@ export async function apiDelete(path) {
 }
 
 /**
+ * 파일 업로드 POST 요청 (multipart/form-data)
+ */
+export async function apiUploadFile(path, file, extraFields = {}) {
+  const formData = new FormData()
+  formData.append('file', file)
+  for (const [key, value] of Object.entries(extraFields)) {
+    formData.append(key, value)
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 120_000) // 2분 타임아웃
+
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    })
+    clearTimeout(timer)
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new ApiError(body.error || `API 오류: ${res.status}`, res.status)
+    }
+
+    return res.json()
+  } catch (err) {
+    clearTimeout(timer)
+    if (err instanceof ApiError) throw err
+    if (err.name === 'AbortError') {
+      throw new ApiError('파일 처리 시간이 초과되었습니다.', 0)
+    }
+    throw new ApiError('네트워크 연결을 확인해주세요.', 0)
+  }
+}
+
+/**
  * SSE 스트리밍 POST 요청 (AI 채팅용)
  */
 export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardSuggestions, onStageAdvance, onDone, onError }) {
