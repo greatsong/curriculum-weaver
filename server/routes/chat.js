@@ -66,6 +66,23 @@ chatRouter.post('/teacher', async (req, res) => {
   res.status(201).json(msg)
 })
 
+// 시드 데이터용: 일반 메시지 직접 추가 (teacher/ai 모두 가능)
+chatRouter.post('/seed', async (req, res) => {
+  const { session_id, sender_type, content, stage, sender_name, sender_subject, principles_used } = req.body
+  if (!session_id || !content?.trim() || !sender_type) {
+    return res.status(400).json({ error: '필수 필드: session_id, sender_type, content' })
+  }
+  const msg = Messages.add(session_id, {
+    sender_type,
+    content: content.trim(),
+    stage_context: stage || null,
+    principles_used: principles_used || [],
+    sender_name: sender_name || null,
+    sender_subject: sender_subject || null,
+  })
+  res.status(201).json(msg)
+})
+
 // 단계 진입 인트로 메시지 (SSE 스트리밍)
 chatRouter.post('/stage-intro', async (req, res) => {
   const { session_id, stage } = req.body
