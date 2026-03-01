@@ -66,6 +66,56 @@ chatRouter.post('/teacher', async (req, res) => {
   res.status(201).json(msg)
 })
 
+// 단계 진입 인트로 메시지 (SSE 스트리밍)
+chatRouter.post('/stage-intro', async (req, res) => {
+  const { session_id, stage } = req.body
+
+  if (!session_id || !stage) {
+    return res.status(400).json({ error: '세션 ID와 단계가 필요합니다.' })
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders()
+
+  try {
+    const session = Sessions.get(session_id)
+
+    let fullResponse = ''
+    await buildStageIntroResponse(
+      { stage, sessionTitle: session?.title || '' },
+      {
+        onText: (text) => {
+          fullResponse += text
+          res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: text })}\n\n`)
+        },
+        onError: (error) => {
+          res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.ERROR, message: error })}\n\n`)
+        },
+      }
+    )
+
+    // 인트로 메시지를 스토어에 저장
+    if (fullResponse.trim()) {
+      Messages.add(session_id, {
+        sender_type: 'ai',
+        content: fullResponse.trim(),
+        stage_context: stage,
+      })
+    }
+
+    res.write(`data: [DONE]\n\n`)
+    res.end()
+  } catch (error) {
+    console.error('단계 인트로 오류:', error)
+    res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.ERROR, message: '인트로 생성 중 오류가 발생했습니다.' })}\n\n`)
+    res.write(`data: [DONE]\n\n`)
+    res.end()
+  }
+})
+
 // AI 채팅 메시지 전송 (SSE 스트리밍)
 chatRouter.post('/message', async (req, res) => {
   const { session_id, content, stage } = req.body

@@ -125,6 +125,49 @@ export const useChatStore = create((set, get) => ({
     })
   },
 
+  // 단계 진입 시 AI 인트로 가이드 요청
+  requestStageIntro: async (sessionId, stage) => {
+    if (get().streaming) return // 이미 스트리밍 중이면 무시
+
+    set({ streaming: true, streamingText: '' })
+
+    await apiStreamPost('/api/chat/stage-intro', {
+      session_id: sessionId,
+      stage,
+    }, {
+      onText: (text) => {
+        set((state) => ({ streamingText: state.streamingText + text }))
+      },
+      onPrinciples: () => {},
+      onBoardSuggestions: () => {},
+      onStageAdvance: () => {},
+      onDone: () => {
+        const streamedText = get().streamingText
+        if (streamedText.trim()) {
+          const aiMsg = {
+            id: `intro-${Date.now()}`,
+            sender_type: 'ai',
+            content: streamedText.trim(),
+            stage_context: stage,
+            created_at: new Date().toISOString(),
+          }
+          set((state) => ({
+            messages: [...state.messages, aiMsg],
+            streaming: false,
+            streamingText: '',
+          }))
+          socket.emit('ai_response_done', { sessionId, message: aiMsg })
+        } else {
+          set({ streaming: false, streamingText: '' })
+        }
+      },
+      onError: (error) => {
+        console.error('단계 인트로 오류:', error)
+        set({ streaming: false, streamingText: '' })
+      },
+    })
+  },
+
   clearBoardSuggestions: () => set({ boardSuggestions: [] }),
   clearStageAdvance: () => set({ stageAdvanceSuggestion: null }),
 }))

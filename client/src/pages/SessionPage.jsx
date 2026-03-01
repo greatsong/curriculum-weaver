@@ -93,7 +93,7 @@ export default function SessionPage() {
   const navigate = useNavigate()
   const { currentSession, fetchSession, updateStage, setMembers } = useSessionStore()
   const { loadBoards, loadStandards, loadMaterials, loadPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset } = useStageStore()
-  const { loadMessages, subscribe, unsubscribe, boardSuggestions } = useChatStore()
+  const { loadMessages, subscribe, unsubscribe, boardSuggestions, requestStageIntro } = useChatStore()
   const [showStandardSearch, setShowStandardSearch] = useState(false)
   const [showTutorial, setShowTutorial] = useState(
     () => !localStorage.getItem('cw_tutorial_done')
@@ -182,6 +182,8 @@ export default function SessionPage() {
 
   const handleStageChange = async (stage) => {
     await updateStage(sessionId, stage)
+    // 단계 전환 후 AI 인트로 가이드 자동 요청
+    requestStageIntro(sessionId, stage)
   }
 
   const handleCopyInvite = () => {
