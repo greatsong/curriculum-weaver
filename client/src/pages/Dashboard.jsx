@@ -66,10 +66,10 @@ export default function Dashboard() {
       {/* 헤더 */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <a href="/" onClick={(e) => { e.preventDefault(); navigate('/') }} className="flex items-center gap-3 hover:opacity-80 transition">
             <Logo size={32} />
             <h1 className="text-xl font-bold text-gray-900">커리큘럼 위버</h1>
-          </div>
+          </a>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowTutorial(true)}

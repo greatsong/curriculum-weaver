@@ -1,6 +1,6 @@
 import { Router } from 'express'
 // import { requireAuth } from '../middleware/auth.js'  // 나중에 다시 활성화
-import { buildAIResponse } from '../services/aiAgent.js'
+import { buildAIResponse, buildStageIntroResponse } from '../services/aiAgent.js'
 import { Sessions, Messages, Boards, Materials, Principles } from '../lib/store.js'
 import { SSE_EVENTS } from 'curriculum-weaver-shared/constants.js'
 
@@ -78,6 +78,8 @@ chatRouter.post('/message', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders()
 
   try {
     // 인메모리 스토어에서 컨텍스트 로드

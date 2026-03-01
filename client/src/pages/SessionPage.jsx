@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Share2, BookMarked, HelpCircle, MessageSquare, LayoutDashboard, BookOpen, UserCircle } from 'lucide-react'
+import { Share2, BookMarked, HelpCircle, MessageSquare, LayoutDashboard, BookOpen, UserCircle } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
 import { useStageStore } from '../stores/stageStore'
 import { useChatStore } from '../stores/chatStore'
 import { socket, joinSession, leaveSession } from '../lib/socket'
+import Logo from '../components/Logo'
 import StageNav from '../components/StageNav'
 import ChatPanel from '../components/ChatPanel'
 import DesignBoard from '../components/DesignBoard'
@@ -208,9 +209,11 @@ export default function SessionPage() {
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden" style={{ height: '100dvh' }}>
       {/* 상단 헤더 */}
       <header className="bg-white border-b border-gray-200 px-2 sm:px-4 py-2 flex items-center gap-1.5 sm:gap-3 shrink-0">
-        <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600 min-w-[44px] min-h-[44px] flex items-center justify-center">
-          <ArrowLeft size={20} />
-        </button>
+        <a href="/" onClick={(e) => { e.preventDefault(); navigate('/') }} className="flex items-center gap-1.5 hover:opacity-80 transition shrink-0 min-w-[44px] min-h-[44px]" title="메인으로">
+          <Logo size={24} />
+          <span className="hidden sm:inline text-sm font-bold text-gray-900">커리큘럼 위버</span>
+        </a>
+        <span className="text-gray-300 hidden sm:inline">|</span>
         <h1 className="font-semibold text-gray-900 truncate flex-1 text-sm sm:text-base">{currentSession.title}</h1>
         <MemberList />
         <button

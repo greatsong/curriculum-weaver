@@ -37,7 +37,7 @@ export async function analyzeMaterial(materialId, fileBuffer, fileType) {
 
     // 2. AI 분석
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6-20250514',
       max_tokens: 2048,
       messages: [{
         role: 'user',

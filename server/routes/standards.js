@@ -114,6 +114,8 @@ standardsRouter.post('/graph/chat', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders()
 
   try {
     // 전체 성취기준과 연결 데이터를 시스템 프롬프트에 포함
@@ -172,7 +174,7 @@ ${linksSummary}${context.selectedNode ? `
 
     let fullResponse = ''
     const stream = client.messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6-20250514',
       max_tokens: 4096,
       system: systemPrompt,
       messages,

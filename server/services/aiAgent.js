@@ -150,6 +150,62 @@ ${matText}`)
   return parts.join('\n\n')
 }
 
+// 단계별 인트로 가이드 힌트
+const STAGE_INTRO_HINTS = {
+  1: '팀의 비전과 설계 방향을 공유하고, 협력 방식(소통 도구, 역할 기대)을 합의합니다. 보드: 팀 비전·설계 방향, 협력 방식 합의.',
+  2: '역할 분담, 필요 자원, 규칙, 일정을 구체적으로 정합니다. 보드: 역할 분담, 팀 활동 일정.',
+  3: '주제 후보를 탐색하고, 선정 기준을 세워 최종 주제를 결정합니다. 보드: 주제 탐색, 탐구 질문.',
+  4: '주제와 관련된 교과별 내용·역량을 분석하고 학습 목표를 설정합니다. 보드: 성취기준 매핑표, 교과 간 연계.',
+  5: '평가 계획을 먼저 수립하고, 이에 맞는 교수학습 활동을 설계합니다. 보드: 평가 계획, 차시 구성표, 핵심 활동.',
+  6: '수업 활동을 지원하는 자원, 교사 역할, 스캐폴딩을 설계합니다. 보드: 교사 역할 분담, 루브릭, 스캐폴딩 계획.',
+  7: '활동지, 교구, 디지털 도구 등 수업 자료를 수집·개발합니다. 보드: 학생 활동지, 필요 자원 목록, 디지털 도구 안내.',
+  8: '설계한 수업을 실행하고 학생 반응·산출물 등 자료를 수집합니다. 보드: 실행 일정표, 사전 점검 체크리스트, 수업 관찰 기록.',
+  9: '각 단계 활동에 대해 수시로 평가하고 결과를 환류합니다. 보드: 수시 평가·환류, 단계별 성찰.',
+  10: '수업 목표와 팀 비전에 비추어 전체 과정을 종합적으로 평가합니다. 보드: 종합 성찰 기록, 개선 사항.',
+}
+
+/**
+ * 단계 진입 인트로 AI 응답 생성 (SSE 스트리밍)
+ */
+export async function buildStageIntroResponse(context, { onText, onError }) {
+  const stageInfo = STAGES.find((s) => s.id === context.stage) || STAGES[0]
+  const phaseInfo = PHASES.find((p) => p.id === stageInfo.phase)
+  const hint = STAGE_INTRO_HINTS[context.stage] || stageInfo.description
+
+  const systemPrompt = `당신은 협력적 수업 설계 전문 AI 조교입니다.
+교사들이 새로운 설계 단계에 진입했습니다. 이 단계를 간결하게 안내해주세요.
+
+[규칙]
+- 3~4문장 이내로 짧고 친근하게 안내합니다.
+- 이 단계에서 무엇을 하는지, 어떤 보드를 채울지 핵심만 알려줍니다.
+- 첫 질문 하나를 던져 대화를 시작합니다.
+- <board_update>나 <stage_advance> 블록은 절대 포함하지 마세요.
+- 항상 한국어, 존댓말을 사용합니다.`
+
+  const userMessage = `[${phaseInfo?.name || ''} > ${stageInfo.code}: ${stageInfo.name}] 단계에 진입했습니다.
+이 단계 안내: ${hint}
+${context.sessionTitle ? `세션: ${context.sessionTitle}` : ''}
+간결하게 이 단계를 안내하고, 시작 질문을 던져주세요.`
+
+  try {
+    const stream = client.messages.stream({
+      model: 'claude-sonnet-4-6-20250514',
+      max_tokens: 500,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    })
+
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta?.text) {
+        onText(event.delta.text)
+      }
+    }
+  } catch (error) {
+    console.error('단계 인트로 생성 오류:', error)
+    onError(error.message || '인트로 생성 실패')
+  }
+}
+
 /**
  * 대화 이력을 Claude 메시지 형식으로 변환
  */
@@ -178,7 +234,7 @@ export async function buildAIResponse(context, { onText, onError }) {
 
   try {
     const stream = client.messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6-20250514',
       max_tokens: 4096,
       system: systemPrompt,
       messages,

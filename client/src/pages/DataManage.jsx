@@ -1,7 +1,8 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Upload, Database, Trash2, Download, CheckCircle, AlertCircle } from 'lucide-react'
+import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle } from 'lucide-react'
 import { apiGet, apiPost, apiDelete } from '../lib/api'
+import Logo from '../components/Logo'
 
 const Graph3D = lazy(() =>
   import('../components/Graph3D').catch(() => {
@@ -116,9 +117,11 @@ export default function DataManage() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
-          <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600">
-            <ArrowLeft size={20} />
-          </button>
+          <a href="/" onClick={(e) => { e.preventDefault(); navigate('/') }} className="flex items-center gap-2 hover:opacity-80 transition shrink-0" title="메인으로">
+            <Logo size={28} />
+            <span className="text-base font-bold text-gray-900">커리큘럼 위버</span>
+          </a>
+          <span className="text-gray-300">|</span>
           <Database size={20} className="text-blue-600" />
           <h1 className="text-lg font-bold text-gray-900">교육과정 데이터 관리</h1>
         </div>
