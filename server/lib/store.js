@@ -6,6 +6,7 @@
 import crypto from 'crypto'
 import { PRINCIPLES } from '../data/principles.js'
 import { DEMO_STANDARDS, DEMO_LINKS } from '../data/standards.js'
+import { SEED_SESSIONS } from '../data/seedSessions.js'
 
 function uuid() {
   return crypto.randomUUID()
@@ -61,23 +62,61 @@ export function initStore() {
     }
   }
 
-  // 기본 세션 하나 생성
-  const defaultSession = {
-    id: uuid(),
-    title: '융합 수업 설계 시작하기',
-    description: 'AI와 함께 융합 수업을 설계해보세요',
-    current_stage: 1,
-    status: 'active',
-    invite_code: inviteCode(),
-    created_at: new Date().toISOString(),
-  }
-  sessions.set(defaultSession.id, defaultSession)
-  messages.set(defaultSession.id, [])
-  materials.set(defaultSession.id, [])
-  sessionStandards.set(defaultSession.id, [])
+  // 시드 세션 로드 (초/중/고 샘플 세션 + 보드 + 채팅)
+  for (const seed of SEED_SESSIONS) {
+    const session = {
+      id: uuid(),
+      title: seed.title,
+      description: seed.description,
+      current_stage: 1,
+      status: 'active',
+      invite_code: inviteCode(),
+      created_at: new Date().toISOString(),
+    }
+    sessions.set(session.id, session)
+    messages.set(session.id, [])
+    materials.set(session.id, [])
+    sessionStandards.set(session.id, [])
 
-  console.log(`  초기 데이터: 원칙 ${principles.size}개, 성취기준 ${standards.size}개, 연결 ${standardLinks.size}개, 세션 1개`)
-  return defaultSession.id
+    // 보드 데이터 로드
+    if (seed.boards) {
+      for (const [stage, boardMap] of Object.entries(seed.boards)) {
+        for (const [boardType, content] of Object.entries(boardMap)) {
+          const key = `${session.id}:${stage}:${boardType}`
+          boards.set(key, {
+            id: uuid(),
+            session_id: session.id,
+            stage: parseInt(stage),
+            board_type: boardType,
+            content,
+            version: 1,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+        }
+      }
+    }
+
+    // 채팅 메시지 로드
+    if (seed.chats) {
+      for (const chat of seed.chats) {
+        messages.get(session.id).push({
+          id: uuid(),
+          session_id: session.id,
+          sender_type: chat.sender_type,
+          content: chat.content,
+          stage_context: chat.stage || null,
+          principles_used: chat.principles_used || [],
+          sender_name: chat.sender_name || null,
+          sender_subject: chat.sender_subject || null,
+          created_at: new Date().toISOString(),
+        })
+      }
+    }
+  }
+
+  console.log(`  초기 데이터: 원칙 ${principles.size}개, 성취기준 ${standards.size}개, 연결 ${standardLinks.size}개, 세션 ${sessions.size}개`)
+  return [...sessions.keys()][0]
 }
 
 // ─── 세션 CRUD ───
