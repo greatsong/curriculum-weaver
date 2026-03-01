@@ -107,8 +107,11 @@ ${schemaText}
 4. JSON의 모든 필드를 채우세요. 배열 필드에는 실제 항목을 넣으세요.
 5. 하나의 응답에 여러 보드를 동시에 업데이트할 수 있습니다.
 6. 일반적인 인사나 단순 질문에는 포함하지 마세요.
-7. <board_update> 블록은 자연스러운 설명 텍스트 뒤, 응답 끝부분에 배치하세요.
-8. 확인을 구하지 마세요. 내용이 합의되면 바로 <board_update>를 출력하세요.`)
+7. <board_update> 블록은 응답의 맨 앞에 배치하세요. 보드 데이터가 잘리지 않도록 설명 텍스트보다 먼저 출력합니다.
+8. 확인을 구하지 마세요. 내용이 합의되면 바로 <board_update>를 출력하세요.
+9. list 타입 필드(agreements, ground_rules, sub_topics, what_worked 등)에는 반드시 순수 문자열 배열을 사용하세요.
+   올바른 예: ["항목1", "항목2"]
+   잘못된 예: [{"rule": "항목1"}, {"rule": "항목2"}]`)
   }
 
   // 선택된 성취기준
@@ -172,23 +175,11 @@ export async function buildStageIntroResponse(context, { onText, onError }) {
   const phaseInfo = PHASES.find((p) => p.id === stageInfo.phase)
   const hint = STAGE_INTRO_HINTS[context.stage] || stageInfo.description
 
-  // 멤버 정보 포맷
-  const members = context.members || []
-  const memberNames = members.map((m) => {
-    const name = m.name || '교사'
-    const subject = m.subject ? ` (${m.subject})` : ''
-    return `${name}${subject}`
-  })
-  const memberInfo = memberNames.length > 0
-    ? `\n현재 참여 중인 선생님: ${memberNames.join(', ')}`
-    : ''
-
   const systemPrompt = `당신은 협력적 수업 설계 전문 AI 조교입니다.
 교사들이 새로운 설계 단계에 진입했습니다. 이 단계를 간결하게 안내해주세요.
 
 [규칙]
 - 3~4문장 이내로 짧고 친근하게 안내합니다.
-- 참여 중인 선생님이 있다면, 이름을 불러 반갑게 인사하며 시작합니다.
 - 이 단계에서 무엇을 하는지, 어떤 보드를 채울지 핵심만 알려줍니다.
 - 첫 질문 하나를 던져 대화를 시작합니다.
 - <board_update>나 <stage_advance> 블록은 절대 포함하지 마세요.
@@ -196,7 +187,7 @@ export async function buildStageIntroResponse(context, { onText, onError }) {
 
   const userMessage = `[${phaseInfo?.name || ''} > ${stageInfo.code}: ${stageInfo.name}] 단계에 진입했습니다.
 이 단계 안내: ${hint}
-${context.sessionTitle ? `세션: ${context.sessionTitle}` : ''}${memberInfo}
+${context.sessionTitle ? `세션: ${context.sessionTitle}` : ''}
 간결하게 이 단계를 안내하고, 시작 질문을 던져주세요.`
 
   try {
@@ -247,7 +238,7 @@ export async function buildAIResponse(context, { onText, onError }) {
   try {
     const stream = client.messages.stream({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
+      max_tokens: 12000,
       system: systemPrompt,
       messages,
     })

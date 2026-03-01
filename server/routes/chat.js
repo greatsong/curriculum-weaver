@@ -68,7 +68,7 @@ chatRouter.post('/teacher', async (req, res) => {
 
 // 단계 진입 인트로 메시지 (SSE 스트리밍)
 chatRouter.post('/stage-intro', async (req, res) => {
-  const { session_id, stage, members } = req.body
+  const { session_id, stage } = req.body
 
   if (!session_id || !stage) {
     return res.status(400).json({ error: '세션 ID와 단계가 필요합니다.' })
@@ -85,7 +85,7 @@ chatRouter.post('/stage-intro', async (req, res) => {
 
     let fullResponse = ''
     await buildStageIntroResponse(
-      { stage, sessionTitle: session?.title || '', members: members || [] },
+      { stage, sessionTitle: session?.title || '' },
       {
         onText: (text) => {
           fullResponse += text
