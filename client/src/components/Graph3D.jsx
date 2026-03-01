@@ -4,8 +4,9 @@ import * as THREE from 'three'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Search, X, RotateCcw, ChevronLeft, ChevronRight, Link2, Send, MessageCircle, List, Plus, Check, Crosshair, HelpCircle, Sparkles } from 'lucide-react'
+import { Search, X, RotateCcw, ChevronLeft, ChevronRight, Link2, Send, MessageCircle, List, Plus, Check, Crosshair, HelpCircle, Sparkles } from 'lucide-react'
 import { apiGet, apiPost, API_BASE } from '../lib/api'
+import Logo from './Logo'
 
 const SUBJECT_COLORS = {
   '과학': '#22c55e', '수학': '#3b82f6', '국어': '#ef4444', '사회': '#eab308',
@@ -127,19 +128,24 @@ export default function Graph3D({ embedded = false }) {
       return srcSubject !== tgtSubject
     })
 
+    // 이웃 노드 추적 (선택 과목 외 연결된 다른 과목 노드)
+    let neighborNodeIds = new Set()
+
     // 멀티 과목 필터
     if (selectedSubjects.size > 0) {
-      // 선택 과목 노드들 사이의 연결만 우선 필터
       const selNodeIds = new Set(nodes.filter(n => selectedSubjects.has(n.subject)).map(n => n.id))
-      links = links.filter(l => selNodeIds.has(getLinkSourceId(l)) && selNodeIds.has(getLinkTargetId(l)))
 
-      // minOverlap >= 3: 각 노드가 연결된 '선택 과목 수(자신 포함)'가 minOverlap 이상인 노드만
+      // 선택 과목 노드 사이의 코어 연결
+      let coreLinks = links.filter(l => selNodeIds.has(getLinkSourceId(l)) && selNodeIds.has(getLinkTargetId(l)))
+
+      // minOverlap >= 3: 허브 노드 필터링 (코어 연결 기준)
+      let coreNodeIds
       if (selectedSubjects.size >= 3 && minOverlap >= 3) {
         const nodeConnectedSubjects = new Map() // nodeId → Set<subject>
         nodes.filter(n => selNodeIds.has(n.id)).forEach(n => {
           nodeConnectedSubjects.set(n.id, new Set([n.subject]))
         })
-        links.forEach(l => {
+        coreLinks.forEach(l => {
           const srcId = getLinkSourceId(l), tgtId = getLinkTargetId(l)
           const srcSubj = nodeSubjectMap.get(srcId), tgtSubj = nodeSubjectMap.get(tgtId)
           if (nodeConnectedSubjects.has(srcId)) nodeConnectedSubjects.get(srcId).add(tgtSubj)
@@ -149,12 +155,29 @@ export default function Graph3D({ embedded = false }) {
         nodeConnectedSubjects.forEach((subjs, nodeId) => {
           if (subjs.size >= minOverlap) hubNodeIds.add(nodeId)
         })
-        links = links.filter(l => hubNodeIds.has(getLinkSourceId(l)) || hubNodeIds.has(getLinkTargetId(l)))
+        coreLinks = coreLinks.filter(l => hubNodeIds.has(getLinkSourceId(l)) || hubNodeIds.has(getLinkTargetId(l)))
+        coreNodeIds = new Set()
+        coreLinks.forEach(l => { coreNodeIds.add(getLinkSourceId(l)); coreNodeIds.add(getLinkTargetId(l)) })
+      } else {
+        coreNodeIds = new Set()
+        coreLinks.forEach(l => { coreNodeIds.add(getLinkSourceId(l)); coreNodeIds.add(getLinkTargetId(l)) })
       }
+
+      // 코어 노드에서 다른 과목으로 뻗어나가는 확장 연결 추가
+      const extLinks = links.filter(l => {
+        const srcId = getLinkSourceId(l), tgtId = getLinkTargetId(l)
+        return (coreNodeIds.has(srcId) && !selNodeIds.has(tgtId)) ||
+               (coreNodeIds.has(tgtId) && !selNodeIds.has(srcId))
+      })
+
+      links = [...coreLinks, ...extLinks]
 
       const connectedIds = new Set()
       links.forEach(l => { connectedIds.add(getLinkSourceId(l)); connectedIds.add(getLinkTargetId(l)) })
       nodes = nodes.filter(n => connectedIds.has(n.id))
+
+      // 이웃 노드 = 선택 과목에 속하지 않는 노드
+      nodes.forEach(n => { if (!selectedSubjects.has(n.subject)) neighborNodeIds.add(n.id) })
     }
 
     if (filterLinkType) {
@@ -175,7 +198,7 @@ export default function Graph3D({ embedded = false }) {
       links = egoLinks
     }
 
-    return { nodes, links }
+    return { nodes, links, neighborNodeIds }
   }, [graphData, selectedSubjects, minOverlap, filterLinkType, nodeSubjectMap, focusMode, selectedNode])
 
   // 검색 결과 (원점에서 가까운 순 정렬)
@@ -485,10 +508,12 @@ export default function Graph3D({ embedded = false }) {
         {/* 상단 툴바 */}
         <div className="flex items-center gap-2 px-3 py-2 bg-gray-800 border-b border-gray-700 z-10 shrink-0">
           {!embedded && (
-            <button onClick={() => navigate(-1)} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition">
-              <ArrowLeft size={18} />
-            </button>
+            <a href="/" onClick={(e) => { e.preventDefault(); navigate('/') }} className="flex items-center gap-1.5 hover:opacity-80 transition shrink-0" title="메인으로">
+              <Logo size={22} />
+              <span className="hidden sm:inline text-sm font-bold text-gray-100">커리큘럼 위버</span>
+            </a>
           )}
+          <span className="text-gray-600 hidden sm:inline">|</span>
           <h2 className="text-sm font-medium text-gray-200 hidden sm:block">교과 간 연결 탐색</h2>
           <div className="flex items-center gap-1.5 ml-auto">
             {selectedSubjects.size > 0 && (
@@ -581,16 +606,18 @@ export default function Graph3D({ embedded = false }) {
               graphData={filteredData}
               nodeId="id"
               nodeThreeObject={(node) => {
+                const isNeighbor = filteredData?.neighborNodeIds?.has(node.id)
                 const color = selectedNode?.id === node.id ? '#ffffff'
                   : (hasSearch && highlightNodes.size > 0 && !highlightNodes.has(node.id))
                     ? '#374151' : SUBJECT_COLORS[node.subject] || '#9ca3af'
                 const count = linkCountMap.get(node.id) || 0
                 const size = Math.max(3, count * 2.5)
                 const isSelected = selectedNode?.id === node.id
+                const nodeOpacity = isNeighbor ? 0.25 : 0.9
 
                 // 구체
                 const sphereGeo = new THREE.SphereGeometry(isSelected ? size * 1.5 : size)
-                const sphereMat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.9 })
+                const sphereMat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: nodeOpacity })
                 const sphere = new THREE.Mesh(sphereGeo, sphereMat)
 
                 // 텍스트 라벨 (키워드 + 연결 교과)
@@ -605,10 +632,11 @@ export default function Graph3D({ embedded = false }) {
                 ctx.textAlign = 'center'
                 ctx.textBaseline = 'middle'
                 ctx.fillStyle = color
+                ctx.globalAlpha = isNeighbor ? 0.3 : 1.0
                 ctx.fillText(label, canvas.width / 2, canvas.height / 2)
 
                 const texture = new THREE.CanvasTexture(canvas)
-                const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
+                const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: nodeOpacity })
                 const sprite = new THREE.Sprite(spriteMat)
                 const spriteWidth = Math.min(32, labelLen * 1.8)
                 sprite.scale.set(spriteWidth, 5, 1)
@@ -633,6 +661,12 @@ export default function Graph3D({ embedded = false }) {
                   const idx = filteredData.links.indexOf(link)
                   return highlightLinks.has(idx) ? 2.5 : 0.3
                 }
+                // 이웃 노드로 가는 확장 링크는 가늘게
+                if (filteredData?.neighborNodeIds?.size > 0) {
+                  const srcIsNeighbor = filteredData.neighborNodeIds.has(getLinkSourceId(link))
+                  const tgtIsNeighbor = filteredData.neighborNodeIds.has(getLinkTargetId(link))
+                  if (srcIsNeighbor || tgtIsNeighbor) return 0.6
+                }
                 return 1.5
               }}
               linkOpacity={0.6}
@@ -645,6 +679,20 @@ export default function Graph3D({ embedded = false }) {
                 return `${src?.code || '?'} → ${LINK_TYPE_LABELS[link.link_type] || link.link_type} → ${tgt?.code || '?'}\n${link.rationale || ''}`
               }}
               onNodeClick={focusNode}
+              onNodeHover={(node, prevNode) => {
+                // 이전 호버된 이웃 노드 → 반투명 복원
+                if (prevNode?.__threeObj && filteredData?.neighborNodeIds?.has(prevNode.id)) {
+                  prevNode.__threeObj.children.forEach(child => {
+                    if (child.material) child.material.opacity = 0.25
+                  })
+                }
+                // 현재 호버된 이웃 노드 → 불투명 전환
+                if (node?.__threeObj && filteredData?.neighborNodeIds?.has(node.id)) {
+                  node.__threeObj.children.forEach(child => {
+                    if (child.material) child.material.opacity = 0.9
+                  })
+                }
+              }}
               onLinkHover={(link) => setHoveredLink(link || null)}
               backgroundColor="#111827"
               showNavInfo={false}
