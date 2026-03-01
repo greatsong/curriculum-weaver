@@ -30,7 +30,8 @@ export const useSessionStore = create((set, get) => ({
       const data = await apiGet(`/api/sessions/${sessionId}`)
       set({ currentSession: data, loading: false })
     } catch (err) {
-      set({ error: err.message, loading: false })
+      set({ error: err.message, loading: false, currentSession: null })
+      return { notFound: true }
     }
   },
 
@@ -48,7 +49,10 @@ export const useSessionStore = create((set, get) => ({
 
   updateStage: async (sessionId, stage) => {
     const data = await apiPut(`/api/sessions/${sessionId}`, { current_stage: stage })
-    set({ currentSession: data })
+    set((state) => ({
+      currentSession: data,
+      sessions: state.sessions.map((s) => s.id === sessionId ? data : s),
+    }))
     // 다른 사용자에게 단계 변경 브로드캐스트
     socket.emit('stage_changed', { sessionId, stage })
     return data
@@ -56,13 +60,23 @@ export const useSessionStore = create((set, get) => ({
 
   archiveSession: async (sessionId) => {
     const data = await apiPut(`/api/sessions/${sessionId}`, { status: 'archived' })
-    set((state) => ({ sessions: state.sessions.filter((s) => s.id !== sessionId) }))
+    const { statusFilter } = get()
+    set((state) => ({
+      sessions: statusFilter === 'active'
+        ? state.sessions.filter((s) => s.id !== sessionId)
+        : state.sessions.map((s) => s.id === sessionId ? data : s),
+    }))
     return data
   },
 
   restoreSession: async (sessionId) => {
     const data = await apiPut(`/api/sessions/${sessionId}`, { status: 'active' })
-    set((state) => ({ sessions: state.sessions.filter((s) => s.id !== sessionId) }))
+    const { statusFilter } = get()
+    set((state) => ({
+      sessions: statusFilter === 'archived'
+        ? state.sessions.filter((s) => s.id !== sessionId)
+        : state.sessions.map((s) => s.id === sessionId ? data : s),
+    }))
     return data
   },
 
