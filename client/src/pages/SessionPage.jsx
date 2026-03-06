@@ -13,6 +13,7 @@ import PrinciplePanel from '../components/PrinciplePanel'
 import MemberList from '../components/MemberList'
 import StandardSearch from '../components/StandardSearch'
 import ReportDownload from '../components/ReportDownload'
+import MaterialUploadBar from '../components/MaterialUploadBar'
 import Tutorial from '../components/Tutorial'
 
 // 참여자 정보 입력 모달 (초대 코드로 참여 시)
@@ -93,7 +94,7 @@ export default function SessionPage() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
   const { currentSession, fetchSession, updateStage, setMembers } = useSessionStore()
-  const { loadBoards, loadStandards, loadMaterials, loadPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset } = useStageStore()
+  const { loadBoards, loadStandards, loadMaterials, loadPrinciples, loadGeneralPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset } = useStageStore()
   const { loadMessages, subscribe, unsubscribe, boardSuggestions, requestStageIntro } = useChatStore()
   const [showStandardSearch, setShowStandardSearch] = useState(false)
   const [showTutorial, setShowTutorial] = useState(
@@ -112,6 +113,7 @@ export default function SessionPage() {
   useEffect(() => {
     fetchSession(sessionId)
     loadMessages(sessionId)
+    loadGeneralPrinciples()
   }, [sessionId])
 
   // 소켓 연결 (닉네임 확정 후)
@@ -271,6 +273,9 @@ export default function SessionPage() {
           <HelpCircle size={18} />
         </button>
       </header>
+
+      {/* 자료 관리 바 */}
+      <MaterialUploadBar sessionId={sessionId} />
 
       {/* 단계 네비게이션 */}
       <StageNav

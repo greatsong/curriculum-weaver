@@ -1,7 +1,7 @@
 import { Router } from 'express'
 // import { requireAuth } from '../middleware/auth.js'  // 나중에 다시 활성화
 import { buildAIResponse, buildStageIntroResponse } from '../services/aiAgent.js'
-import { Sessions, Messages, Boards, Materials, Principles } from '../lib/store.js'
+import { Sessions, Messages, Boards, Materials, Principles, GeneralPrinciples } from '../lib/store.js'
 import { SSE_EVENTS } from 'curriculum-weaver-shared/constants.js'
 
 /**
@@ -167,8 +167,12 @@ chatRouter.post('/message', async (req, res) => {
       stage,
     }
 
-    // 사용된 원칙 ID 추적
-    const principlesUsed = principles.map((p) => p.id)
+    // 사용된 원칙 ID 추적 (총괄 원리 + 단계별 원리)
+    const generalPrinciples = GeneralPrinciples.list()
+    const principlesUsed = [
+      ...generalPrinciples.map((gp) => gp.id),
+      ...principles.map((p) => p.id),
+    ]
 
     // 적용된 원칙 전송
     if (principlesUsed.length > 0) {

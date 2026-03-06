@@ -117,6 +117,59 @@ export const BOARD_TYPE_LABELS = {
   improvements: '개선 사항',
 }
 
+// 단계별 활동 설명 (DesignBoard 상단 배너용)
+export const STAGE_ACTIVITIES = {
+  1: {
+    activity: '팀 비전·설계 방향·협력 방식 설정',
+    description: '팀의 교육적 비전을 공유하고, 수업설계 방향을 합의하며, 협력 방식을 결정합니다.',
+  },
+  2: {
+    activity: '역할·규칙·일정 등 팀 활동 환경 조성',
+    description: '팀원 역할을 배분하고, Ground Rule을 설정하며, 설계 활동 일정을 수립합니다.',
+  },
+  3: {
+    activity: '주제 선정 기준 설정 및 최종 주제 선정',
+    description: '주제 선정 기준을 마련하고, 브레인스토밍을 통해 최종 수업 주제를 선정합니다.',
+  },
+  4: {
+    activity: '내용·기능 요소 분석 및 통합 수업목표 설정',
+    description: '교과별 성취기준과 내용·기능 요소를 분석하고, 통합된 수업목표를 진술합니다.',
+  },
+  5: {
+    activity: '문제 상황 설정 및 교수학습 활동 설계',
+    description: '실세계 기반 문제 상황을 설정하고, 이를 해결하기 위한 학습활동 흐름을 설계합니다.',
+  },
+  6: {
+    activity: '도구·스캐폴딩·과정중심평가 설계',
+    description: '학습 도구를 선정하고, 스캐폴딩 전략과 과정중심평가 계획을 수립합니다.',
+  },
+  7: {
+    activity: '수업 자료 수집 및 개발',
+    description: '교수학습 활동에 필요한 자료를 수집하고, 워크시트 등 교수학습 자료를 개발합니다.',
+  },
+  8: {
+    activity: '수업 실행 및 기록',
+    description: '설계한 수업을 실행하고, 학생 반응·변수·에피소드 등을 기록합니다.',
+  },
+  9: {
+    activity: '수업 성찰 및 수시 평가·환류',
+    description: '수업 과정과 결과를 성찰·평가하고, 개선사항을 도출하여 설계안을 수정합니다.',
+  },
+  10: {
+    activity: '팀 활동 종합 성찰 및 평가',
+    description: '협력적 수업설계 전체 과정을 종합적으로 성찰·평가하고, 차후 개선사항을 공유합니다.',
+  },
+}
+
+// 자료 카테고리 (파일 업로드용)
+export const MATERIAL_CATEGORIES = [
+  { id: 'standard', label: '성취기준' },
+  { id: 'textbook', label: '교과서' },
+  { id: 'guide', label: '지도서' },
+  { id: 'reference', label: '참고자료' },
+  { id: 'website', label: '참고사이트' },
+]
+
 // 성취기준 연결 유형
 export const LINK_TYPES = {
   prerequisite: '선수 학습',

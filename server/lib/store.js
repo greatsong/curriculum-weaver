@@ -5,6 +5,7 @@
  */
 import crypto from 'crypto'
 import { PRINCIPLES } from '../data/principles.js'
+import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
 import { DEMO_STANDARDS, DEMO_LINKS } from '../data/standards.js'
 import { SEED_SESSIONS } from '../data/seedSessions.js'
 
@@ -25,13 +26,19 @@ const messages = new Map()          // sessionId -> [message]
 const boards = new Map()            // `${sessionId}:${stage}:${boardType}` -> board
 const materials = new Map()         // sessionId -> [material]
 const principles = new Map()        // principleId -> principle
+const generalPrinciples = new Map() // gpId -> generalPrinciple
 const standards = new Map()         // standardId -> standard
 const standardLinks = new Map()     // linkId -> link
 const sessionStandards = new Map()  // sessionId -> [{ standard_id, is_primary }]
 
 // ─── 초기 데이터 로드 ───
 export function initStore() {
-  // 40개 원칙 로드
+  // 총괄 원리 로드
+  for (const gp of GENERAL_PRINCIPLES) {
+    generalPrinciples.set(gp.id, { ...gp })
+  }
+
+  // 단계별 원칙 로드
   for (const p of PRINCIPLES) {
     principles.set(p.id, { ...p, is_active: true, version: 1, created_at: new Date().toISOString() })
   }
@@ -115,7 +122,7 @@ export function initStore() {
     }
   }
 
-  console.log(`  초기 데이터: 원칙 ${principles.size}개, 성취기준 ${standards.size}개, 연결 ${standardLinks.size}개, 세션 ${sessions.size}개`)
+  console.log(`  초기 데이터: 총괄원리 ${generalPrinciples.size}개, 단계별원칙 ${principles.size}개, 성취기준 ${standards.size}개, 연결 ${standardLinks.size}개, 세션 ${sessions.size}개`)
   return [...sessions.keys()][0]
 }
 
@@ -258,7 +265,13 @@ export const Materials = {
   },
 }
 
-// ─── 원칙 ───
+// ─── 총괄 원리 ───
+export const GeneralPrinciples = {
+  list: () => [...generalPrinciples.values()],
+  get: (id) => generalPrinciples.get(id) || null,
+}
+
+// ─── 단계별 원칙 ───
 export const Principles = {
   list: (stage) => {
     const all = [...principles.values()].filter((p) => p.is_active)

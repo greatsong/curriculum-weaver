@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { apiGet, apiPost, apiPut } from '../lib/api'
+import { apiGet, apiPost, apiPut, apiUploadFile } from '../lib/api'
 import { socket } from '../lib/socket'
 
 export const useStageStore = create((set, get) => ({
@@ -7,6 +7,7 @@ export const useStageStore = create((set, get) => ({
   standards: [],
   materials: [],
   principles: [],
+  generalPrinciples: [],
   loading: false,
 
   // 단계별 보드 로드
@@ -87,7 +88,29 @@ export const useStageStore = create((set, get) => ({
     }
   },
 
-  // 원칙 로드
+  // 파일 업로드
+  uploadMaterial: async (sessionId, file, category) => {
+    const data = await apiUploadFile('/api/materials/upload', file, {
+      session_id: sessionId,
+      category: category || 'reference',
+    })
+    set((state) => ({ materials: [...state.materials, data] }))
+    return data
+  },
+
+  // URL 자료 추가
+  addUrlMaterial: async (sessionId, url, category, title) => {
+    const data = await apiPost('/api/materials/url', {
+      session_id: sessionId,
+      url,
+      category: category || 'website',
+      title: title || '',
+    })
+    set((state) => ({ materials: [...state.materials, data] }))
+    return data
+  },
+
+  // 단계별 원칙 로드
   loadPrinciples: async (stage) => {
     try {
       const data = await apiGet('/api/principles', { stage })
@@ -97,9 +120,19 @@ export const useStageStore = create((set, get) => ({
     }
   },
 
+  // 총괄 원리 로드 (세션 진입 시 1회)
+  loadGeneralPrinciples: async () => {
+    try {
+      const data = await apiGet('/api/principles/general')
+      set({ generalPrinciples: data })
+    } catch {
+      set({ generalPrinciples: [] })
+    }
+  },
+
   reset: () => {
     const handler = get()._boardHandler
     if (handler) socket.off('board_changed', handler)
-    set({ boards: {}, standards: [], materials: [], principles: [], _boardHandler: null })
+    set({ boards: {}, standards: [], materials: [], principles: [], generalPrinciples: [], _boardHandler: null })
   },
 }))

@@ -6,6 +6,7 @@ import SessionPage from './pages/SessionPage'
 import DataManage from './pages/DataManage'
 
 const GraphPage = lazy(() => import('./pages/GraphPage'))
+const IntroPage = lazy(() => import('./pages/IntroPage'))
 
 // 테스트 모드: 로그인 없이 바로 사용
 // ProtectedRoute는 나중에 Supabase Auth 활성화 시 다시 사용
@@ -16,11 +17,19 @@ const GraphPage = lazy(() => import('./pages/GraphPage'))
 //   return children
 // }
 
+// 첫 방문 시 /intro로 리다이렉트
+function HomeRoute() {
+  const introDone = localStorage.getItem('cw_intro_done')
+  if (!introDone) return <Navigate to="/intro" replace />
+  return <Dashboard />
+}
+
 export default function App() {
   return (
     <Suspense fallback={null}>
       <Routes>
-        <Route path="/" element={<Dashboard />} />
+        <Route path="/" element={<HomeRoute />} />
+        <Route path="/intro" element={<IntroPage />} />
         <Route path="/session/:sessionId" element={<SessionPage />} />
         <Route path="/data" element={<DataManage />} />
         <Route path="/graph" element={<GraphPage />} />

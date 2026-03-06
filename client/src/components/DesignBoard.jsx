@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { STAGES, PHASES, BOARD_TYPES, BOARD_TYPE_LABELS } from 'curriculum-weaver-shared/constants.js'
+import { STAGES, PHASES, BOARD_TYPES, BOARD_TYPE_LABELS, STAGE_ACTIVITIES } from 'curriculum-weaver-shared/constants.js'
 import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
 import { useStageStore } from '../stores/stageStore'
 import { useChatStore } from '../stores/chatStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { socket } from '../lib/socket'
-import { FileText, Check, X, Edit3, MessageSquarePlus, Plus, Trash2 } from 'lucide-react'
+import { FileText, Check, X, Edit3, MessageSquarePlus, Plus, Trash2, Lightbulb } from 'lucide-react'
 
 export default function DesignBoard({ sessionId, stage }) {
   const { boards, loading, updateBoard } = useStageStore()
@@ -42,6 +42,17 @@ export default function DesignBoard({ sessionId, stage }) {
         </h2>
         <p className="text-sm text-gray-500 mt-1">{stageInfo?.description}</p>
       </div>
+
+      {/* 활동 설명 배너 */}
+      {STAGE_ACTIVITIES[stage] && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+          <Lightbulb size={18} className="text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <h3 className="text-sm font-semibold text-amber-900">{STAGE_ACTIVITIES[stage].activity}</h3>
+            <p className="text-sm text-amber-700 mt-0.5">{STAGE_ACTIVITIES[stage].description}</p>
+          </div>
+        </div>
+      )}
 
       {/* 보드 카드들 */}
       {boardTypes.map((boardType) => {
