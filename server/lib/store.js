@@ -6,7 +6,7 @@
 import crypto from 'crypto'
 import { PRINCIPLES } from '../data/principles.js'
 import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
-import { DEMO_STANDARDS, DEMO_LINKS } from '../data/standards.js'
+import { ALL_STANDARDS, ALL_LINKS } from '../data/standards.js'
 import { SEED_SESSIONS } from '../data/seedSessions.js'
 
 function uuid() {
@@ -44,13 +44,13 @@ export function initStore() {
   }
 
   // 성취기준 로드
-  for (const s of DEMO_STANDARDS) {
+  for (const s of ALL_STANDARDS) {
     const id = uuid()
     standards.set(id, { id, ...s, created_at: new Date().toISOString() })
   }
 
   // 성취기준 간 연결 로드
-  for (const link of DEMO_LINKS) {
+  for (const link of ALL_LINKS) {
     const sourceStd = [...standards.values()].find((s) => s.code === link.source)
     const targetStd = [...standards.values()].find((s) => s.code === link.target)
     if (sourceStd && targetStd) {
@@ -293,17 +293,21 @@ export const Principles = {
 export const Standards = {
   list: () => [...standards.values()],
 
-  search: ({ q, subject, grade }) => {
+  search: ({ q, subject, grade, domain, school_level, curriculum_category }) => {
     let results = [...standards.values()]
     if (subject) results = results.filter((s) => s.subject === subject)
     if (grade) results = results.filter((s) => s.grade_group === grade)
+    if (domain) results = results.filter((s) => s.domain === domain)
+    if (school_level) results = results.filter((s) => s.school_level === school_level)
+    if (curriculum_category) results = results.filter((s) => s.curriculum_category === curriculum_category)
     if (q) {
       const query = q.toLowerCase()
       results = results.filter((s) =>
         s.content.toLowerCase().includes(query) ||
         s.code.toLowerCase().includes(query) ||
         (s.keywords || []).some((k) => k.toLowerCase().includes(query)) ||
-        s.area.toLowerCase().includes(query)
+        s.area.toLowerCase().includes(query) ||
+        (s.explanation || '').toLowerCase().includes(query)
       )
     }
     return results.slice(0, 50)
@@ -316,6 +320,12 @@ export const Standards = {
   subjects: () => [...new Set([...standards.values()].map((s) => s.subject))].sort(),
 
   gradeGroups: () => [...new Set([...standards.values()].map((s) => s.grade_group))].sort(),
+
+  domains: () => [...new Set([...standards.values()].map((s) => s.domain).filter(Boolean))].sort(),
+
+  schoolLevels: () => [...new Set([...standards.values()].map((s) => s.school_level).filter(Boolean))].sort(),
+
+  categories: () => [...new Set([...standards.values()].map((s) => s.curriculum_category).filter(Boolean))].sort(),
 
   addBulk: (items) => {
     const added = []
@@ -351,9 +361,14 @@ export const StandardLinks = {
       id: s.id,
       code: s.code,
       subject: s.subject,
+      subject_group: s.subject_group || s.subject,
       grade_group: s.grade_group,
       area: s.area,
       content: s.content,
+      domain: s.domain || '',
+      school_level: s.school_level || '',
+      curriculum_category: s.curriculum_category || '',
+      explanation: s.explanation || '',
     }))
     const links = [...standardLinks.values()].map((l) => ({
       source: l.source_id,

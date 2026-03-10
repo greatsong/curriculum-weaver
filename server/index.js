@@ -4,7 +4,8 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 import helmet from 'helmet'
 import cors from 'cors'
-import { initStore, Messages } from './lib/store.js'
+import { initStore, Messages, Standards } from './lib/store.js'
+import { precomputeEmbeddings } from './services/embeddings.js'
 import { sessionsRouter } from './routes/sessions.js'
 import { chatRouter } from './routes/chat.js'
 import { materialsRouter } from './routes/materials.js'
@@ -16,6 +17,9 @@ import { reportRouter } from './routes/report.js'
 // 인메모리 스토어 초기화
 const defaultSessionId = initStore()
 console.log(`  기본 세션 ID: ${defaultSessionId}`)
+
+// 임베딩 사전 계산 (파일 캐시 있으면 즉시, 없으면 백그라운드)
+precomputeEmbeddings(Standards.list())
 
 const app = express()
 const server = createServer(app)

@@ -8,11 +8,17 @@ import { Search, X, RotateCcw, ChevronLeft, ChevronRight, Link2, Send, MessageCi
 import { apiGet, apiPost, API_BASE } from '../lib/api'
 import Logo from './Logo'
 
+// 교과군(subject_group) 기준 색상 매핑
 const SUBJECT_COLORS = {
-  '과학': '#22c55e', '수학': '#3b82f6', '국어': '#ef4444', '사회': '#eab308',
-  '기술·가정': '#a855f7', '미술': '#ec4899', '도덕': '#f97316', '정보': '#06b6d4',
-  '체육': '#84cc16', '음악': '#8b5cf6', '영어': '#6366f1', '실과': '#14b8a6',
+  '과학': '#22c55e', '수학': '#3b82f6', '국어': '#ef4444',
+  '사회': '#eab308', '도덕': '#f97316',
+  '기술·가정': '#a855f7', '정보': '#06b6d4',
+  '실과(기술·가정)/정보': '#a855f7', '실과': '#14b8a6',
+  '미술': '#ec4899', '체육': '#84cc16', '음악': '#8b5cf6',
+  '영어': '#6366f1', '제2외국어': '#0891b2', '한문': '#14b8a6',
 }
+// 교과군 표시명 (UI용)
+const SUBJECT_GROUP_LABELS = {}
 
 const LINK_TYPE_LABELS = {
   cross_subject: '교과연계', same_concept: '동일개념', prerequisite: '선수학습',
@@ -110,11 +116,11 @@ export default function Graph3D({ embedded = false }) {
     }
   }, [])
 
-  // 노드 ID → 교과 매핑
+  // 노드 ID → 교과군 매핑 (교과 간 연결 판단용)
   const nodeSubjectMap = useMemo(() => {
     if (!graphData) return new Map()
     const map = new Map()
-    graphData.nodes.forEach(n => map.set(n.id, n.subject))
+    graphData.nodes.forEach(n => map.set(n.id, n.subject_group || n.subject))
     return map
   }, [graphData])
 
@@ -133,7 +139,7 @@ export default function Graph3D({ embedded = false }) {
 
     // 멀티 과목 필터
     if (selectedSubjects.size > 0) {
-      const selNodeIds = new Set(nodes.filter(n => selectedSubjects.has(n.subject)).map(n => n.id))
+      const selNodeIds = new Set(nodes.filter(n => selectedSubjects.has(n.subject_group || n.subject)).map(n => n.id))
 
       // 선택 과목 노드 사이의 코어 연결
       let coreLinks = links.filter(l => selNodeIds.has(getLinkSourceId(l)) && selNodeIds.has(getLinkTargetId(l)))
@@ -242,9 +248,10 @@ export default function Graph3D({ embedded = false }) {
     return () => clearTimeout(timer)
   }, [sortedSearchResults])
 
+  // 교과군 목록 (필터 버튼용 — 118개 세부과목이 아닌 11개 교과군)
   const subjects = useMemo(() => {
     if (!graphData) return []
-    return [...new Set(graphData.nodes.map(n => n.subject))].sort()
+    return [...new Set(graphData.nodes.map(n => n.subject_group || n.subject))].sort()
   }, [graphData])
 
   const listItems = useMemo(() => {
@@ -258,7 +265,7 @@ export default function Graph3D({ embedded = false }) {
         n.grade_group?.toLowerCase().includes(q)
       )
     }
-    if (selectedSubjects.size > 0) items = items.filter(n => selectedSubjects.has(n.subject))
+    if (selectedSubjects.size > 0) items = items.filter(n => selectedSubjects.has(n.subject_group || n.subject))
     return [...items].sort((a, b) => a.subject.localeCompare(b.subject) || a.code.localeCompare(b.code))
   }, [graphData, searchQuery, selectedSubjects])
 
@@ -582,7 +589,7 @@ export default function Graph3D({ embedded = false }) {
                 }`}
                 style={isActive ? { backgroundColor: SUBJECT_COLORS[s] + '33' } : undefined}>
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: SUBJECT_COLORS[s] || '#9ca3af' }} />
-                {s}
+                {SUBJECT_GROUP_LABELS[s] || s}
               </button>
             )
           })}
@@ -609,7 +616,7 @@ export default function Graph3D({ embedded = false }) {
                 const isNeighbor = filteredData?.neighborNodeIds?.has(node.id)
                 const color = selectedNode?.id === node.id ? '#ffffff'
                   : (hasSearch && highlightNodes.size > 0 && !highlightNodes.has(node.id))
-                    ? '#374151' : SUBJECT_COLORS[node.subject] || '#9ca3af'
+                    ? '#374151' : SUBJECT_COLORS[node.subject_group] || '#9ca3af'
                 const count = linkCountMap.get(node.id) || 0
                 const size = Math.max(3, count * 2.5)
                 const isSelected = selectedNode?.id === node.id
@@ -719,13 +726,13 @@ export default function Graph3D({ embedded = false }) {
                 </div>
                 <div className="flex items-center gap-2 text-xs mb-1.5">
                   <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SUBJECT_COLORS[src?.subject] || '#9ca3af' }} />
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SUBJECT_COLORS[src?.subject_group] || '#9ca3af' }} />
                     <span className="font-mono text-blue-400">{src?.code}</span>
                     <span className="text-gray-500">{src?.subject}</span>
                   </span>
                   <span className="text-gray-500">↔</span>
                   <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SUBJECT_COLORS[tgt?.subject] || '#9ca3af' }} />
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SUBJECT_COLORS[tgt?.subject_group] || '#9ca3af' }} />
                     <span className="font-mono text-blue-400">{tgt?.code}</span>
                     <span className="text-gray-500">{tgt?.subject}</span>
                   </span>
@@ -934,7 +941,7 @@ export default function Graph3D({ embedded = false }) {
                           isSelected ? 'bg-blue-900/40 border-l-2 border-blue-400' : 'hover:bg-gray-700/50 border-l-2 border-transparent'
                         }`}>
                         <div className="flex items-center gap-2">
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: SUBJECT_COLORS[node.subject] || '#9ca3af' }} />
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: SUBJECT_COLORS[node.subject_group] || '#9ca3af' }} />
                           <span className="font-mono text-xs font-bold text-blue-400">{node.code}</span>
                           <span className="text-[10px] text-gray-500">{node.subject}</span>
                           {count > 0 && (
@@ -1080,7 +1087,7 @@ export default function Graph3D({ embedded = false }) {
               <div className="flex items-center gap-2">
                 <span className="font-mono text-sm font-bold text-blue-400">{selectedNode.code}</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-medium text-white"
-                  style={{ backgroundColor: SUBJECT_COLORS[selectedNode.subject] || '#9ca3af' }}>
+                  style={{ backgroundColor: SUBJECT_COLORS[selectedNode.subject_group] || '#9ca3af' }}>
                   {selectedNode.subject}
                 </span>
               </div>

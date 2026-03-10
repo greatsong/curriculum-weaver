@@ -1,4 +1,7 @@
 import { UMAP } from 'umap-js'
+import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 
 /**
  * 교육과정 성취기준 임베딩 서비스
@@ -7,11 +10,47 @@ import { UMAP } from 'umap-js'
  * UMAP으로 3D 좌표로 차원 축소합니다.
  *
  * 임베딩은 데이터 변경 시에만 1회 계산 후 캐시됩니다.
+ * 파일 캐시를 사용하여 서버 재시작 시에도 재계산하지 않습니다.
  */
 
-// 캐시
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const CACHE_FILE = path.join(__dirname, '..', 'data', '.embeddings-cache.json')
+
+// 메모리 캐시 (id 기반)
 let cachedCoords = null
 let cachedHash = null
+
+// 파일 캐시 (code 기반 — ID는 서버 재시작마다 변경되므로)
+let fileCacheByCode = null
+
+/**
+ * 파일 캐시에서 임베딩 로드
+ * @returns {{ hash: string, coords: Object<string, {x,y,z}> } | null}
+ */
+function loadFileCache() {
+  try {
+    if (fs.existsSync(CACHE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8'))
+      console.log(`  📦 임베딩 파일 캐시 로드: ${Object.keys(data.coords).length}개 좌표`)
+      return data
+    }
+  } catch (e) {
+    console.warn('  임베딩 캐시 파일 읽기 실패:', e.message)
+  }
+  return null
+}
+
+/**
+ * 파일 캐시에 임베딩 저장
+ */
+function saveFileCache(hash, coordsByCode) {
+  try {
+    fs.writeFileSync(CACHE_FILE, JSON.stringify({ hash, coords: coordsByCode }))
+    console.log(`  💾 임베딩 파일 캐시 저장: ${Object.keys(coordsByCode).length}개 좌표`)
+  } catch (e) {
+    console.warn('  임베딩 캐시 파일 저장 실패:', e.message)
+  }
+}
 
 /**
  * 한국어 텍스트에서 의미 있는 토큰을 추출
@@ -94,10 +133,29 @@ function cosineDistance(a, b) {
 export function computeEmbedding3D(standards) {
   if (standards.length < 5) return new Map()
 
-  // 해시로 캐시 확인
+  // 해시 계산 (code 기반 — ID는 매번 변경됨)
   const hash = standards.map(s => s.code).sort().join(',')
+
+  // 1. 메모리 캐시 확인
   if (cachedHash === hash && cachedCoords) {
     return cachedCoords
+  }
+
+  // 2. 파일 캐시 확인 (code → coords)
+  if (!fileCacheByCode) {
+    fileCacheByCode = loadFileCache()
+  }
+  if (fileCacheByCode && fileCacheByCode.hash === hash) {
+    console.log('  ✅ 파일 캐시에서 임베딩 복원 (재계산 불필요)')
+    const result = new Map()
+    for (const s of standards) {
+      const coord = fileCacheByCode.coords[s.code]
+      if (coord) result.set(s.id, coord)
+    }
+    // 메모리 캐시에도 저장
+    cachedCoords = result
+    cachedHash = hash
+    return result
   }
 
   console.time('임베딩 3D 계산')
@@ -111,6 +169,7 @@ export function computeEmbedding3D(standards) {
     const areaTokens = Array(2).fill(s.area).flatMap(tokenize)
     return {
       id: s.id,
+      code: s.code,
       tokens: [...contentTokens, ...keywordTokens, ...subjectTokens, ...areaTokens],
       subject: s.subject,
       area: s.area,
@@ -142,21 +201,49 @@ export function computeEmbedding3D(standards) {
   })
 
   const result = new Map()
+  const coordsByCode = {}
   standards.forEach((s, i) => {
     const [x, y, z] = coords3D[i]
-    result.set(s.id, {
+    const coord = {
       x: ((x - mins[0]) / (maxs[0] - mins[0] || 1) - 0.5) * 2 * scale,
       y: ((y - mins[1]) / (maxs[1] - mins[1] || 1) - 0.5) * 2 * scale,
       z: ((z - mins[2]) / (maxs[2] - mins[2] || 1) - 0.5) * 2 * scale,
-    })
+    }
+    result.set(s.id, coord)
+    coordsByCode[s.code] = coord
   })
 
-  // 캐시 저장
+  // 메모리 캐시 저장
   cachedCoords = result
   cachedHash = hash
 
+  // 파일 캐시 저장 (code 기반 — 서버 재시작해도 유지)
+  saveFileCache(hash, coordsByCode)
+  fileCacheByCode = { hash, coords: coordsByCode }
+
   console.timeEnd('임베딩 3D 계산')
   return result
+}
+
+/**
+ * 서버 시작 시 임베딩 백그라운드 사전 계산
+ */
+export function precomputeEmbeddings(standards) {
+  // 파일 캐시가 있으면 즉시 반환
+  const fileCache = loadFileCache()
+  const hash = standards.map(s => s.code).sort().join(',')
+  if (fileCache && fileCache.hash === hash) {
+    fileCacheByCode = fileCache
+    console.log('  ✅ 임베딩 캐시 유효 — 사전 계산 불필요')
+    return
+  }
+
+  // 캐시가 없으면 백그라운드에서 계산
+  console.log('  🔄 임베딩 백그라운드 사전 계산 시작...')
+  setImmediate(() => {
+    computeEmbedding3D(standards)
+    console.log('  ✅ 임베딩 백그라운드 사전 계산 완료')
+  })
 }
 
 /**
@@ -165,4 +252,9 @@ export function computeEmbedding3D(standards) {
 export function invalidateEmbeddingCache() {
   cachedCoords = null
   cachedHash = null
+  fileCacheByCode = null
+  // 파일 캐시도 삭제
+  try {
+    if (fs.existsSync(CACHE_FILE)) fs.unlinkSync(CACHE_FILE)
+  } catch (e) { /* ignore */ }
 }
