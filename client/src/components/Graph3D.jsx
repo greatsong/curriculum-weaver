@@ -492,9 +492,28 @@ export default function Graph3D({ embedded = false }) {
           context: {
             selectedNode: selectedNode ? {
               code: selectedNode.code, subject: selectedNode.subject,
+              subject_group: selectedNode.subject_group,
               content: selectedNode.content, area: selectedNode.area,
+              grade_group: selectedNode.grade_group,
             } : null,
-            filterSubject: selectedSubjects.size > 0 ? [...selectedSubjects].join(', ') : null,
+            filterSubjects: selectedSubjects.size > 0 ? [...selectedSubjects] : null,
+            schoolLevel: selectedSchoolLevels.size > 0 ? [...selectedSchoolLevels] : null,
+            // 현재 그래프에 보이는 노드와 연결 전달
+            visibleNodes: filteredData ? filteredData.nodes.map(n => ({
+              code: n.code, subject: n.subject, subject_group: n.subject_group,
+              content: n.content, area: n.area, grade_group: n.grade_group,
+              school_level: n.school_level,
+            })) : null,
+            visibleLinks: filteredData ? filteredData.links.map(link => {
+              const srcId = getLinkSourceId(link)
+              const tgtId = getLinkTargetId(link)
+              const src = graphData?.nodes.find(n => n.id === srcId)
+              const tgt = graphData?.nodes.find(n => n.id === tgtId)
+              return {
+                source: src?.code, target: tgt?.code,
+                link_type: link.link_type, rationale: link.rationale,
+              }
+            }).filter(l => l.source && l.target) : null,
             neighborCodes: selectedNode ? selectedLinks.map(link => {
               const srcId = getLinkSourceId(link)
               const tgtId = getLinkTargetId(link)
