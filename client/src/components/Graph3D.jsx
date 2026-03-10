@@ -507,8 +507,9 @@ export default function Graph3D({ embedded = false }) {
       })
 
       if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}))
         setChatStreaming(false)
-        setChatMessages(prev => [...prev, { role: 'assistant', content: '오류가 발생했습니다.' }])
+        setChatMessages(prev => [...prev, { role: 'assistant', content: `⚠️ 서버 오류 (${res.status}): ${errBody.error || '응답을 생성할 수 없습니다.'}` }])
         return
       }
 
@@ -535,8 +536,16 @@ export default function Graph3D({ embedded = false }) {
               setChatStreamingText(prev => prev + parsed.content)
             } else if (parsed.type === 'new_links') {
               setSuggestedLinks(prev => [...prev, ...parsed.links])
+            } else if (parsed.type === 'error') {
+              console.error('AI 채팅 서버 오류:', parsed.message)
+              setChatStreaming(false)
+              setChatStreamingText('')
+              setChatMessages(prev => [...prev, { role: 'assistant', content: `⚠️ ${parsed.message || '서버 오류가 발생했습니다.'}` }])
+              return
             }
-          } catch {}
+          } catch (parseErr) {
+            console.warn('SSE 파싱 실패:', data, parseErr)
+          }
         }
       }
 
@@ -553,7 +562,7 @@ export default function Graph3D({ embedded = false }) {
       console.error('AI 채팅 오류:', err)
       setChatStreaming(false)
       setChatStreamingText('')
-      setChatMessages(prev => [...prev, { role: 'assistant', content: '네트워크 오류가 발생했습니다.' }])
+      setChatMessages(prev => [...prev, { role: 'assistant', content: `⚠️ 네트워크 오류: ${err.message || '서버에 연결할 수 없습니다.'}` }])
     }
   }
 
