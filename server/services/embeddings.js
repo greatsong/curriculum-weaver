@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url'
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const CACHE_FILE = path.join(__dirname, '..', 'data', '.embeddings-cache.json')
+const CACHE_FILE = path.join(__dirname, '..', 'data', 'embeddings-cache.json')
 
 // 메모리 캐시 (id 기반)
 let cachedCoords = null
@@ -238,7 +238,13 @@ export function precomputeEmbeddings(standards) {
     return
   }
 
-  // 캐시가 없으면 백그라운드에서 계산
+  // Production에서는 메모리 부족 위험 → 캐시 없으면 건너뜀
+  if (process.env.NODE_ENV === 'production') {
+    console.log('  ⚠️ 임베딩 캐시 없음 — production에서 UMAP 계산 건너뜀 (메모리 절약)')
+    return
+  }
+
+  // 개발 환경: 백그라운드에서 계산
   console.log('  🔄 임베딩 백그라운드 사전 계산 시작...')
   setImmediate(() => {
     computeEmbedding3D(standards)
