@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: curriculum-weaver-server
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CLIENT_URL
+        value: https://curriculum-weaver.vercel.app
+      - key: ANTHROPIC_API_KEY
+        sync: false

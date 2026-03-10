@@ -6,7 +6,9 @@
 import crypto from 'crypto'
 import { PRINCIPLES } from '../data/principles.js'
 import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
-import { ALL_STANDARDS, ALL_LINKS } from '../data/standards.js'
+import { ALL_STANDARDS } from '../data/standards.js'
+import { SOCIAL_STANDARDS } from '../data/standards_social.js'
+import { GENERATED_LINKS } from '../data/generatedLinks.js'
 import { SEED_SESSIONS } from '../data/seedSessions.js'
 
 function uuid() {
@@ -43,16 +45,23 @@ export function initStore() {
     principles.set(p.id, { ...p, is_active: true, version: 1, created_at: new Date().toISOString() })
   }
 
-  // 성취기준 로드
-  for (const s of ALL_STANDARDS) {
+  // 성취기준 로드 (중복 코드 제거 + 사회 데이터 통합)
+  const seenCodes = new Set()
+  const socialFixed = SOCIAL_STANDARDS.map(s => ({ ...s, subject_group: '사회' }))
+  const mergedStandards = [...ALL_STANDARDS, ...socialFixed]
+  for (const s of mergedStandards) {
+    if (seenCodes.has(s.code)) continue
+    seenCodes.add(s.code)
     const id = uuid()
     standards.set(id, { id, ...s, created_at: new Date().toISOString() })
   }
 
-  // 성취기준 간 연결 로드
-  for (const link of ALL_LINKS) {
-    const sourceStd = [...standards.values()].find((s) => s.code === link.source)
-    const targetStd = [...standards.values()].find((s) => s.code === link.target)
+  // 성취기준 간 연결 로드 (코드→ID 맵으로 O(1) 조회)
+  const codeToId = new Map()
+  for (const [id, s] of standards) codeToId.set(s.code, s)
+  for (const link of GENERATED_LINKS) {
+    const sourceStd = codeToId.get(link.source)
+    const targetStd = codeToId.get(link.target)
     if (sourceStd && targetStd) {
       const id = uuid()
       standardLinks.set(id, {
