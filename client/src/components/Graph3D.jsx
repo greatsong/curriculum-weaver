@@ -345,7 +345,8 @@ export default function Graph3D({ embedded = false }) {
 
   const listItems = useMemo(() => {
     if (!graphData) return []
-    let items = graphData.nodes
+    // 교과 필터가 활성화되었으면 그래프에 실제 표시된 노드만 사용
+    let items = (selectedSubjects.size > 0 && filteredData) ? filteredData.nodes : graphData.nodes
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       items = items.filter(n =>
@@ -354,11 +355,13 @@ export default function Graph3D({ embedded = false }) {
         n.grade_group?.toLowerCase().includes(q)
       )
     }
-    if (selectedSubjects.size > 0) items = items.filter(n => selectedSubjects.has(n.subject_group || n.subject))
-    if (selectedSchoolLevels.size > 0) items = items.filter(n => selectedSchoolLevels.has(n.school_level))
-    if (selectedGradeGroups.size > 0) items = items.filter(n => selectedGradeGroups.has(n.grade_group))
+    // 교과 필터 없을 때만 학교급/학년군 필터 적용 (있을 때는 filteredData에 이미 반영됨)
+    if (selectedSubjects.size === 0) {
+      if (selectedSchoolLevels.size > 0) items = items.filter(n => selectedSchoolLevels.has(n.school_level))
+      if (selectedGradeGroups.size > 0) items = items.filter(n => selectedGradeGroups.has(n.grade_group))
+    }
     return [...items].sort((a, b) => a.subject.localeCompare(b.subject) || a.code.localeCompare(b.code))
-  }, [graphData, searchQuery, selectedSubjects, selectedSchoolLevels, selectedGradeGroups])
+  }, [graphData, filteredData, searchQuery, selectedSubjects, selectedSchoolLevels, selectedGradeGroups])
 
   const linkCountMap = useMemo(() => {
     if (!graphData) return new Map()
@@ -406,33 +409,36 @@ export default function Graph3D({ embedded = false }) {
     return map
   }, [graphData, nodeSubjectMap])
 
-  // 노드로 카메라 이동 (항상 선택)
-  const navigateToNode = useCallback((node) => {
-    setSelectedNode(node)
-    if (fgRef.current) {
-      // 포스 시뮬레이션 후 실제 위치 사용
-      const gd = fgRef.current.graphData?.() || filteredData
-      const realNode = gd?.nodes?.find(n => n.id === node.id) || node
-      const x = realNode.x ?? 0, y = realNode.y ?? 0, z = realNode.z ?? 0
-      const dist = Math.hypot(x, y, z) || 1
-      const ratio = 1 + 120 / dist
-      fgRef.current.cameraPosition({ x: x * ratio, y: y * ratio, z: z * ratio }, { x, y, z }, 1000)
-    }
+  // 노드 근처로 카메라 줌인 (고정 거리 방식)
+  const zoomToNode = useCallback((node) => {
+    if (!fgRef.current) return
+    const gd = fgRef.current.graphData?.() || filteredData
+    const realNode = gd?.nodes?.find(n => n.id === node.id) || node
+    const x = realNode.x ?? 0, y = realNode.y ?? 0, z = realNode.z ?? 0
+    const dist = Math.hypot(x, y, z) || 1
+    // 카메라를 노드 앞 고정 거리(60)에 배치 — 노드 방향에서 바라봄
+    const camDist = 60
+    const nx = x / dist, ny = y / dist, nz = z / dist // 방향 단위벡터
+    fgRef.current.cameraPosition(
+      { x: x + nx * camDist, y: y + ny * camDist, z: z + nz * camDist },
+      { x, y, z }, 800
+    )
   }, [filteredData])
 
+  // 노드로 카메라 이동 (항상 선택 — 리스트 클릭용)
+  const navigateToNode = useCallback((node) => {
+    setSelectedNode(node)
+    zoomToNode(node)
+  }, [zoomToNode])
+
+  // 3D 그래프 노드 클릭 (토글 + 줌인)
   const focusNode = useCallback((node) => {
-    setSelectedNode(prev => prev?.id === node.id ? null : node)
-    if (fgRef.current) {
-      const gd = fgRef.current.graphData?.() || filteredData
-      const realNode = gd?.nodes?.find(n => n.id === node.id) || node
-      const distance = 120
-      const distRatio = 1 + distance / Math.hypot(realNode.x || 0, realNode.y || 0, realNode.z || 0)
-      fgRef.current.cameraPosition(
-        { x: (realNode.x || 0) * distRatio, y: (realNode.y || 0) * distRatio, z: (realNode.z || 0) * distRatio },
-        realNode, 1000
-      )
-    }
-  }, [filteredData])
+    setSelectedNode(prev => {
+      if (prev?.id === node.id) return null // 이미 선택된 노드 클릭 → 해제
+      return node
+    })
+    zoomToNode(node)
+  }, [zoomToNode])
 
   // 검색 결과 이전/다음 이동
   const goSearchPrev = useCallback(() => {
