@@ -82,6 +82,7 @@ export default function Graph3D({ embedded = false }) {
   }, [])
   const containerRef = useRef(null)
   const fgRef = useRef()
+  const initialFitDoneRef = useRef(false)
   const [dimensions, setDimensions] = useState({ width: 800, height: 500 })
 
   // AI 채팅 상태
@@ -268,14 +269,9 @@ export default function Graph3D({ embedded = false }) {
     return () => clearTimeout(timer)
   }, [filteredData])
 
-  // 필터 변경 시 자동 줌 투 핏
+  // 필터 변경 시 → 다음 onEngineStop에서 1회 줌 투 핏 허용
   useEffect(() => {
-    if (!filteredData || !fgRef.current) return
-    // 시뮬레이션이 안정화된 후 줌 투 핏
-    const timer = setTimeout(() => {
-      if (fgRef.current) fgRef.current.zoomToFit(600, 60)
-    }, 800)
-    return () => clearTimeout(timer)
+    initialFitDoneRef.current = false
   }, [filteredData])
 
   // 검색 결과 (원점에서 가까운 순 정렬)
@@ -888,8 +884,9 @@ export default function Graph3D({ embedded = false }) {
               d3AlphaDecay={0.02}
               d3VelocityDecay={0.3}
               onEngineStop={() => {
-                // 시뮬레이션 완료 시 자동 줌 투 핏
-                if (fgRef.current) {
+                // 최초 시뮬레이션 완료 시에만 자동 줌 투 핏 (이후 사용자 조작 방해 안 함)
+                if (fgRef.current && !initialFitDoneRef.current) {
+                  initialFitDoneRef.current = true
                   fgRef.current.zoomToFit(400, 40)
                 }
               }}
