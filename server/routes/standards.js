@@ -148,9 +148,10 @@ standardsRouter.post('/graph/chat', async (req, res) => {
   res.flushHeaders()
 
   try {
-    // 성취기준 컨텍스트 최적화: 필터가 있으면 관련 교과군만, 없으면 컴팩트 인덱스
     const allStandards = Standards.list()
     const graph = StandardLinks.getGraph()
+    const nodeMap = new Map()
+    graph.nodes.forEach(n => nodeMap.set(n.id, n))
     const nodeSubjectGroupMap = new Map()
     graph.nodes.forEach(n => nodeSubjectGroupMap.set(n.id, n.subject_group || n.subject))
 
@@ -159,66 +160,87 @@ standardsRouter.post('/graph/chat', async (req, res) => {
       nodeSubjectGroupMap.get(l.source) !== nodeSubjectGroupMap.get(l.target)
     )
 
-    // 컨텍스트에 포함할 성취기준 결정 (성능 최적화)
-    let relevantStandards = allStandards
+    // 토큰 예산 제한: 시스템 프롬프트를 ~40K 문자(~15K 토큰) 이내로
+    const MAX_PROMPT_CHARS = 40000
+
+    // 포커스 교과군 결정
     const focusSubjectGroups = new Set()
     if (context.selectedNode) {
-      // 선택된 노드의 교과군 + 연결된 교과군
       const selectedGroup = context.selectedNode.subject_group || context.selectedNode.subject
       focusSubjectGroups.add(selectedGroup)
-      // 기존 연결에서 관련 교과군 추가
-      crossLinks.forEach(l => {
-        const srcGroup = nodeSubjectGroupMap.get(l.source)
-        const tgtGroup = nodeSubjectGroupMap.get(l.target)
-        if (srcGroup === selectedGroup) focusSubjectGroups.add(tgtGroup)
-        if (tgtGroup === selectedGroup) focusSubjectGroups.add(srcGroup)
-      })
     }
-    if (context.filterSubject) focusSubjectGroups.add(context.filterSubject)
+    if (context.filterSubject) {
+      // 필터에 여러 교과가 포함될 수 있음 (예: "정보 × 수학 × 과학")
+      context.filterSubject.split(/[,×x·]/g).map(s => s.trim()).filter(Boolean).forEach(s => focusSubjectGroups.add(s))
+    }
 
-    // 포커스 교과군이 있으면 해당 교과군 상세 + 나머지 컴팩트
+    // 포커스 교과군 성취기준 (상세)
     let standardsSummary
     if (focusSubjectGroups.size > 0) {
       const focused = allStandards.filter(s => focusSubjectGroups.has(s.subject_group || s.subject))
-      const others = allStandards.filter(s => !focusSubjectGroups.has(s.subject_group || s.subject))
       const focusedSummary = focused.map(s => {
-        let line = `${s.code} [${s.subject}/${s.grade_group}/${s.area}]`
-        if (s.domain) line += ` (${s.domain})`
-        if (s.school_level) line += ` {${s.school_level}}`
-        line += ` ${s.content}`
-        if (s.keywords?.length) line += ` 키워드: ${s.keywords.join(', ')}`
-        if (s.explanation) line += `\n  해설: ${s.explanation.slice(0, 200)}${s.explanation.length > 200 ? '...' : ''}`
-        return line
-      }).join('\n')
-      // 나머지 교과군은 코드+과목+내용만 (간략)
-      const othersSummary = others.map(s =>
-        `${s.code} [${s.subject}] ${s.content.slice(0, 60)}`
-      ).join('\n')
-      standardsSummary = `[포커스 교과군 상세 — ${focused.length}개]\n${focusedSummary}\n\n[기타 교과 인덱스 — ${others.length}개]\n${othersSummary}`
-    } else {
-      // 필터 없으면 컴팩트 인덱스 (키워드 포함, 해설 생략)
-      standardsSummary = allStandards.map(s => {
         let line = `${s.code} [${s.subject}/${s.grade_group}/${s.area}]`
         if (s.school_level) line += ` {${s.school_level}}`
         line += ` ${s.content}`
         if (s.keywords?.length) line += ` [${s.keywords.join(',')}]`
         return line
       }).join('\n')
+
+      // 나머지 교과는 교과군별 요약만 (성취기준 개수)
+      const otherGroups = new Map()
+      allStandards.filter(s => !focusSubjectGroups.has(s.subject_group || s.subject)).forEach(s => {
+        const g = s.subject_group || s.subject
+        otherGroups.set(g, (otherGroups.get(g) || 0) + 1)
+      })
+      const othersSummary = [...otherGroups.entries()].map(([g, cnt]) => `${g}: ${cnt}개 성취기준`).join(', ')
+
+      standardsSummary = `[포커스 교과 — ${focused.length}개 성취기준]\n${focusedSummary}\n\n[기타 교과] ${othersSummary}`
+    } else {
+      // 필터 없으면 교과군별 대표 성취기준 + 요약
+      const groupMap = new Map()
+      allStandards.forEach(s => {
+        const g = s.subject_group || s.subject
+        if (!groupMap.has(g)) groupMap.set(g, [])
+        groupMap.get(g).push(s)
+      })
+      const lines = []
+      for (const [group, stds] of groupMap) {
+        lines.push(`\n## ${group} (${stds.length}개)`)
+        // 각 교과군에서 최대 10개 대표 성취기준
+        const sample = stds.slice(0, 10)
+        for (const s of sample) {
+          lines.push(`${s.code} [${s.subject}/${s.grade_group}] ${s.content}`)
+        }
+        if (stds.length > 10) lines.push(`  ... 외 ${stds.length - 10}개`)
+      }
+      standardsSummary = lines.join('\n')
     }
 
-    const linksSummary = crossLinks.map(l => {
-      const src = graph.nodes.find(n => n.id === l.source)
-      const tgt = graph.nodes.find(n => n.id === l.target)
+    // 연결 정보: 포커스 교과군 관련 연결만 (최대 200개)
+    let relevantLinks = crossLinks
+    if (focusSubjectGroups.size > 0) {
+      relevantLinks = crossLinks.filter(l => {
+        const srcGroup = nodeSubjectGroupMap.get(l.source)
+        const tgtGroup = nodeSubjectGroupMap.get(l.target)
+        return focusSubjectGroups.has(srcGroup) || focusSubjectGroups.has(tgtGroup)
+      })
+    }
+    // 최대 200개로 제한
+    if (relevantLinks.length > 200) relevantLinks = relevantLinks.slice(0, 200)
+
+    const linksSummary = relevantLinks.map(l => {
+      const src = nodeMap.get(l.source)
+      const tgt = nodeMap.get(l.target)
       return `${src?.code}(${src?.subject}) ↔ ${tgt?.code}(${tgt?.subject}) [${l.link_type}] ${l.rationale}`
     }).join('\n')
 
-    const systemPrompt = `당신은 교육과정 연결 탐색 전문 AI입니다.
+    let systemPrompt = `당신은 교육과정 연결 탐색 전문 AI입니다.
 2022 개정 교육과정 성취기준 데이터와 교과 간 연결 정보를 바탕으로:
 1. 교사의 질문에 맞는 성취기준과 연결을 찾아 안내합니다.
 2. 아직 발견되지 않은 새로운 교과 간 연결 가능성을 제안합니다.
 3. 특정 주제나 역량 중심의 융합 수업 아이디어를 제시합니다.
 
-한국어로 응답하며, 존댓말을 사용합니다.
+한국어로 응답하며, 존댓말을 사용합니다. 성취기준 코드를 반드시 포함해서 답변하세요.
 
 새로운 연결을 제안할 때는 다음 JSON 형식을 사용하세요:
 <new_links>
@@ -228,18 +250,26 @@ standardsRouter.post('/graph/chat', async (req, res) => {
 link_type 종류: cross_subject(교과연계), same_concept(동일개념), prerequisite(선수학습), application(적용), extension(확장)
 같은 교과군 내 연결은 제안하지 마세요. 교과군 간 융합만 다룹니다.
 
-[성취기준 데이터 — 총 ${allStandards.length}개, 11개 교과군]
+[성취기준 — 총 ${allStandards.length}개]
 ${standardsSummary}
 
-[현재 교과 간 연결 ${crossLinks.length}개]
+[교과 간 연결 — ${relevantLinks.length}개${crossLinks.length > relevantLinks.length ? ` (전체 ${crossLinks.length}개 중 관련 연결)` : ''}]
 ${linksSummary}${context.selectedNode ? `
 
 [교사의 현재 탐색 컨텍스트]
 선택한 성취기준: ${context.selectedNode.code} [${context.selectedNode.subject}/${context.selectedNode.area}] ${context.selectedNode.content}${context.neighborCodes?.length > 0 ? `\n이 성취기준의 현재 연결: ${context.neighborCodes.join(', ')}` : ''}
 이 성취기준을 중심으로 답변해주세요. 선택된 노드와 관련된 새로운 교과 간 연결을 우선 제안하세요.` : ''}${context.filterSubject ? `\n현재 교과 필터: ${context.filterSubject} (이 교과와 관련된 연결을 우선 탐색해주세요)` : ''}`
 
+    // 프롬프트 크기 초과 시 잘라내기 (안전장치)
+    if (systemPrompt.length > MAX_PROMPT_CHARS) {
+      console.warn(`시스템 프롬프트 크기 초과: ${systemPrompt.length}자 → ${MAX_PROMPT_CHARS}자로 잘라냄`)
+      systemPrompt = systemPrompt.slice(0, MAX_PROMPT_CHARS) + '\n\n[컨텍스트가 길어 일부 생략됨]'
+    }
+
+    console.log(`[graph/chat] 프롬프트 크기: ${systemPrompt.length}자, 포커스: ${[...focusSubjectGroups].join(',')||'전체'}, 연결: ${relevantLinks.length}개`)
+
     const messages = []
-    for (const msg of history.slice(-10)) {
+    for (const msg of history.slice(-6)) {
       messages.push({
         role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content,
@@ -276,8 +306,12 @@ ${linksSummary}${context.selectedNode ? `
     res.write(`data: [DONE]\n\n`)
     res.end()
   } catch (error) {
-    console.error('그래프 AI 채팅 오류:', error)
-    res.write(`data: ${JSON.stringify({ type: 'error', message: '응답 생성 중 오류가 발생했습니다.' })}\n\n`)
+    console.error('그래프 AI 채팅 오류:', error?.message || error)
+    const errMsg = error?.status === 401 ? 'API 키가 유효하지 않습니다.'
+      : error?.status === 429 ? 'API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.'
+      : error?.status === 400 ? `API 요청 오류: ${error?.message || ''}`
+      : `응답 생성 중 오류: ${error?.message || '알 수 없는 오류'}`
+    res.write(`data: ${JSON.stringify({ type: 'error', message: errMsg })}\n\n`)
     res.write(`data: [DONE]\n\n`)
     res.end()
   }
