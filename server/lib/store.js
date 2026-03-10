@@ -59,21 +59,27 @@ export function initStore() {
   // 성취기준 간 연결 로드 (코드→ID 맵으로 O(1) 조회)
   const codeToId = new Map()
   for (const [id, s] of standards) codeToId.set(s.code, s)
+  // 압축 형식: [source, target, link_type, rationale]
+  // link_type 축약: cs→cross_subject, sc→same_concept, ap→application
+  const ltMap = { cs: 'cross_subject', sc: 'same_concept', ap: 'application' }
+  const now = new Date().toISOString()
   for (const link of GENERATED_LINKS) {
-    const sourceStd = codeToId.get(link.source)
-    const targetStd = codeToId.get(link.target)
+    const [src, tgt, ltShort, rationale] = Array.isArray(link) ? link : [link.source, link.target, link.link_type, link.rationale]
+    const sourceStd = codeToId.get(src)
+    const targetStd = codeToId.get(tgt)
     if (sourceStd && targetStd) {
       const id = uuid()
+      const lt = ltMap[ltShort] || ltShort
       standardLinks.set(id, {
         id,
         source_id: sourceStd.id,
         target_id: targetStd.id,
-        source_code: link.source,
-        target_code: link.target,
-        link_type: link.link_type,
-        rationale: link.rationale,
-        similarity: link.link_type === 'same_concept' ? 0.9 : link.link_type === 'cross_subject' ? 0.7 : 0.6,
-        created_at: new Date().toISOString(),
+        source_code: src,
+        target_code: tgt,
+        link_type: lt,
+        rationale: rationale || '',
+        similarity: lt === 'same_concept' ? 0.9 : lt === 'cross_subject' ? 0.7 : 0.6,
+        created_at: now,
       })
     }
   }
