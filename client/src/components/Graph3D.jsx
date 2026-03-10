@@ -141,49 +141,58 @@ export default function Graph3D({ embedded = false }) {
     if (selectedSubjects.size > 0) {
       const selNodeIds = new Set(nodes.filter(n => selectedSubjects.has(n.subject_group || n.subject)).map(n => n.id))
 
-      // 선택 과목 노드 사이의 코어 연결
-      let coreLinks = links.filter(l => selNodeIds.has(getLinkSourceId(l)) && selNodeIds.has(getLinkTargetId(l)))
+      let coreLinks, coreNodeIds
 
-      // minOverlap >= 3: 허브 노드 필터링 (코어 연결 기준)
-      let coreNodeIds
-      if (selectedSubjects.size >= 3 && minOverlap >= 3) {
-        const nodeConnectedSubjects = new Map() // nodeId → Set<subject>
-        nodes.filter(n => selNodeIds.has(n.id)).forEach(n => {
-          nodeConnectedSubjects.set(n.id, new Set([n.subject]))
-        })
-        coreLinks.forEach(l => {
-          const srcId = getLinkSourceId(l), tgtId = getLinkTargetId(l)
-          const srcSubj = nodeSubjectMap.get(srcId), tgtSubj = nodeSubjectMap.get(tgtId)
-          if (nodeConnectedSubjects.has(srcId)) nodeConnectedSubjects.get(srcId).add(tgtSubj)
-          if (nodeConnectedSubjects.has(tgtId)) nodeConnectedSubjects.get(tgtId).add(srcSubj)
-        })
-        const hubNodeIds = new Set()
-        nodeConnectedSubjects.forEach((subjs, nodeId) => {
-          if (subjs.size >= minOverlap) hubNodeIds.add(nodeId)
-        })
-        coreLinks = coreLinks.filter(l => hubNodeIds.has(getLinkSourceId(l)) || hubNodeIds.has(getLinkTargetId(l)))
+      if (selectedSubjects.size === 1) {
+        // 단일 교과 선택: 해당 교과에서 다른 교과로 나가는 모든 교차 연결 표시
+        coreLinks = links.filter(l => selNodeIds.has(getLinkSourceId(l)) || selNodeIds.has(getLinkTargetId(l)))
         coreNodeIds = new Set()
         coreLinks.forEach(l => { coreNodeIds.add(getLinkSourceId(l)); coreNodeIds.add(getLinkTargetId(l)) })
       } else {
-        coreNodeIds = new Set()
-        coreLinks.forEach(l => { coreNodeIds.add(getLinkSourceId(l)); coreNodeIds.add(getLinkTargetId(l)) })
+        // 다중 교과 선택: 선택 과목 노드 사이의 코어 연결
+        coreLinks = links.filter(l => selNodeIds.has(getLinkSourceId(l)) && selNodeIds.has(getLinkTargetId(l)))
+
+        // minOverlap >= 3: 허브 노드 필터링 (코어 연결 기준)
+        if (selectedSubjects.size >= 3 && minOverlap >= 3) {
+          const nodeConnectedSubjects = new Map() // nodeId → Set<subject>
+          nodes.filter(n => selNodeIds.has(n.id)).forEach(n => {
+            nodeConnectedSubjects.set(n.id, new Set([n.subject]))
+          })
+          coreLinks.forEach(l => {
+            const srcId = getLinkSourceId(l), tgtId = getLinkTargetId(l)
+            const srcSubj = nodeSubjectMap.get(srcId), tgtSubj = nodeSubjectMap.get(tgtId)
+            if (nodeConnectedSubjects.has(srcId)) nodeConnectedSubjects.get(srcId).add(tgtSubj)
+            if (nodeConnectedSubjects.has(tgtId)) nodeConnectedSubjects.get(tgtId).add(srcSubj)
+          })
+          const hubNodeIds = new Set()
+          nodeConnectedSubjects.forEach((subjs, nodeId) => {
+            if (subjs.size >= minOverlap) hubNodeIds.add(nodeId)
+          })
+          coreLinks = coreLinks.filter(l => hubNodeIds.has(getLinkSourceId(l)) || hubNodeIds.has(getLinkTargetId(l)))
+          coreNodeIds = new Set()
+          coreLinks.forEach(l => { coreNodeIds.add(getLinkSourceId(l)); coreNodeIds.add(getLinkTargetId(l)) })
+        } else {
+          coreNodeIds = new Set()
+          coreLinks.forEach(l => { coreNodeIds.add(getLinkSourceId(l)); coreNodeIds.add(getLinkTargetId(l)) })
+        }
+
+        // 코어 노드에서 다른 과목으로 뻗어나가는 확장 연결 추가
+        const extLinks = links.filter(l => {
+          const srcId = getLinkSourceId(l), tgtId = getLinkTargetId(l)
+          return (coreNodeIds.has(srcId) && !selNodeIds.has(tgtId)) ||
+                 (coreNodeIds.has(tgtId) && !selNodeIds.has(srcId))
+        })
+        coreLinks = [...coreLinks, ...extLinks]
       }
 
-      // 코어 노드에서 다른 과목으로 뻗어나가는 확장 연결 추가
-      const extLinks = links.filter(l => {
-        const srcId = getLinkSourceId(l), tgtId = getLinkTargetId(l)
-        return (coreNodeIds.has(srcId) && !selNodeIds.has(tgtId)) ||
-               (coreNodeIds.has(tgtId) && !selNodeIds.has(srcId))
-      })
-
-      links = [...coreLinks, ...extLinks]
+      links = coreLinks
 
       const connectedIds = new Set()
       links.forEach(l => { connectedIds.add(getLinkSourceId(l)); connectedIds.add(getLinkTargetId(l)) })
       nodes = nodes.filter(n => connectedIds.has(n.id))
 
       // 이웃 노드 = 선택 과목에 속하지 않는 노드
-      nodes.forEach(n => { if (!selectedSubjects.has(n.subject)) neighborNodeIds.add(n.id) })
+      nodes.forEach(n => { if (!selectedSubjects.has(n.subject_group || n.subject)) neighborNodeIds.add(n.id) })
     }
 
     if (filterLinkType) {
