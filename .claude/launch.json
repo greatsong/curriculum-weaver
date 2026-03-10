@@ -3,9 +3,9 @@
   "configurations": [
     {
       "name": "dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
-      "port": 4007
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "PORT=4007 npm run dev"],
+      "port": 4006
     }
   ]
 }

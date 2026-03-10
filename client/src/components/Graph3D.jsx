@@ -40,6 +40,8 @@ export default function Graph3D({ embedded = false }) {
   const [loading, setLoading] = useState(true)
   const [selectedNode, setSelectedNode] = useState(null)
   const [selectedSubjects, setSelectedSubjects] = useState(new Set())
+  const [selectedSchoolLevels, setSelectedSchoolLevels] = useState(new Set())
+  const [selectedGradeGroups, setSelectedGradeGroups] = useState(new Set())
   const [minOverlap, setMinOverlap] = useState(2) // 최소 교차 과목 수
   const [filterLinkType, setFilterLinkType] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -57,6 +59,24 @@ export default function Graph3D({ embedded = false }) {
       const next = new Set(prev)
       if (next.has(subject)) next.delete(subject)
       else next.add(subject)
+      return next
+    })
+  }, [])
+  // 학교급 토글 핸들러
+  const toggleSchoolLevel = useCallback((level) => {
+    setSelectedSchoolLevels(prev => {
+      const next = new Set(prev)
+      if (next.has(level)) next.delete(level)
+      else next.add(level)
+      return next
+    })
+  }, [])
+  // 학년군 토글 핸들러
+  const toggleGradeGroup = useCallback((group) => {
+    setSelectedGradeGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(group)) next.delete(group)
+      else next.add(group)
       return next
     })
   }, [])
@@ -128,7 +148,20 @@ export default function Graph3D({ embedded = false }) {
   const filteredData = useMemo(() => {
     if (!graphData) return null
     let nodes = graphData.nodes
+
+    // 학교급 필터
+    if (selectedSchoolLevels.size > 0) {
+      nodes = nodes.filter(n => selectedSchoolLevels.has(n.school_level))
+    }
+    // 학년군 필터
+    if (selectedGradeGroups.size > 0) {
+      nodes = nodes.filter(n => selectedGradeGroups.has(n.grade_group))
+    }
+
+    const filteredNodeIds = new Set(nodes.map(n => n.id))
     let links = graphData.links.filter(l => {
+      // 학교급/학년군 필터로 제거된 노드 간 연결도 제거
+      if (!filteredNodeIds.has(getLinkSourceId(l)) || !filteredNodeIds.has(getLinkTargetId(l))) return false
       const srcSubject = nodeSubjectMap.get(getLinkSourceId(l))
       const tgtSubject = nodeSubjectMap.get(getLinkTargetId(l))
       return srcSubject !== tgtSubject
@@ -208,7 +241,7 @@ export default function Graph3D({ embedded = false }) {
     }
 
     return { nodes, links, neighborNodeIds }
-  }, [graphData, selectedSubjects, minOverlap, filterLinkType, nodeSubjectMap, focusMode, selectedNode])
+  }, [graphData, selectedSubjects, selectedSchoolLevels, selectedGradeGroups, minOverlap, filterLinkType, nodeSubjectMap, focusMode, selectedNode])
 
   // 검색 결과 (원점에서 가까운 순 정렬)
   const sortedSearchResults = useMemo(() => {
@@ -257,6 +290,24 @@ export default function Graph3D({ embedded = false }) {
     return [...new Set(graphData.nodes.map(n => n.subject_group || n.subject))].sort()
   }, [graphData])
 
+  // 학교급 목록
+  const schoolLevels = useMemo(() => {
+    if (!graphData) return []
+    return [...new Set(graphData.nodes.map(n => n.school_level).filter(Boolean))].sort((a, b) => {
+      const order = { '초등학교': 0, '중학교': 1, '고등학교': 2 }
+      return (order[a] ?? 9) - (order[b] ?? 9)
+    })
+  }, [graphData])
+
+  // 학년군 목록
+  const gradeGroups = useMemo(() => {
+    if (!graphData) return []
+    return [...new Set(graphData.nodes.map(n => n.grade_group).filter(Boolean))].sort((a, b) => {
+      const order = { '초1-2': 0, '초3-4': 1, '초5-6': 2, '중1-3': 3, '고선택': 4 }
+      return (order[a] ?? 9) - (order[b] ?? 9)
+    })
+  }, [graphData])
+
   const listItems = useMemo(() => {
     if (!graphData) return []
     let items = graphData.nodes
@@ -269,8 +320,10 @@ export default function Graph3D({ embedded = false }) {
       )
     }
     if (selectedSubjects.size > 0) items = items.filter(n => selectedSubjects.has(n.subject_group || n.subject))
+    if (selectedSchoolLevels.size > 0) items = items.filter(n => selectedSchoolLevels.has(n.school_level))
+    if (selectedGradeGroups.size > 0) items = items.filter(n => selectedGradeGroups.has(n.grade_group))
     return [...items].sort((a, b) => a.subject.localeCompare(b.subject) || a.code.localeCompare(b.code))
-  }, [graphData, searchQuery, selectedSubjects])
+  }, [graphData, searchQuery, selectedSubjects, selectedSchoolLevels, selectedGradeGroups])
 
   const linkCountMap = useMemo(() => {
     if (!graphData) return new Map()
@@ -366,7 +419,7 @@ export default function Graph3D({ embedded = false }) {
   }, [selectedNode, graphData])
 
   const handleReset = () => {
-    setSelectedSubjects(new Set()); setMinOverlap(2); setFilterLinkType(''); setSearchQuery(''); setFocusMode(false)
+    setSelectedSubjects(new Set()); setSelectedSchoolLevels(new Set()); setSelectedGradeGroups(new Set()); setMinOverlap(2); setFilterLinkType(''); setSearchQuery(''); setFocusMode(false)
     setSelectedNode(null); setHighlightNodes(new Set()); setHighlightLinks(new Set())
     if (fgRef.current) fgRef.current.cameraPosition({ x: 0, y: 0, z: 300 }, { x: 0, y: 0, z: 0 }, 1000)
   }
@@ -526,13 +579,24 @@ export default function Graph3D({ embedded = false }) {
           <span className="text-gray-600 hidden sm:inline">|</span>
           <h2 className="text-sm font-medium text-gray-200 hidden sm:block">교과 간 연결 탐색</h2>
           <div className="flex items-center gap-1.5 ml-auto">
-            {selectedSubjects.size > 0 && (
+            {(selectedSubjects.size > 0 || selectedSchoolLevels.size > 0 || selectedGradeGroups.size > 0) && (
               <span className="flex items-center gap-1.5">
-                {/* 모바일: 선택 개수만, 데스크톱: 과목명 나열 */}
+                {selectedSchoolLevels.size > 0 && (
+                  <span className="px-2 py-1 bg-orange-900/60 text-orange-300 rounded-lg text-[11px] font-medium">
+                    {[...selectedSchoolLevels].map(l => l.replace('학교', '')).join('·')}
+                  </span>
+                )}
+                {selectedGradeGroups.size > 0 && (
+                  <span className="px-2 py-1 bg-teal-900/60 text-teal-300 rounded-lg text-[11px] font-medium">
+                    {[...selectedGradeGroups].join('·')}
+                  </span>
+                )}
+                {selectedSubjects.size > 0 && (
                 <span className="px-2 py-1 bg-blue-900/60 text-blue-300 rounded-lg text-[11px] font-medium">
                   <span className="sm:hidden">{selectedSubjects.size}개 교과</span>
                   <span className="hidden sm:inline">{[...selectedSubjects].join(' × ')}</span>
                 </span>
+                )}
                 {selectedSubjects.size >= 3 && (
                   <span className="flex items-center bg-gray-700 rounded-lg overflow-hidden">
                     {Array.from({ length: selectedSubjects.size - 1 }, (_, i) => i + 2).map(n => (
@@ -593,6 +657,45 @@ export default function Graph3D({ embedded = false }) {
                 style={isActive ? { backgroundColor: SUBJECT_COLORS[s] + '33' } : undefined}>
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: SUBJECT_COLORS[s] || '#9ca3af' }} />
                 {SUBJECT_GROUP_LABELS[s] || s}
+              </button>
+            )
+          })}
+          <span className="text-gray-600 mx-1 shrink-0">|</span>
+          {/* 학교급 필터 */}
+          {schoolLevels.map(level => {
+            const isActive = selectedSchoolLevels.has(level)
+            const short = level.replace('학교', '')
+            const levelColors = { '초등': '#f97316', '중': '#a855f7', '고등': '#22c55e' }
+            const color = levelColors[short] || '#9ca3af'
+            return (
+              <button key={level} onClick={() => toggleSchoolLevel(level)}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition whitespace-nowrap ${
+                  isActive
+                    ? 'text-white font-bold ring-1 ring-white/40'
+                    : selectedSchoolLevels.size > 0
+                      ? 'text-gray-600 hover:text-gray-300 hover:bg-gray-700'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
+                }`}
+                style={isActive ? { backgroundColor: color + '33' } : undefined}>
+                <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: color }} />
+                {short}
+              </button>
+            )
+          })}
+          <span className="text-gray-600 mx-1 shrink-0">|</span>
+          {/* 학년군 필터 */}
+          {gradeGroups.map(group => {
+            const isActive = selectedGradeGroups.has(group)
+            return (
+              <button key={group} onClick={() => toggleGradeGroup(group)}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition whitespace-nowrap ${
+                  isActive
+                    ? 'bg-teal-600/30 text-teal-300 font-bold ring-1 ring-teal-400/40'
+                    : selectedGradeGroups.size > 0
+                      ? 'text-gray-600 hover:text-gray-300 hover:bg-gray-700'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
+                }`}>
+                {group}
               </button>
             )
           })}

@@ -1,8 +1,8 @@
 """
 교육과정 성취기준 임베딩 사전 계산
 - 한국어 특화 sentence-transformers 모델 사용
-- UMAP 3D 차원축소
-- 교과군별 공간 분리 강화
+- UMAP 3D 차원축소 (sparse 분포 — 그래프 시각화 최적화)
+- 내용 기반 유사도로 배치 (교과명 제거)
 - 결과를 embeddings-cache.json으로 저장
 """
 
@@ -60,8 +60,8 @@ def main():
         keywords = ' '.join(s.get('keywords', []))
         domain = s.get('domain', '')
 
-        # 교과명과 영역을 앞에 배치 (중요도 높음)
-        text = f"{subject} {area} {domain} {content} {keywords}"
+        # 내용 중심으로 배치 (교과명 제거 → 교과 간 유사 개념이 가까이 위치)
+        text = f"{area} {domain} {content} {keywords}"
         texts.append(text)
         codes.append(s['code'])
 
@@ -83,13 +83,16 @@ def main():
 
     print(f"   임베딩 차원: {embeddings.shape}")
 
-    print("\n4. UMAP 3D 차원축소...")
-    # 교과군별 분리를 강화하기 위한 UMAP 설정
+    print("\n4. UMAP 3D 차원축소 (sparse 모드)...")
+    # 그래프 시각화용 sparse 분포 설정
+    # - min_dist 높음 → 노드 간 최소 거리 크게 유지 (밀집 방지)
+    # - spread 높음 → 전체적으로 넓게 분포
+    # - n_neighbors 낮음 → 로컬 구조 세밀하게 보존
     reducer = UMAP(
         n_components=3,
-        n_neighbors=20,          # 이웃 수 (너무 작으면 노이즈, 너무 크면 구조 손실)
-        min_dist=0.5,            # 최소 거리 (높을수록 고르게 분포)
-        spread=2.0,              # 스프레드 (높을수록 넓게 퍼짐)
+        n_neighbors=10,          # 적은 이웃 → 세밀한 로컬 구조
+        min_dist=2.5,            # 높은 최소 거리 → sparse 분포
+        spread=6.0,              # 넓은 스프레드 → 전체적으로 퍼짐
         metric='cosine',         # 코사인 유사도 사용
         random_state=42,
         n_epochs=500,            # 충분한 반복
@@ -156,7 +159,7 @@ def main():
         'coords': coords_dict,
         'meta': {
             'model': 'intfloat/multilingual-e5-base',
-            'method': 'UMAP(n_neighbors=20, min_dist=0.5, spread=2.0)',
+            'method': 'UMAP(n_neighbors=10, min_dist=2.5, spread=6.0, sparse)',
             'n_standards': len(codes),
             'separation_ratio': round(separation_ratio, 2),
         }
