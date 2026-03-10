@@ -176,13 +176,7 @@ export default function Graph3D({ embedded = false }) {
           coreLinks.forEach(l => { coreNodeIds.add(getLinkSourceId(l)); coreNodeIds.add(getLinkTargetId(l)) })
         }
 
-        // 코어 노드에서 다른 과목으로 뻗어나가는 확장 연결 추가
-        const extLinks = links.filter(l => {
-          const srcId = getLinkSourceId(l), tgtId = getLinkTargetId(l)
-          return (coreNodeIds.has(srcId) && !selNodeIds.has(tgtId)) ||
-                 (coreNodeIds.has(tgtId) && !selNodeIds.has(srcId))
-        })
-        coreLinks = [...coreLinks, ...extLinks]
+        // 선택 교과 간 연결만 표시 (확장 연결 제거 — 선택 교과에 집중)
       }
 
       links = coreLinks
