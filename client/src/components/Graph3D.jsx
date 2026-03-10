@@ -243,6 +243,41 @@ export default function Graph3D({ embedded = false }) {
     return { nodes, links, neighborNodeIds }
   }, [graphData, selectedSubjects, selectedSchoolLevels, selectedGradeGroups, minOverlap, filterLinkType, nodeSubjectMap, focusMode, selectedNode])
 
+  // 포스 시뮬레이션 설정 (반발력, 링크 거리 등)
+  useEffect(() => {
+    const fg = fgRef.current
+    if (!fg || !filteredData) return
+    // 약간의 딜레이 후 포스 설정 (그래프 초기화 후)
+    const timer = setTimeout(() => {
+      try {
+        const nodeCount = filteredData.nodes.length
+        // 노드 간 반발력 (강하게 밀어냄 → 노드가 넓게 퍼짐)
+        const chargeStrength = nodeCount > 500 ? -80 : nodeCount > 100 ? -150 : -300
+        const charge = fg.d3Force('charge')
+        if (charge) charge.strength(chargeStrength)
+        // 링크 거리 (연결된 노드 간 적정 거리)
+        const linkDist = nodeCount > 500 ? 40 : nodeCount > 100 ? 60 : 80
+        const link = fg.d3Force('link')
+        if (link) link.distance(linkDist)
+        // 시뮬레이션 재시작
+        if (fg.d3ReheatSimulation) fg.d3ReheatSimulation()
+      } catch (e) {
+        console.warn('포스 설정 오류:', e)
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [filteredData])
+
+  // 필터 변경 시 자동 줌 투 핏
+  useEffect(() => {
+    if (!filteredData || !fgRef.current) return
+    // 시뮬레이션이 안정화된 후 줌 투 핏
+    const timer = setTimeout(() => {
+      if (fgRef.current) fgRef.current.zoomToFit(600, 60)
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [filteredData])
+
   // 검색 결과 (원점에서 가까운 순 정렬)
   const sortedSearchResults = useMemo(() => {
     if (!graphData || !searchQuery.trim()) return []
@@ -253,7 +288,7 @@ export default function Graph3D({ embedded = false }) {
       n.grade_group?.toLowerCase().includes(q)
     )
     return matched.sort((a, b) =>
-      Math.hypot(a.fx || 0, a.fy || 0, a.fz || 0) - Math.hypot(b.fx || 0, b.fy || 0, b.fz || 0)
+      Math.hypot(a.x || 0, a.y || 0, a.z || 0) - Math.hypot(b.x || 0, b.y || 0, b.z || 0)
     )
   }, [graphData, searchQuery])
 
@@ -375,12 +410,15 @@ export default function Graph3D({ embedded = false }) {
   const navigateToNode = useCallback((node) => {
     setSelectedNode(node)
     if (fgRef.current) {
-      const x = node.fx ?? node.x ?? 0, y = node.fy ?? node.y ?? 0, z = node.fz ?? node.z ?? 0
+      // 포스 시뮬레이션 후 실제 위치 사용
+      const gd = fgRef.current.graphData?.() || filteredData
+      const realNode = gd?.nodes?.find(n => n.id === node.id) || node
+      const x = realNode.x ?? 0, y = realNode.y ?? 0, z = realNode.z ?? 0
       const dist = Math.hypot(x, y, z) || 1
       const ratio = 1 + 120 / dist
       fgRef.current.cameraPosition({ x: x * ratio, y: y * ratio, z: z * ratio }, { x, y, z }, 1000)
     }
-  }, [])
+  }, [filteredData])
 
   const focusNode = useCallback((node) => {
     setSelectedNode(prev => prev?.id === node.id ? null : node)
@@ -421,7 +459,9 @@ export default function Graph3D({ embedded = false }) {
   const handleReset = () => {
     setSelectedSubjects(new Set()); setSelectedSchoolLevels(new Set()); setSelectedGradeGroups(new Set()); setMinOverlap(2); setFilterLinkType(''); setSearchQuery(''); setFocusMode(false)
     setSelectedNode(null); setHighlightNodes(new Set()); setHighlightLinks(new Set())
-    if (fgRef.current) fgRef.current.cameraPosition({ x: 0, y: 0, z: 300 }, { x: 0, y: 0, z: 0 }, 1000)
+    if (fgRef.current) {
+      setTimeout(() => fgRef.current?.zoomToFit(800, 60), 300)
+    }
   }
 
   // AI 채팅 전송
@@ -724,7 +764,8 @@ export default function Graph3D({ embedded = false }) {
                   : (hasSearch && highlightNodes.size > 0 && !highlightNodes.has(node.id))
                     ? '#374151' : SUBJECT_COLORS[node.subject_group] || '#9ca3af'
                 const count = linkCountMap.get(node.id) || 0
-                const size = Math.max(3, count * 2.5)
+                // 노드 크기: 로그 스케일로 제한 (최소 2, 최대 10)
+                const size = Math.min(10, 2 + Math.log2(count + 1) * 2)
                 const isSelected = selectedNode?.id === node.id
                 const nodeOpacity = isNeighbor ? 0.25 : 0.9
 
@@ -809,8 +850,15 @@ export default function Graph3D({ embedded = false }) {
               onLinkHover={(link) => setHoveredLink(link || null)}
               backgroundColor="#111827"
               showNavInfo={false}
-              cooldownTicks={filteredData.nodes[0]?.fx !== undefined ? 0 : 100}
-              d3AlphaDecay={filteredData.nodes[0]?.fx !== undefined ? 1 : 0.0228}
+              cooldownTicks={200}
+              d3AlphaDecay={0.02}
+              d3VelocityDecay={0.3}
+              onEngineStop={() => {
+                // 시뮬레이션 완료 시 자동 줌 투 핏
+                if (fgRef.current) {
+                  fgRef.current.zoomToFit(400, 40)
+                }
+              }}
             />
           ) : (
             <div className="flex items-center justify-center h-full text-gray-500 text-sm">

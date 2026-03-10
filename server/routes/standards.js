@@ -65,10 +65,10 @@ standardsRouter.get('/graph', async (req, res) => {
   // 임베딩 기반 3D 좌표 계산
   const allStandards = Standards.list()
   const coords = computeEmbedding3D(allStandards)
-  // 노드에 고정 좌표 추가
+  // 노드에 초기 좌표 추가 (포스 시뮬레이션의 시작점, 고정하지 않음)
   graph.nodes = graph.nodes.map(node => {
     const pos = coords.get(node.id)
-    return pos ? { ...node, fx: pos.x, fy: pos.y, fz: pos.z } : node
+    return pos ? { ...node, x: pos.x, y: pos.y, z: pos.z } : node
   })
   res.json(graph)
 })
