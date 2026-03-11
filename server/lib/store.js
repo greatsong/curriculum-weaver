@@ -61,7 +61,7 @@ export function initStore() {
   for (const [id, s] of standards) codeToId.set(s.code, s)
   // 압축 형식: [source, target, link_type, rationale]
   // link_type 축약: cs→cross_subject, sc→same_concept, ap→application
-  const ltMap = { cs: 'cross_subject', sc: 'same_concept', ap: 'application' }
+  const ltMap = { cs: 'cross_subject', sc: 'same_concept', ap: 'application', pr: 'prerequisite' }
   const now = new Date().toISOString()
   for (const link of GENERATED_LINKS) {
     const [src, tgt, ltShort, rationale] = Array.isArray(link) ? link : [link.source, link.target, link.link_type, link.rationale]
@@ -78,7 +78,7 @@ export function initStore() {
         target_code: tgt,
         link_type: lt,
         rationale: rationale || '',
-        similarity: lt === 'same_concept' ? 0.9 : lt === 'cross_subject' ? 0.7 : 0.6,
+        similarity: lt === 'same_concept' ? 0.9 : lt === 'prerequisite' ? 0.85 : lt === 'cross_subject' ? 0.7 : 0.6,
         created_at: now,
       })
     }
