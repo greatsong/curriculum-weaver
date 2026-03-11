@@ -430,7 +430,7 @@ export default function Graph3D({ embedded = false }) {
     const realNode = gd?.nodes?.find(n => n.id === node.id) || node
     const x = realNode.x ?? 0, y = realNode.y ?? 0, z = realNode.z ?? 0
     const dist = Math.hypot(x, y, z) || 1
-    const camDist = 150
+    const camDist = 180
     const nx = x / dist, ny = y / dist, nz = z / dist // 방향 단위벡터
     // 클러스터링 애니메이션이 시작된 후 줌인 (이웃이 모인 뒤 보기)
     setTimeout(() => {
@@ -522,19 +522,32 @@ export default function Graph3D({ embedded = false }) {
       centerNode.fy = centerNode.y
       centerNode.fz = centerNode.z
 
-      // 이웃 노드를 선택 노드 주변 반경 50 이내로 끌어당기는 커스텀 포스
+      // 이웃 노드를 선택 노드 주변으로 즉시 배치 (반경 30~60에 골고루)
       const neighborIds = selectedNeighborIds
+      const neighborArr = gd.nodes.filter(n => neighborIds.has(n.id))
+      const total = neighborArr.length
+      neighborArr.forEach((n, i) => {
+        // 구면 균등 분포 (피보나치 구)
+        const phi = Math.acos(1 - 2 * (i + 0.5) / total)
+        const theta = Math.PI * (1 + Math.sqrt(5)) * i
+        const r = 35 + (i % 3) * 10 // 30~55 거리에 분산
+        n.fx = centerNode.x + r * Math.sin(phi) * Math.cos(theta)
+        n.fy = centerNode.y + r * Math.sin(phi) * Math.sin(theta)
+        n.fz = centerNode.z + r * Math.cos(phi)
+      })
+
+      // 비관련 노드를 밀어내는 포스
       fg.d3Force('cluster', (alpha) => {
-        const strength = alpha * 0.5
+        const strength = alpha * 0.3
         gd.nodes.forEach(n => {
-          if (!neighborIds.has(n.id)) return
-          const dx = centerNode.x - n.x
-          const dy = centerNode.y - n.y
-          const dz = centerNode.z - n.z
+          if (neighborIds.has(n.id) || n.id === centerNode.id) return
+          const dx = n.x - centerNode.x
+          const dy = n.y - centerNode.y
+          const dz = n.z - centerNode.z
           const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1
-          const targetDist = 50
-          if (dist > targetDist) {
-            const factor = strength * (dist - targetDist) / dist
+          const targetDist = 200
+          if (dist < targetDist) {
+            const factor = strength * (targetDist - dist) / dist
             n.vx = (n.vx || 0) + dx * factor
             n.vy = (n.vy || 0) + dy * factor
             n.vz = (n.vz || 0) + dz * factor
@@ -952,46 +965,51 @@ export default function Graph3D({ embedded = false }) {
                   const canvas = document.createElement('canvas')
                   const ctx = canvas.getContext('2d')
 
-                  let label, fontSize, canvasHeight, spriteH
+                  let label, fontSize, spriteH
                   if (isSelected) {
-                    // 선택된 노드: 코드 + 교과
                     label = `★ ${node.code} ${node.subject}`
-                    fontSize = 28
-                    canvasHeight = 48
-                    spriteH = 8
+                    fontSize = 48
+                    spriteH = 10
                   } else if (isSelectedNeighbor) {
-                    // 이웃 노드: 코드 + 교과 + 내용 앞부분 (한 눈에 어떤 내용인지 파악)
-                    const contentPreview = (node.content || '').slice(0, 25)
-                    label = `${node.code} ${node.subject} · ${contentPreview}`
-                    fontSize = 22
-                    canvasHeight = 40
-                    spriteH = 6
+                    const contentPreview = (node.content || '').slice(0, 18)
+                    label = `${node.code} ${node.subject_group} · ${contentPreview}…`
+                    fontSize = 40
+                    spriteH = 8
                   } else {
-                    // 기본 라벨 (선택 없을 때)
                     label = nodeLabelMap.get(node.id) || node.subject
-                    fontSize = 18
-                    canvasHeight = 40
+                    fontSize = 22
                     spriteH = 5
                   }
 
+                  // 고해상도 캔버스 (2x DPR)
+                  const dpr = 2
                   const labelLen = Math.max(label.length, 4)
-                  canvas.width = Math.min(768, labelLen * (fontSize * 1.2))
-                  canvas.height = canvasHeight
-                  ctx.clearRect(0, 0, canvas.width, canvas.height)
-                  ctx.font = `bold ${fontSize}px sans-serif`
+                  const logicalW = Math.min(1200, labelLen * fontSize * 0.7 + 40)
+                  const logicalH = fontSize + 20
+                  canvas.width = logicalW * dpr
+                  canvas.height = logicalH * dpr
+                  ctx.scale(dpr, dpr)
+                  ctx.font = `bold ${fontSize}px "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`
                   ctx.textAlign = 'center'
                   ctx.textBaseline = 'middle'
-                  ctx.fillStyle = isSelected ? '#ffffff' : color
+                  // 텍스트 외곽선(stroke)으로 가독성 확보 (배경 박스 대신)
                   ctx.globalAlpha = isSubjectNeighbor && !isSelectedNeighbor ? 0.3 : 1.0
-                  ctx.fillText(label, canvas.width / 2, canvas.height / 2)
+                  if (isSelected || isSelectedNeighbor) {
+                    ctx.strokeStyle = '#000000'
+                    ctx.lineWidth = isSelected ? 6 : 5
+                    ctx.lineJoin = 'round'
+                    ctx.strokeText(label, logicalW / 2, logicalH / 2)
+                  }
+                  ctx.fillStyle = isSelected ? '#ffffff' : isSelectedNeighbor ? '#ffffff' : color
+                  ctx.fillText(label, logicalW / 2, logicalH / 2)
 
                   const texture = new THREE.CanvasTexture(canvas)
                   const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: isSelected || isSelectedNeighbor ? 1.0 : (isSubjectNeighbor ? 0.25 : 0.9) })
                   const sprite = new THREE.Sprite(spriteMat)
                   const spriteWidth = isSelectedNeighbor
-                    ? Math.min(50, labelLen * 2.2)
+                    ? Math.min(65, labelLen * 2.2)
                     : isSelected
-                      ? Math.min(45, labelLen * 2.0)
+                      ? Math.min(55, labelLen * 2.0)
                       : Math.min(32, labelLen * 1.8)
                   sprite.scale.set(spriteWidth, spriteH, 1)
                   sprite.position.set(0, size + 5, 0)
