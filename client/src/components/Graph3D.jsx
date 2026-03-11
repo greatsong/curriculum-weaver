@@ -260,11 +260,11 @@ export default function Graph3D({ embedded = false }) {
       try {
         const nodeCount = filteredData.nodes.length
         // 노드 간 반발력 (강하게 밀어냄 → 노드가 넓게 퍼짐)
-        const chargeStrength = nodeCount > 500 ? -80 : nodeCount > 100 ? -150 : -300
+        const chargeStrength = nodeCount > 500 ? -120 : nodeCount > 100 ? -250 : -400
         const charge = fg.d3Force('charge')
         if (charge) charge.strength(chargeStrength)
         // 링크 거리 (연결된 노드 간 적정 거리)
-        const linkDist = nodeCount > 500 ? 40 : nodeCount > 100 ? 60 : 80
+        const linkDist = nodeCount > 500 ? 60 : nodeCount > 100 ? 90 : 120
         const link = fg.d3Force('link')
         if (link) link.distance(linkDist)
         // 시뮬레이션 재시작
@@ -276,10 +276,8 @@ export default function Graph3D({ embedded = false }) {
     return () => clearTimeout(timer)
   }, [filteredData])
 
-  // 필터 변경 시 → 다음 onEngineStop에서 1회 줌 투 핏 허용
-  useEffect(() => {
-    initialFitDoneRef.current = false
-  }, [filteredData])
+  // 필터 변경 시 — 자동 줌 아웃 안 함 (사용자 카메라 유지)
+  // 리셋 버튼으로만 줌 투 핏 가능
 
   // 검색 결과 (원점에서 가까운 순 정렬)
   const sortedSearchResults = useMemo(() => {
@@ -469,7 +467,7 @@ export default function Graph3D({ embedded = false }) {
     setSelectedSubjects(new Set()); setSelectedSchoolLevels(new Set()); setSelectedGradeGroups(new Set()); setMinOverlap(2); setFilterLinkType(''); setSearchQuery(''); setFocusMode(false)
     setSelectedNode(null); setHighlightNodes(new Set()); setHighlightLinks(new Set())
     if (fgRef.current) {
-      setTimeout(() => fgRef.current?.zoomToFit(800, 60), 300)
+      setTimeout(() => fgRef.current?.zoomToFit(600, 10), 300)
     }
   }
 
@@ -891,10 +889,11 @@ export default function Graph3D({ embedded = false }) {
               d3AlphaDecay={0.02}
               d3VelocityDecay={0.3}
               onEngineStop={() => {
-                // 최초 시뮬레이션 완료 시에만 자동 줌 투 핏 (이후 사용자 조작 방해 안 함)
+                // 최초 시뮬레이션 완료 시에만 자동 줌 인 (이후 사용자 조작 방해 안 함)
                 if (fgRef.current && !initialFitDoneRef.current) {
                   initialFitDoneRef.current = true
-                  fgRef.current.zoomToFit(400, 40)
+                  // 패딩 최소화 → 노드가 화면을 꽉 채움
+                  fgRef.current.zoomToFit(600, 10)
                 }
               }}
             />
