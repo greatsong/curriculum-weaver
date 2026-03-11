@@ -252,13 +252,18 @@ export default function Graph3D({ embedded = false }) {
   }, [graphData, selectedSubjects, selectedSchoolLevels, selectedGradeGroups, minOverlap, filterLinkType, nodeSubjectMap, focusMode, selectedNode])
 
   // 포스 시뮬레이션 설정 (반발력, 링크 거리 등)
+  // 노드 수가 실제로 변경될 때만 reheat (선택만 변경 시 불필요한 reheat 방지)
+  const prevNodeCountRef = useRef(0)
   useEffect(() => {
     const fg = fgRef.current
     if (!fg || !filteredData) return
+    const nodeCount = filteredData.nodes.length
+    const countChanged = nodeCount !== prevNodeCountRef.current
+    prevNodeCountRef.current = nodeCount
+
     // 약간의 딜레이 후 포스 설정 (그래프 초기화 후)
     const timer = setTimeout(() => {
       try {
-        const nodeCount = filteredData.nodes.length
         // 노드 간 반발력 (강하게 밀어냄 → 노드가 넓게 퍼짐)
         const chargeStrength = nodeCount > 500 ? -120 : nodeCount > 100 ? -250 : -400
         const charge = fg.d3Force('charge')
@@ -267,8 +272,8 @@ export default function Graph3D({ embedded = false }) {
         const linkDist = nodeCount > 500 ? 60 : nodeCount > 100 ? 90 : 120
         const link = fg.d3Force('link')
         if (link) link.distance(linkDist)
-        // 시뮬레이션 재시작
-        if (fg.d3ReheatSimulation) fg.d3ReheatSimulation()
+        // 노드 수가 실제로 변한 경우에만 시뮬레이션 재시작 (카메라 줌 아웃 방지)
+        if (countChanged && fg.d3ReheatSimulation) fg.d3ReheatSimulation()
       } catch (e) {
         console.warn('포스 설정 오류:', e)
       }
@@ -418,7 +423,7 @@ export default function Graph3D({ embedded = false }) {
     const x = realNode.x ?? 0, y = realNode.y ?? 0, z = realNode.z ?? 0
     const dist = Math.hypot(x, y, z) || 1
     // 카메라를 노드 뒤 적당한 거리에 배치 — 이웃 노드까지 함께 관찰
-    const camDist = 300
+    const camDist = 150
     const nx = x / dist, ny = y / dist, nz = z / dist // 방향 단위벡터
     fgRef.current.cameraPosition(
       { x: x + nx * camDist, y: y + ny * camDist, z: z + nz * camDist },
@@ -463,6 +468,19 @@ export default function Graph3D({ embedded = false }) {
       return getLinkSourceId(l) === selectedNode.id || getLinkTargetId(l) === selectedNode.id
     })
   }, [selectedNode, graphData])
+
+  // 선택된 노드의 직접 이웃 ID 셋 (3D 시각화에서 이웃 하이라이트용)
+  const selectedNeighborIds = useMemo(() => {
+    if (!selectedNode || !selectedLinks.length) return new Set()
+    const ids = new Set()
+    selectedLinks.forEach(l => {
+      const srcId = getLinkSourceId(l)
+      const tgtId = getLinkTargetId(l)
+      if (srcId !== selectedNode.id) ids.add(srcId)
+      if (tgtId !== selectedNode.id) ids.add(tgtId)
+    })
+    return ids
+  }, [selectedNode, selectedLinks])
 
   const handleReset = () => {
     setSelectedSubjects(new Set()); setSelectedSchoolLevels(new Set()); setSelectedGradeGroups(new Set()); setMinOverlap(2); setFilterLinkType(''); setSearchQuery(''); setFocusMode(false)
@@ -795,46 +813,107 @@ export default function Graph3D({ embedded = false }) {
               graphData={filteredData}
               nodeId="id"
               nodeThreeObject={(node) => {
-                const isNeighbor = filteredData?.neighborNodeIds?.has(node.id)
-                const color = selectedNode?.id === node.id ? '#ffffff'
-                  : (hasSearch && highlightNodes.size > 0 && !highlightNodes.has(node.id))
-                    ? '#374151' : SUBJECT_COLORS[node.subject_group] || '#9ca3af'
-                const count = linkCountMap.get(node.id) || 0
-                // 노드 크기: 로그 스케일로 제한 (최소 2, 최대 10)
-                const size = Math.min(10, 2 + Math.log2(count + 1) * 2)
+                const isSubjectNeighbor = filteredData?.neighborNodeIds?.has(node.id)
                 const isSelected = selectedNode?.id === node.id
-                const nodeOpacity = isNeighbor ? 0.25 : 0.9
+                const isSelectedNeighbor = selectedNeighborIds.has(node.id)
+                const hasSelection = !!selectedNode
+
+                // 색상 결정
+                const baseColor = SUBJECT_COLORS[node.subject_group] || '#9ca3af'
+                const color = isSelected ? '#ffffff'
+                  : (hasSearch && highlightNodes.size > 0 && !highlightNodes.has(node.id))
+                    ? '#374151' : baseColor
+
+                const count = linkCountMap.get(node.id) || 0
+                const baseSize = Math.min(10, 2 + Math.log2(count + 1) * 2)
+
+                // 크기와 투명도 결정: 선택/이웃/기타
+                let size, nodeOpacity
+                if (isSelected) {
+                  size = baseSize * 1.8
+                  nodeOpacity = 1.0
+                } else if (isSelectedNeighbor) {
+                  size = baseSize * 1.4
+                  nodeOpacity = 1.0
+                } else if (hasSelection) {
+                  // 선택 있을 때 관련 없는 노드 → 매우 어둡게
+                  size = baseSize * 0.7
+                  nodeOpacity = 0.12
+                } else if (isSubjectNeighbor) {
+                  size = baseSize
+                  nodeOpacity = 0.25
+                } else {
+                  size = baseSize
+                  nodeOpacity = 0.9
+                }
 
                 // 구체
-                const sphereGeo = new THREE.SphereGeometry(isSelected ? size * 1.5 : size)
+                const sphereGeo = new THREE.SphereGeometry(size)
                 const sphereMat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: nodeOpacity })
                 const sphere = new THREE.Mesh(sphereGeo, sphereMat)
 
-                // 텍스트 라벨 (키워드 + 연결 교과)
-                const canvas = document.createElement('canvas')
-                const ctx = canvas.getContext('2d')
-                const label = nodeLabelMap.get(node.id) || node.subject
-                const labelLen = Math.max(label.length, 4)
-                canvas.width = Math.min(512, labelLen * 22)
-                canvas.height = 40
-                ctx.clearRect(0, 0, canvas.width, canvas.height)
-                ctx.font = 'bold 18px sans-serif'
-                ctx.textAlign = 'center'
-                ctx.textBaseline = 'middle'
-                ctx.fillStyle = color
-                ctx.globalAlpha = isNeighbor ? 0.3 : 1.0
-                ctx.fillText(label, canvas.width / 2, canvas.height / 2)
-
-                const texture = new THREE.CanvasTexture(canvas)
-                const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: nodeOpacity })
-                const sprite = new THREE.Sprite(spriteMat)
-                const spriteWidth = Math.min(32, labelLen * 1.8)
-                sprite.scale.set(spriteWidth, 5, 1)
-                sprite.position.set(0, size + 5, 0)
-
                 const group = new THREE.Group()
                 group.add(sphere)
-                group.add(sprite)
+
+                // 라벨: 선택된 노드 / 이웃 노드만 크게 표시 (나머지는 선택 시 숨김)
+                if (isSelected || isSelectedNeighbor || !hasSelection) {
+                  const canvas = document.createElement('canvas')
+                  const ctx = canvas.getContext('2d')
+
+                  let label, fontSize, canvasHeight, spriteH
+                  if (isSelected) {
+                    // 선택된 노드: 코드 + 내용 미리보기
+                    label = `${node.code} ${node.subject}`
+                    fontSize = 28
+                    canvasHeight = 48
+                    spriteH = 7
+                  } else if (isSelectedNeighbor) {
+                    // 이웃 노드: 코드 + 교과 + 영역 (읽기 쉽게)
+                    label = `${node.code} ${node.subject} · ${node.area || ''}`
+                    fontSize = 24
+                    canvasHeight = 44
+                    spriteH = 6.5
+                  } else {
+                    // 기본 라벨 (선택 없을 때)
+                    label = nodeLabelMap.get(node.id) || node.subject
+                    fontSize = 18
+                    canvasHeight = 40
+                    spriteH = 5
+                  }
+
+                  const labelLen = Math.max(label.length, 4)
+                  canvas.width = Math.min(768, labelLen * (fontSize * 1.2))
+                  canvas.height = canvasHeight
+                  ctx.clearRect(0, 0, canvas.width, canvas.height)
+                  ctx.font = `bold ${fontSize}px sans-serif`
+                  ctx.textAlign = 'center'
+                  ctx.textBaseline = 'middle'
+                  ctx.fillStyle = isSelected ? '#ffffff' : color
+                  ctx.globalAlpha = isSubjectNeighbor && !isSelectedNeighbor ? 0.3 : 1.0
+                  ctx.fillText(label, canvas.width / 2, canvas.height / 2)
+
+                  const texture = new THREE.CanvasTexture(canvas)
+                  const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: isSelected || isSelectedNeighbor ? 1.0 : (isSubjectNeighbor ? 0.25 : 0.9) })
+                  const sprite = new THREE.Sprite(spriteMat)
+                  const spriteWidth = isSelectedNeighbor
+                    ? Math.min(50, labelLen * 2.2)
+                    : isSelected
+                      ? Math.min(45, labelLen * 2.0)
+                      : Math.min(32, labelLen * 1.8)
+                  sprite.scale.set(spriteWidth, spriteH, 1)
+                  sprite.position.set(0, size + 5, 0)
+                  group.add(sprite)
+                }
+
+                // 이웃 노드에 글로우 링 추가 (시각적 강조)
+                if (isSelectedNeighbor) {
+                  const ringGeo = new THREE.RingGeometry(size * 1.3, size * 1.6, 24)
+                  const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+                  const ring = new THREE.Mesh(ringGeo, ringMat)
+                  ring.lookAt(new THREE.Vector3(0, 0, 1)) // 카메라 방향으로 회전
+                  group.add(ring)
+                }
+
                 return group
               }}
               nodeLabel={(node) => `${node.code} (${node.subject})\n${node.content?.substring(0, 60)}...`}
@@ -844,12 +923,24 @@ export default function Graph3D({ embedded = false }) {
                   const idx = filteredData.links.indexOf(link)
                   return highlightLinks.has(idx) ? LINK_TYPE_COLORS[link.link_type] || '#6b7280' : '#1f2937'
                 }
+                // 선택 노드와 연결된 링크 강조
+                if (selectedNode) {
+                  const srcId = getLinkSourceId(link), tgtId = getLinkTargetId(link)
+                  const isConnected = srcId === selectedNode.id || tgtId === selectedNode.id
+                  return isConnected ? LINK_TYPE_COLORS[link.link_type] || '#6b7280' : '#1a1a2e'
+                }
                 return LINK_TYPE_COLORS[link.link_type] || '#6b7280'
               }}
               linkWidth={(link) => {
                 if (hasSearch && highlightLinks.size > 0) {
                   const idx = filteredData.links.indexOf(link)
                   return highlightLinks.has(idx) ? 2.5 : 0.3
+                }
+                // 선택 노드와 연결된 링크 굵게
+                if (selectedNode) {
+                  const srcId = getLinkSourceId(link), tgtId = getLinkTargetId(link)
+                  const isConnected = srcId === selectedNode.id || tgtId === selectedNode.id
+                  return isConnected ? 3 : 0.2
                 }
                 // 이웃 노드로 가는 확장 링크는 가늘게
                 if (filteredData?.neighborNodeIds?.size > 0) {
@@ -870,14 +961,18 @@ export default function Graph3D({ embedded = false }) {
               }}
               onNodeClick={focusNode}
               onNodeHover={(node, prevNode) => {
-                // 이전 호버된 이웃 노드 → 반투명 복원
-                if (prevNode?.__threeObj && filteredData?.neighborNodeIds?.has(prevNode.id)) {
+                // 이전 호버 노드 → 원래 투명도로 복원
+                if (prevNode?.__threeObj) {
+                  const isNeighborOfSelected = selectedNeighborIds.has(prevNode.id)
+                  const restoreOpacity = isNeighborOfSelected ? 1.0
+                    : filteredData?.neighborNodeIds?.has(prevNode.id) ? 0.25
+                    : selectedNode ? 0.12 : 0.9
                   prevNode.__threeObj.children.forEach(child => {
-                    if (child.material) child.material.opacity = 0.25
+                    if (child.material) child.material.opacity = restoreOpacity
                   })
                 }
-                // 현재 호버된 이웃 노드 → 불투명 전환
-                if (node?.__threeObj && filteredData?.neighborNodeIds?.has(node.id)) {
+                // 현재 호버 노드 → 불투명 전환
+                if (node?.__threeObj) {
                   node.__threeObj.children.forEach(child => {
                     if (child.material) child.material.opacity = 0.9
                   })
