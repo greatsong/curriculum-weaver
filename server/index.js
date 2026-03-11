@@ -136,7 +136,7 @@ app.use(cors({
     }
   },
 }))
-app.use(express.json({ limit: '1mb' }))
+app.use(express.json({ limit: '5mb' }))
 
 // 헬스 체크
 app.get('/api/health', (req, res) => {

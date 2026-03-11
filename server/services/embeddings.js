@@ -158,6 +158,12 @@ export function computeEmbedding3D(standards) {
     return result
   }
 
+  // Production에서 캐시 미스 → UMAP 계산 건너뜀 (OOM 방지)
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('  ⚠️ 임베딩 캐시 미스 — production에서 UMAP 계산 건너뜀')
+    return new Map()
+  }
+
   console.time('임베딩 3D 계산')
 
   // 1. 토큰화 (content + keywords + subject + area를 결합)
