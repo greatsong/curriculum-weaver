@@ -410,15 +410,15 @@ export default function Graph3D({ embedded = false }) {
     return map
   }, [graphData, nodeSubjectMap])
 
-  // 노드 근처로 카메라 줌인 (고정 거리 방식)
+  // 노드 근처로 카메라 줌인 (연결 노드까지 보이는 거리)
   const zoomToNode = useCallback((node) => {
     if (!fgRef.current) return
     const gd = fgRef.current.graphData?.() || filteredData
     const realNode = gd?.nodes?.find(n => n.id === node.id) || node
     const x = realNode.x ?? 0, y = realNode.y ?? 0, z = realNode.z ?? 0
     const dist = Math.hypot(x, y, z) || 1
-    // 카메라를 노드 앞 고정 거리(60)에 배치 — 노드 방향에서 바라봄
-    const camDist = 60
+    // 카메라를 노드 뒤 적당한 거리에 배치 — 이웃 노드까지 함께 관찰
+    const camDist = 300
     const nx = x / dist, ny = y / dist, nz = z / dist // 방향 단위벡터
     fgRef.current.cameraPosition(
       { x: x + nx * camDist, y: y + ny * camDist, z: z + nz * camDist },
@@ -432,10 +432,11 @@ export default function Graph3D({ embedded = false }) {
     zoomToNode(node)
   }, [zoomToNode])
 
-  // 3D 그래프 노드 클릭 (토글 + 줌인)
+  // 3D 그래프 노드 클릭 (토글 + 줌인 + 사이드바 목록 탭)
   const focusNode = useCallback((node) => {
     setSelectedNode(prev => {
       if (prev?.id === node.id) return null // 이미 선택된 노드 클릭 → 해제
+      setSidebarTab('list') // 연결 성취기준 목록으로 전환
       return node
     })
     zoomToNode(node)
@@ -1117,7 +1118,66 @@ export default function Graph3D({ embedded = false }) {
 
             {/* 목록 */}
             <div className="flex-1 overflow-auto min-h-0">
-              {listItems.length === 0 ? (
+              {/* 선택 노드가 있으면 연결 성취기준 상세 뷰 */}
+              {selectedNode ? (
+                <div className="p-3 space-y-3">
+                  {/* 선택 노드 헤더 */}
+                  <div className="bg-blue-900/30 border border-blue-700/50 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: SUBJECT_COLORS[selectedNode.subject_group] || '#9ca3af' }} />
+                        <span className="font-mono text-sm font-bold text-blue-400">{selectedNode.code}</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium text-white"
+                          style={{ backgroundColor: SUBJECT_COLORS[selectedNode.subject_group] || '#9ca3af' }}>
+                          {selectedNode.subject}
+                        </span>
+                      </div>
+                      <button onClick={() => setSelectedNode(null)} className="text-gray-500 hover:text-gray-300 p-0.5" title="선택 해제">
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-gray-500 mb-1">{selectedNode.grade_group} · {selectedNode.area}</p>
+                    <p className="text-xs text-gray-300 leading-relaxed">{selectedNode.content}</p>
+                  </div>
+
+                  {/* 연결된 성취기준 목록 */}
+                  {selectedLinks.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-400 mb-2 px-1">
+                        연결된 성취기준 <span className="text-blue-400">{selectedLinks.length}개</span>
+                      </p>
+                      <div className="space-y-1.5">
+                        {selectedLinks.map((link, i) => {
+                          const src = typeof link.source === 'object' ? link.source : graphData.nodes.find(n => n.id === link.source)
+                          const tgt = typeof link.target === 'object' ? link.target : graphData.nodes.find(n => n.id === link.target)
+                          const isSource = (src?.id || link.source) === selectedNode.id
+                          const other = isSource ? tgt : src
+                          if (!other) return null
+                          return (
+                            <button key={i} onClick={() => other && navigateToNode(other)}
+                              className="w-full text-left bg-gray-700/40 hover:bg-gray-700 rounded-lg p-2.5 transition group">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="px-1.5 py-0.5 rounded text-white text-[10px] font-medium shrink-0"
+                                  style={{ backgroundColor: LINK_TYPE_COLORS[link.link_type] || '#6b7280' }}>
+                                  {LINK_TYPE_LABELS[link.link_type] || link.link_type}
+                                </span>
+                                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: SUBJECT_COLORS[other.subject_group] || '#9ca3af' }} />
+                                <span className="font-mono text-xs font-bold text-blue-400">{other.code}</span>
+                                <span className="text-[10px] text-gray-500">{other.subject}</span>
+                                <ChevronRight size={12} className="ml-auto text-gray-600 group-hover:text-gray-400" />
+                              </div>
+                              <p className="text-[11px] text-gray-400 leading-relaxed line-clamp-2 pl-1">{other.content}</p>
+                              {link.rationale && (
+                                <p className="text-[10px] text-amber-400/70 mt-1 pl-1 line-clamp-1">💡 {link.rationale}</p>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : listItems.length === 0 ? (
                 <div className="text-center py-8 text-gray-500 text-sm">
                   {searchQuery ? '검색 결과가 없습니다' : '데이터 없음'}
                 </div>
@@ -1271,46 +1331,16 @@ export default function Graph3D({ embedded = false }) {
           </>
         )}
 
-        {/* 선택된 노드 상세 */}
-        {selectedNode && (
-          <div className="border-t border-gray-700 p-3 shrink-0 max-h-[200px] overflow-auto">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-sm font-bold text-blue-400">{selectedNode.code}</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium text-white"
-                  style={{ backgroundColor: SUBJECT_COLORS[selectedNode.subject_group] || '#9ca3af' }}>
-                  {selectedNode.subject}
-                </span>
-              </div>
-              <button onClick={() => setSelectedNode(null)} className="text-gray-500 hover:text-gray-300 p-0.5">
-                <X size={14} />
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 mb-1">{selectedNode.grade_group} · {selectedNode.area}</p>
-            <p className="text-sm text-gray-300 mb-2">{selectedNode.content}</p>
-            {selectedLinks.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-[10px] text-gray-500 font-medium">연결 {selectedLinks.length}개</p>
-                {selectedLinks.map((link, i) => {
-                  const src = typeof link.source === 'object' ? link.source : graphData.nodes.find(n => n.id === link.source)
-                  const tgt = typeof link.target === 'object' ? link.target : graphData.nodes.find(n => n.id === link.target)
-                  const isSource = (src?.id || link.source) === selectedNode.id
-                  const other = isSource ? tgt : src
-                  return (
-                    <button key={i} onClick={() => other && focusNode(other)}
-                      className="w-full text-left flex items-center gap-1.5 px-2 py-1.5 bg-gray-700/50 hover:bg-gray-700 rounded text-xs text-gray-300 transition">
-                      <span className="text-gray-500 text-[10px]">{isSource ? '→' : '←'}</span>
-                      <span className="px-1 py-0.5 rounded text-white text-[10px] shrink-0"
-                        style={{ backgroundColor: LINK_TYPE_COLORS[link.link_type] || '#6b7280' }}>
-                        {LINK_TYPE_LABELS[link.link_type] || link.link_type}
-                      </span>
-                      <span className="font-mono text-blue-400 shrink-0">{other?.code}</span>
-                      <span className="text-gray-500 truncate">{other?.subject}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+        {/* 선택 노드 간단 표시 (채팅/가이드 탭일 때만) */}
+        {selectedNode && sidebarTab !== 'list' && (
+          <div className="border-t border-gray-700 px-3 py-2 shrink-0 flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: SUBJECT_COLORS[selectedNode.subject_group] || '#9ca3af' }} />
+            <span className="font-mono text-xs font-bold text-blue-400">{selectedNode.code}</span>
+            <span className="text-[10px] text-gray-500 truncate flex-1">{selectedNode.subject}</span>
+            <button onClick={() => setSidebarTab('list')} className="text-[10px] text-blue-400 hover:underline shrink-0">상세보기</button>
+            <button onClick={() => setSelectedNode(null)} className="text-gray-500 hover:text-gray-300 p-0.5 shrink-0">
+              <X size={12} />
+            </button>
           </div>
         )}
       </div>
