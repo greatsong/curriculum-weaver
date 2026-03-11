@@ -281,6 +281,83 @@ export default function Graph3D({ embedded = false }) {
     return () => clearTimeout(timer)
   }, [filteredData])
 
+  // 노드 선택 시 이웃 노드를 선택 노드 주변으로 모으는 클러스터링 포스
+  const savedPositionsRef = useRef(null)
+  useEffect(() => {
+    const fg = fgRef.current
+    if (!fg) return
+    const gd = fg.graphData?.()
+    if (!gd || !gd.nodes.length) return
+
+    if (selectedNode && selectedNeighborIds.size > 0) {
+      const centerNode = gd.nodes.find(n => n.id === selectedNode.id)
+      if (!centerNode) return
+
+      // 원래 위치 저장 (최초 선택 시에만)
+      if (!savedPositionsRef.current) {
+        savedPositionsRef.current = new Map()
+        gd.nodes.forEach(n => {
+          savedPositionsRef.current.set(n.id, { x: n.x, y: n.y, z: n.z })
+        })
+      }
+
+      // 선택 노드 고정
+      centerNode.fx = centerNode.x
+      centerNode.fy = centerNode.y
+      centerNode.fz = centerNode.z
+
+      // 이웃 노드를 선택 노드 주변 반경 50 이내로 끌어당기는 커스텀 포스
+      const neighborIds = selectedNeighborIds
+      fg.d3Force('cluster', (alpha) => {
+        const strength = alpha * 0.5
+        gd.nodes.forEach(n => {
+          if (!neighborIds.has(n.id)) return
+          const dx = centerNode.x - n.x
+          const dy = centerNode.y - n.y
+          const dz = centerNode.z - n.z
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1
+          const targetDist = 50
+          if (dist > targetDist) {
+            const factor = strength * (dist - targetDist) / dist
+            n.vx = (n.vx || 0) + dx * factor
+            n.vy = (n.vy || 0) + dy * factor
+            n.vz = (n.vz || 0) + dz * factor
+          }
+        })
+      })
+
+      // 시뮬레이션 재가열 (이웃 노드가 모여드는 애니메이션)
+      if (fg.d3ReheatSimulation) fg.d3ReheatSimulation()
+
+    } else {
+      // 선택 해제 → 클러스터링 포스 제거 + 원래 위치 복원
+      fg.d3Force('cluster', null)
+
+      if (savedPositionsRef.current && gd.nodes.length > 0) {
+        gd.nodes.forEach(n => {
+          const saved = savedPositionsRef.current.get(n.id)
+          if (saved) {
+            n.fx = saved.x; n.fy = saved.y; n.fz = saved.z
+          }
+        })
+        // 잠시 고정 후 해제 (부드러운 복원)
+        setTimeout(() => {
+          const currentGd = fg.graphData?.()
+          if (currentGd) {
+            currentGd.nodes.forEach(n => {
+              n.fx = undefined; n.fy = undefined; n.fz = undefined
+            })
+          }
+        }, 300)
+        savedPositionsRef.current = null
+      } else {
+        gd.nodes.forEach(n => {
+          n.fx = undefined; n.fy = undefined; n.fz = undefined
+        })
+      }
+    }
+  }, [selectedNode, selectedNeighborIds])
+
   // 필터 변경 시 — 자동 줌 아웃 안 함 (사용자 카메라 유지)
   // 리셋 버튼으로만 줌 투 핏 가능
 
