@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Users, Clock, ArrowRight, Database, HelpCircle, Globe, Archive, RotateCcw, Trash2 } from 'lucide-react'
+import { Plus, Users, Clock, ArrowRight, Database, HelpCircle, Globe, Archive, RotateCcw, Trash2, BookOpen } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
 import Logo from '../components/Logo'
 import { STAGES, PHASES } from 'curriculum-weaver-shared/constants.js'
@@ -104,6 +104,12 @@ export default function Dashboard() {
             className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium w-full sm:w-auto min-h-[44px]"
           >
             <Database size={18} /> 교육과정 데이터
+          </button>
+          <button
+            onClick={() => navigate('/explorer')}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-100 transition font-medium w-full sm:w-auto min-h-[44px]"
+          >
+            <BookOpen size={18} /> 연계 탐색기
           </button>
           <button
             onClick={() => navigate('/graph')}

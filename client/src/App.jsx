@@ -7,6 +7,7 @@ import DataManage from './pages/DataManage'
 
 const GraphPage = lazy(() => import('./pages/GraphPage'))
 const IntroPage = lazy(() => import('./pages/IntroPage'))
+const ExplorerPage = lazy(() => import('./pages/ExplorerPage'))
 
 // 테스트 모드: 로그인 없이 바로 사용
 // ProtectedRoute는 나중에 Supabase Auth 활성화 시 다시 사용
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/session/:sessionId" element={<SessionPage />} />
         <Route path="/data" element={<DataManage />} />
         <Route path="/graph" element={<GraphPage />} />
+        <Route path="/explorer" element={<ExplorerPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
