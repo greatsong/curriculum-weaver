@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Search, X, ChevronRight, ChevronDown, ChevronUp,
-  ArrowLeft, Home, Link2, Filter, BookOpen, Layers, ExternalLink
+  ArrowLeft, Home, Link2, Filter, BookOpen, Layers, ExternalLink, Sparkles, Loader2, RotateCcw
 } from 'lucide-react'
-import { apiGet } from '../lib/api'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { apiGet, API_BASE } from '../lib/api'
 import Logo from '../components/Logo'
 import { LINK_TYPES } from 'curriculum-weaver-shared/constants.js'
 
@@ -46,6 +48,13 @@ export default function ExplorerPage() {
   const [filterSubject, setFilterSubject] = useState('') // 교과 필터
   const [filterLinkType, setFilterLinkType] = useState('') // 연결유형 필터
   const [showFilters, setShowFilters] = useState(false)
+
+  // AI 내러티브 상태
+  const [narrative, setNarrative] = useState('')
+  const [narrativeLoading, setNarrativeLoading] = useState(false)
+  const [narrativeError, setNarrativeError] = useState('')
+  const [showNarrative, setShowNarrative] = useState(false)
+  const [narrativeForCode, setNarrativeForCode] = useState('') // 어떤 성취기준용인지
 
   // 데이터 로드
   useEffect(() => {
@@ -168,6 +177,10 @@ export default function ExplorerPage() {
     setSearchParams({ code: standard.code })
     // 아코디언 초기화
     setExpandedTypes(new Set(['cross_subject', 'same_concept']))
+    // 내러티브 초기화 (다른 성취기준으로 이동 시)
+    setShowNarrative(false)
+    setNarrative('')
+    setNarrativeError('')
   }, [setSearchParams])
 
   // 브레드크럼 네비게이션
@@ -188,6 +201,84 @@ export default function ExplorerPage() {
     })
   }, [])
 
+  // AI 내러티브 생성
+  const generateNarrative = useCallback(async () => {
+    if (!selectedStandard || narrativeLoading) return
+
+    setNarrativeLoading(true)
+    setNarrativeError('')
+    setNarrative('')
+    setShowNarrative(true)
+    setNarrativeForCode(selectedStandard.code)
+
+    // 현재 연결 정보 수집
+    const connections = []
+    for (const [type, items] of Object.entries(connectionsByType)) {
+      for (const { link, neighbor } of items) {
+        connections.push({
+          neighborCode: neighbor.code,
+          subjectGroup: neighbor.subject_group,
+          linkType: type,
+          rationale: link.rationale || '',
+        })
+      }
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/standards/narrative`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          standardCode: selectedStandard.code,
+          connections,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        setNarrativeError(err.error || '알 수 없는 오류')
+        setNarrativeLoading(false)
+        return
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(6)
+          if (data === '[DONE]') {
+            setNarrativeLoading(false)
+            return
+          }
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.type === 'text') {
+              setNarrative(prev => prev + parsed.content)
+            } else if (parsed.type === 'error') {
+              setNarrativeError(parsed.message)
+            }
+          } catch {
+            // 파싱 실패 무시
+          }
+        }
+      }
+      setNarrativeLoading(false)
+    } catch (err) {
+      setNarrativeError('네트워크 연결을 확인해주세요.')
+      setNarrativeLoading(false)
+    }
+  }, [selectedStandard, connectionsByType, narrativeLoading])
+
   // 타입 순서 정의
   const typeOrder = ['cross_subject', 'same_concept', 'prerequisite', 'application', 'extension']
 
@@ -203,9 +294,9 @@ export default function ExplorerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-violet-50/20">
       {/* 헤더 */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
+      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200/60 sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-3">
           <button
             onClick={() => navigate('/')}
@@ -215,7 +306,9 @@ export default function ExplorerPage() {
             <ArrowLeft size={20} />
           </button>
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <BookOpen size={20} className="text-blue-600 shrink-0" />
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center shrink-0">
+              <BookOpen size={15} className="text-white" />
+            </div>
             <h1 className="text-lg font-bold text-gray-900 truncate">교육과정 연계 탐색기</h1>
           </div>
           <button
@@ -237,7 +330,7 @@ export default function ExplorerPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="성취기준 코드, 내용, 교과명으로 검색 (예: 과학, [4과11-03], 생태계)"
-              className="w-full pl-10 pr-10 py-3 bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              className="w-full pl-10 pr-10 py-3 bg-white/90 backdrop-blur border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white text-sm"
               autoFocus={!selectedStandard}
             />
             {searchQuery && (
@@ -252,7 +345,7 @@ export default function ExplorerPage() {
 
           {/* 검색 결과 드롭다운 */}
           {searchResults.length > 0 && (
-            <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-80 overflow-auto">
+            <div className="mt-1 bg-white/95 backdrop-blur-lg border border-gray-200/60 rounded-xl shadow-lg max-h-80 overflow-auto">
               {searchResults.map(s => (
                 <button
                   key={s.id}
@@ -278,9 +371,11 @@ export default function ExplorerPage() {
 
         {/* 선택 전 안내 */}
         {!selectedStandard && searchResults.length === 0 && (
-          <div className="text-center py-16">
-            <BookOpen size={48} className="mx-auto mb-4 text-gray-300" />
-            <p className="text-gray-500 mb-2">탐색할 성취기준을 검색하세요</p>
+          <div className="text-center py-16 bg-white/50 backdrop-blur rounded-2xl border border-gray-100 mt-4">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-blue-100 to-violet-100 flex items-center justify-center">
+              <BookOpen size={28} className="text-blue-500" />
+            </div>
+            <p className="text-gray-600 mb-1 font-medium">탐색할 성취기준을 검색하세요</p>
             <p className="text-sm text-gray-400">
               성취기준을 선택하면 교과 간 연계를 아코디언 형태로 탐색할 수 있습니다
             </p>
@@ -336,7 +431,7 @@ export default function ExplorerPage() {
 
             {/* 선택 성취기준 카드 */}
             <div
-              className="bg-white rounded-xl border-l-4 p-5 shadow-sm"
+              className="bg-white/90 backdrop-blur rounded-xl border-l-4 p-5 shadow-sm ring-1 ring-gray-100"
               style={{ borderLeftColor: SUBJECT_COLORS[selectedStandard.subject_group] || '#6b7280' }}
             >
               <div className="flex items-start justify-between gap-3">
@@ -435,7 +530,7 @@ export default function ExplorerPage() {
 
             {/* 필터 패널 */}
             {showFilters && (
-              <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+              <div className="bg-white/80 backdrop-blur rounded-xl border border-gray-200/60 p-4 space-y-3 shadow-sm">
                 <div>
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">교과 필터</label>
                   <div className="flex flex-wrap gap-1.5">
@@ -517,7 +612,7 @@ export default function ExplorerPage() {
                 }
 
                 return (
-                  <div key={type} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div key={type} className="bg-white/90 backdrop-blur rounded-xl border border-gray-200/60 shadow-sm overflow-hidden">
                     {/* 아코디언 헤더 */}
                     <button
                       onClick={() => toggleType(type)}
@@ -614,13 +709,88 @@ export default function ExplorerPage() {
 
             {/* 연결 없음 */}
             {totalConnections === 0 && (
-              <div className="text-center py-8 bg-white rounded-xl border border-gray-200">
+              <div className="text-center py-8 bg-white/80 rounded-xl border border-gray-200/60">
                 <Link2 size={32} className="mx-auto mb-2 text-gray-300" />
                 <p className="text-gray-500">
                   {filterSubject || filterLinkType
                     ? '필터 조건에 맞는 연결이 없습니다'
                     : '이 성취기준에 연결된 항목이 없습니다'}
                 </p>
+              </div>
+            )}
+
+            {/* AI 내러티브 섹션 */}
+            {totalConnections > 0 && (
+              <div className="bg-white/90 backdrop-blur rounded-xl border border-violet-200/60 shadow-sm overflow-hidden">
+                {/* 내러티브 헤더 / 생성 버튼 */}
+                {!showNarrative ? (
+                  <button
+                    onClick={generateNarrative}
+                    disabled={narrativeLoading}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-violet-50 to-blue-50 hover:from-violet-100 hover:to-blue-100 transition text-sm font-medium text-violet-700 border-b border-gray-100"
+                  >
+                    <Sparkles size={16} />
+                    AI 융합 수업 내러티브 생성
+                  </button>
+                ) : (
+                  <div>
+                    {/* 내러티브 헤더 바 */}
+                    <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-violet-50 to-blue-50 border-b border-gray-100">
+                      <div className="flex items-center gap-2 text-sm font-medium text-violet-700">
+                        <Sparkles size={16} />
+                        AI 융합 수업 내러티브
+                        {narrativeForCode && (
+                          <span className="text-xs text-violet-500 font-normal">({narrativeForCode})</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {!narrativeLoading && (
+                          <button
+                            onClick={generateNarrative}
+                            className="p-1 text-violet-400 hover:text-violet-700 hover:bg-violet-100 rounded transition"
+                            title="다시 생성"
+                          >
+                            <RotateCcw size={14} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setShowNarrative(false)}
+                          className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition"
+                          title="닫기"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 내러티브 내용 */}
+                    <div className="px-5 py-4">
+                      {narrativeLoading && !narrative && (
+                        <div className="flex items-center gap-2 text-sm text-violet-500 py-4 justify-center">
+                          <Loader2 size={16} className="animate-spin" />
+                          AI가 연결을 분석하고 있습니다...
+                        </div>
+                      )}
+
+                      {narrative && (
+                        <div className="prose prose-sm max-w-none prose-headings:text-gray-900 prose-headings:mt-4 prose-headings:mb-2 prose-p:text-gray-700 prose-p:leading-relaxed prose-li:text-gray-700 prose-strong:text-gray-900 prose-code:text-violet-700 prose-code:bg-violet-50 prose-code:px-1 prose-code:rounded">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {narrative}
+                          </ReactMarkdown>
+                          {narrativeLoading && (
+                            <span className="inline-block w-2 h-4 bg-violet-400 animate-pulse rounded-sm ml-0.5" />
+                          )}
+                        </div>
+                      )}
+
+                      {narrativeError && (
+                        <div className="text-sm text-red-500 bg-red-50 rounded-lg px-3 py-2 mt-2">
+                          {narrativeError}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
