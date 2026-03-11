@@ -248,6 +248,14 @@ export default function Graph3D({ embedded = false }) {
       links = egoLinks
     }
 
+    // 고립 노드 제거: 연결이 없는 노드는 그래프에서 숨김
+    // (AI 기반 링크로 전환 후 약 48%의 노드가 고립 → force 시뮬레이션 분산 방지)
+    const linkedNodeIds = new Set()
+    links.forEach(l => { linkedNodeIds.add(getLinkSourceId(l)); linkedNodeIds.add(getLinkTargetId(l)) })
+    // 선택된 노드가 있으면 그건 항상 표시
+    if (selectedNode) linkedNodeIds.add(selectedNode.id)
+    nodes = nodes.filter(n => linkedNodeIds.has(n.id))
+
     return { nodes, links, neighborNodeIds }
   }, [graphData, selectedSubjects, selectedSchoolLevels, selectedGradeGroups, minOverlap, filterLinkType, nodeSubjectMap, focusMode, selectedNode])
 
