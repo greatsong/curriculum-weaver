@@ -113,18 +113,25 @@ export default function Graph3D({ embedded = false }) {
     return () => observer.disconnect()
   }, [])
 
-  // 그래프 데이터 로드
+  // 그래프 데이터 로드 (cold start 대비 재시도)
   useEffect(() => {
-    const load = async () => {
+    let cancelled = false
+    const load = async (retries = 2) => {
       try {
         const data = await apiGet('/api/standards/graph')
-        setGraphData(data)
+        if (!cancelled) setGraphData(data)
       } catch (e) {
+        if (!cancelled && retries > 0) {
+          console.warn(`그래프 로드 재시도 (남은 ${retries}회)...`)
+          await new Promise(r => setTimeout(r, 2000))
+          return load(retries - 1)
+        }
         console.error('그래프 로드 실패:', e)
       }
-      setLoading(false)
+      if (!cancelled) setLoading(false)
     }
     load()
+    return () => { cancelled = true }
   }, [])
 
   // 그래프 새로고침 함수

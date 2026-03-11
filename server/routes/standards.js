@@ -255,7 +255,7 @@ ${overviewSection}`
       systemPrompt = systemPrompt.slice(0, MAX_PROMPT_CHARS) + '\n\n[컨텍스트가 길어 일부 생략됨]'
     }
 
-    console.log(`[graph/chat] 프롬프트 크기: ${systemPrompt.length}자, 포커스: ${[...focusSubjectGroups].join(',')||'전체'}, 연결: ${relevantLinks.length}개`)
+    console.log(`[graph/chat] 프롬프트 크기: ${systemPrompt.length}자, 포커스: ${[...focusSubjectGroups].join(',')||'전체'}, 연결: ${graph.links.length}개`)
 
     const messages = []
     for (const msg of history.slice(-6)) {
