@@ -430,13 +430,20 @@ export default function Graph3D({ embedded = false }) {
     const realNode = gd?.nodes?.find(n => n.id === node.id) || node
     const x = realNode.x ?? 0, y = realNode.y ?? 0, z = realNode.z ?? 0
     const dist = Math.hypot(x, y, z) || 1
-    // 카메라를 노드 뒤 적당한 거리에 배치 — 이웃 노드까지 함께 관찰
     const camDist = 150
     const nx = x / dist, ny = y / dist, nz = z / dist // 방향 단위벡터
-    fgRef.current.cameraPosition(
-      { x: x + nx * camDist, y: y + ny * camDist, z: z + nz * camDist },
-      { x, y, z }, 800
-    )
+    // 클러스터링 애니메이션이 시작된 후 줌인 (이웃이 모인 뒤 보기)
+    setTimeout(() => {
+      if (!fgRef.current) return
+      const updatedNode = fgRef.current.graphData?.()?.nodes?.find(n => n.id === node.id) || realNode
+      const ux = updatedNode.x ?? x, uy = updatedNode.y ?? y, uz = updatedNode.z ?? z
+      const ud = Math.hypot(ux, uy, uz) || 1
+      const unx = ux / ud, uny = uy / ud, unz = uz / ud
+      fgRef.current.cameraPosition(
+        { x: ux + unx * camDist, y: uy + uny * camDist, z: uz + unz * camDist },
+        { x: ux, y: uy, z: uz }, 800
+      )
+    }, 400)
   }, [filteredData])
 
   // 노드로 카메라 이동 (항상 선택 — 리스트 클릭용)
@@ -921,9 +928,9 @@ export default function Graph3D({ embedded = false }) {
                   size = baseSize * 1.4
                   nodeOpacity = 1.0
                 } else if (hasSelection) {
-                  // 선택 있을 때 관련 없는 노드 → 매우 어둡게
-                  size = baseSize * 0.7
-                  nodeOpacity = 0.12
+                  // 선택 있을 때 관련 없는 노드 → 거의 안 보이게
+                  size = baseSize * 0.4
+                  nodeOpacity = 0.04
                 } else if (isSubjectNeighbor) {
                   size = baseSize
                   nodeOpacity = 0.25
@@ -947,17 +954,18 @@ export default function Graph3D({ embedded = false }) {
 
                   let label, fontSize, canvasHeight, spriteH
                   if (isSelected) {
-                    // 선택된 노드: 코드 + 내용 미리보기
-                    label = `${node.code} ${node.subject}`
+                    // 선택된 노드: 코드 + 교과
+                    label = `★ ${node.code} ${node.subject}`
                     fontSize = 28
                     canvasHeight = 48
-                    spriteH = 7
+                    spriteH = 8
                   } else if (isSelectedNeighbor) {
-                    // 이웃 노드: 코드 + 교과 + 영역 (읽기 쉽게)
-                    label = `${node.code} ${node.subject} · ${node.area || ''}`
-                    fontSize = 24
-                    canvasHeight = 44
-                    spriteH = 6.5
+                    // 이웃 노드: 코드 + 교과 + 내용 앞부분 (한 눈에 어떤 내용인지 파악)
+                    const contentPreview = (node.content || '').slice(0, 25)
+                    label = `${node.code} ${node.subject} · ${contentPreview}`
+                    fontSize = 22
+                    canvasHeight = 40
+                    spriteH = 6
                   } else {
                     // 기본 라벨 (선택 없을 때)
                     label = nodeLabelMap.get(node.id) || node.subject
@@ -1051,7 +1059,7 @@ export default function Graph3D({ embedded = false }) {
                   const isNeighborOfSelected = selectedNeighborIds.has(prevNode.id)
                   const restoreOpacity = isNeighborOfSelected ? 1.0
                     : filteredData?.neighborNodeIds?.has(prevNode.id) ? 0.25
-                    : selectedNode ? 0.12 : 0.9
+                    : selectedNode ? 0.04 : 0.9
                   prevNode.__threeObj.children.forEach(child => {
                     if (child.material) child.material.opacity = restoreOpacity
                   })
