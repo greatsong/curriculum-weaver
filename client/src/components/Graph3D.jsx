@@ -83,6 +83,7 @@ export default function Graph3D({ embedded = false }) {
   const containerRef = useRef(null)
   const fgRef = useRef()
   const initialFitDoneRef = useRef(false)
+  const selectedNodeRef = useRef(null) // filteredData에서 사용 (dependency 제거용)
   const [dimensions, setDimensions] = useState({ width: 800, height: 500 })
 
   // AI 채팅 상태
@@ -153,6 +154,9 @@ export default function Graph3D({ embedded = false }) {
   }, [graphData])
 
   // 필터링된 그래프 데이터 (같은 교과 간 연결 제거)
+  // selectedNode가 변경될 때 ref 업데이트 (filteredData useMemo dependency에서 제거하기 위해)
+  selectedNodeRef.current = selectedNode
+
   const filteredData = useMemo(() => {
     if (!graphData) return null
     let nodes = graphData.nodes
@@ -238,11 +242,12 @@ export default function Graph3D({ embedded = false }) {
     }
 
     // 포커스 모드: 선택 노드의 1홉 이웃만 표시
-    if (focusMode && selectedNode) {
+    const selNodeForFilter = selectedNodeRef.current
+    if (focusMode && selNodeForFilter) {
       const egoLinks = links.filter(l =>
-        getLinkSourceId(l) === selectedNode.id || getLinkTargetId(l) === selectedNode.id
+        getLinkSourceId(l) === selNodeForFilter.id || getLinkTargetId(l) === selNodeForFilter.id
       )
-      const egoNodeIds = new Set([selectedNode.id])
+      const egoNodeIds = new Set([selNodeForFilter.id])
       egoLinks.forEach(l => { egoNodeIds.add(getLinkSourceId(l)); egoNodeIds.add(getLinkTargetId(l)) })
       nodes = nodes.filter(n => egoNodeIds.has(n.id))
       links = egoLinks
@@ -253,11 +258,11 @@ export default function Graph3D({ embedded = false }) {
     const linkedNodeIds = new Set()
     links.forEach(l => { linkedNodeIds.add(getLinkSourceId(l)); linkedNodeIds.add(getLinkTargetId(l)) })
     // 선택된 노드가 있으면 그건 항상 표시
-    if (selectedNode) linkedNodeIds.add(selectedNode.id)
+    if (selNodeForFilter) linkedNodeIds.add(selNodeForFilter.id)
     nodes = nodes.filter(n => linkedNodeIds.has(n.id))
 
     return { nodes, links, neighborNodeIds }
-  }, [graphData, selectedSubjects, selectedSchoolLevels, selectedGradeGroups, minOverlap, filterLinkType, nodeSubjectMap, focusMode, selectedNode])
+  }, [graphData, selectedSubjects, selectedSchoolLevels, selectedGradeGroups, minOverlap, filterLinkType, nodeSubjectMap, focusMode])
 
   // 포스 시뮬레이션 설정 (반발력, 링크 거리 등)
   // 노드 수가 실제로 변경될 때만 reheat (선택만 변경 시 불필요한 reheat 방지)
@@ -423,27 +428,18 @@ export default function Graph3D({ embedded = false }) {
     return map
   }, [graphData, nodeSubjectMap])
 
-  // 노드 근처로 카메라 줌인 (연결 노드까지 보이는 거리)
+  // 노드 줌인 (선택 시 해당 노드 방향으로 카메라 이동)
   const zoomToNode = useCallback((node) => {
-    if (!fgRef.current) return
-    const gd = fgRef.current.graphData?.() || filteredData
-    const realNode = gd?.nodes?.find(n => n.id === node.id) || node
+    if (!fgRef.current || !filteredData) return
+    const realNode = filteredData.nodes?.find(n => n.id === node.id)
+    if (!realNode) return
     const x = realNode.x ?? 0, y = realNode.y ?? 0, z = realNode.z ?? 0
     const dist = Math.hypot(x, y, z) || 1
-    const camDist = 180
-    const nx = x / dist, ny = y / dist, nz = z / dist // 방향 단위벡터
-    // 클러스터링 애니메이션이 시작된 후 줌인 (이웃이 모인 뒤 보기)
-    setTimeout(() => {
-      if (!fgRef.current) return
-      const updatedNode = fgRef.current.graphData?.()?.nodes?.find(n => n.id === node.id) || realNode
-      const ux = updatedNode.x ?? x, uy = updatedNode.y ?? y, uz = updatedNode.z ?? z
-      const ud = Math.hypot(ux, uy, uz) || 1
-      const unx = ux / ud, uny = uy / ud, unz = uz / ud
-      fgRef.current.cameraPosition(
-        { x: ux + unx * camDist, y: uy + uny * camDist, z: uz + unz * camDist },
-        { x: ux, y: uy, z: uz }, 800
-      )
-    }, 400)
+    const targetDist = 200
+    fgRef.current.cameraPosition(
+      { x: x + targetDist * x / dist, y: y + targetDist * y / dist, z: z + targetDist * z / dist },
+      { x, y, z }, 800
+    )
   }, [filteredData])
 
   // 노드로 카메라 이동 (항상 선택 — 리스트 클릭용)
@@ -497,95 +493,7 @@ export default function Graph3D({ embedded = false }) {
     return ids
   }, [selectedNode, selectedLinks])
 
-  // 노드 선택 시 이웃 노드를 선택 노드 주변으로 모으는 클러스터링 포스
-  const savedPositionsRef = useRef(null)
-  useEffect(() => {
-    const fg = fgRef.current
-    if (!fg) return
-    const gd = fg.graphData?.()
-    if (!gd || !gd.nodes.length) return
-
-    if (selectedNode && selectedNeighborIds.size > 0) {
-      const centerNode = gd.nodes.find(n => n.id === selectedNode.id)
-      if (!centerNode) return
-
-      // 원래 위치 저장 (최초 선택 시에만)
-      if (!savedPositionsRef.current) {
-        savedPositionsRef.current = new Map()
-        gd.nodes.forEach(n => {
-          savedPositionsRef.current.set(n.id, { x: n.x, y: n.y, z: n.z })
-        })
-      }
-
-      // 선택 노드 고정
-      centerNode.fx = centerNode.x
-      centerNode.fy = centerNode.y
-      centerNode.fz = centerNode.z
-
-      // 이웃 노드를 선택 노드 주변으로 즉시 배치 (반경 30~60에 골고루)
-      const neighborIds = selectedNeighborIds
-      const neighborArr = gd.nodes.filter(n => neighborIds.has(n.id))
-      const total = neighborArr.length
-      neighborArr.forEach((n, i) => {
-        // 구면 균등 분포 (피보나치 구)
-        const phi = Math.acos(1 - 2 * (i + 0.5) / total)
-        const theta = Math.PI * (1 + Math.sqrt(5)) * i
-        const r = 35 + (i % 3) * 10 // 30~55 거리에 분산
-        n.fx = centerNode.x + r * Math.sin(phi) * Math.cos(theta)
-        n.fy = centerNode.y + r * Math.sin(phi) * Math.sin(theta)
-        n.fz = centerNode.z + r * Math.cos(phi)
-      })
-
-      // 비관련 노드를 밀어내는 포스
-      fg.d3Force('cluster', (alpha) => {
-        const strength = alpha * 0.3
-        gd.nodes.forEach(n => {
-          if (neighborIds.has(n.id) || n.id === centerNode.id) return
-          const dx = n.x - centerNode.x
-          const dy = n.y - centerNode.y
-          const dz = n.z - centerNode.z
-          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1
-          const targetDist = 200
-          if (dist < targetDist) {
-            const factor = strength * (targetDist - dist) / dist
-            n.vx = (n.vx || 0) + dx * factor
-            n.vy = (n.vy || 0) + dy * factor
-            n.vz = (n.vz || 0) + dz * factor
-          }
-        })
-      })
-
-      // 시뮬레이션 재가열 (이웃 노드가 모여드는 애니메이션)
-      if (fg.d3ReheatSimulation) fg.d3ReheatSimulation()
-
-    } else {
-      // 선택 해제 → 클러스터링 포스 제거 + 원래 위치 복원
-      fg.d3Force('cluster', null)
-
-      if (savedPositionsRef.current && gd.nodes.length > 0) {
-        gd.nodes.forEach(n => {
-          const saved = savedPositionsRef.current.get(n.id)
-          if (saved) {
-            n.fx = saved.x; n.fy = saved.y; n.fz = saved.z
-          }
-        })
-        // 잠시 고정 후 해제 (부드러운 복원)
-        setTimeout(() => {
-          const currentGd = fg.graphData?.()
-          if (currentGd) {
-            currentGd.nodes.forEach(n => {
-              n.fx = undefined; n.fy = undefined; n.fz = undefined
-            })
-          }
-        }, 300)
-        savedPositionsRef.current = null
-      } else {
-        gd.nodes.forEach(n => {
-          n.fx = undefined; n.fy = undefined; n.fz = undefined
-        })
-      }
-    }
-  }, [selectedNode, selectedNeighborIds])
+  // (마인드맵 시각화는 HTML 오버레이로 처리 — 3D 포스 배치 불필요)
 
   const handleReset = () => {
     setSelectedSubjects(new Set()); setSelectedSchoolLevels(new Set()); setSelectedGradeGroups(new Set()); setMinOverlap(2); setFilterLinkType(''); setSearchQuery(''); setFocusMode(false)
@@ -935,15 +843,14 @@ export default function Graph3D({ embedded = false }) {
                 // 크기와 투명도 결정: 선택/이웃/기타
                 let size, nodeOpacity
                 if (isSelected) {
-                  size = baseSize * 1.8
+                  size = baseSize * 2.0
                   nodeOpacity = 1.0
                 } else if (isSelectedNeighbor) {
-                  size = baseSize * 1.4
+                  size = baseSize * 1.5
                   nodeOpacity = 1.0
                 } else if (hasSelection) {
-                  // 선택 있을 때 관련 없는 노드 → 거의 안 보이게
-                  size = baseSize * 0.4
-                  nodeOpacity = 0.04
+                  size = baseSize * 0.5
+                  nodeOpacity = 0.15
                 } else if (isSubjectNeighbor) {
                   size = baseSize
                   nodeOpacity = 0.25
@@ -960,68 +867,44 @@ export default function Graph3D({ embedded = false }) {
                 const group = new THREE.Group()
                 group.add(sphere)
 
-                // 라벨: 선택된 노드 / 이웃 노드만 크게 표시 (나머지는 선택 시 숨김)
-                if (isSelected || isSelectedNeighbor || !hasSelection) {
+                // 라벨 스프라이트 (3D 그래프 내 간단한 텍스트)
+                if (!hasSelection || isSelected || isSelectedNeighbor) {
                   const canvas = document.createElement('canvas')
                   const ctx = canvas.getContext('2d')
-
-                  let label, fontSize, spriteH
-                  if (isSelected) {
-                    label = `★ ${node.code} ${node.subject}`
-                    fontSize = 48
-                    spriteH = 10
-                  } else if (isSelectedNeighbor) {
-                    const contentPreview = (node.content || '').slice(0, 18)
-                    label = `${node.code} ${node.subject_group} · ${contentPreview}…`
-                    fontSize = 40
-                    spriteH = 8
-                  } else {
-                    label = nodeLabelMap.get(node.id) || node.subject
-                    fontSize = 22
-                    spriteH = 5
-                  }
-
-                  // 고해상도 캔버스 (2x DPR)
+                  const label = isSelected ? `★ ${node.code}` : (nodeLabelMap.get(node.id) || node.subject)
+                  const fontSize = isSelected ? 32 : 22
+                  const spriteH = isSelected ? 7 : 5
                   const dpr = 2
                   const labelLen = Math.max(label.length, 4)
-                  const logicalW = Math.min(1200, labelLen * fontSize * 0.7 + 40)
-                  const logicalH = fontSize + 20
+                  const logicalW = Math.min(600, labelLen * fontSize * 0.7 + 20)
+                  const logicalH = fontSize + 12
                   canvas.width = logicalW * dpr
                   canvas.height = logicalH * dpr
                   ctx.scale(dpr, dpr)
                   ctx.font = `bold ${fontSize}px "Apple SD Gothic Neo", "Malgun Gothic", sans-serif`
                   ctx.textAlign = 'center'
                   ctx.textBaseline = 'middle'
-                  // 텍스트 외곽선(stroke)으로 가독성 확보 (배경 박스 대신)
                   ctx.globalAlpha = isSubjectNeighbor && !isSelectedNeighbor ? 0.3 : 1.0
-                  if (isSelected || isSelectedNeighbor) {
-                    ctx.strokeStyle = '#000000'
-                    ctx.lineWidth = isSelected ? 6 : 5
-                    ctx.lineJoin = 'round'
-                    ctx.strokeText(label, logicalW / 2, logicalH / 2)
-                  }
-                  ctx.fillStyle = isSelected ? '#ffffff' : isSelectedNeighbor ? '#ffffff' : color
+                  ctx.strokeStyle = '#000000'
+                  ctx.lineWidth = 3
+                  ctx.lineJoin = 'round'
+                  ctx.strokeText(label, logicalW / 2, logicalH / 2)
+                  ctx.fillStyle = isSelected ? '#ffffff' : color
                   ctx.fillText(label, logicalW / 2, logicalH / 2)
-
                   const texture = new THREE.CanvasTexture(canvas)
                   const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, opacity: isSelected || isSelectedNeighbor ? 1.0 : (isSubjectNeighbor ? 0.25 : 0.9) })
                   const sprite = new THREE.Sprite(spriteMat)
-                  const spriteWidth = isSelectedNeighbor
-                    ? Math.min(65, labelLen * 2.2)
-                    : isSelected
-                      ? Math.min(55, labelLen * 2.0)
-                      : Math.min(32, labelLen * 1.8)
-                  sprite.scale.set(spriteWidth, spriteH, 1)
-                  sprite.position.set(0, size + 5, 0)
+                  const spriteW = Math.min(35, labelLen * 1.8)
+                  sprite.scale.set(spriteW, spriteH, 1)
+                  sprite.position.set(0, size + 4, 0)
                   group.add(sprite)
                 }
 
                 // 이웃 노드에 글로우 링 추가 (시각적 강조)
                 if (isSelectedNeighbor) {
-                  const ringGeo = new THREE.RingGeometry(size * 1.3, size * 1.6, 24)
-                  const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+                  const ringGeo = new THREE.RingGeometry(size * 1.5, size * 2.0, 32)
+                  const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, side: THREE.DoubleSide })
                   const ring = new THREE.Mesh(ringGeo, ringMat)
-                  ring.lookAt(new THREE.Vector3(0, 0, 1)) // 카메라 방향으로 회전
                   group.add(ring)
                 }
 
@@ -1051,7 +934,7 @@ export default function Graph3D({ embedded = false }) {
                 if (selectedNode) {
                   const srcId = getLinkSourceId(link), tgtId = getLinkTargetId(link)
                   const isConnected = srcId === selectedNode.id || tgtId === selectedNode.id
-                  return isConnected ? 3 : 0.2
+                  return isConnected ? 3 : 0.3
                 }
                 // 이웃 노드로 가는 확장 링크는 가늘게
                 if (filteredData?.neighborNodeIds?.size > 0) {
@@ -1139,6 +1022,137 @@ export default function Graph3D({ embedded = false }) {
                   <p className="text-[11px] text-gray-300 leading-relaxed">{hoveredLink.rationale}</p>
                 )}
               </div>
+            )
+          })()}
+          {/* ─── HTML 마인드맵 오버레이: 선택 노드 + 이웃 시각화 ─── */}
+          {selectedNode && selectedLinks.length > 0 && (() => {
+            // 실제 컨테이너 크기 사용 (dimensions는 ForceGraph 캔버스 크기이므로 컨테이너와 다를 수 있음)
+            const containerEl = containerRef.current
+            const overlayW = containerEl ? containerEl.clientWidth : dimensions.width
+            const overlayH = containerEl ? containerEl.clientHeight : dimensions.height
+            const total = selectedLinks.length
+            // 이웃 노드가 많으면(>10) 리스트 모드, 적으면 마인드맵 모드
+            const useListMode = total > 10
+            const cx = overlayW / 2, cy = overlayH / 2
+            // 타원 반경: 카드(155px) 절반을 고려하여 경계 안에 머물도록
+            const cardHalfW = 80 // 카드 width 155 / 2
+            const cardHalfH = 45 // 카드 height ~90 / 2
+            const rx = Math.min(overlayW * 0.40, (overlayW / 2) - cardHalfW - 10)
+            const ry = Math.min(overlayH * 0.38, (overlayH / 2) - cardHalfH - 20)
+
+            return (
+            <div className="absolute inset-0 z-20 pointer-events-none"
+              style={{ background: 'radial-gradient(ellipse at center, rgba(17,24,39,0.97) 0%, rgba(17,24,39,0.90) 50%, rgba(17,24,39,0.70) 100%)' }}
+              onClick={() => setSelectedNode(null)}>
+              <div className="pointer-events-auto relative w-full h-full" onClick={(e) => e.stopPropagation()}>
+                {!useListMode && (
+                  <>
+                {/* 연결선 SVG */}
+                <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ overflow: 'visible' }}>
+                  {selectedLinks.map((link, i) => {
+                    const angle = (2 * Math.PI * i) / total - Math.PI / 2
+                    const ex = cx + rx * Math.cos(angle)
+                    const ey = cy + ry * Math.sin(angle)
+                    const linkColor = LINK_TYPE_COLORS[link.link_type] || '#6b7280'
+                    return <line key={i} x1={cx} y1={cy} x2={ex} y2={ey} stroke={linkColor} strokeWidth={2} strokeOpacity={0.5} strokeDasharray="6 4" />
+                  })}
+                </svg>
+                {/* 중심 노드 카드 */}
+                <div className="absolute z-10 -translate-x-1/2 -translate-y-1/2
+                  bg-blue-900/95 border-2 border-blue-400 rounded-xl px-4 py-3 text-center shadow-lg shadow-blue-500/30"
+                  style={{ left: cx, top: cy, width: 200 }}>
+                  <div className="flex items-center justify-center gap-1.5">
+                    <span className="text-sm font-mono text-blue-300 font-bold whitespace-nowrap">{selectedNode.code}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 bg-blue-700/60 text-blue-200 rounded">{selectedNode.subject}</span>
+                  </div>
+                  <div className="text-[10px] text-gray-300 mt-1.5 leading-tight line-clamp-3">{selectedNode.content?.slice(0, 60)}…</div>
+                  <div className="text-[9px] text-gray-500 mt-1">{total}개 연결</div>
+                </div>
+                {/* 이웃 노드 카드들 (타원 배치) */}
+                {selectedLinks.map((link, i) => {
+                  const srcId = getLinkSourceId(link), tgtId = getLinkTargetId(link)
+                  const neighborId = srcId === selectedNode.id ? tgtId : srcId
+                  const neighbor = graphData?.nodes.find(n => n.id === neighborId)
+                  if (!neighbor) return null
+                  const angle = (2 * Math.PI * i) / total - Math.PI / 2
+                  const nx = cx + rx * Math.cos(angle)
+                  const ny = cy + ry * Math.sin(angle)
+                  const nColor = SUBJECT_COLORS[neighbor.subject_group] || '#9ca3af'
+                  const linkColor = LINK_TYPE_COLORS[link.link_type] || '#6b7280'
+                  return (
+                    <div key={neighborId}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer hover:scale-105 hover:z-30 transition-all"
+                      style={{ left: nx, top: ny, zIndex: 20 }}
+                      onClick={() => navigateToNode(neighbor)}>
+                      <div className="bg-gray-800/95 border-l-4 rounded-lg px-2.5 py-1.5 shadow-md backdrop-blur-sm"
+                        style={{ borderColor: nColor, width: 155 }}>
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: nColor }} />
+                          <span className="text-[10px] font-mono font-bold text-gray-200 truncate">{neighbor.code}</span>
+                          <span className="text-[9px] text-gray-500 ml-auto shrink-0">{neighbor.subject_group}</span>
+                        </div>
+                        <div className="text-[9px] text-gray-300 leading-tight line-clamp-2">{neighbor.content?.slice(0, 50)}…</div>
+                        <div className="flex items-center gap-1 mt-1">
+                          <span className="text-[8px] px-1 py-0.5 rounded text-white" style={{ backgroundColor: linkColor }}>
+                            {LINK_TYPE_LABELS[link.link_type] || link.link_type}
+                          </span>
+                          {link.rationale && <span className="text-[8px] text-gray-500 truncate">{link.rationale?.slice(0, 25)}…</span>}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                  </>
+                )}
+                {/* 리스트 모드 (10개 이상) */}
+                {useListMode && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-start pt-4 overflow-y-auto">
+                    <div className="bg-blue-900/95 border-2 border-blue-400 rounded-xl px-4 py-2.5 text-center max-w-[220px] shadow-lg mb-4">
+                      <div className="text-xs font-mono text-blue-300 font-bold">{selectedNode.code}</div>
+                      <div className="text-[10px] text-blue-200/80">{selectedNode.subject}</div>
+                      <div className="text-[10px] text-gray-300 mt-1 leading-tight">{selectedNode.content?.slice(0, 60)}…</div>
+                      <div className="text-[9px] text-gray-500 mt-1">{total}개 연결</div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 px-4 pb-4 max-w-2xl w-full">
+                      {selectedLinks.map((link) => {
+                        const srcId = getLinkSourceId(link), tgtId = getLinkTargetId(link)
+                        const neighborId = srcId === selectedNode.id ? tgtId : srcId
+                        const neighbor = graphData?.nodes.find(n => n.id === neighborId)
+                        if (!neighbor) return null
+                        const nColor = SUBJECT_COLORS[neighbor.subject_group] || '#9ca3af'
+                        const linkColor = LINK_TYPE_COLORS[link.link_type] || '#6b7280'
+                        return (
+                          <div key={neighborId} className="cursor-pointer hover:bg-gray-700/50 transition-colors bg-gray-800/90 border-l-4 rounded-lg px-2.5 py-2"
+                            style={{ borderColor: nColor }} onClick={() => navigateToNode(neighbor)}>
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: nColor }} />
+                              <span className="text-[10px] font-mono font-bold text-gray-200">{neighbor.code}</span>
+                              <span className="text-[9px] text-gray-500 ml-auto">{neighbor.subject_group}</span>
+                            </div>
+                            <div className="text-[9px] text-gray-300 leading-tight line-clamp-2">{neighbor.content?.slice(0, 60)}</div>
+                            <div className="flex items-center gap-1 mt-1">
+                              <span className="text-[8px] px-1 py-0.5 rounded text-white" style={{ backgroundColor: linkColor }}>
+                                {LINK_TYPE_LABELS[link.link_type] || link.link_type}
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                {/* 닫기 버튼 */}
+                <button
+                  className="absolute top-2 right-2 z-30 bg-gray-700/90 hover:bg-gray-600 text-gray-300 rounded-full w-8 h-8 flex items-center justify-center text-sm shadow-lg"
+                  onClick={() => setSelectedNode(null)}>
+                  <X size={16} />
+                </button>
+                {/* 안내 텍스트 */}
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 text-[10px] text-gray-500">
+                  카드를 클릭하면 해당 성취기준으로 이동 · 배경 클릭하면 닫기
+                </div>
+              </div>
+            </div>
             )
           })()}
           <div className="absolute bottom-3 left-3 text-[10px] sm:text-[11px] text-gray-500 bg-gray-800/80 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg">
