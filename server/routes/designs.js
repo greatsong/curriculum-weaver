@@ -151,14 +151,18 @@ router.put('/projects/:projectId/designs/:procedureCode', checkDesignAccess, asy
 
     const design = await upsertDesign(projectId, procedureCode, content, req.user.id)
 
-    // 활동 로그 기록
-    await logActivity({
-      project_id: projectId,
-      user_id: req.user.id,
-      action_type: 'design_updated',
-      procedure_code: procedureCode,
-      after_data: { content_keys: Object.keys(content || {}) },
-    })
+    // 활동 로그 기록 (실패해도 본 작업에 영향 없음)
+    try {
+      await logActivity({
+        project_id: projectId,
+        user_id: req.user.id,
+        action_type: 'design_updated',
+        procedure_code: procedureCode,
+        after_data: { content_keys: Object.keys(content || {}) },
+      })
+    } catch (logErr) {
+      console.warn('[designs] 활동 로그 기록 실패 (본 작업은 성공):', logErr.message)
+    }
 
     // Socket.IO 이벤트 전파 (io는 req.app에서 가져옴)
     const io = req.app.get('io')
@@ -224,14 +228,18 @@ router.put('/projects/:projectId/designs/:procedureCode/status', checkDesignAcce
       return res.status(404).json({ error: '해당 설계 캔버스를 찾을 수 없습니다.' })
     }
 
-    // 활동 로그 기록
-    await logActivity({
-      project_id: projectId,
-      user_id: req.user.id,
-      action_type: 'design_status_changed',
-      procedure_code: procedureCode,
-      after_data: { save_status },
-    })
+    // 활동 로그 기록 (실패해도 본 작업에 영향 없음)
+    try {
+      await logActivity({
+        project_id: projectId,
+        user_id: req.user.id,
+        action_type: 'design_status_changed',
+        procedure_code: procedureCode,
+        after_data: { save_status },
+      })
+    } catch (logErr) {
+      console.warn('[designs] 활동 로그 기록 실패 (본 작업은 성공):', logErr.message)
+    }
 
     // Socket.IO 이벤트 전파
     const io = req.app.get('io')

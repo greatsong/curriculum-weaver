@@ -101,13 +101,17 @@ router.post('/workspaces/:workspaceId/projects', async (req, res) => {
       learner_context: learner_context || {},
     })
 
-    // 활동 로그 기록
-    await logActivity({
-      project_id: project.id,
-      user_id: req.user.id,
-      action_type: 'project_created',
-      after_data: { title: project.title },
-    })
+    // 활동 로그 기록 (실패해도 본 작업에 영향 없음)
+    try {
+      await logActivity({
+        project_id: project.id,
+        user_id: req.user.id,
+        action_type: 'project_created',
+        after_data: { title: project.title },
+      })
+    } catch (logErr) {
+      console.warn('[projects] 활동 로그 기록 실패 (본 작업은 성공):', logErr.message)
+    }
 
     res.status(201).json(project)
   } catch (err) {
@@ -204,16 +208,20 @@ router.put('/projects/:id', checkProjectAccess, async (req, res) => {
       return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
     }
 
-    // 활동 로그: 절차 변경 시 별도 기록
+    // 활동 로그: 절차 변경 시 별도 기록 (실패해도 본 작업에 영향 없음)
     if (current_procedure) {
-      await logActivity({
-        project_id: req.params.id,
-        user_id: req.user.id,
-        action_type: 'procedure_changed',
-        procedure_code: current_procedure,
-        before_data: { procedure: req.project.current_procedure },
-        after_data: { procedure: current_procedure },
-      })
+      try {
+        await logActivity({
+          project_id: req.params.id,
+          user_id: req.user.id,
+          action_type: 'procedure_changed',
+          procedure_code: current_procedure,
+          before_data: { procedure: req.project.current_procedure },
+          after_data: { procedure: current_procedure },
+        })
+      } catch (logErr) {
+        console.warn('[projects] 활동 로그 기록 실패 (본 작업은 성공):', logErr.message)
+      }
     }
 
     res.json(updated)

@@ -96,10 +96,15 @@ export async function createWorkspace(data) {
     await sb.from('workspaces').insert(data).select().single(),
     '워크스페이스 생성 실패'
   )
-  // 생성자를 owner 멤버로 추가
-  await sb.from('members').insert({
+  // 생성자를 owner 멤버로 추가 (실패 시 워크스페이스 롤백)
+  const { error: memberErr } = await sb.from('members').insert({
     workspace_id: ws.id, user_id: data.owner_id, role: 'owner'
   })
+  if (memberErr) {
+    console.error('[supabaseService] 멤버 추가 실패, 워크스페이스 롤백:', memberErr.message)
+    await sb.from('workspaces').delete().eq('id', ws.id)
+    throw new Error('워크스페이스 생성 중 멤버 추가 실패')
+  }
   return ws
 }
 
@@ -979,12 +984,19 @@ export async function useInvite(token, userId) {
   if (invite.used_at) throw new Error('이미 사용된 초대입니다.')
   if (new Date(invite.expires_at) < new Date()) throw new Error('만료된 초대입니다.')
 
-  // 트랜잭션: 초대 사용 처리 + 멤버 추가
+  // 초대 사용 처리 + 멤버 추가 (실패 시 보상 롤백)
   handleResult(
     await sb.from('invites').update({ used_at: now() }).eq('token', token),
     '초대 사용 처리 실패'
   )
-  await addMember(invite.workspace_id, userId, invite.role)
+  try {
+    await addMember(invite.workspace_id, userId, invite.role)
+  } catch (memberErr) {
+    // 멤버 추가 실패 → 초대 사용 상태 롤백
+    console.error('[supabaseService] 멤버 추가 실패, 초대 롤백:', memberErr.message)
+    await sb.from('invites').update({ used_at: null }).eq('token', token)
+    throw new Error('초대 수락 중 멤버 추가 실패')
+  }
 }
 
 // ============================================================

@@ -111,14 +111,18 @@ router.post('/designs/:designId/versions', checkVersionAccess, async (req, res) 
       req.user.id
     )
 
-    // 활동 로그 기록
-    await logActivity({
-      project_id: req.design.project_id,
-      user_id: req.user.id,
-      action_type: 'version_created',
-      procedure_code: req.design.procedure_code,
-      after_data: { trigger_type, version_id: version.id },
-    })
+    // 활동 로그 기록 (실패해도 본 작업에 영향 없음)
+    try {
+      await logActivity({
+        project_id: req.design.project_id,
+        user_id: req.user.id,
+        action_type: 'version_created',
+        procedure_code: req.design.procedure_code,
+        after_data: { trigger_type, version_id: version.id },
+      })
+    } catch (logErr) {
+      console.warn('[versions] 활동 로그 기록 실패 (본 작업은 성공):', logErr.message)
+    }
 
     res.status(201).json(version)
   } catch (err) {

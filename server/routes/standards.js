@@ -189,13 +189,17 @@ standardsRouter.post('/project/:projectId', requireAuth, async (req, res) => {
 
     await addStandardToProject(projectId, standard_id, req.user.id, is_primary || false)
 
-    // 활동 로그 기록
-    await logActivity({
-      project_id: projectId,
-      user_id: req.user.id,
-      action_type: 'standard_added',
-      after_data: { standard_id, is_primary: is_primary || false },
-    })
+    // 활동 로그 기록 (실패해도 본 작업에 영향 없음)
+    try {
+      await logActivity({
+        project_id: projectId,
+        user_id: req.user.id,
+        action_type: 'standard_added',
+        after_data: { standard_id, is_primary: is_primary || false },
+      })
+    } catch (logErr) {
+      console.warn('[standards] 활동 로그 기록 실패 (본 작업은 성공):', logErr.message)
+    }
 
     res.status(201).json({ ok: true, message: '성취기준이 추가되었습니다.' })
   } catch (err) {
@@ -231,13 +235,17 @@ standardsRouter.delete('/project/:projectId/:standardId', requireAuth, async (re
 
     await removeStandardFromProject(projectId, standardId)
 
-    // 활동 로그 기록
-    await logActivity({
-      project_id: projectId,
-      user_id: req.user.id,
-      action_type: 'standard_removed',
-      after_data: { standard_id: standardId },
-    })
+    // 활동 로그 기록 (실패해도 본 작업에 영향 없음)
+    try {
+      await logActivity({
+        project_id: projectId,
+        user_id: req.user.id,
+        action_type: 'standard_removed',
+        after_data: { standard_id: standardId },
+      })
+    } catch (logErr) {
+      console.warn('[standards] 활동 로그 기록 실패 (본 작업은 성공):', logErr.message)
+    }
 
     res.json({ ok: true, message: '성취기준이 제거되었습니다.' })
   } catch (err) {
