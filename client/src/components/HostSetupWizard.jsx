@@ -47,7 +47,20 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
 
   // Step 1: 기본 정보
   const [description, setDescription] = useState(workspace?.description || '')
-  const [targetGrade, setTargetGrade] = useState('')
+  const [selectedGrades, setSelectedGrades] = useState([])
+  const targetGrade = selectedGrades.join(', ')
+
+  const GRADE_GROUPS = [
+    { label: '초등', grades: [{ value: '초5', label: '5학년' }, { value: '초6', label: '6학년' }] },
+    { label: '중학교', grades: [{ value: '중1', label: '1학년' }, { value: '중2', label: '2학년' }, { value: '중3', label: '3학년' }] },
+    { label: '고등학교', grades: [{ value: '고1', label: '1학년' }, { value: '고2', label: '2학년' }, { value: '고3', label: '3학년' }] },
+  ]
+
+  const toggleGrade = (val) => {
+    setSelectedGrades((prev) =>
+      prev.includes(val) ? prev.filter((g) => g !== val) : [...prev, val]
+    )
+  }
 
   // Step 2: AI 설정
   const [aiModel, setAiModel] = useState('claude-sonnet-4-20250514')
@@ -209,15 +222,40 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
                   />
                 </div>
                 <div>
-                  <label style={labelStyle}>대상 학년</label>
-                  <select value={targetGrade} onChange={(e) => setTargetGrade(e.target.value)} style={inputStyle}>
-                    <option value="">선택하세요</option>
-                    <option value="초등3-4">초등 3-4학년</option>
-                    <option value="초등5-6">초등 5-6학년</option>
-                    <option value="중학교">중학교</option>
-                    <option value="고등1-2">고등학교 1-2학년</option>
-                    <option value="고등3">고등학교 3학년</option>
-                  </select>
+                  <label style={labelStyle}>대상 학년 (복수 선택 가능)</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {GRADE_GROUPS.map((group) => (
+                      <div key={group.label}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 3, display: 'block' }}>
+                          {group.label}
+                        </span>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {group.grades.map((g) => {
+                            const active = selectedGrades.includes(g.value)
+                            return (
+                              <button
+                                key={g.value}
+                                type="button"
+                                onClick={() => toggleGrade(g.value)}
+                                style={{
+                                  padding: '6px 14px',
+                                  border: `1.5px solid ${active ? '#3B82F6' : '#E5E7EB'}`,
+                                  borderRadius: 8,
+                                  background: active ? '#EFF6FF' : '#fff',
+                                  fontSize: 13, fontWeight: active ? 600 : 400,
+                                  color: active ? '#2563EB' : '#374151',
+                                  cursor: 'pointer', transition: 'all 0.15s',
+                                  fontFamily: 'var(--font-sans, inherit)',
+                                }}
+                              >
+                                {g.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
