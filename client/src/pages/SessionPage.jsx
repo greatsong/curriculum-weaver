@@ -95,7 +95,7 @@ export default function SessionPage() {
   const navigate = useNavigate()
   const { currentSession, fetchSession, updateStage, setMembers } = useSessionStore()
   const { loadBoards, loadStandards, loadMaterials, loadPrinciples, loadGeneralPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset } = useProcedureStore()
-  const { loadMessages, subscribe, unsubscribe, boardSuggestions, requestStageIntro } = useChatStore()
+  const { loadMessages, subscribe, unsubscribe, boardSuggestions, requestProcedureIntro } = useChatStore()
   const [showStandardSearch, setShowStandardSearch] = useState(false)
   const [showTutorial, setShowTutorial] = useState(
     () => !localStorage.getItem('cw_tutorial_done')
@@ -136,7 +136,7 @@ export default function SessionPage() {
         if (!hasContent) {
           const session = useSessionStore.getState().currentSession
           const stage = session?.current_stage || 1
-          setTimeout(() => requestStageIntro(sessionId, stage), 500)
+          setTimeout(() => requestProcedureIntro(sessionId, stage), 500)
         }
       }
     }
@@ -203,7 +203,7 @@ export default function SessionPage() {
   const handleStageChange = async (stage) => {
     await updateStage(sessionId, stage)
     // 단계 전환 후 AI 인트로 가이드 자동 요청
-    requestStageIntro(sessionId, stage)
+    requestProcedureIntro(sessionId, stage)
   }
 
   const handleCopyInvite = () => {

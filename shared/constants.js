@@ -487,13 +487,15 @@ export const LINK_TYPES = {
 export const ACCEPTED_FILE_TYPES = {
   pdf: '.pdf',
   docx: '.docx,.doc',
-  hwp: '.hwp',
-  image: '.png,.jpg,.jpeg,.gif,.webp',
+  hwp: '.hwp,.hwpx',
+  ppt: '.ppt,.pptx',
+  image: '.png,.jpg,.jpeg,.webp',
   spreadsheet: '.xlsx,.xls,.csv',
+  text: '.txt',
 }
 
-/** 파일 크기 제한 (50MB) */
-export const MAX_FILE_SIZE = 50 * 1024 * 1024
+/** 파일 크기 제한 (10MB — 서버 multer 설정과 일치) */
+export const MAX_FILE_SIZE = 10 * 1024 * 1024
 
 /** 세션 상태 */
 export const SESSION_STATUS = {

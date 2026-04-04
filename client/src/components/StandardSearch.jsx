@@ -57,8 +57,8 @@ export default function StandardSearch({ sessionId, onClose }) {
   }, [sessionId])
 
   const loadSessionStandards = async () => {
-    const data = await apiGet(`/api/sessions/${sessionId}/standards`)
-    setSessionStandards(data || [])
+    const data = await apiGet(`/api/standards/project/${sessionId}`)
+    setSessionStandards(Array.isArray(data) ? data : (data?.standards ?? []))
   }
 
   // 검색 (디바운스)
@@ -81,12 +81,12 @@ export default function StandardSearch({ sessionId, onClose }) {
 
   // 성취기준 추가/제거
   const addStandard = async (standardId) => {
-    await apiPost(`/api/standards/session/${sessionId}`, { standard_id: standardId })
+    await apiPost(`/api/standards/project/${sessionId}`, { standard_id: standardId })
     loadSessionStandards()
   }
 
   const removeStandard = async (standardId) => {
-    await apiDelete(`/api/standards/session/${sessionId}/${standardId}`)
+    await apiDelete(`/api/standards/project/${sessionId}/${standardId}`)
     loadSessionStandards()
   }
 

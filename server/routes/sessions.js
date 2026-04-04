@@ -4,6 +4,7 @@ import { optionalAuth } from '../middleware/auth.js'
 import { Sessions, SessionStandards } from '../lib/store.js'
 
 export const sessionsRouter = Router()
+// LEGACY: 프로젝트 기반 전환 완료 후 제거 예정. 현재 데모/세션 호환용으로 유지.
 sessionsRouter.use(optionalAuth)
 
 // 세션 목록 조회 (status 필터 지원)

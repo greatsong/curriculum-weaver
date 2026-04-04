@@ -1,3 +1,5 @@
+// TODO: OAuth 구현 완료 후 App.jsx 라우트에 연결할 것. 현재는 미사용 코드.
+// 관련: CLAUDE.md의 "TODO: Auth 구현 계획" 참조
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'

@@ -1,3 +1,5 @@
+// TODO: OAuth 구현 완료 후 활성화. 현재 LoginPage.jsx가 실제 사용 중.
+// signInWithGoogle은 현재 authStore에 없음 — Auth 구현 시 추가 필요.
 import { Navigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import Logo from '../components/Logo'

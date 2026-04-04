@@ -18,6 +18,33 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 export const demoRouter = Router()
 
 /**
+ * GET /api/demo/:projectId/result
+ * 데모 결과 조회 (인메모리 store에서 보드 데이터 조회)
+ */
+demoRouter.get('/:projectId/result', (req, res) => {
+  const { projectId } = req.params
+  const session = Sessions.get(projectId)
+  if (!session) {
+    return res.status(404).json({ error: '데모 세션을 찾을 수 없습니다.' })
+  }
+
+  // 모든 절차의 보드 데이터 수집
+  const boards = {}
+  for (const [code, boardType] of Object.entries(BOARD_TYPES)) {
+    const boardList = Boards.listByStage(projectId, code)
+    const board = boardList.find((b) => b.board_type === boardType)
+    if (board) boards[code] = board
+  }
+
+  res.json({
+    session,
+    boards,
+    totalProcedures: PROCEDURE_LIST.length,
+    savedBoards: Object.keys(boards).length,
+  })
+})
+
+/**
  * POST /api/demo/generate
  * 데모 수업 설계 생성
  *

@@ -27,13 +27,12 @@ export const useCommentStore = create((set, get) => ({
     set({ loading: true })
     try {
       const headers = await getHeaders()
-      const params = new URLSearchParams({ designId })
-      if (sectionKey) params.set('sectionKey', sectionKey)
-      const res = await fetch(`${API_BASE}/api/comments?${params}`, { headers })
+      const params = sectionKey ? `?section_key=${encodeURIComponent(sectionKey)}` : ''
+      const res = await fetch(`${API_BASE}/api/designs/${designId}/comments${params}`, { headers })
       if (!res.ok) throw new Error('코멘트 로드 실패')
       const data = await res.json()
       set((state) => ({
-        comments: { ...state.comments, [designId]: data.comments || [] },
+        comments: { ...state.comments, [designId]: data.comments || data || [] },
         loading: false,
       }))
     } catch {
@@ -51,10 +50,10 @@ export const useCommentStore = create((set, get) => ({
   addComment: async (designId, sectionKey, body) => {
     try {
       const headers = await getHeaders()
-      const res = await fetch(`${API_BASE}/api/comments`, {
+      const res = await fetch(`${API_BASE}/api/designs/${designId}/comments`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ designId, sectionKey, body }),
+        body: JSON.stringify({ section_key: sectionKey, body }),
       })
       if (!res.ok) throw new Error('코멘트 추가 실패')
       const data = await res.json()
@@ -102,7 +101,7 @@ export const useCommentStore = create((set, get) => ({
     try {
       const headers = await getHeaders()
       await fetch(`${API_BASE}/api/comments/${commentId}`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers,
         body: JSON.stringify({ body }),
       })

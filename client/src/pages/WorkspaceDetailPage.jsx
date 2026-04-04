@@ -802,6 +802,7 @@ export default function WorkspaceDetailPage() {
                 workflow_config: {
                   hiddenProcedures: config.hiddenProcedures || [],
                   enabledAI: config.enabledAI || enabledAI,
+                  aiRole: config.aiRole || 'facilitator',
                 },
               }).catch(() => {})
             }

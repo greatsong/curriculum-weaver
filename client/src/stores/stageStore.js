@@ -1,3 +1,4 @@
+// LEGACY: procedureStore.js로 대체됨. 어디서도 import되지 않음. 정리 시 삭제 가능.
 import { create } from 'zustand'
 import { apiGet, apiPost, apiPut, apiUploadFile } from '../lib/api'
 import { socket } from '../lib/socket'

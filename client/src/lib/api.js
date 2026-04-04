@@ -16,7 +16,7 @@ export class ApiError extends Error {
 /**
  * Supabase 세션에서 Authorization 헤더를 포함한 헤더 객체를 반환한다
  */
-async function getHeaders() {
+export async function getHeaders() {
   const headers = { 'Content-Type': 'application/json' }
   try {
     const { data: { session } } = await supabase.auth.getSession()
@@ -143,7 +143,7 @@ export async function apiUploadFile(path, file, extraFields = {}) {
 /**
  * SSE 스트리밍 POST 요청 (AI 채팅용)
  */
-export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardSuggestions, onStageAdvance, onDone, onError }) {
+export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardSuggestions, onStageAdvance, onCoherenceCheck, onMessageSaved, onDone, onError }) {
   // Authorization 헤더 추가
   const headers = { 'Content-Type': 'application/json' }
   try {
@@ -193,6 +193,8 @@ export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardS
         else if (parsed.type === 'board_suggestions') onBoardSuggestions?.(parsed.suggestions, parsed.appliedBoards)
         else if (parsed.type === 'stage_advance' || parsed.type === 'procedure_advance') onStageAdvance?.(parsed)
         else if (parsed.type === 'step_advance') onStageAdvance?.(parsed)
+        else if (parsed.type === 'coherence_check') onCoherenceCheck?.(parsed)
+        else if (parsed.type === 'message_saved') onMessageSaved?.(parsed)
         else if (parsed.type === 'error') onError?.(parsed.message)
       } catch {
         // 파싱 실패 무시

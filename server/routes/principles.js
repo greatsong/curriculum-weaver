@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { optionalAuth } from '../middleware/auth.js'
+import { requireAuth } from '../middleware/auth.js'
 import { Principles, GeneralPrinciples } from '../lib/store.js'
 
 export const principlesRouter = Router()
@@ -32,7 +32,7 @@ principlesRouter.get('/:id', async (req, res) => {
 })
 
 // 원칙 업데이트 (인증 필수)
-principlesRouter.put('/:id', optionalAuth, async (req, res) => {
+principlesRouter.put('/:id', requireAuth, async (req, res) => {
   const { name, description, guideline, examples } = req.body
   const updateData = {}
   if (name !== undefined) updateData.name = name

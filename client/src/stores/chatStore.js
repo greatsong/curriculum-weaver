@@ -97,8 +97,9 @@ export const useChatStore = create((set, get) => ({
 
   // AI 제안 관련 상태
   pendingSuggestions: [],        // 수락/편집/거부 대기 중인 AI 제안
-  coherenceCheckResult: null,   // 정합성 점검 결과
+  coherenceCheckResult: null,   // 정합성 ��검 결과
   procedureAdvanceSuggestion: null, // 절차 전환 제안
+  _lastAiMessageId: null,       // 마지막 AI 메시지 ID (제안 수락 시 사용)
 
   // 레거시 호환
   boardSuggestions: [],
@@ -172,7 +173,7 @@ export const useChatStore = create((set, get) => ({
     })
 
     set((state) => ({ messages: [...state.messages, teacherMsg] }))
-    socket.emit('new_message', { sessionId: projectId, message: teacherMsg })
+    socket.emit('new_message', { projectId, message: teacherMsg })
 
     // 2) AI 응답 (SSE)
     set({
@@ -206,13 +207,19 @@ export const useChatStore = create((set, get) => ({
           const updatedBoards = { ...procState.boards }
           for (const board of appliedBoards) {
             updatedBoards[board.board_type] = board
-            socket.emit('board_updated', { sessionId: projectId, board })
+            socket.emit('board_updated', { projectId, board })
           }
           useProcedureStore.setState({ boards: updatedBoards })
         }
       },
       onStageAdvance: (data) => {
         set({ stageAdvanceSuggestion: data })
+      },
+      onCoherenceCheck: (data) => {
+        set({ coherenceCheckResult: data })
+      },
+      onMessageSaved: (data) => {
+        if (data?.messageId) set({ _lastAiMessageId: data.messageId })
       },
       onDone: () => {
         const streamedText = get().streamingText
@@ -251,7 +258,7 @@ export const useChatStore = create((set, get) => ({
             created_at: new Date().toISOString(),
           }
           newState.messages = [...get().messages, aiMsg]
-          socket.emit('ai_response_done', { sessionId: projectId, message: aiMsg })
+          socket.emit('ai_response_done', { projectId, message: aiMsg })
         } else {
           newState.messages = get().messages
         }
@@ -297,7 +304,7 @@ export const useChatStore = create((set, get) => ({
             streaming: false,
             streamingText: '',
           }))
-          socket.emit('ai_response_done', { sessionId: projectId, message: aiMsg })
+          socket.emit('ai_response_done', { projectId, message: aiMsg })
         } else {
           set({ streaming: false, streamingText: '' })
         }
@@ -311,56 +318,103 @@ export const useChatStore = create((set, get) => ({
 
   // ── AI 제안 수락/편집/거부 ────
 
-  acceptSuggestion: (suggestionId) => {
-    set((state) => {
-      const suggestion = state.pendingSuggestions.find((s) => s.id === suggestionId)
-      if (!suggestion) return state
+  acceptSuggestion: async (suggestionId, projectId) => {
+    const state = get()
+    const suggestion = state.pendingSuggestions.find((s) => s.id === suggestionId)
+    if (!suggestion) return
 
-      // procedureStore에 보드 반영
-      const procStore = useProcedureStore.getState()
-      if (suggestion.procedureCode && suggestion.field) {
-        procStore.applyAISuggestion(suggestion.procedureCode, {
-          field: suggestion.field,
-          value: suggestion.value,
+    // 1) procedureStore에 보드 반영 (로컬)
+    const procStore = useProcedureStore.getState()
+    if (suggestion.procedureCode && suggestion.field) {
+      procStore.applyAISuggestion(suggestion.procedureCode, {
+        field: suggestion.field,
+        value: suggestion.value,
+      })
+    }
+
+    // 2) 서버에 수락 저장
+    const messageId = state._lastAiMessageId
+    if (messageId) {
+      const idx = state.pendingSuggestions.findIndex((s) => s.id === suggestionId)
+      try {
+        await apiPost(`/api/chat/suggestion/${messageId}/accept`, {
+          session_id: projectId,
+          procedure: suggestion.procedureCode,
+          suggestionIndex: idx >= 0 ? idx : 0,
         })
+      } catch (err) {
+        console.error('제안 수락 서버 저장 실패:', err)
       }
+    }
 
-      return {
-        pendingSuggestions: state.pendingSuggestions.map((s) =>
-          s.id === suggestionId ? { ...s, status: 'accepted' } : s
-        ),
-      }
+    // 3) 상태 업데이트
+    set({
+      pendingSuggestions: state.pendingSuggestions.map((s) =>
+        s.id === suggestionId ? { ...s, status: 'accepted' } : s
+      ),
     })
   },
 
-  editAcceptSuggestion: (suggestionId, editedValue) => {
-    set((state) => {
-      const suggestion = state.pendingSuggestions.find((s) => s.id === suggestionId)
-      if (!suggestion) return state
+  editAcceptSuggestion: async (suggestionId, editedValue, projectId) => {
+    const state = get()
+    const suggestion = state.pendingSuggestions.find((s) => s.id === suggestionId)
+    if (!suggestion) return
 
-      // 편집된 값으로 보드 반영
-      const procStore = useProcedureStore.getState()
-      if (suggestion.procedureCode && suggestion.field) {
-        procStore.applyAISuggestion(suggestion.procedureCode, {
-          field: suggestion.field,
-          value: editedValue,
+    // 1) 편집된 값으로 보드 반영
+    const procStore = useProcedureStore.getState()
+    if (suggestion.procedureCode && suggestion.field) {
+      procStore.applyAISuggestion(suggestion.procedureCode, {
+        field: suggestion.field,
+        value: editedValue,
+      })
+    }
+
+    // 2) 서버에 편집 수락 저장
+    const messageId = state._lastAiMessageId
+    if (messageId) {
+      const idx = state.pendingSuggestions.findIndex((s) => s.id === suggestionId)
+      try {
+        await apiPost(`/api/chat/suggestion/${messageId}/edit-accept`, {
+          session_id: projectId,
+          procedure: suggestion.procedureCode,
+          suggestionIndex: idx >= 0 ? idx : 0,
+          editedValue,
         })
+      } catch (err) {
+        console.error('제안 편집 수락 서버 저장 실패:', err)
       }
+    }
 
-      return {
-        pendingSuggestions: state.pendingSuggestions.map((s) =>
-          s.id === suggestionId ? { ...s, status: 'accepted', value: editedValue } : s
-        ),
-      }
+    // 3) 상태 업데이트
+    set({
+      pendingSuggestions: state.pendingSuggestions.map((s) =>
+        s.id === suggestionId ? { ...s, status: 'accepted', value: editedValue } : s
+      ),
     })
   },
 
-  rejectSuggestion: (suggestionId) => {
-    set((state) => ({
+  rejectSuggestion: async (suggestionId, projectId) => {
+    const state = get()
+    // 서버에 거부 저장
+    const messageId = state._lastAiMessageId
+    if (messageId) {
+      const idx = state.pendingSuggestions.findIndex((s) => s.id === suggestionId)
+      try {
+        await apiPost(`/api/chat/suggestion/${messageId}/reject`, {
+          session_id: projectId,
+          procedure: state.pendingSuggestions[idx]?.procedureCode,
+          suggestionIndex: idx >= 0 ? idx : 0,
+        })
+      } catch (err) {
+        console.error('제안 거부 서버 저장 실패:', err)
+      }
+    }
+
+    set({
       pendingSuggestions: state.pendingSuggestions.map((s) =>
         s.id === suggestionId ? { ...s, status: 'rejected' } : s
       ),
-    }))
+    })
   },
 
   // ── 정리 ────

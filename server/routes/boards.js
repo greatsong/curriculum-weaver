@@ -1,9 +1,10 @@
 import { Router } from 'express'
-import { optionalAuth } from '../middleware/auth.js'
+import { requireAuth } from '../middleware/auth.js'
 import { Boards } from '../lib/store.js'
 
 export const boardsRouter = Router()
-boardsRouter.use(optionalAuth)
+// LEGACY: designs API로 전환 완료 후 이 라우터 전체 제거 예정
+boardsRouter.use(requireAuth)
 
 // 단계별 보드 조회
 boardsRouter.get('/:sessionId/:stage', async (req, res) => {

@@ -229,7 +229,7 @@ export default function DataManage() {
         <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-full sm:w-fit overflow-x-auto">
           {[
             { id: 'upload', label: '데이터 업로드' },
-            { id: 'extract', label: 'AI 추출' },
+            { id: 'extract', label: 'AI 추출 (준비 중)' },
             { id: 'browse', label: '성취기준 보기' },
             { id: 'graph', label: '연결 그래프' },
           ].map((t) => (
@@ -341,11 +341,15 @@ export default function DataManage() {
           </div>
         )}
 
-        {/* AI 추출 탭 */}
+        {/* AI 추출 탭 (서버 API 미구현 — 준비 중) */}
         {tab === 'extract' && (
           <div className="space-y-4">
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h3 className="font-semibold text-gray-800 mb-2">PDF/DOCX에서 성취기준 자동 추출</h3>
+              <div className="mb-4 p-3 bg-amber-50 text-amber-700 rounded-lg text-sm flex items-center gap-2">
+                <AlertCircle size={16} />
+                이 기능은 현재 준비 중입니다. 향후 업데이트에서 제공됩니다.
+              </div>
               <p className="text-sm text-gray-500 mb-4">
                 교육과정 문서(PDF, DOCX)를 업로드하면 AI가 성취기준을 자동으로 인식하고 구조화합니다.
                 추출 결과를 검토·수정한 뒤 확정하세요.

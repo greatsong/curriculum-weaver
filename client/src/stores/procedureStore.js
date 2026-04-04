@@ -106,29 +106,16 @@ export const useProcedureStore = create((set, get) => ({
     const boardType = BOARD_TYPES[procedureCode]
     if (!boardType) return
 
-    const board = get().boards[boardType]
-    if (board?.id) {
-      // 기존 보드 업데이트
-      const data = await apiPut(`/api/boards/${board.id}`, { content })
-      set((state) => ({
-        boards: { ...state.boards, [data.board_type]: data },
-      }))
-      socket.emit('board_updated', { sessionId: projectId, board: data })
-      return data
-    } else {
-      // 새 보드 생성 (upsert)
-      const data = await apiPost('/api/boards', {
-        session_id: projectId,
-        stage: procedureCode,
-        board_type: boardType,
-        content,
-      })
-      set((state) => ({
-        boards: { ...state.boards, [data.board_type]: data },
-      }))
-      socket.emit('board_updated', { sessionId: projectId, board: data })
-      return data
-    }
+    // designs API upsert (Supabase 영속 저장)
+    const data = await apiPut(`/api/projects/${projectId}/designs/${procedureCode}`, { content })
+    set((state) => ({
+      boards: {
+        ...state.boards,
+        [boardType]: { ...data, board_type: boardType, content: data.content || content },
+      },
+    }))
+    socket.emit('design_updated', { projectId, procedureCode, design: data })
+    return data
   },
 
   /**
@@ -162,7 +149,7 @@ export const useProcedureStore = create((set, get) => ({
 
   loadStandards: async (projectId) => {
     try {
-      const data = await apiGet(`/api/sessions/${projectId}/standards`)
+      const data = await apiGet(`/api/standards/project/${projectId}`)
       set({ standards: Array.isArray(data) ? data : (data?.standards ?? []) })
     } catch {
       set({ standards: [] })

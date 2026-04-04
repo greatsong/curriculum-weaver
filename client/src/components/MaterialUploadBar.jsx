@@ -111,7 +111,7 @@ export default function MaterialUploadBar({ sessionId }) {
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".pdf,.docx,.doc,.hwp,.png,.jpg,.jpeg,.gif,.webp,.xlsx,.xls,.csv"
+              accept=".pdf,.docx,.doc,.hwp,.hwpx,.ppt,.pptx,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.csv,.txt"
               onChange={handleFileUpload}
             />
             <button

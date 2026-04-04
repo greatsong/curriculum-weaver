@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X, FileText, FileCode, FileDown, ExternalLink, Loader2 } from 'lucide-react'
-import { API_BASE } from '../lib/api'
+import { API_BASE, getHeaders } from '../lib/api'
 
 const FORMATS = [
   {
@@ -41,20 +41,25 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
   const handleDownload = async (format) => {
     setDownloading(format)
     try {
+      const headers = await getHeaders()
+
       if (format === 'pdf') {
-        // PDF: 새 창에서 HTML 미리보기 열기
+        // PDF: fetch로 HTML을 받아 blob URL로 열기 (인증 헤더 포함)
         const previewUrl = `${API_BASE}/api/report/${sessionId}/preview`
-        const win = window.open(previewUrl, '_blank')
-        // 데스크톱에서만 자동 인쇄 다이얼로그 (모바일은 공유 메뉴 사용)
+        const res = await fetch(previewUrl, { headers })
+        if (!res.ok) throw new Error('미리보기 로드 실패')
+        const blob = await res.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        const win = window.open(blobUrl, '_blank')
         if (win && window.innerWidth >= 768) {
           win.addEventListener('load', () => {
             setTimeout(() => win.print(), 500)
           })
         }
       } else {
-        // HTML / MD: 직접 다운로드
+        // HTML / MD: 직접 다운로드 (인증 헤더 포함)
         const url = `${API_BASE}/api/report/${sessionId}/${format}`
-        const res = await fetch(url)
+        const res = await fetch(url, { headers })
         if (!res.ok) throw new Error('다운로드 실패')
         const blob = await res.blob()
         const filename = `${sessionTitle || '보고서'}_보고서.${format}`

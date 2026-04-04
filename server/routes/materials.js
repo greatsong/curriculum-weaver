@@ -1,10 +1,10 @@
 import { Router } from 'express'
 import multer from 'multer'
-import { optionalAuth } from '../middleware/auth.js'
+import { requireAuth } from '../middleware/auth.js'
 import { Materials } from '../lib/store.js'
 
 export const materialsRouter = Router()
-materialsRouter.use(optionalAuth)
+materialsRouter.use(requireAuth)
 
 const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'hwp', 'hwpx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 'txt', 'jpg', 'jpeg', 'png', 'webp']
 

@@ -58,9 +58,11 @@ export const useWorkspaceStore = create((set, get) => ({
     try {
       const updated = await apiPut(`/api/workspaces/${id}`, data)
       set((state) => ({
-        workspaces: state.workspaces.map((w) => (w.id === id ? updated : w)),
+        workspaces: state.workspaces.map((w) => (w.id === id ? { ...w, ...updated } : w)),
         currentWorkspace:
-          state.currentWorkspace?.id === id ? updated : state.currentWorkspace,
+          state.currentWorkspace?.id === id
+            ? { ...state.currentWorkspace, ...updated }  // members, my_role, projects 보존
+            : state.currentWorkspace,
       }))
       return updated
     } catch (err) {

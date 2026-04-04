@@ -66,8 +66,8 @@ router.get('/projects/:projectId/logs', async (req, res) => {
         offset,
       })
     } else {
-      // 필터 없이 기본 조회
-      const logs = await getActivityLogs(projectId, limit)
+      // 필터 없이 기본 조회 (offset도 지원)
+      const logs = await getFilteredLogs(projectId, { procedure: null, action_type: null, limit, offset })
       res.json({
         logs,
         total: logs.length,
