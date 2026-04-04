@@ -1,15 +1,15 @@
 /**
- * DemoMode -- 시뮬레이션 데모 모드
+ * DemoMode -- AI 수업 설계 시뮬레이션
  *
- * 로그인 없이 AI가 자동으로 19절차 보드를 생성하는 데모.
- * 교사가 기초 정보를 입력하면 AI가 전체 설계를 시뮬레이션한다.
+ * 로그인 사용자 전용. 워크스페이스를 선택하고 기초 정보를 입력하면
+ * AI가 19개 절차의 설계를 자동 생성하여 Supabase 프로젝트로 저장.
  * SSE 스트리밍으로 절차별 실시간 진행률을 표시한다.
  */
 
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Logo from './Logo'
-import { API_BASE } from '../lib/api'
+import { API_BASE, apiGet, getHeaders } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
 
 const GRADE_GROUPS = [
@@ -47,6 +47,11 @@ export default function DemoMode() {
   const navigate = useNavigate()
   const { user, initialized } = useAuthStore()
 
+  // 워크스페이스
+  const [workspaces, setWorkspaces] = useState([])
+  const [selectedWorkspace, setSelectedWorkspace] = useState('')
+  const [loadingWs, setLoadingWs] = useState(false)
+
   // 입력 폼
   const [selectedGrades, setSelectedGrades] = useState([])
   const [selectedSubjects, setSelectedSubjects] = useState([])
@@ -60,10 +65,32 @@ export default function DemoMode() {
   const [error, setError] = useState('')
 
   // SSE 진행률
-  const [progressList, setProgressList] = useState([])   // { procedure, name, index, total }[]
+  const [progressList, setProgressList] = useState([])
   const [progressTotal, setProgressTotal] = useState(19)
   const [tokenCount, setTokenCount] = useState(0)
+  const [currentPhase, setCurrentPhase] = useState('')
   const abortRef = useRef(null)
+
+  // 미로그인 → 로그인 페이지로
+  useEffect(() => {
+    if (initialized && !user) {
+      navigate('/login', { state: { from: '/demo' } })
+    }
+  }, [initialized, user, navigate])
+
+  // 워크스페이스 목록 로드
+  useEffect(() => {
+    if (!user) return
+    setLoadingWs(true)
+    apiGet('/api/workspaces')
+      .then((data) => {
+        const list = Array.isArray(data) ? data : (data?.workspaces ?? [])
+        setWorkspaces(list)
+        if (list.length === 1) setSelectedWorkspace(list[0].id)
+      })
+      .catch(() => setWorkspaces([]))
+      .finally(() => setLoadingWs(false))
+  }, [user])
 
   const toggleGrade = (val) => {
     setSelectedGrades((prev) =>
@@ -85,7 +112,7 @@ export default function DemoMode() {
     }
   }
 
-  const canSubmit = selectedGrades.length > 0 && selectedSubjects.length >= 2 && topic.trim()
+  const canSubmit = selectedWorkspace && selectedGrades.length > 0 && selectedSubjects.length >= 2 && topic.trim()
 
   // 경과 시간 카운터
   useEffect(() => {
@@ -100,15 +127,18 @@ export default function DemoMode() {
     setElapsed(0)
     setError('')
     setProgressList([])
+    setCurrentPhase('')
 
     const controller = new AbortController()
     abortRef.current = controller
 
     try {
+      const headers = await getHeaders()
       const res = await fetch(`${API_BASE}/api/demo/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          workspaceId: selectedWorkspace,
           grade: selectedGrades.join(', '),
           subjects: selectedSubjects,
           topic: topic.trim(),
@@ -145,9 +175,12 @@ export default function DemoMode() {
               setProgressTotal(parsed.total)
             } else if (parsed.type === 'heartbeat') {
               setTokenCount(parsed.tokens)
+              if (parsed.phase) setCurrentPhase(parsed.phase)
+            } else if (parsed.type === 'phase_complete') {
+              // 1차/2차 완료 알림
             } else if (parsed.type === 'complete') {
               setTimeout(() => {
-                navigate(`/demo/result/${parsed.projectId}`)
+                navigate(`/workspaces/${parsed.workspaceId}/projects/${parsed.projectId}`)
               }, 800)
               return
             } else if (parsed.type === 'error') {
@@ -175,6 +208,15 @@ export default function DemoMode() {
     : 0
   const lastProgress = progressList[progressList.length - 1]
 
+  // 미로그인 시 로딩 표시
+  if (!initialized || !user) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F9FAFB' }}>
+        <div style={{ width: 28, height: 28, border: '3px solid #E5E7EB', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      </div>
+    )
+  }
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -197,43 +239,27 @@ export default function DemoMode() {
           <Logo size={24} />
           <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>커리큘럼 위버</span>
         </a>
-        {initialized && user ? (
-          <button
-            onClick={() => navigate('/workspaces')}
-            style={{
-              padding: '8px 16px', background: '#111827', color: '#fff',
-              border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
-              cursor: 'pointer', fontFamily: 'var(--font-sans, inherit)',
-              transition: 'background 0.15s',
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#374151'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#111827'}
-          >
-            {user.user_metadata?.avatar_url && (
-              <img
-                src={user.user_metadata.avatar_url}
-                alt=""
-                style={{ width: 20, height: 20, borderRadius: '50%' }}
-              />
-            )}
-            내 워크스페이스
-          </button>
-        ) : (
-          <button
-            onClick={() => navigate('/login')}
-            style={{
-              padding: '8px 16px', background: '#111827', color: '#fff',
-              border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
-              cursor: 'pointer', fontFamily: 'var(--font-sans, inherit)',
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#374151'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#111827'}
-          >
-            로그인
-          </button>
-        )}
+        <button
+          onClick={() => navigate('/workspaces')}
+          style={{
+            padding: '8px 16px', background: '#111827', color: '#fff',
+            border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
+            cursor: 'pointer', fontFamily: 'var(--font-sans, inherit)',
+            transition: 'background 0.15s',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = '#374151'}
+          onMouseLeave={(e) => e.currentTarget.style.background = '#111827'}
+        >
+          {user.user_metadata?.avatar_url && (
+            <img
+              src={user.user_metadata.avatar_url}
+              alt=""
+              style={{ width: 20, height: 20, borderRadius: '50%' }}
+            />
+          )}
+          내 워크스페이스
+        </button>
       </header>
 
       {/* 메인 */}
@@ -279,6 +305,33 @@ export default function DemoMode() {
                   {error}
                 </div>
               )}
+
+              {/* 워크스페이스 선택 */}
+              <div style={{ marginBottom: 18 }}>
+                <label style={labelStyle}>저장할 워크스페이스 *</label>
+                {loadingWs ? (
+                  <div style={{ fontSize: 13, color: '#9CA3AF' }}>워크스페이스 목록 로딩 중...</div>
+                ) : workspaces.length === 0 ? (
+                  <div style={{ fontSize: 13, color: '#EF4444' }}>
+                    워크스페이스가 없습니다. 먼저 <a href="/workspaces" onClick={(e) => { e.preventDefault(); navigate('/workspaces') }} style={{ color: '#3B82F6' }}>워크스페이스를 생성</a>하세요.
+                  </div>
+                ) : (
+                  <select
+                    value={selectedWorkspace}
+                    onChange={(e) => setSelectedWorkspace(e.target.value)}
+                    style={{
+                      ...inputStyle,
+                      cursor: 'pointer',
+                      appearance: 'auto',
+                    }}
+                  >
+                    <option value="">워크스페이스를 선택하세요</option>
+                    {workspaces.map((ws) => (
+                      <option key={ws.id} value={ws.id}>{ws.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
 
               {/* 대상 학년 (복수 선택) */}
               <div style={{ marginBottom: 18 }}>
@@ -342,7 +395,6 @@ export default function DemoMode() {
                       </button>
                     )
                   })}
-                  {/* 사용자 직접 추가한 교과 */}
                   {selectedSubjects
                     .filter((s) => !SUBJECT_OPTIONS.includes(s))
                     .map((subj) => (
@@ -361,11 +413,10 @@ export default function DemoMode() {
                           display: 'flex', alignItems: 'center', gap: 4,
                         }}
                       >
-                        {subj} <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>
+                        {subj} <span style={{ fontSize: 14, lineHeight: 1 }}>x</span>
                       </button>
                     ))}
                 </div>
-                {/* 교과 직접 입력 */}
                 <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                   <input
                     value={customSubject}
@@ -431,12 +482,8 @@ export default function DemoMode() {
                 onMouseEnter={(e) => canSubmit && (e.currentTarget.style.background = '#374151')}
                 onMouseLeave={(e) => canSubmit && (e.currentTarget.style.background = '#111827')}
               >
-                데모 시작
+                시뮬레이션 시작
               </button>
-
-              <p style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center', marginTop: 12 }}>
-                실제 프로젝트를 시작하려면 로그인 후 워크스페이스를 만드세요
-              </p>
             </div>
           </div>
         ) : (
@@ -449,10 +496,8 @@ export default function DemoMode() {
             boxShadow: '0 8px 40px rgba(0,0,0,0.08)',
             padding: '40px 36px',
           }}>
-            {/* 상단: 진행률 원형 */}
             <div style={{ textAlign: 'center', marginBottom: 28 }}>
               <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 16px' }}>
-                {/* 배경 원 */}
                 <svg width="80" height="80" viewBox="0 0 80 80">
                   <circle cx="40" cy="40" r="35" fill="none" stroke="#E5E7EB" strokeWidth="6" />
                   <circle
@@ -480,10 +525,15 @@ export default function DemoMode() {
               </h2>
               <p style={{ fontSize: 13, color: '#6B7280', margin: 0 }}>
                 {progressList.length === 0
-                  ? 'AI에게 19개 절차의 수업 설계를 요청했습니다...'
+                  ? 'AI에게 수업 설계를 요청했습니다...'
                   : `${progressList.length}/${progressTotal}개 절차 완료`
                 }
               </p>
+              {currentPhase && (
+                <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
+                  {currentPhase === '1차' ? '준비~분석 단계 생성 중' : '설계~평가 단계 생성 중'}
+                </p>
+              )}
             </div>
 
             {/* 절차 진행 로그 */}
@@ -504,7 +554,7 @@ export default function DemoMode() {
                   </span>
                 </div>
               ) : (
-                progressList.map((p, i) => (
+                progressList.map((p) => (
                   <div key={p.procedure} style={{
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '3px 0',
@@ -525,7 +575,6 @@ export default function DemoMode() {
                   </div>
                 ))
               )}
-              {/* 현재 생성 중 표시 */}
               {progressList.length > 0 && progressList.length < progressTotal && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
                   <div style={{
@@ -543,7 +592,6 @@ export default function DemoMode() {
               )}
             </div>
 
-            {/* 경과 시간 */}
             <div style={{ textAlign: 'center' }}>
               <span style={{
                 fontSize: 14, color: '#9CA3AF',

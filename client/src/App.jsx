@@ -204,9 +204,8 @@ export default function App() {
         {/* 인트로 (공개) */}
         <Route path="/intro" element={<IntroPage />} />
 
-        {/* 데모 (공개) */}
+        {/* AI 시뮬레이션 (로그인 필수) */}
         <Route path="/demo" element={<DemoMode />} />
-        <Route path="/demo/result/:projectId" element={<ProjectPage />} />
 
         {/* 워크스페이스 */}
         <Route

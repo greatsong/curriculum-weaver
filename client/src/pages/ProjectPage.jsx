@@ -150,11 +150,8 @@ function NicknameModal({ onConfirm }) {
 export default function ProjectPage() {
   const { workspaceId, projectId } = useParams()
   const navigate = useNavigate()
-  const locationPath = window.location.pathname
-  const isDemo = locationPath.startsWith('/demo/') || new URLSearchParams(window.location.search).get('demo') === 'true' || workspaceId?.startsWith('demo-')
-
   const { user } = useAuthStore()
-  const { currentProject, fetchProject, fetchDemoProject, updateProcedure } = useProjectStore()
+  const { currentProject, fetchProject, updateProcedure } = useProjectStore()
   const { currentWorkspace, fetchWorkspace } = useWorkspaceStore()
   const {
     currentProcedure, setProcedure, loadBoards, loadStandards, loadMaterials,
@@ -182,31 +179,21 @@ export default function ProjectPage() {
   const messagesLoadedRef = useRef(false)
 
   useEffect(() => {
-    if (isDemo) {
-      fetchDemoProject(projectId)
-    } else {
-      fetchProject(projectId)
-    }
+    fetchProject(projectId)
     if (workspaceId) fetchWorkspace(workspaceId)
     messagesLoadedRef.current = false
-    // 데모 모드에서는 채팅 메시지 로드 건너뛰기 (인증 불필요 경로만 사용)
-    if (!isDemo) {
-      loadMessages(projectId).then(() => {
-        messagesLoadedRef.current = true
-        // 메시지 로드 완료 후 인트로 필요 여부 판단
-        if (!introRequestedRef.current) {
-          introRequestedRef.current = true
-          const msgs = useChatStore.getState().messages
-          const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
-          if (!hasContent && localStorage.getItem('cw_tour_done')) {
-            const proc = useProcedureStore.getState().currentProcedure
-            if (proc) requestProcedureIntro(projectId, proc)
-          }
-        }
-      })
-    } else {
+    loadMessages(projectId).then(() => {
       messagesLoadedRef.current = true
-    }
+      if (!introRequestedRef.current) {
+        introRequestedRef.current = true
+        const msgs = useChatStore.getState().messages
+        const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
+        if (!hasContent && localStorage.getItem('cw_tour_done')) {
+          const proc = useProcedureStore.getState().currentProcedure
+          if (proc) requestProcedureIntro(projectId, proc)
+        }
+      }
+    })
     loadGeneralPrinciples()
   }, [projectId, workspaceId])
 
@@ -241,22 +228,18 @@ export default function ProjectPage() {
   }, [projectId])
 
   useEffect(() => {
-    // 데모 모드에서는 소켓 연결 건너뛰기
-    if (isDemo) return
-    // 로그인 사용자: Google 프로필에서 자동 연결
     if (user) {
       const displayName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || '교사'
       const subject = user.user_metadata?.subject || ''
       localStorage.setItem('cw_nickname', displayName)
       connectSocket({ name: displayName, subject })
     } else {
-      // 비로그인: localStorage에서
       const savedName = localStorage.getItem('cw_nickname')
       const savedSubject = localStorage.getItem('cw_subject') || ''
       if (savedName) connectSocket({ name: savedName, subject: savedSubject })
     }
     return () => joinedRef.cleanup?.()
-  }, [projectId, connectSocket, user, isDemo])
+  }, [projectId, connectSocket, user])
 
   const handleNicknameConfirm = (info) => {
     setNeedsNickname(false)
@@ -273,11 +256,7 @@ export default function ProjectPage() {
 
   useEffect(() => {
     if (!currentProject) return
-    if (currentProject._demo && currentProject._boards) {
-      loadBoards(projectId, currentProcedure, { demoBoards: currentProject._boards })
-    } else {
-      loadBoards(projectId, currentProcedure)
-    }
+    loadBoards(projectId, currentProcedure)
     loadStandards(projectId)
     loadMaterials(projectId)
     loadPrinciples(currentProcedure)
@@ -285,11 +264,9 @@ export default function ProjectPage() {
 
   const handleProcedureChange = async (code) => {
     setProcedure(code)
-    if (!isDemo) {
-      await updateProcedure(projectId, code)
-      socket.emit('stage_changed', { sessionId: projectId, stage: code })
-      requestProcedureIntro(projectId, code)
-    }
+    await updateProcedure(projectId, code)
+    socket.emit('stage_changed', { sessionId: projectId, stage: code })
+    requestProcedureIntro(projectId, code)
   }
 
   const handleCopyInvite = () => {
@@ -436,8 +413,8 @@ export default function ProjectPage() {
         </div>
       </header>
 
-      {/* 데모 배너 */}
-      {isDemo && (
+      {/* 시뮬레이션 프로젝트 배너 */}
+      {currentProject?.title?.startsWith('[시뮬레이션]') && (
         <div style={{
           background: 'linear-gradient(90deg, #8B5CF6, #3B82F6)',
           color: '#fff',
@@ -445,24 +422,9 @@ export default function ProjectPage() {
           fontSize: 13,
           fontWeight: 500,
           textAlign: 'center',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 12,
           flexShrink: 0,
         }}>
-          <span>이것은 AI 시뮬레이션 데모입니다. 실제 프로젝트를 시작하려면 워크스페이스를 만드세요.</span>
-          <button
-            onClick={() => navigate('/workspaces')}
-            style={{
-              padding: '4px 12px', background: 'rgba(255,255,255,0.2)',
-              border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6,
-              color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              fontFamily: 'var(--font-sans)',
-            }}
-          >
-            워크스페이스 만들기
-          </button>
+          이 프로젝트는 AI 시뮬레이션으로 자동 생성되었습니다. 보드를 자유롭게 편집하세요.
         </div>
       )}
 

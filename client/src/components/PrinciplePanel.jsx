@@ -93,7 +93,7 @@ export default function PrinciplePanel({ stage }) {
 
         {principles.length === 0 ? (
           <div className="text-center py-6 text-gray-400 bg-gray-50 rounded-lg border border-dashed border-gray-200">
-            <p className="text-xs">단계별 원리가 준비 중입니다</p>
+            <p className="text-xs">이 단계에는 전용 원리가 없습니다</p>
             <p className="text-[10px] mt-1 text-gray-300">총괄 원리를 참고하여 설계를 진행하세요</p>
           </div>
         ) : (
