@@ -11,6 +11,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
+import PQueue from 'p-queue'
 import {
   PROCEDURES, PHASES, ACTION_TYPES, ACTOR_COLUMNS, BOARD_TYPES, BOARD_TYPE_LABELS,
 } from 'curriculum-weaver-shared/constants.js'
@@ -20,6 +21,9 @@ import { PROCEDURE_GUIDE, COMMON_RULES, getCoherenceTargets } from '../data/proc
 import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+// 동시 AI 요청 5개로 제한 (Anthropic API rate limit 준수)
+const aiQueue = new PQueue({ concurrency: 5, timeout: 60000 })
 
 // ──────────────────────────────────────────
 // 헬퍼 함수: 스텝 컨텍스트
@@ -518,18 +522,20 @@ ${sessionTitle ? `세션: ${sessionTitle}` : ''}
 이 절차를 안내하고, 첫 번째 스텝부터 시작해주세요.`
 
   try {
-    const stream = client.messages.stream({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1200,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
-    })
+    await aiQueue.add(async () => {
+      const stream = client.messages.stream({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1200,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      })
 
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta?.text) {
-        onText(event.delta.text)
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta?.text) {
+          onText(event.delta.text)
+        }
       }
-    }
+    })
   } catch (error) {
     console.error('절차 인트로 생성 오류:', error)
     onError(error.message || '인트로 생성 실패')
@@ -584,24 +590,26 @@ export async function buildAIResponse(context, { onText, onError }) {
   const messages = buildMessages(context.recentMessages, context.userMessage)
 
   try {
-    const stream = client.messages.stream({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 12000,
-      system: systemPrompt,
-      messages,
-    })
+    await aiQueue.add(async () => {
+      const stream = client.messages.stream({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 12000,
+        system: systemPrompt,
+        messages,
+      })
 
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta?.text) {
-        onText(event.delta.text)
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta?.text) {
+          onText(event.delta.text)
+        }
       }
-    }
 
-    // 응답 잘림 감지
-    const finalMessage = await stream.finalMessage()
-    if (finalMessage.stop_reason === 'max_tokens') {
-      console.warn('⚠️ AI 응답이 max_tokens에 도달하여 잘렸습니다. ai_suggestion이 누락되었을 수 있습니다.')
-    }
+      // 응답 잘림 감지
+      const finalMessage = await stream.finalMessage()
+      if (finalMessage.stop_reason === 'max_tokens') {
+        console.warn('⚠️ AI 응답이 max_tokens에 도달하여 잘렸습니다. ai_suggestion이 누락되었을 수 있습니다.')
+      }
+    })
   } catch (error) {
     console.error('Claude API 오류:', error)
     onError(error.message || 'AI 응답 생성 실패')

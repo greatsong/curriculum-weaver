@@ -1,5 +1,5 @@
 /**
- * 절차(Procedure)별 보드 스키마 — 16+1개 구조화 양식
+ * 절차(Procedure)별 보드 스키마 — 19개 구조화 양식 (prep + 18 절차)
  *
  * 각 절차의 보드는 해당 절차의 최종 산출물을 구조화한 JSONB.
  * 절차 ↔ 보드 = 1:1 대응 (BOARD_TYPES 매핑 참조)
@@ -175,10 +175,9 @@ export const BOARD_SCHEMAS = {
         description: '주제 후보별 기준 충족도 비교표',
         columns: [
           { name: 'topic', label: '주제' },
-          { name: 'criterion1', label: '기준1' },
-          { name: 'criterion2', label: '기준2' },
-          { name: 'criterion3', label: '기준3' },
+          { name: 'criteria_scores', label: '기준별 점수 (JSON)', description: 'A-1-1에서 설정한 기준별 점수 객체' },
           { name: 'totalScore', label: '총점' },
+          { name: 'notes', label: '비고' },
         ] },
       { name: 'clusterMap', label: '클러스터맵', type: 'json', required: false,
         description: 'AI 생성: 주제 간 관계 클러스터맵 데이터' },

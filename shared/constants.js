@@ -1,10 +1,10 @@
 /**
- * TADDs-DIE 협력적 수업 설계 모형 — 6단계 16+1 세부절차
+ * TADDs-DIE 협력적 수업 설계 모형 — 6 Phase, 19 Procedure
  *
  * 구조: Phase → Procedure → Step (procedureSteps.js)
  * - 6개 Phase (prep, T, A, Ds, DI, E)
- * - 17개 Procedure (prep + 16개 세부절차)
- * - 각 Procedure는 5~9개 Step으로 구성
+ * - 19개 Procedure (prep + 18개 세부절차)
+ * - 각 Procedure는 5~9개 Step으로 구성 (prep 제외, 총 128스텝)
  */
 
 // ──────────────────────────────────────────
@@ -28,7 +28,7 @@ export const PHASES = {
 export const PHASE_LIST = Object.values(PHASES).sort((a, b) => a.order - b.order)
 
 // ──────────────────────────────────────────
-// Procedure 정의 (16+1 = 17개)
+// Procedure 정의 (19개: prep + 18 세부절차)
 // ──────────────────────────────────────────
 
 /**

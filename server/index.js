@@ -13,6 +13,9 @@ import cors from 'cors'
 import { initStore, Standards } from './lib/store.js'
 import { precomputeEmbeddings } from './services/embeddings.js'
 
+// ── Rate Limiter 임포트 ──
+import { apiLimiter, aiChatLimiter, authLimiter } from './middleware/rateLimit.js'
+
 // ── 라우트 임포트 ──
 import authRouter from './routes/auth.js'
 import workspacesRouter from './routes/workspaces.js'
@@ -49,13 +52,19 @@ function checkOrigin(origin) {
   return !origin || allowedOrigins.includes(origin) || isVercelPreview
 }
 
-// ── Socket.IO 설정 ──
+// ── Socket.IO 설정 (100명 동시 사용자 최적화) ──
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
       callback(null, checkOrigin(origin))
     },
   },
+  pingInterval: 25000,      // 25초 (기본값)
+  pingTimeout: 20000,        // 20초 (기본 5초 → 늘림, 느린 네트워크 대응)
+  maxHttpBufferSize: 1e6,    // 1MB (기본값)
+  transports: ['websocket', 'polling'], // websocket 우선
+  allowUpgrades: true,
+  connectTimeout: 45000,     // 45초 연결 타임아웃
 })
 
 // Socket.IO 인스턴스를 Express app에 등록 (라우트에서 req.app.get('io')로 접근)
@@ -169,6 +178,15 @@ app.use(cors({
 }))
 app.use(express.json({ limit: '5mb' }))
 
+// ── Rate Limiter 적용 ──
+app.use('/api', apiLimiter)           // 일반 API: 분당 120회
+app.use('/api/auth', authLimiter)     // 인증: 분당 5회 (IP당)
+
+// AI 채팅 스트리밍 라우트: 분당 10회 (사용자당)
+app.use('/api/chat/message', aiChatLimiter)
+app.use('/api/chat/procedure-intro', aiChatLimiter)
+app.use('/api/chat/stage-intro', aiChatLimiter)
+
 // ── 헬스 체크 ──
 app.get('/api/health', (req, res) => {
   res.json({
@@ -230,4 +248,26 @@ server.listen(PORT, () => {
   console.log(`커리큘럼 위버 서버: http://localhost:${PORT}`)
   console.log(`  Socket.IO 실시간 협업 활성화`)
   console.log(`  라우트: auth, workspaces, invites, projects, designs, versions, logs, chat, standards, materials, principles, report, comments`)
+})
+
+// ── Graceful Shutdown ──
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received. Graceful shutdown...')
+  io.close()
+  server.close(() => {
+    console.log('Server closed')
+    process.exit(0)
+  })
+  // 10초 후 강제 종료 (연결이 끊기지 않는 경우 대비)
+  setTimeout(() => process.exit(1), 10000)
+})
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received. Graceful shutdown...')
+  io.close()
+  server.close(() => {
+    console.log('Server closed')
+    process.exit(0)
+  })
+  setTimeout(() => process.exit(1), 10000)
 })

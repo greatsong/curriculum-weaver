@@ -1,0 +1,550 @@
+{
+  "scenarioId": "scenario-2-ai-ethics",
+  "title": "AI와 공존하는 사회 — 윤리적 AI 활용",
+  "createdAt": "2026-04-04T00:00:00Z",
+
+  "boards": {
+
+    "learner_context": {
+      "procedureCode": "prep",
+      "boardType": "learner_context",
+      "data": {
+        "grade": "고등학교 2학년",
+        "studentCount": 28,
+        "digitalLiteracy": "중상",
+        "genderRatio": "남 16 / 여 12",
+        "multicultural": "해당 없음",
+        "specialNeeds": "해당 없음",
+        "prevContext": "1학년 정보: 컴퓨팅 사고력 기초 이수. 1학년 도덕: 윤리 기초론 이수. 학생들이 ChatGPT 등 생성형 AI를 일상적으로 활용 중.",
+        "additionalNotes": "학생들의 AI 활용 경험이 많아 기술적 흥미도가 높으나, 윤리적 성찰 경험은 부족한 상태."
+      }
+    },
+
+    "team_vision": {
+      "procedureCode": "T-1-1",
+      "boardType": "team_vision",
+      "data": {
+        "individualVisions": [
+          {
+            "name": "최교사",
+            "vision": "학생들이 AI 기술의 원리를 이해하고, 스스로 AI를 활용하여 문제를 해결할 수 있는 디지털 시민이 되었으면 합니다.",
+            "refinedVision": "AI 기술의 작동 원리와 한계를 이해하고, 이를 바탕으로 적절한 AI 활용 판단을 내릴 수 있는 기술적 소양을 갖춘 디지털 시민을 양성한다."
+          },
+          {
+            "name": "한교사",
+            "vision": "기술 발전 속에서도 인간의 존엄성과 윤리적 가치를 판단할 수 있는 성찰적 시민을 기르고 싶습니다.",
+            "refinedVision": "기술 발전이 가져오는 윤리적 딜레마를 인식하고, 인간 존엄성을 기반으로 합리적인 가치 판단을 내릴 수 있는 성찰적 시민을 양성한다."
+          },
+          {
+            "name": "송교사",
+            "vision": "AI 시대에 자신의 생각을 논리적으로 표현하고, 타인의 의견을 비판적으로 분석할 수 있는 소통 역량을 갖춘 시민을 기르고 싶습니다.",
+            "refinedVision": "AI 시대의 복잡한 사회 이슈에 대해 근거 기반의 논증적 글을 작성하고, 다양한 관점을 분석하여 건설적 토론에 참여할 수 있는 소통 역량을 갖춘 시민을 양성한다."
+          }
+        ],
+        "commonVisionCandidates": [
+          "AI 기술의 올바른 활용과 윤리적 판단력을 갖춘 디지털 시민 양성",
+          "기술과 윤리의 균형 위에서 자신의 생각을 논증적으로 표현하는 미래 시민 양성",
+          "AI와 공존하는 사회에서 비판적 사고와 윤리적 성찰을 실천하는 자율적 시민 양성"
+        ],
+        "commonVision": "AI 기술의 올바른 활용과 윤리적 판단력을 갖춘 디지털 시민 양성"
+      }
+    },
+
+    "design_direction": {
+      "procedureCode": "T-1-2",
+      "boardType": "design_direction",
+      "data": {
+        "keywords": ["체험 중심 학습", "윤리적 성찰", "논증적 표현", "비판적 사고", "실세계 연계", "디지털 시민성", "AI 리터러시", "교과 간 융합"],
+        "directions": [
+          {
+            "direction": "AI 서비스를 직접 체험하며 기술 원리와 한계를 탐구하는 체험 중심 수업을 설계한다.",
+            "rationale": "학생들의 높은 AI 활용 경험을 기반으로, 원리 이해까지 확장"
+          },
+          {
+            "direction": "AI가 만들어내는 윤리적 딜레마를 분석하고 가치 판단 역량을 기르는 성찰 중심 수업을 설계한다.",
+            "rationale": "기술 사용을 넘어 윤리적 성찰이라는 비전의 핵심 가치 구현"
+          },
+          {
+            "direction": "실제 AI 관련 사회 이슈에 대해 논증적 글쓰기와 토론으로 표현하는 소통 중심 수업을 설계한다.",
+            "rationale": "비판적 사고와 논증적 표현을 통해 실천적 시민성 함양"
+          }
+        ],
+        "keywordClusters": {
+          "기술 체험": ["체험 중심 학습", "AI 리터러시"],
+          "윤리 성찰": ["윤리적 성찰", "비판적 사고", "디지털 시민성"],
+          "표현 소통": ["논증적 표현", "실세계 연계", "교과 간 융합"]
+        },
+        "visionAlignment": "세 가지 설계 방향은 비전의 세 축(기술/윤리/표현)을 각각 구체화하여 정합성이 높음. 디지털 시민성이 세 방향을 관통하도록 활동 설계 시 유의 필요."
+      }
+    },
+
+    "role_assignment": {
+      "procedureCode": "T-2-1",
+      "boardType": "role_assignment",
+      "data": {
+        "roles": [
+          {
+            "memberName": "최교사",
+            "subject": "정보",
+            "strengths": "기술 도구 활용, 프로젝트 관리",
+            "role": "팀장 / 기술 전문가",
+            "responsibilities": "AI 서비스 선정, 실습 환경 구축, 일정 관리, 교과 간 연계 조정(순환)"
+          },
+          {
+            "memberName": "한교사",
+            "subject": "도덕",
+            "strengths": "교육과정 분석, 학생 상담",
+            "role": "윤리 전문가 / 학습자 분석",
+            "responsibilities": "윤리적 프레임워크 설계, 딜레마 사례 수집, 학생 반응 분석, 교과 간 연계 조정(순환)"
+          },
+          {
+            "memberName": "송교사",
+            "subject": "국어",
+            "strengths": "문서 작성/편집, 수행평가 루브릭",
+            "role": "표현/평가 전문가 / 기록자",
+            "responsibilities": "논증 프레임워크 설계, 루브릭 개발, 회의록 정리, 교과 간 연계 조정(순환)"
+          }
+        ],
+        "coverageCheck": "핵심 역할 모두 배분 완료. '교과 간 연계 조정자' 역할을 순환적으로 수행하도록 추가 권장."
+      }
+    },
+
+    "team_rules": {
+      "procedureCode": "T-2-2",
+      "boardType": "team_rules",
+      "data": {
+        "allRules": [
+          "온라인 협업 도구를 적극 활용하자",
+          "매주 정기 회의를 하자",
+          "모든 의견은 존중하자",
+          "반대 의견은 근거를 함께 제시하자",
+          "회의록은 당일 공유하자",
+          "AI 생성 결과는 반드시 검토 후 수락하자",
+          "교과 간 시수 배분은 합의로 결정한다",
+          "AI 제안은 교육적 판단으로 검토한 후 수락/수정/거부한다"
+        ],
+        "coreRules": [
+          "매주 수요일 16시 정기 온라인 회의를 진행한다.",
+          "모든 의견은 존중하되, 반대 시 근거를 함께 제시한다.",
+          "AI 생성 결과물은 교육적 판단을 거쳐 수락/수정/거부한다.",
+          "회의록은 당일 내 공유하고, 결정사항은 보드에 즉시 반영한다.",
+          "교과 간 시수 배분과 활동 조정은 합의로 결정한다."
+        ],
+        "appropriatenessCheck": "5개 규칙 모두 구체적이고 실행 가능. 3번 규칙은 AI 윤리 수업 맥락에서 특히 적절. 설계 과정 자체가 수업 내용의 실천이 됨."
+      }
+    },
+
+    "team_schedule": {
+      "procedureCode": "T-2-3",
+      "boardType": "team_schedule",
+      "data": {
+        "schedule": [
+          { "date": "1주차 수", "activity": "비전/방향/역할/규칙 설정 (T 단계)", "deadline": "비전문 확정", "responsible": "전체", "note": "" },
+          { "date": "2주차 수", "activity": "주제 선정 기준 + 주제 선정 (A-1)", "deadline": "주제 확정", "responsible": "전체", "note": "" },
+          { "date": "3주차 수", "activity": "성취기준 분석 + 통합 목표 (A-2)", "deadline": "성취기준 분석표", "responsible": "전체", "note": "각자 교과 사전분석" },
+          { "date": "4주차 수", "activity": "평가 계획 + 문제 상황 (Ds-1-1, 1-2)", "deadline": "평가계획표, 문제상황", "responsible": "전체", "note": "" },
+          { "date": "5주차 수", "activity": "학습 활동 + 도구 + 스캐폴딩 (Ds-1-3, 2-1, 2-2)", "deadline": "학습활동표, 도구매칭, 스캐폴딩", "responsible": "전체", "note": "" },
+          { "date": "6주차 수", "activity": "개발 자료 목록 + 자료 제작 착수 (DI-1-1)", "deadline": "자료 목록 확정", "responsible": "전체", "note": "이후 2주간 자료 제작" },
+          { "date": "9주차~", "activity": "수업 실행 + 기록 (DI-2-1)", "deadline": "수업 기록", "responsible": "전체", "note": "10차시 수업" },
+          { "date": "12주차", "activity": "수업 성찰 + 과정 성찰 (E-1-1, E-2-1)", "deadline": "최종 리포트", "responsible": "전체", "note": "" }
+        ]
+      }
+    },
+
+    "topic_criteria": {
+      "procedureCode": "A-1-1",
+      "boardType": "topic_criteria",
+      "data": {
+        "criteria": [
+          { "criterionName": "교과 간 연결성", "description": "3교과(정보, 도덕, 국어)가 의미 있게 융합될 수 있는가", "weight": "30%" },
+          { "criterionName": "학습자 흥미/실생활 관련성", "description": "고2 학생의 일상과 관심사에 맞닿아 있는가", "weight": "25%" },
+          { "criterionName": "윤리적 쟁점 포함", "description": "다양한 관점에서 분석할 수 있는 윤리적 딜레마가 존재하는가", "weight": "20%" },
+          { "criterionName": "비전 부합도", "description": "팀 비전(윤리적 판단력을 갖춘 디지털 시민)에 부합하는가", "weight": "15%" },
+          { "criterionName": "실현 가능성", "description": "10차시 내에 수업으로 구현 가능한가", "weight": "10%" }
+        ]
+      }
+    },
+
+    "topic_selection": {
+      "procedureCode": "A-1-2",
+      "boardType": "topic_selection",
+      "data": {
+        "candidates": [
+          { "topic": "AI가 만드는 콘텐츠, 누구의 책임인가?", "subjects": "정보, 도덕, 국어", "rationale": "3교과 연결 우수, 학생 관심 높음, 윤리적 쟁점 명확" },
+          { "topic": "AI 편향성과 공정한 사회", "subjects": "정보, 도덕, 국어", "rationale": "데이터 편향 → 사회적 불공정 → 비판적 분석" },
+          { "topic": "감시 사회와 디지털 프라이버시", "subjects": "정보, 도덕, 국어", "rationale": "프라이버시 기술 → 권리 논의 → 설득적 글쓰기" }
+        ],
+        "comparisonTable": [
+          { "topic": "AI 콘텐츠 책임", "criterion1": "5/5", "criterion2": "5/5", "criterion3": "5/5", "totalScore": "4.85" },
+          { "topic": "AI 편향성", "criterion1": "4/5", "criterion2": "3/5", "criterion3": "4/5", "totalScore": "3.65" },
+          { "topic": "감시 사회", "criterion1": "3/5", "criterion2": "3/5", "criterion3": "4/5", "totalScore": "3.20" }
+        ],
+        "clusterMap": null,
+        "selectedTopic": "AI가 만드는 콘텐츠, 누구의 책임인가?",
+        "selectionRationale": "3교과 연결성 최고, 학생 실생활 경험과 직결, 윤리적 논제가 명확하여 논증적 글쓰기/토론에 최적",
+        "visionCriteriaCheck": "팀 비전과 직접 부합. 5개 선정 기준 모두 높은 점수. 정보(AI 생성 기술 원리), 도덕(책임/저작권 윤리), 국어(논증/토론) 자연스러운 통합 가능."
+      }
+    },
+
+    "standards_analysis": {
+      "procedureCode": "A-2-1",
+      "boardType": "standards_analysis",
+      "data": {
+        "standards": [
+          {
+            "subject": "정보",
+            "code": "[10정보01-01]",
+            "content": "인공지능의 개념과 특성을 이해하고 사회 변화를 탐색한다",
+            "knowledge": "인공지능의 개념, 특성, 발전 과정, 사회적 영향",
+            "process": "탐색하기, 분석하기, 설명하기",
+            "values": "기술에 대한 개방적 태도, 비판적 수용"
+          },
+          {
+            "subject": "정보",
+            "code": "[10정보01-02]",
+            "content": "인공지능 기술이 사회에 미치는 긍정적, 부정적 영향을 분석한다",
+            "knowledge": "AI 기술의 사회적 영향(긍정/부정)",
+            "process": "분석하기, 비교하기, 평가하기",
+            "values": "균형 잡힌 시각, 사회적 책임감"
+          },
+          {
+            "subject": "정보",
+            "code": "[10정보02-01]",
+            "content": "다양한 인공지능 서비스를 체험하고 작동 원리를 탐구한다",
+            "knowledge": "AI 서비스의 유형과 작동 원리",
+            "process": "체험하기, 탐구하기, 실험하기",
+            "values": "탐구적 태도, 기술에 대한 호기심"
+          },
+          {
+            "subject": "도덕",
+            "code": "[10도덕01-01]",
+            "content": "도덕적 탐구의 의미와 특성을 이해하고, 도덕적 문제 상황에서 윤리적 판단을 내린다",
+            "knowledge": "도덕적 탐구의 개념, 윤리적 판단 기준",
+            "process": "탐구하기, 판단하기, 정당화하기",
+            "values": "도덕적 민감성, 윤리적 판단력"
+          },
+          {
+            "subject": "도덕",
+            "code": "[10도덕02-02]",
+            "content": "과학과 기술의 발전에 따른 윤리적 문제를 탐구하고 도덕적으로 성찰한다",
+            "knowledge": "과학기술 윤리, 기술 발전에 따른 도덕적 쟁점",
+            "process": "탐구하기, 성찰하기, 논증하기",
+            "values": "기술 윤리 의식, 성찰적 태도"
+          },
+          {
+            "subject": "국어",
+            "code": "[10국어01-01]",
+            "content": "의미 공유 과정으로서의 소통을 이해하고 상호 협력적으로 소통한다",
+            "knowledge": "소통의 본질, 협력적 소통 원리",
+            "process": "경청하기, 공감하기, 반응하기",
+            "values": "소통에 대한 적극적 태도, 타인 존중"
+          },
+          {
+            "subject": "국어",
+            "code": "[10국어03-01]",
+            "content": "주장과 근거의 관계를 분석하며 글을 읽는다",
+            "knowledge": "논증 구조, 주장-근거 관계",
+            "process": "분석하기, 평가하기, 비판적 읽기",
+            "values": "비판적 사고, 논리적 태도"
+          },
+          {
+            "subject": "국어",
+            "code": "[10국어03-02]",
+            "content": "타당한 근거를 들어 주장하는 글을 쓴다",
+            "knowledge": "논증적 글쓰기 구조, 근거 유형",
+            "process": "논증하기, 글쓰기, 고쳐쓰기",
+            "values": "논리적 표현 태도, 책임감 있는 글쓰기"
+          }
+        ],
+        "connectionMap": {
+          "nodes": ["정보01-01", "정보01-02", "정보02-01", "도덕01-01", "도덕02-02", "국어01-01", "국어03-01", "국어03-02"],
+          "edges": [
+            { "from": "정보01-02", "to": "도덕02-02", "relation": "AI 기술의 사회적 영향 ↔ 기술 윤리" },
+            { "from": "도덕01-01", "to": "국어03-01", "relation": "윤리적 판단 ↔ 논증 분석" },
+            { "from": "도덕02-02", "to": "국어03-02", "relation": "도덕적 성찰 ↔ 주장하는 글쓰기" },
+            { "from": "정보02-01", "to": "도덕02-02", "relation": "AI 서비스 체험 → 윤리적 문제 탐구" },
+            { "from": "국어01-01", "to": "도덕01-01", "relation": "협력적 소통 → 도덕적 탐구" }
+          ]
+        },
+        "duplicateCheck": "정보 '정보윤리'와 도덕 '기술윤리'가 내용 중첩. 정보는 기술적 원리 관점, 도덕은 철학적 판단 관점으로 차별화. 국어 '논증적 글쓰기'가 두 교과 산출물을 통합하는 허브 역할."
+      }
+    },
+
+    "integrated_objectives": {
+      "procedureCode": "A-2-2",
+      "boardType": "integrated_objectives",
+      "data": {
+        "subObjectives": [
+          { "subject": "정보", "objective": "AI 생성 콘텐츠(텍스트, 이미지, 영상)의 기술적 원리를 이해하고, AI 서비스를 직접 체험하여 가능성, 한계, 그리고 사회적 영향을 탐구한다." },
+          { "subject": "도덕", "objective": "AI 콘텐츠 생성에 따른 윤리적 딜레마(저작권, 책임, 진위)를 탐구하고, 도덕적 판단 기준을 적용하여 성찰한다." },
+          { "subject": "국어", "objective": "AI 콘텐츠 관련 사회 이슈에 대해 논증적 글을 작성하고, 토론을 통해 다양한 관점을 비판적으로 분석하며 협력적으로 소통한다." }
+        ],
+        "integratedObjectives": [
+          "AI 생성 콘텐츠의 기술적 원리와 사회적 영향을 이해하고, 윤리적 관점에서 분석하여, 자신의 입장을 논증적으로 표현할 수 있다.",
+          "AI 콘텐츠 활용에 대한 윤리적 딜레마를 인식하고, 다양한 관점을 고려하여 합리적으로 판단할 수 있다.",
+          "AI 윤리에 관한 토론에 적극적으로 참여하고, AI 활용 가이드라인을 협력적으로 제작할 수 있다."
+        ],
+        "alignment": "비전 → 성취기준(8개) → 통합목표(3개) 정합성 확인. 통합목표 1(지식·이해+과정·기능), 2(가치·태도), 3(과정·기능+가치·태도)로 세 차원 균형 있게 반영."
+      }
+    },
+
+    "assessment_plan": {
+      "procedureCode": "Ds-1-1",
+      "boardType": "assessment_plan",
+      "data": {
+        "assessments": [
+          {
+            "activity": "AI 서비스 체험 및 분석",
+            "subject": "정보",
+            "content": "AI 서비스의 작동 원리 이해도, 가능성과 한계 분석",
+            "method": "체험 보고서 (수행평가)",
+            "rubricSummary": "상: 원리를 정확히 설명하고 한계를 비판적으로 분석 / 중: 원리를 설명하나 분석이 표면적 / 하: 체험 내용만 나열"
+          },
+          {
+            "activity": "윤리적 딜레마 분석",
+            "subject": "도덕",
+            "content": "AI 콘텐츠 관련 윤리적 쟁점 인식, 도덕적 판단 근거 제시",
+            "method": "윤리 분석 보고서 (수행평가)",
+            "rubricSummary": "상: 다양한 윤리 이론 적용하여 판단 근거 제시 / 중: 하나의 관점에서 판단 / 하: 윤리적 쟁점 인식 미흡"
+          },
+          {
+            "activity": "AI 윤리 토론",
+            "subject": "도덕 + 국어",
+            "content": "논증 구조의 타당성, 반론 수용, 협력적 소통",
+            "method": "토론 평가 (관찰 + 자기평가)",
+            "rubricSummary": "상: 타당한 근거 제시, 반론에 적절히 대응, 상호 존중 / 중: 근거 제시하나 반론 대응 미흡 / 하: 주장만 반복"
+          },
+          {
+            "activity": "논증문 작성",
+            "subject": "국어",
+            "content": "AI 콘텐츠 책임에 대한 자기 입장을 논증적으로 표현",
+            "method": "논증문 (수행평가)",
+            "rubricSummary": "상: 명확한 주장, 다양한 근거, 반론 고려 / 중: 주장 있으나 근거 부족 / 하: 논증 구조 미흡"
+          },
+          {
+            "activity": "AI 윤리 가이드라인 제작",
+            "subject": "정보 + 도덕 + 국어",
+            "content": "AI 활용 가이드라인의 내용 적절성, 윤리적 근거, 표현의 명료성",
+            "method": "모둠별 산출물 평가",
+            "rubricSummary": "상: 기술/윤리/표현이 균형 있게 반영된 실행 가능한 가이드라인 / 중: 일부 요소 미흡 / 하: 내용 부실"
+          }
+        ],
+        "objectiveAlignmentCheck": "통합목표 1 → 체험 보고서, 통합목표 2 → 윤리 분석 + 토론, 통합목표 3 → 논증문 + 가이드라인. 모든 목표가 평가에 포함. 정합성 높음."
+      }
+    },
+
+    "problem_situation": {
+      "procedureCode": "Ds-1-2",
+      "boardType": "problem_situation",
+      "data": {
+        "candidates": [
+          {
+            "title": "학교 신문 AI 기사 사건",
+            "situation": "자율동아리 학생이 ChatGPT로 작성한 기사를 자기 이름으로 학교 신문에 게재. 저작권과 책임 소재가 논란.",
+            "dataSource": "2024-2025 교육부 AI 활용 가이드라인 논의, 대학 AI 표절 판정 사례"
+          },
+          {
+            "title": "SNS 딥페이크 유포 사건",
+            "situation": "학교 축제 영상에서 학생 얼굴이 딥페이크로 합성되어 SNS 유포. 가해자는 장난이라 주장.",
+            "dataSource": "2024 딥페이크 피해 통계, 디지털 성범죄 관련 법률"
+          },
+          {
+            "title": "AI 작곡 대회 출품",
+            "situation": "교내 창작 대회에 AI 작곡 음악을 출품한 학생의 수상 자격 논란.",
+            "dataSource": "2023 AI 생성 예술 저작권 판례"
+          }
+        ],
+        "selected": "자율동아리 '미래탐구반'은 학교 신문 특집호에 'AI 시대의 학교'를 주제로 기사를 작성했다. 그런데 편집 과정에서 한 학생(A)이 ChatGPT로 작성한 기사를 자기 이름으로 게재한 사실이 밝혀졌다. 동시에 축제 홍보 영상에 AI로 생성한 가상 인물 이미지가 사용된 것도 논란이 되었다. 학교 신문부장은 긴급 편집 회의를 소집했고, 학교 측은 'AI 활용 가이드라인' 제정을 검토 중이다. 학생들은 이 상황에서 (1) AI가 작성한 기사의 저작권과 책임 소재를 분석하고, (2) AI 생성 콘텐츠의 윤리적 쟁점을 논의하여, (3) 학교 AI 활용 가이드라인을 작성하여 학교 운영위원회에 제안해야 한다.",
+        "realWorldData": "2024-2025 교육부 AI 활용 가이드라인 논의, 대학 AI 표절 판정 사례, 2024 딥페이크 피해 통계",
+        "audience": "학교 운영위원회 (학부모, 교사, 학생 대표)",
+        "learningContentCheck": "학습내용(AI 기술 원리, 윤리적 판단, 논증적 표현) 반영됨. 산출물(AI 활용 가이드라인) 명시됨. 청중(학교 운영위원회) 구체적으로 설정됨."
+      }
+    },
+
+    "learning_activities": {
+      "procedureCode": "Ds-1-3",
+      "boardType": "learning_activities",
+      "data": {
+        "activities": [
+          { "order": "1", "activityName": "문제 상황 탐색", "description": "학교 신문 AI 기사 사건을 읽고 문제 인식, 핵심 쟁점 도출", "subject": "국어", "hours": "1차시" },
+          { "order": "2", "activityName": "AI 서비스 체험", "description": "ChatGPT, DALL-E 등을 직접 사용하여 텍스트/이미지 생성 체험", "subject": "정보", "hours": "2차시" },
+          { "order": "3", "activityName": "AI 기술 원리 탐구", "description": "생성형 AI의 작동 원리(LLM, Diffusion)를 탐구하고 한계 분석", "subject": "정보", "hours": "3차시" },
+          { "order": "4", "activityName": "윤리 이론 학습", "description": "공리주의, 의무론, 덕 윤리 등의 프레임워크로 AI 윤리 분석 기초", "subject": "도덕", "hours": "4차시" },
+          { "order": "5", "activityName": "윤리적 딜레마 분석", "description": "AI 콘텐츠 사례별(저작권, 딥페이크, 편향) 윤리적 딜레마 분석", "subject": "도덕", "hours": "5차시" },
+          { "order": "6", "activityName": "논증 구조 학습", "description": "툴민 모형 등 논증 구조를 학습하고 AI 윤리 논제에 적용 연습", "subject": "국어", "hours": "6차시" },
+          { "order": "7", "activityName": "입장 형성 및 논증문 작성", "description": "AI 콘텐츠 책임에 대한 자기 입장을 정하고 논증문 초안 작성", "subject": "국어", "hours": "7차시" },
+          { "order": "8", "activityName": "찬반 토론", "description": "AI 생성 콘텐츠의 학교 활용에 대한 찬반 토론 (CEDA 형식)", "subject": "도덕 + 국어", "hours": "8차시" },
+          { "order": "9", "activityName": "AI 윤리 가이드라인 제작", "description": "모둠별로 학교 AI 활용 가이드라인 초안 작성 (기술/윤리/표현 통합)", "subject": "정보 + 도덕 + 국어", "hours": "9차시" },
+          { "order": "10", "activityName": "가이드라인 발표 및 성찰", "description": "학교 운영위원회(역할극)에 가이드라인 발표 + 수업 전체 성찰", "subject": "정보 + 도덕 + 국어", "hours": "10차시" }
+        ],
+        "objectiveFeasibilityCheck": "10차시 배분 적절. 문제 인식→기술 탐구→윤리 분석→입장 형성→표현/토론→산출물 제작의 논리적 흐름 구성됨. 정보 4차시, 도덕 3차시, 국어 3차시로 균형."
+      }
+    },
+
+    "support_tools": {
+      "procedureCode": "Ds-2-1",
+      "boardType": "support_tools",
+      "data": {
+        "experiencedTools": [
+          { "toolName": "ChatGPT", "experience": "최교사: 정보 수업에서 텍스트 생성 실습에 활용" },
+          { "toolName": "Padlet", "experience": "한교사: 브레인스토밍 및 토론에 활용" },
+          { "toolName": "Google Docs", "experience": "송교사: 협력적 글쓰기 도구로 활용" }
+        ],
+        "tools": [
+          { "activity": "AI 서비스 체험", "toolName": "ChatGPT / DALL-E / Copilot", "usage": "텍스트, 이미지 생성 체험 및 결과 비교", "alternative": "Gemini, Claude" },
+          { "activity": "AI 기술 원리 탐구", "toolName": "Teachable Machine / AI Playground", "usage": "머신러닝 원리를 시각적으로 이해하는 실습", "alternative": "Scratch AI 확장 블록" },
+          { "activity": "윤리적 딜레마 분석", "toolName": "Padlet / Jamboard", "usage": "딜레마 사례를 시각적으로 분류하고 의견 정리", "alternative": "미로(Miro)" },
+          { "activity": "논증 구조 학습", "toolName": "논증 프레임워크 활동지", "usage": "툴민 모형 기반 논증 구조 작성 활동지", "alternative": "구글 슬라이드 템플릿" },
+          { "activity": "논증문 작성", "toolName": "Google Docs", "usage": "협력적 글쓰기, 교사 실시간 피드백", "alternative": "한글(HWP)" },
+          { "activity": "찬반 토론", "toolName": "토론 평가 체크리스트 + 녹화", "usage": "토론 과정 녹화 및 자기 평가", "alternative": "Flip(영상 토론)" },
+          { "activity": "가이드라인 제작", "toolName": "Canva / Google Slides", "usage": "시각적으로 정돈된 가이드라인 문서 제작", "alternative": "미리캔버스" },
+          { "activity": "발표", "toolName": "Google Slides / Prezi", "usage": "운영위원회 대상 발표 자료 제작", "alternative": "PPT" }
+        ],
+        "environmentCheck": "학교 컴퓨터실 PC 30대 확보, 교실 와이파이 안정적. ChatGPT 무료 버전 사용 가능. 학생 개인 스마트폰으로 Padlet 접근 가능. Google Workspace 계정 보유."
+      }
+    },
+
+    "scaffolding_design": {
+      "procedureCode": "Ds-2-2",
+      "boardType": "scaffolding_design",
+      "data": {
+        "supportMethods": [
+          { "method": "단계별 실습 안내서", "targetActivity": "AI 서비스 체험" },
+          { "method": "윤리 분석 프레임 제공", "targetActivity": "윤리적 딜레마 분석" },
+          { "method": "논증문 개요 템플릿", "targetActivity": "논증문 작성" }
+        ],
+        "scaffolds": [
+          {
+            "activity": "AI 서비스 체험",
+            "scaffoldType": "절차적 스캐폴딩",
+            "content": "단계별 실습 가이드: 1)프롬프트 작성법 → 2)결과 생성 → 3)결과 비교 → 4)한계 기록",
+            "targetLevel": "하위 수준 학생",
+            "fadePlan": "2차시에서 가이드 단계 축소, 3차시 자유 탐구로 전환"
+          },
+          {
+            "activity": "윤리적 딜레마 분석",
+            "scaffoldType": "개념적 스캐폴딩",
+            "content": "윤리 이론 요약 카드(공리주의/의무론/덕윤리) + 사례 분석 프레임(어떤 가치가 충돌하는가?/어떤 의무가 충돌하는가?/좋은 사람이라면 어떻게 할 것인가?)",
+            "targetLevel": "중하위 수준 학생",
+            "fadePlan": "4차시에서 카드 제공 → 5차시에서 카드 없이 학생이 스스로 이론 선택"
+          },
+          {
+            "activity": "논증문 작성",
+            "scaffoldType": "전략적 스캐폴딩",
+            "content": "툴민 모형 기반 논증 구조 템플릿(주장-근거-보증-반박-한정), 수준별 차별화(하위: 템플릿+예시, 중위: 템플릿만, 상위: 자유형식+심화과제)",
+            "targetLevel": "중하위 수준 학생",
+            "fadePlan": "7차시 초안 작성 시 템플릿 사용 → 수정 단계에서 자유 형식 허용"
+          },
+          {
+            "activity": "찬반 토론",
+            "scaffoldType": "메타인지적 스캐폴딩",
+            "content": "토론 전 자기 점검 체크리스트(내 주장의 핵심 근거 3가지/예상 반론 2가지/재반론 준비)",
+            "targetLevel": "전체 학생",
+            "fadePlan": "토론 후 자기 평가로 내면화 → 추후 토론에서 체크리스트 없이 수행"
+          },
+          {
+            "activity": "가이드라인 제작",
+            "scaffoldType": "절차적 스캐폴딩",
+            "content": "가이드라인 템플릿(목적-원칙-세부규칙-적용사례 구조) + 우수 사례 2건 제시",
+            "targetLevel": "전체 학생",
+            "fadePlan": "초안 작성 시 템플릿 사용 → 최종본은 모둠별 자율 구성"
+          }
+        ],
+        "appropriatenessCheck": "5개 스캐폴딩 모두 점진적 제거 계획 포함. 절차적(2), 개념적(1), 전략적(1), 메타인지적(1) 유형 균형 배분. 상위 수준 학생용 심화 과제를 추가하면 차별화 강화 가능."
+      }
+    },
+
+    "material_list": {
+      "procedureCode": "DI-1-1",
+      "boardType": "material_list",
+      "data": {
+        "materials": [
+          { "materialType": "활동지", "title": "AI 서비스 체험 실습 가이드", "subject": "정보", "category": "개발", "assignee": "최교사", "priority": "1순위", "deadline": "7주차" },
+          { "materialType": "활동지", "title": "윤리 이론 요약 카드 (3종)", "subject": "도덕", "category": "개발", "assignee": "한교사", "priority": "1순위", "deadline": "7주차" },
+          { "materialType": "활동지", "title": "논증 구조 템플릿 (툴민 모형)", "subject": "국어", "category": "개발", "assignee": "송교사", "priority": "1순위", "deadline": "7주차" },
+          { "materialType": "평가도구", "title": "토론 평가 루브릭", "subject": "도덕+국어", "category": "개발", "assignee": "송교사", "priority": "1순위", "deadline": "7주차" },
+          { "materialType": "평가도구", "title": "논증문 평가 루브릭", "subject": "국어", "category": "개발", "assignee": "송교사", "priority": "1순위", "deadline": "7주차" },
+          { "materialType": "활동지", "title": "AI 윤리 가이드라인 템플릿", "subject": "공통", "category": "개발", "assignee": "최교사+한교사", "priority": "2순위", "deadline": "8주차" },
+          { "materialType": "참고자료", "title": "딥페이크 사례 모음", "subject": "도덕", "category": "탐색", "assignee": "한교사", "priority": "2순위", "deadline": "8주차" },
+          { "materialType": "참고자료", "title": "AI 저작권 관련 기사/판례", "subject": "공통", "category": "탐색", "assignee": "최교사", "priority": "2순위", "deadline": "8주차" },
+          { "materialType": "프레젠테이션", "title": "문제 상황 제시 슬라이드", "subject": "공통", "category": "개발", "assignee": "최교사", "priority": "2순위", "deadline": "8주차" },
+          { "materialType": "평가도구", "title": "체험 보고서 평가 루브릭", "subject": "정보", "category": "개발", "assignee": "최교사", "priority": "2순위", "deadline": "8주차" }
+        ]
+      }
+    },
+
+    "class_record": {
+      "procedureCode": "DI-2-1",
+      "boardType": "class_record",
+      "data": {
+        "recordingMethod": "각 교사가 담당 차시 수업 중 주요 에피소드를 메모장에 기록. 토론 수업(8차시)은 영상 녹화. 학생 활동 결과물 사진 촬영.",
+        "episodes": [
+          { "timestamp": "2차시 (AI 체험)", "situation": "ChatGPT에 같은 프롬프트를 넣었는데 다른 결과가 나오자 학생들이 놀람", "studentResponse": "'왜 매번 달라요?' 질문 폭주. AI의 확률적 생성 원리에 대한 호기심 급증.", "insight": "AI의 비결정적 특성을 체험적으로 이해시키는 효과적 순간." },
+          { "timestamp": "5차시 (딜레마 분석)", "situation": "학생 A가 'AI가 만든 건 누구 거도 아니다'라고 주장, 학생 B가 '프롬프트를 쓴 사람 것'이라고 반박", "studentResponse": "자연스러운 소규모 토론 발생. 교사 개입 없이 10분간 지속됨.", "insight": "문제 상황이 학생의 자발적 논의를 유발함." },
+          { "timestamp": "8차시 (토론)", "situation": "CEDA 토론에서 찬성 측이 '인간의 창의적 의도가 핵심'이라고 주장하자 반대 측이 'AI도 학습 데이터에서 창의를 발휘한다'고 반박", "studentResponse": "예상보다 깊이 있는 논증. 반론 대응이 자연스러움.", "insight": "사전 논증문 작성(7차시)이 토론 품질 향상에 직접 기여." },
+          { "timestamp": "9차시 (가이드라인)", "situation": "모둠별로 '허용/조건부/금지' 3단계 기준을 스스로 설계", "studentResponse": "현실적이고 구체적인 가이드라인 초안 도출.", "insight": "실제 학교 맥락의 문제 상황이 구체적 산출물을 이끌어 냄." }
+        ],
+        "transcripts": [
+          "8차시 토론 영상 전사 완료 (약 40분). 주요 논점: (1) 저작권 귀속, (2) 교육적 활용의 정당성, (3) 투명성과 표기 의무"
+        ],
+        "implications": "1. AI 체험→윤리 분석→토론의 순서가 효과적. 2. 문제 상황(학교 신문 사건)이 학생 몰입도를 높이는 핵심 요인. 3. 논증문 사전 작성이 토론 품질에 직접 기여. 4. 가이드라인 제작은 학습 내용의 종합적 적용에 효과적."
+      }
+    },
+
+    "class_reflection": {
+      "procedureCode": "E-1-1",
+      "boardType": "class_reflection",
+      "data": {
+        "learningResults": [
+          { "subject": "정보", "processResult": "AI 서비스 체험은 학생 몰입도 최고. 기술 원리 탐구는 일부 학생에게 어려웠으나 체험이 선행되어 동기 유지됨." },
+          { "subject": "도덕", "processResult": "윤리 이론 학습이 추상적이었으나 구체적 사례와 연결하니 이해도 상승. 딜레마 분석에서 자발적 토론 발생." },
+          { "subject": "국어", "processResult": "논증 구조 학습이 실제 논증문에 잘 적용됨. 토론에서 논증 능력이 눈에 띄게 향상됨." }
+        ],
+        "improvements": [
+          "윤리 이론 학습(4차시)을 더 인터랙티브하게 — 사례 기반 학습 강화",
+          "AI 기술 원리 탐구(3차시)에서 시각 자료 보충 필요",
+          "가이드라인 제작(9차시) 시간이 부족 — 2차시로 확대 검토",
+          "토론 전 입장 카드를 미리 준비하면 토론 초반 침묵 감소 가능"
+        ],
+        "personalReflections": [
+          { "subject": "정보", "whatWorked": "AI 서비스 직접 체험이 학습 동기를 크게 높임.", "improvement": "기술 원리 설명을 더 시각적으로. Teachable Machine 실습 시간 확보 필요." },
+          { "subject": "도덕", "whatWorked": "윤리 분석 프레임이 학생들의 체계적 사고를 도움.", "improvement": "윤리 이론 카드를 영상 자료나 사례 카드로 대체 고려." },
+          { "subject": "국어", "whatWorked": "논증문 템플릿이 하위 학생에게 효과적.", "improvement": "피어 리뷰 시간을 추가하면 글쓰기 품질 더 향상 가능." }
+        ],
+        "improvementIdeas": [
+          "4차시에 '윤리 이론 역할극' 도입",
+          "3차시에 AI 작동 과정 애니메이션 활용",
+          "가이드라인 제작을 9~10차시로 확대",
+          "토론 전 '입장 스펙트럼' 활동 도입"
+        ]
+      }
+    },
+
+    "process_reflection": {
+      "procedureCode": "E-2-1",
+      "boardType": "process_reflection",
+      "data": {
+        "processReflections": [
+          { "phase": "팀준비(T)", "goal": "비전 수립 및 팀 구성", "result": "비전이 설계 전 과정의 일관된 기준이 됨.", "improvement": "팀 규칙 중 '합의로 결정'이 시간 소모적. 빠른 결정 사안은 다수결 허용 고려." },
+          { "phase": "분석(A)", "goal": "주제 선정 및 성취기준 분석", "result": "3교과 연결성이 높은 주제 선정 성공.", "improvement": "성취기준 분석 시 교과 간 중첩 부분을 더 일찍 정리할 것." },
+          { "phase": "설계(Ds)", "goal": "평가/문제상황/활동/도구/스캐폴딩 설계", "result": "역방향 설계가 활동의 방향성을 명확히 함.", "improvement": "상위 수준 학생용 심화 과제를 더 구체화할 필요." },
+          { "phase": "개발/실행(DI)", "goal": "자료 개발 및 수업 실행", "result": "분담 제작이 효율적. 수업 기록이 성찰의 근거 자료로 활용됨.", "improvement": "자료 제작 기간 여유 확보 필요." },
+          { "phase": "평가(E)", "goal": "수업 및 설계 과정 성찰", "result": "구체적 수업 기록 덕분에 근거 기반 성찰 가능.", "improvement": "학생 피드백 수집하여 성찰에 반영할 것." }
+        ],
+        "sharedReflections": [
+          "최교사: AI 공동설계자의 초안 생성 기능이 시간 절약에 크게 기여. 다만 AI 제안을 무비판적으로 수락하지 않도록 주의 필요.",
+          "한교사: 3교과 융합이 처음에는 부담스러웠지만 단계별 진행으로 자연스럽게 연결됨. 비전이 방향을 잃지 않게 해줌.",
+          "송교사: 기록자 역할 덕분에 전 과정을 조감 가능. 회의록이 의사결정 근거로 유용."
+        ],
+        "finalImprovements": [
+          "다음 프로젝트에서는 학생 사전 설문으로 학습자 맥락을 더 정밀하게 파악",
+          "성취기준 분석 단계에서 교과 간 중첩/차별화 매트릭스를 먼저 작성",
+          "자료 제작 기간을 1주 더 확보",
+          "수업 실행 후 학생 대상 간이 설문으로 학습자 관점 피드백 수집",
+          "AI 공동설계자 활용 시 수락/거부 근거를 반드시 기록하여 의사결정 투명성 확보"
+        ]
+      }
+    }
+
+  }
+}
