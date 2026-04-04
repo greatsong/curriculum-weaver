@@ -484,12 +484,74 @@ function BoardRenderer({ schema, content }) {
             ) : field.type === 'textarea' ? (
               <p style={{ fontSize: 13, color: 'var(--color-text-primary)', whiteSpace: 'pre-wrap', lineHeight: 1.6, margin: 0 }}>{value}</p>
             ) : field.type === 'json' ? (
-              <pre style={{ fontSize: 12, color: 'var(--color-text-secondary)', background: 'var(--color-bg-primary)', padding: 10, borderRadius: 'var(--radius-md)', overflowX: 'auto', maxHeight: 160, margin: 0, fontFamily: 'var(--font-mono)' }}>
-                {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
-              </pre>
+              <ClusterMapRenderer value={value} label={field.label} />
             ) : (
               <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', margin: 0 }}>{String(value)}</p>
             )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── 클러스터맵/JSON 시각화 ──
+const CLUSTER_COLORS = [
+  { bg: '#EFF6FF', border: '#BFDBFE', text: '#1E40AF', tag: '#DBEAFE' },
+  { bg: '#F0FDF4', border: '#BBF7D0', text: '#166534', tag: '#DCFCE7' },
+  { bg: '#FFF7ED', border: '#FED7AA', text: '#9A3412', tag: '#FFEDD5' },
+  { bg: '#FAF5FF', border: '#E9D5FF', text: '#6B21A8', tag: '#F3E8FF' },
+  { bg: '#FFF1F2', border: '#FECDD3', text: '#9F1239', tag: '#FFE4E6' },
+  { bg: '#F0FDFA', border: '#99F6E4', text: '#115E59', tag: '#CCFBF1' },
+]
+
+function ClusterMapRenderer({ value, label }) {
+  // 객체 형태의 클러스터맵인지 확인
+  const isClusterMap = value && typeof value === 'object' && !Array.isArray(value) &&
+    Object.values(value).some((v) => Array.isArray(v) || typeof v === 'string')
+
+  if (!isClusterMap) {
+    // 일반 JSON 폴백
+    return (
+      <pre style={{ fontSize: 12, color: 'var(--color-text-secondary)', background: 'var(--color-bg-primary)', padding: 10, borderRadius: 'var(--radius-md)', overflowX: 'auto', maxHeight: 200, margin: 0, fontFamily: 'var(--font-mono)' }}>
+        {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
+      </pre>
+    )
+  }
+
+  const entries = Object.entries(value)
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+      {entries.map(([clusterName, items], idx) => {
+        const color = CLUSTER_COLORS[idx % CLUSTER_COLORS.length]
+        const itemList = Array.isArray(items) ? items : (typeof items === 'string' ? [items] : [])
+        return (
+          <div key={clusterName} style={{
+            background: color.bg,
+            border: `1px solid ${color.border}`,
+            borderRadius: 'var(--radius-lg)',
+            padding: 14,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}>
+            <h4 style={{ fontSize: 13, fontWeight: 700, color: color.text, margin: 0 }}>
+              {clusterName}
+            </h4>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {itemList.map((item, i) => (
+                <span key={i} style={{
+                  fontSize: 12,
+                  padding: '3px 10px',
+                  borderRadius: 9999,
+                  background: color.tag,
+                  color: color.text,
+                  lineHeight: 1.4,
+                }}>
+                  {String(item)}
+                </span>
+              ))}
+            </div>
           </div>
         )
       })}

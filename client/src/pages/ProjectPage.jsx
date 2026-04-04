@@ -154,7 +154,7 @@ export default function ProjectPage() {
   const { currentProject, fetchProject, updateProcedure } = useProjectStore()
   const { currentWorkspace, fetchWorkspace } = useWorkspaceStore()
   const {
-    currentProcedure, setProcedure, loadBoards, loadStandards, loadMaterials,
+    currentProcedure, setProcedure, loadBoards, loadAllBoards, loadStandards, loadMaterials,
     loadPrinciples, loadGeneralPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset,
   } = useProcedureStore()
   const {
@@ -256,9 +256,17 @@ export default function ProjectPage() {
     if (activePanel === 'board') setBoardUpdated(false)
   }, [activePanel])
 
+  // 시뮬레이션: 최초 1회 모든 보드 프리로드
+  const allBoardsLoadedRef = useRef(false)
   useEffect(() => {
     if (!currentProject) return
-    loadBoards(projectId, currentProcedure)
+    const isReadOnlyProject = currentProject.status === 'simulation' || currentProject.status === 'failed' || currentProject.title?.startsWith('[시뮬레이션]')
+    if (isReadOnlyProject && !allBoardsLoadedRef.current) {
+      allBoardsLoadedRef.current = true
+      loadAllBoards(projectId)
+    } else if (!isReadOnlyProject) {
+      loadBoards(projectId, currentProcedure)
+    }
     loadStandards(projectId)
     loadMaterials(projectId)
     loadPrinciples(currentProcedure)

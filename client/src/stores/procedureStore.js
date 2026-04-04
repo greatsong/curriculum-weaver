@@ -55,6 +55,27 @@ export const useProcedureStore = create((set, get) => ({
 
   // ── 보드 로드/업데이트 ────
 
+  /**
+   * 모든 절차의 보드를 한번에 로드 (시뮬레이션 프로젝트용)
+   */
+  loadAllBoards: async (projectId) => {
+    set({ loading: true })
+    try {
+      const data = await apiGet(`/api/projects/${projectId}/designs`)
+      const designs = Array.isArray(data) ? data : (data?.designs ?? [])
+      const boards = {}
+      for (const design of designs) {
+        const boardType = BOARD_TYPES[design.procedure_code] || design.procedure_code
+        if (design.content && Object.keys(design.content).length > 0) {
+          boards[boardType] = { ...design, board_type: boardType, content: design.content }
+        }
+      }
+      set({ boards, loading: false })
+    } catch {
+      set({ boards: {}, loading: false })
+    }
+  },
+
   loadBoards: async (projectId, procedureCode) => {
     set({ loading: true })
     const code = procedureCode || get().currentProcedure
