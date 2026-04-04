@@ -9,11 +9,32 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Logo from './Logo'
 import { API_BASE } from '../lib/api'
+import useAuthStore from '../stores/authStore'
 
-const GRADE_OPTIONS = [
-  { value: '초등5-6', label: '초등 5-6학년' },
-  { value: '중학교', label: '중학교' },
-  { value: '고등1-2', label: '고등학교 1-2학년' },
+const GRADE_GROUPS = [
+  {
+    label: '초등',
+    grades: [
+      { value: '초5', label: '5학년' },
+      { value: '초6', label: '6학년' },
+    ],
+  },
+  {
+    label: '중학교',
+    grades: [
+      { value: '중1', label: '1학년' },
+      { value: '중2', label: '2학년' },
+      { value: '중3', label: '3학년' },
+    ],
+  },
+  {
+    label: '고등학교',
+    grades: [
+      { value: '고1', label: '1학년' },
+      { value: '고2', label: '2학년' },
+      { value: '고3', label: '3학년' },
+    ],
+  },
 ]
 
 const SUBJECT_OPTIONS = [
@@ -32,10 +53,12 @@ const PROGRESS_MESSAGES = [
 
 export default function DemoMode() {
   const navigate = useNavigate()
+  const { user, initialized } = useAuthStore()
 
   // 입력 폼
-  const [grade, setGrade] = useState('')
+  const [selectedGrades, setSelectedGrades] = useState([])
   const [selectedSubjects, setSelectedSubjects] = useState([])
+  const [customSubject, setCustomSubject] = useState('')
   const [topic, setTopic] = useState('')
   const [description, setDescription] = useState('')
 
@@ -45,13 +68,27 @@ export default function DemoMode() {
   const [progressMessage, setProgressMessage] = useState('')
   const [error, setError] = useState('')
 
+  const toggleGrade = (val) => {
+    setSelectedGrades((prev) =>
+      prev.includes(val) ? prev.filter((g) => g !== val) : [...prev, val]
+    )
+  }
+
   const toggleSubject = (subj) => {
     setSelectedSubjects((prev) =>
       prev.includes(subj) ? prev.filter((s) => s !== subj) : [...prev, subj]
     )
   }
 
-  const canSubmit = grade && selectedSubjects.length >= 2 && topic.trim()
+  const addCustomSubject = () => {
+    const trimmed = customSubject.trim()
+    if (trimmed && !selectedSubjects.includes(trimmed) && !SUBJECT_OPTIONS.includes(trimmed)) {
+      setSelectedSubjects((prev) => [...prev, trimmed])
+      setCustomSubject('')
+    }
+  }
+
+  const canSubmit = selectedGrades.length > 0 && selectedSubjects.length >= 2 && topic.trim()
 
   // 프로그레스 애니메이션
   useEffect(() => {
@@ -76,7 +113,7 @@ export default function DemoMode() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          grade,
+          grade: selectedGrades.join(', '),
           subjects: selectedSubjects,
           topic: topic.trim(),
           description: description.trim(),
@@ -123,19 +160,43 @@ export default function DemoMode() {
           <Logo size={24} />
           <span style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>커리큘럼 위버</span>
         </a>
-        <button
-          onClick={() => navigate('/login')}
-          style={{
-            padding: '8px 16px', background: '#111827', color: '#fff',
-            border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
-            cursor: 'pointer', fontFamily: 'var(--font-sans, inherit)',
-            transition: 'background 0.15s',
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = '#374151'}
-          onMouseLeave={(e) => e.currentTarget.style.background = '#111827'}
-        >
-          로그인
-        </button>
+        {initialized && user ? (
+          <button
+            onClick={() => navigate('/workspaces')}
+            style={{
+              padding: '8px 16px', background: '#111827', color: '#fff',
+              border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'var(--font-sans, inherit)',
+              transition: 'background 0.15s',
+              display: 'flex', alignItems: 'center', gap: 6,
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#374151'}
+            onMouseLeave={(e) => e.currentTarget.style.background = '#111827'}
+          >
+            {user.user_metadata?.avatar_url && (
+              <img
+                src={user.user_metadata.avatar_url}
+                alt=""
+                style={{ width: 20, height: 20, borderRadius: '50%' }}
+              />
+            )}
+            내 워크스페이스
+          </button>
+        ) : (
+          <button
+            onClick={() => navigate('/login')}
+            style={{
+              padding: '8px 16px', background: '#111827', color: '#fff',
+              border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
+              cursor: 'pointer', fontFamily: 'var(--font-sans, inherit)',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = '#374151'}
+            onMouseLeave={(e) => e.currentTarget.style.background = '#111827'}
+          >
+            로그인
+          </button>
+        )}
       </header>
 
       {/* 메인 */}
@@ -182,27 +243,39 @@ export default function DemoMode() {
                 </div>
               )}
 
-              {/* 대상 학년 */}
+              {/* 대상 학년 (복수 선택) */}
               <div style={{ marginBottom: 18 }}>
-                <label style={labelStyle}>대상 학년 *</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {GRADE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setGrade(opt.value)}
-                      style={{
-                        flex: 1, padding: '10px 8px',
-                        border: `2px solid ${grade === opt.value ? '#3B82F6' : '#E5E7EB'}`,
-                        borderRadius: 10,
-                        background: grade === opt.value ? '#EFF6FF' : '#fff',
-                        fontSize: 13, fontWeight: grade === opt.value ? 600 : 400,
-                        color: grade === opt.value ? '#2563EB' : '#374151',
-                        cursor: 'pointer', transition: 'all 0.15s',
-                        fontFamily: 'var(--font-sans, inherit)',
-                      }}
-                    >
-                      {opt.label}
-                    </button>
+                <label style={labelStyle}>대상 학년 * (복수 선택 가능)</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {GRADE_GROUPS.map((group) => (
+                    <div key={group.label}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', marginBottom: 4, display: 'block' }}>
+                        {group.label}
+                      </span>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {group.grades.map((g) => {
+                          const active = selectedGrades.includes(g.value)
+                          return (
+                            <button
+                              key={g.value}
+                              onClick={() => toggleGrade(g.value)}
+                              style={{
+                                padding: '7px 16px',
+                                border: `1.5px solid ${active ? '#3B82F6' : '#E5E7EB'}`,
+                                borderRadius: 8,
+                                background: active ? '#EFF6FF' : '#fff',
+                                fontSize: 13, fontWeight: active ? 600 : 400,
+                                color: active ? '#2563EB' : '#374151',
+                                cursor: 'pointer', transition: 'all 0.15s',
+                                fontFamily: 'var(--font-sans, inherit)',
+                              }}
+                            >
+                              {g.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -232,6 +305,54 @@ export default function DemoMode() {
                       </button>
                     )
                   })}
+                  {/* 사용자 직접 추가한 교과 */}
+                  {selectedSubjects
+                    .filter((s) => !SUBJECT_OPTIONS.includes(s))
+                    .map((subj) => (
+                      <button
+                        key={subj}
+                        onClick={() => toggleSubject(subj)}
+                        style={{
+                          padding: '6px 14px',
+                          border: '1.5px solid #3B82F6',
+                          borderRadius: 9999,
+                          background: '#EFF6FF',
+                          fontSize: 12, fontWeight: 600,
+                          color: '#2563EB',
+                          cursor: 'pointer', transition: 'all 0.15s',
+                          fontFamily: 'var(--font-sans, inherit)',
+                          display: 'flex', alignItems: 'center', gap: 4,
+                        }}
+                      >
+                        {subj} <span style={{ fontSize: 14, lineHeight: 1 }}>×</span>
+                      </button>
+                    ))}
+                </div>
+                {/* 교과 직접 입력 */}
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <input
+                    value={customSubject}
+                    onChange={(e) => setCustomSubject(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomSubject())}
+                    placeholder="교과명 직접 입력"
+                    style={{
+                      ...inputStyle, flex: 1, padding: '6px 12px', fontSize: 12,
+                      marginBottom: 0,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={addCustomSubject}
+                    disabled={!customSubject.trim()}
+                    style={{
+                      padding: '6px 14px', border: '1px solid #D1D5DB', borderRadius: 8,
+                      background: customSubject.trim() ? '#F3F4F6' : '#fff',
+                      fontSize: 12, color: '#374151', cursor: customSubject.trim() ? 'pointer' : 'default',
+                      fontFamily: 'var(--font-sans, inherit)', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    추가
+                  </button>
                 </div>
               </div>
 

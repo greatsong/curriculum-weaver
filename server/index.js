@@ -201,9 +201,34 @@ app.get('/api/health', (req, res) => {
 
 // ── 라우트 마운트 ──
 
+// ─ 인증 불필요 라우트 (먼저 배치) ─
+app.use('/api/demo', demoRouter)
+
 // 인증
 app.use('/api/auth', authRouter)
 
+// 성취기준 (공개)
+app.use('/api/standards', standardsRouter)
+
+// 설계 원리 (공개)
+app.use('/api/principles', principlesRouter)
+
+// 설계 보드
+app.use('/api/boards', boardsRouter)
+
+// 세션 (레거시 + 성취기준)
+app.use('/api/sessions', sessionsRouter)
+
+// AI 채팅
+app.use('/api/chat', chatRouter)
+
+// 자료
+app.use('/api/materials', materialsRouter)
+
+// 보고서
+app.use('/api/report', reportRouter)
+
+// ─ 인증 필요 라우트 (router.use(requireAuth) 포함) ─
 // 워크스페이스 + 초대
 app.use('/api/workspaces', workspacesRouter)
 app.use('/api/invites', invitesRouter)
@@ -220,32 +245,8 @@ app.use('/api', versionsRouter)
 // 활동 로그 (프로젝트 하위)
 app.use('/api', activityLogsRouter)
 
-// AI 채팅
-app.use('/api/chat', chatRouter)
-
-// 성취기준
-app.use('/api/standards', standardsRouter)
-
-// 자료
-app.use('/api/materials', materialsRouter)
-
-// 설계 원리
-app.use('/api/principles', principlesRouter)
-
-// 보고서
-app.use('/api/report', reportRouter)
-
 // 댓글
 app.use('/api', commentsRouter)
-
-// 설계 보드
-app.use('/api/boards', boardsRouter)
-
-// 세션 (레거시 + 성취기준)
-app.use('/api/sessions', sessionsRouter)
-
-// 데모 (인증 불필요)
-app.use('/api/demo', demoRouter)
 
 // ── 에러 핸들러 ──
 app.use((err, req, res, next) => {
