@@ -185,7 +185,19 @@ export default function ProjectPage() {
     fetchProject(projectId)
     if (workspaceId) fetchWorkspace(workspaceId)
     messagesLoadedRef.current = false
-    loadMessages(projectId).then(() => { messagesLoadedRef.current = true })
+    loadMessages(projectId).then(() => {
+      messagesLoadedRef.current = true
+      // 메시지 로드 완료 후 인트로 필요 여부 판단
+      if (!introRequestedRef.current) {
+        introRequestedRef.current = true
+        const msgs = useChatStore.getState().messages
+        const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
+        if (!hasContent && localStorage.getItem('cw_tour_done')) {
+          const proc = useProcedureStore.getState().currentProcedure
+          if (proc) requestProcedureIntro(projectId, proc)
+        }
+      }
+    })
     loadGeneralPrinciples()
   }, [projectId, workspaceId])
 
@@ -202,23 +214,6 @@ export default function ProjectPage() {
 
     const handleMembersUpdated = (members) => {
       setMembers(members)
-      if (!introRequestedRef.current) {
-        introRequestedRef.current = true
-        // loadMessages 완료를 기다린 후 인트로 필요 여부 판단
-        const checkAndIntro = () => {
-          if (!messagesLoadedRef.current) {
-            setTimeout(checkAndIntro, 200)
-            return
-          }
-          const msgs = useChatStore.getState().messages
-          const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
-          if (!hasContent && !showTour) {
-            const proc = useProcedureStore.getState().currentProcedure
-            requestProcedureIntro(projectId, proc)
-          }
-        }
-        setTimeout(checkAndIntro, 300)
-      }
     }
     const handleStageUpdated = (stage) => setProcedure(stage)
     socket.on('members_updated', handleMembersUpdated)
