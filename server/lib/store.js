@@ -315,7 +315,7 @@ export const Principles = {
     if (stage) {
       // procedure 코드(문자열)와 숫자 stage 모두 지원
       const numStage = parseInt(stage)
-      return all.filter((p) => p.stage === stage || p.stage === numStage || p.procedure === stage)
+      return all.filter((p) => p.stage === stage || p.stage === numStage || p.substep === stage)
         .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
     }
     return all.sort((a, b) => a.stage - b.stage || a.sort_order - b.sort_order)
