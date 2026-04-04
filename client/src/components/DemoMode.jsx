@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Logo from './Logo'
 import { API_BASE } from '../lib/api'
-import useAuthStore from '../stores/authStore'
+import { useAuthStore } from '../stores/authStore'
 
 const GRADE_GROUPS = [
   {
