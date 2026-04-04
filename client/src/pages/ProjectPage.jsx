@@ -154,7 +154,7 @@ export default function ProjectPage() {
   const isDemo = locationPath.startsWith('/demo/') || new URLSearchParams(window.location.search).get('demo') === 'true' || workspaceId?.startsWith('demo-')
 
   const { user } = useAuthStore()
-  const { currentProject, fetchProject, updateProcedure } = useProjectStore()
+  const { currentProject, fetchProject, fetchDemoProject, updateProcedure } = useProjectStore()
   const { currentWorkspace, fetchWorkspace } = useWorkspaceStore()
   const {
     currentProcedure, setProcedure, loadBoards, loadStandards, loadMaterials,
@@ -182,22 +182,31 @@ export default function ProjectPage() {
   const messagesLoadedRef = useRef(false)
 
   useEffect(() => {
-    fetchProject(projectId)
+    if (isDemo) {
+      fetchDemoProject(projectId)
+    } else {
+      fetchProject(projectId)
+    }
     if (workspaceId) fetchWorkspace(workspaceId)
     messagesLoadedRef.current = false
-    loadMessages(projectId).then(() => {
-      messagesLoadedRef.current = true
-      // 메시지 로드 완료 후 인트로 필요 여부 판단
-      if (!introRequestedRef.current) {
-        introRequestedRef.current = true
-        const msgs = useChatStore.getState().messages
-        const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
-        if (!hasContent && localStorage.getItem('cw_tour_done')) {
-          const proc = useProcedureStore.getState().currentProcedure
-          if (proc) requestProcedureIntro(projectId, proc)
+    // 데모 모드에서는 채팅 메시지 로드 건너뛰기 (인증 불필요 경로만 사용)
+    if (!isDemo) {
+      loadMessages(projectId).then(() => {
+        messagesLoadedRef.current = true
+        // 메시지 로드 완료 후 인트로 필요 여부 판단
+        if (!introRequestedRef.current) {
+          introRequestedRef.current = true
+          const msgs = useChatStore.getState().messages
+          const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
+          if (!hasContent && localStorage.getItem('cw_tour_done')) {
+            const proc = useProcedureStore.getState().currentProcedure
+            if (proc) requestProcedureIntro(projectId, proc)
+          }
         }
-      }
-    })
+      })
+    } else {
+      messagesLoadedRef.current = true
+    }
     loadGeneralPrinciples()
   }, [projectId, workspaceId])
 
@@ -232,6 +241,8 @@ export default function ProjectPage() {
   }, [projectId])
 
   useEffect(() => {
+    // 데모 모드에서는 소켓 연결 건너뛰기
+    if (isDemo) return
     // 로그인 사용자: Google 프로필에서 자동 연결
     if (user) {
       const displayName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || '교사'
@@ -239,13 +250,13 @@ export default function ProjectPage() {
       localStorage.setItem('cw_nickname', displayName)
       connectSocket({ name: displayName, subject })
     } else {
-      // 비로그인 (데모 등): localStorage에서
+      // 비로그인: localStorage에서
       const savedName = localStorage.getItem('cw_nickname')
       const savedSubject = localStorage.getItem('cw_subject') || ''
       if (savedName) connectSocket({ name: savedName, subject: savedSubject })
     }
     return () => joinedRef.cleanup?.()
-  }, [projectId, connectSocket, user])
+  }, [projectId, connectSocket, user, isDemo])
 
   const handleNicknameConfirm = (info) => {
     setNeedsNickname(false)

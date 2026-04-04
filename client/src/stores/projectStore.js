@@ -36,6 +36,32 @@ export const useProjectStore = create((set, get) => ({
   },
 
   /**
+   * 데모 프로젝트 조회 (인증 불필요, 인메모리 store에서 조회)
+   */
+  fetchDemoProject: async (id) => {
+    set({ loading: true, error: null })
+    try {
+      const data = await apiGet(`/api/demo/${id}/result`)
+      // 데모 결과를 프로젝트 형태로 변환
+      const project = {
+        id,
+        title: data.session?.title || '[데모] 프로젝트',
+        description: data.session?.description || '',
+        status: 'active',
+        current_procedure: 'prep',
+        workspace_id: null,
+        _demo: true,
+        _boards: data.boards || {},
+      }
+      set({ currentProject: project, loading: false })
+      return project
+    } catch (err) {
+      set({ error: err.message, loading: false, currentProject: null })
+      throw err
+    }
+  },
+
+  /**
    * 새 프로젝트 생성
    */
   createProject: async (workspaceId, data) => {
