@@ -14,7 +14,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { requireAuth } from '../middleware/auth.js'
 import { createProject, updateProject, upsertDesign, createMessage, getMemberRole } from '../lib/supabaseService.js'
 import { PROCEDURES, BOARD_TYPES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
-import { getBoardSchemaForPrompt } from 'curriculum-weaver-shared/boardSchemas.js'
+import { BOARD_SCHEMAS, BOARD_TYPE_LABELS } from 'curriculum-weaver-shared/boardSchemas.js'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -117,14 +117,36 @@ function parseAIResponse(fullText, label) {
 }
 
 /**
- * 보드 스키마 텍스트 생성
+ * 보드 스키마 텍스트 생성 (테이블 데이터 형식 명시)
  */
 function buildSchemaText(codes) {
   return codes
     .map((code) => {
       const boardType = BOARD_TYPES[code]
-      const schema = getBoardSchemaForPrompt(code)
-      return `[${code}] ${procedureNameMap[code] || code} (보드: ${boardType})\n${schema || '자유 텍스트'}`
+      const schema = BOARD_SCHEMAS[boardType]
+      if (!schema) return `[${code}] ${procedureNameMap[code] || code}\n  자유 텍스트`
+
+      const fieldDescs = schema.fields.map((f) => {
+        let desc = `  - ${f.name} (${f.label}, ${f.type}): ${f.description || ''}`
+        if (f.type === 'table' && f.columns) {
+          const colNames = f.columns.map((c) => c.name)
+          const colLabels = f.columns.map((c) => c.label)
+          desc += `\n    열: ${colLabels.join(', ')}`
+          // 테이블 데이터 형식 명시: 배열 of 객체
+          const exampleRow = '{' + colNames.map((n) => `"${n}": "..."`).join(', ') + '}'
+          desc += `\n    형식: [${exampleRow}, ...]  ← 반드시 이 배열 형식으로! 최소 2~4행`
+        }
+        if (f.type === 'list') {
+          desc += '\n    형식: ["항목1", "항목2", ...]  ← 문자열 배열'
+        }
+        if (f.itemSchema) {
+          const itemFields = Object.entries(f.itemSchema).map(([k, v]) => `"${k}": "${v.label}"`).join(', ')
+          desc += `\n    형식: [{${itemFields}}, ...]  ← 객체 배열`
+        }
+        return desc
+      }).join('\n')
+
+      return `[${code}] ${procedureNameMap[code] || code}\n${fieldDescs}`
     })
     .join('\n\n')
 }
@@ -332,6 +354,13 @@ conversation은 4~7턴의 대화 배열이며, 각 턴은:
 - 현실적이고 교육적으로 의미 있는 내용을 작성하세요.
 - 한국 2022 개정 교육과정의 성취기준을 참조하세요.
 - 응답은 반드시 유효한 JSON 객체여야 합니다. 마크다운 코드블록으로 감싸지 마세요.
+
+## 보드 데이터 형식 주의 (매우 중요!)
+- table 타입 필드: 반드시 객체 배열로 생성. 예: [{"phase":"T","goal":"...","result":"...","improvement":"..."}]
+  빈 배열 []로 두지 마세요! 최소 2~4개 행을 채우세요.
+- list 타입 필드: 문자열 배열. 예: ["항목1", "항목2"]
+- itemSchema가 있는 필드: 해당 키를 포함하는 객체 배열
+- text/textarea 필드: 문자열
 ${teacherContext}`
 
     const userPromptBase = `대상: ${grade}
