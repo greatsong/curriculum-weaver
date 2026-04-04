@@ -148,12 +148,20 @@ export async function getWorkspacesByUser(userId) {
   }
   const memberships = handleResult(
     await sb.from('members')
-      .select('role, workspaces(*)')
+      .select('role, workspaces(*, members(count), projects(count))')
       .eq('user_id', userId)
       .order('joined_at', { ascending: false }),
     '워크스페이스 목록 조회 실패'
   )
-  return memberships.map(m => ({ ...m.workspaces, my_role: m.role }))
+  return memberships.map(m => {
+    const ws = m.workspaces
+    return {
+      ...ws,
+      my_role: m.role,
+      member_count: ws.members?.[0]?.count || 1,
+      project_count: ws.projects?.[0]?.count || 0,
+    }
+  })
 }
 
 /**
