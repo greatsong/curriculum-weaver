@@ -128,9 +128,9 @@ export default function DemoMode() {
       const data = await res.json()
       setProgress(100)
 
-      // 데모 프로젝트로 이동
+      // 데모 결과 프로젝트로 이동 (워크스페이스 경유 없이)
       setTimeout(() => {
-        navigate(`/workspaces/${data.workspaceId}/projects/${data.projectId}?demo=true`)
+        navigate(`/demo/result/${data.projectId}`)
       }, 600)
     } catch (err) {
       setError(err.message || '데모 생성 중 오류가 발생했습니다.')

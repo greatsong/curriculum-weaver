@@ -205,6 +205,7 @@ export default function App() {
 
         {/* 데모 (공개) */}
         <Route path="/demo" element={<DemoMode />} />
+        <Route path="/demo/result/:projectId" element={<ProjectPage />} />
 
         {/* 워크스페이스 */}
         <Route

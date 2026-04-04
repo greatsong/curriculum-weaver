@@ -150,7 +150,8 @@ function NicknameModal({ onConfirm }) {
 export default function ProjectPage() {
   const { workspaceId, projectId } = useParams()
   const navigate = useNavigate()
-  const isDemo = new URLSearchParams(window.location.search).get('demo') === 'true' || workspaceId?.startsWith('demo-')
+  const locationPath = window.location.pathname
+  const isDemo = locationPath.startsWith('/demo/') || new URLSearchParams(window.location.search).get('demo') === 'true' || workspaceId?.startsWith('demo-')
 
   const { user } = useAuthStore()
   const { currentProject, fetchProject, updateProcedure } = useProjectStore()
