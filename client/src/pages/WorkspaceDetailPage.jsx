@@ -231,9 +231,12 @@ export default function WorkspaceDetailPage() {
                   const proc = PROCEDURES[project.current_procedure] || PROCEDURES['T-1-1']
                   const phase = Object.values(PHASES).find((p) => p.id === proc?.phase)
                   return (
-                    <button
+                    <div
                       key={project.id}
                       onClick={() => navigate(`/workspaces/${workspaceId}/projects/${project.id}`)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/workspaces/${workspaceId}/projects/${project.id}`) }}
                       className="card animate-slide-up"
                       style={{
                         animationDelay: `${idx * 40}ms`,
@@ -297,7 +300,7 @@ export default function WorkspaceDetailPage() {
                         </button>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                       </div>
-                    </button>
+                    </div>
                   )
                 })}
               </div>

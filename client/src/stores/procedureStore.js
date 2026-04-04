@@ -61,7 +61,8 @@ export const useProcedureStore = create((set, get) => ({
       // stage 파라미터에 procedure code를 전달
       const data = await apiGet(`/api/boards/${projectId}/${procedureCode || get().currentProcedure}`)
       const boards = {}
-      for (const board of data) {
+      const boardList = Array.isArray(data) ? data : (data?.boards ?? [])
+      for (const board of boardList) {
         boards[board.board_type] = board
       }
       set({ boards, loading: false })
@@ -147,7 +148,7 @@ export const useProcedureStore = create((set, get) => ({
   loadStandards: async (projectId) => {
     try {
       const data = await apiGet(`/api/sessions/${projectId}/standards`)
-      set({ standards: data })
+      set({ standards: Array.isArray(data) ? data : (data?.standards ?? []) })
     } catch {
       set({ standards: [] })
     }
@@ -158,7 +159,7 @@ export const useProcedureStore = create((set, get) => ({
   loadMaterials: async (projectId) => {
     try {
       const data = await apiGet(`/api/materials/${projectId}`)
-      set({ materials: data })
+      set({ materials: Array.isArray(data) ? data : (data?.materials ?? []) })
     } catch {
       set({ materials: [] })
     }
@@ -189,7 +190,7 @@ export const useProcedureStore = create((set, get) => ({
   loadPrinciples: async (procedureCode) => {
     try {
       const data = await apiGet('/api/principles', { stage: procedureCode || get().currentProcedure })
-      set({ principles: data })
+      set({ principles: Array.isArray(data) ? data : (data?.principles ?? []) })
     } catch {
       set({ principles: [] })
     }
@@ -198,7 +199,7 @@ export const useProcedureStore = create((set, get) => ({
   loadGeneralPrinciples: async () => {
     try {
       const data = await apiGet('/api/principles/general')
-      set({ generalPrinciples: data })
+      set({ generalPrinciples: Array.isArray(data) ? data : (data?.principles ?? []) })
     } catch {
       set({ generalPrinciples: [] })
     }

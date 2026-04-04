@@ -218,7 +218,7 @@ export default function ChatPanel({ sessionId, stage, onStageChange }) {
                   }}>
                     {msg.sender_type === 'ai' ? (
                       <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose-chat">
-                        {msg.content}
+                        {msg.content || ''}
                       </ReactMarkdown>
                     ) : (
                       msg.content
@@ -243,7 +243,7 @@ export default function ChatPanel({ sessionId, stage, onStageChange }) {
                 lineHeight: 1.6,
               }}>
                 <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose-chat">
-                  {cleanStreamingText(streamingText)}
+                  {cleanStreamingText(streamingText) || ''}
                 </ReactMarkdown>
                 <span style={{
                   display: 'inline-block',

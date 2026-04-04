@@ -135,7 +135,7 @@ export const useChatStore = create((set, get) => ({
   loadMessages: async (projectId) => {
     try {
       const data = await apiGet(`/api/chat/${projectId}`)
-      set({ messages: data || [] })
+      set({ messages: Array.isArray(data) ? data : (data?.messages ?? []) })
     } catch {
       set({ messages: [] })
     }

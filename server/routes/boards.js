@@ -8,7 +8,7 @@ export const boardsRouter = Router()
 // 단계별 보드 조회
 boardsRouter.get('/:sessionId/:stage', async (req, res) => {
   const { sessionId, stage } = req.params
-  const boards = Boards.listByStage(sessionId, parseInt(stage))
+  const boards = Boards.listByStage(sessionId, stage)
   res.json(boards)
 })
 

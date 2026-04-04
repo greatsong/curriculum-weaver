@@ -16,10 +16,10 @@ const DataManage = lazy(() => import('./pages/DataManage'))
 const GraphPage = lazy(() => import('./pages/GraphPage'))
 const IntroPage = lazy(() => import('./pages/IntroPage'))
 
-// 레거시 호환: 기존 SessionPage → 리다이렉트
+// 레거시 호환: 기존 SessionPage (로드 실패 시 워크스페이스로 리다이렉트)
 const LegacySessionRedirect = lazy(() =>
   import('./pages/SessionPage').catch(() => ({
-    default: () => <Navigate to="/workspaces" replace />,
+    default: function LegacyFallback() { return <Navigate to="/workspaces" replace /> },
   }))
 )
 

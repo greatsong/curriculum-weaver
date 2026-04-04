@@ -1464,9 +1464,9 @@ export default function Graph3D({ embedded = false }) {
                   }`}>
                     {msg.role === 'assistant' ? (
                       <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm prose-invert max-w-none text-xs">
-                        {msg.content}
+                        {msg.content || ''}
                       </ReactMarkdown>
-                    ) : msg.content}
+                    ) : (msg.content || '')}
                   </div>
                 </div>
               ))}
