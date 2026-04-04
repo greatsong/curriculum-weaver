@@ -89,9 +89,11 @@ async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, lab
 
   const stream = await client.messages.stream({
     model: 'claude-sonnet-4-6',
-    max_tokens: 16000,
+    max_tokens: 64000,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],
+  }, {
+    headers: { 'anthropic-beta': 'output-128k-2025-02-19' },
   })
 
   for await (const event of stream) {

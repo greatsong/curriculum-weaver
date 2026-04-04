@@ -306,7 +306,7 @@ chatRouter.post('/stage-intro', async (req, res) => {
   // 여기서는 호환성을 위해 procedure 필드가 있으면 사용
   req.body.procedure = req.body.procedure || req.body.stage
   // procedure-intro 핸들러로 포워딩
-  const { session_id, procedure } = req.body
+  const { session_id, procedure, aiModel } = req.body
   if (!session_id || !procedure) {
     return res.status(400).json({ error: '세션 ID와 절차(또는 단계)가 필요합니다.' })
   }
