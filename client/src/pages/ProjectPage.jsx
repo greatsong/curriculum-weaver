@@ -589,7 +589,7 @@ export default function ProjectPage() {
           onClose={() => setShowReport(false)}
         />
       )}
-      {showTutorial && <Tutorial onComplete={() => setShowTutorial(false)} />}
+      {showTutorial && !showTour && <Tutorial onComplete={() => setShowTutorial(false)} />}
       {showTour && <InteractiveTour onComplete={() => {
         setShowTour(false)
         // 투어 완료 후 AI 환영 메시지 요청

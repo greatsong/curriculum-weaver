@@ -404,6 +404,11 @@ export default function WorkspaceDetailPage() {
                 members.map((member, idx) => {
                   const colors = ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#06B6D4']
                   const avatarColor = colors[idx % colors.length]
+                  // users join 데이터 추출
+                  const u = member.users || {}
+                  const displayName = u.display_name || member.display_name || u.email?.split('@')[0] || '멤버'
+                  const schoolSubject = [u.school_name, u.subject].filter(Boolean).join(' ')
+                  const email = u.email || member.email || ''
                   return (
                     <div
                       key={member.id || member.user_id}
@@ -428,14 +433,14 @@ export default function WorkspaceDetailPage() {
                         fontWeight: 600,
                         flexShrink: 0,
                       }}>
-                        {(member.display_name || member.email || member.user_id || '?')[0]?.toUpperCase() || '?'}
+                        {displayName[0]?.toUpperCase() || '?'}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {member.display_name || member.email || member.user_id?.slice(0, 8) || '멤버'}
+                          {displayName}{schoolSubject ? ` · ${schoolSubject}` : ''}
                         </p>
                         <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: '1px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {member.email || member.role}
+                          {email}
                         </p>
                       </div>
                       <span style={{
