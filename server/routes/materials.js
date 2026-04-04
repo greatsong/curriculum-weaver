@@ -1,14 +1,23 @@
 import { Router } from 'express'
 import multer from 'multer'
-// import { requireAuth } from '../middleware/auth.js'  // 나중에 다시 활성화
+import { optionalAuth } from '../middleware/auth.js'
 import { Materials } from '../lib/store.js'
 
 export const materialsRouter = Router()
-// materialsRouter.use(requireAuth)
+materialsRouter.use(optionalAuth)
+
+const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'hwp', 'hwpx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 'txt', 'jpg', 'jpeg', 'png', 'webp']
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const ext = file.originalname.split('.').pop().toLowerCase()
+    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+      return cb(new Error(`허용되지 않은 파일 형식입니다: .${ext}`))
+    }
+    cb(null, true)
+  },
 })
 
 // 세션 자료 목록 조회

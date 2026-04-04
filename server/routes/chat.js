@@ -11,7 +11,7 @@
  */
 
 import { Router } from 'express'
-// import { requireAuth } from '../middleware/auth.js'  // Auth 구현 시 활성화
+import { optionalAuth } from '../middleware/auth.js'
 import { buildAIResponse, buildProcedureIntroResponse } from '../services/aiAgent.js'
 import { Sessions, Messages, Boards, Materials } from '../lib/store.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES } from 'curriculum-weaver-shared/constants.js'
@@ -139,7 +139,7 @@ function extractLegacyBoardUpdates(text) {
 // ──────────────────────────────────────────
 
 export const chatRouter = Router()
-// chatRouter.use(requireAuth)  // Auth 구현 시 활성화
+chatRouter.use(optionalAuth)
 
 // ─── 채팅 메시지 목록 조회 ───
 chatRouter.get('/:sessionId', async (req, res) => {

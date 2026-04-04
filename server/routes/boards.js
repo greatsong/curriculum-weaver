@@ -1,9 +1,9 @@
 import { Router } from 'express'
-// import { requireAuth } from '../middleware/auth.js'  // 나중에 다시 활성화
+import { optionalAuth } from '../middleware/auth.js'
 import { Boards } from '../lib/store.js'
 
 export const boardsRouter = Router()
-// boardsRouter.use(requireAuth)
+boardsRouter.use(optionalAuth)
 
 // 단계별 보드 조회
 boardsRouter.get('/:sessionId/:stage', async (req, res) => {

@@ -19,7 +19,12 @@ import { getMemberRole } from '../lib/supabaseService.js'
  */
 export async function requireAuth(req, res, next) {
   // 개발 모드: Supabase 미설정 시 더미 사용자로 바이패스
+  // 프로덕션에서는 반드시 환경변수가 설정되어야 함
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT) {
+      console.error('[auth] CRITICAL: Supabase 환경변수 미설정 (프로덕션)')
+      return res.status(500).json({ error: '서버 인증 설정 오류. 관리자에게 문의하세요.' })
+    }
     req.user = {
       id: 'dev-user-001',
       email: 'dev@curriculum-weaver.local',

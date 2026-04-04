@@ -1,12 +1,10 @@
 import { Router } from 'express'
-// import { requireAuth } from '../middleware/auth.js'  // 나중에 다시 활성화
+import { optionalAuth } from '../middleware/auth.js'
 // import { supabaseAdmin } from '../lib/supabaseAdmin.js'  // 나중에 다시 활성화
 import { Sessions, SessionStandards } from '../lib/store.js'
 
 export const sessionsRouter = Router()
-
-// 테스트 모드: 인증 없이 사용
-// sessionsRouter.use(requireAuth)
+sessionsRouter.use(optionalAuth)
 
 // 세션 목록 조회 (status 필터 지원)
 sessionsRouter.get('/', async (req, res) => {

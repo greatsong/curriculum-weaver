@@ -51,7 +51,8 @@ const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:4006')
   .map((o) => o.trim())
 
 function checkOrigin(origin) {
-  const isVercelPreview = origin?.endsWith('.vercel.app')
+  // Vercel preview는 프로젝트 prefix로 제한
+  const isVercelPreview = origin && /^https:\/\/curriculum-weaver-.*\.vercel\.app$/.test(origin)
   return !origin || allowedOrigins.includes(origin) || isVercelPreview
 }
 
