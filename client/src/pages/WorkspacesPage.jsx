@@ -160,6 +160,22 @@ export default function WorkspacesPage() {
               교육과정 데이터
             </button>
             <button
+              onClick={() => navigate('/demo')}
+              className="btn"
+              style={{
+                padding: '8px 16px',
+                fontSize: 13,
+                background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
+                color: '#fff',
+                border: 'none',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              데모 체험
+            </button>
+            <button
               onClick={() => navigate('/graph')}
               className="btn"
               style={{

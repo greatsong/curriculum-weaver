@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useState, useCallback } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
-import { PROCEDURES, PHASES } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, PHASES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
 import Logo from '../components/Logo'
+import HostSetupWizard from '../components/HostSetupWizard'
 
 export default function WorkspaceDetailPage() {
   const { workspaceId } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user } = useAuthStore()
   const { currentWorkspace, fetchWorkspace, updateWorkspace, deleteWorkspace, inviteMember } = useWorkspaceStore()
   const { projects, loading: projectsLoading, fetchProjects, createProject, deleteProject } = useProjectStore()
@@ -22,12 +24,79 @@ export default function WorkspaceDetailPage() {
   const [inviteRole, setInviteRole] = useState('member')
   const [creating, setCreating] = useState(false)
 
+  // Feature 1: 호스트 설정 상태
+  const [aiConfig, setAiConfig] = useState({ model: 'claude-sonnet-4-20250514' })
+  const [hiddenProcedures, setHiddenProcedures] = useState([])
+  const [enabledAI, setEnabledAI] = useState({ guide: true, generate: true, check: true, record: true })
+  const [settingsSaving, setSettingsSaving] = useState(false)
+
+  // Feature 3: 셋업 위자드
+  const [showSetupWizard, setShowSetupWizard] = useState(false)
+
   useEffect(() => {
     fetchWorkspace(workspaceId)
     fetchProjects(workspaceId)
   }, [workspaceId, fetchWorkspace, fetchProjects])
 
+  // 워크스페이스 설정값 로드
+  useEffect(() => {
+    if (currentWorkspace) {
+      const ac = currentWorkspace.ai_config || {}
+      setAiConfig({
+        model: ac.model || 'claude-sonnet-4-20250514',
+      })
+      const wc = currentWorkspace.workflow_config || {}
+      setHiddenProcedures(wc.hiddenProcedures || [])
+      setEnabledAI({
+        guide: wc.enabledAI?.guide !== false,
+        generate: wc.enabledAI?.generate !== false,
+        check: wc.enabledAI?.check !== false,
+        record: wc.enabledAI?.record !== false,
+      })
+    }
+  }, [currentWorkspace])
+
+  // Feature 3: 셋업 위자드 표시 판단
+  useEffect(() => {
+    if (!currentWorkspace || projectsLoading) return
+    const isSetup = searchParams.get('setup') === 'true'
+    const noProjects = projects.length === 0
+    const isOwnerOrHost = currentWorkspace.owner_id === user?.id || currentWorkspace.my_role === 'host'
+    if ((isSetup || noProjects) && isOwnerOrHost && !localStorage.getItem(`cw_wizard_done_${workspaceId}`)) {
+      setShowSetupWizard(true)
+    }
+  }, [currentWorkspace, projects, projectsLoading, searchParams, workspaceId, user])
+
   const isOwner = currentWorkspace?.owner_id === user?.id
+  const isHostOrOwner = isOwner || currentWorkspace?.my_role === 'host'
+
+  // Feature 1: 설정 저장
+  const handleSaveSettings = useCallback(async () => {
+    setSettingsSaving(true)
+    try {
+      await updateWorkspace(workspaceId, {
+        ai_config: aiConfig,
+        workflow_config: {
+          hiddenProcedures,
+          enabledAI,
+        },
+      })
+    } catch (err) {
+      alert(`설정 저장 실패: ${err.message}`)
+    } finally {
+      setSettingsSaving(false)
+    }
+  }, [workspaceId, aiConfig, hiddenProcedures, enabledAI, updateWorkspace])
+
+  const toggleProcedure = (code) => {
+    setHiddenProcedures((prev) =>
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
+    )
+  }
+
+  const toggleAIRole = (role) => {
+    setEnabledAI((prev) => ({ ...prev, [role]: !prev[role] }))
+  }
 
   const handleCreateProject = async (e) => {
     e.preventDefault()
@@ -92,7 +161,7 @@ export default function WorkspaceDetailPage() {
   const tabs = [
     { key: 'projects', label: '프로젝트', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg> },
     { key: 'members', label: '멤버', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> },
-    ...(isOwner ? [{ key: 'settings', label: '설정', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg> }] : []),
+    ...(isHostOrOwner ? [{ key: 'settings', label: '설정', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg> }] : []),
   ]
 
   return (
@@ -388,29 +457,26 @@ export default function WorkspaceDetailPage() {
         )}
 
         {/* 설정 탭 */}
-        {activeTab === 'settings' && isOwner && (
-          <div style={{ maxWidth: 480 }}>
+        {activeTab === 'settings' && isHostOrOwner && (
+          <div style={{ maxWidth: 640 }}>
             <h2 style={{ fontSize: 17, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 20px' }}>워크스페이스 설정</h2>
-            <div style={{
-              background: 'var(--color-bg-secondary)',
-              borderRadius: 'var(--radius-xl)',
-              border: '1px solid var(--color-border)',
-              padding: 24,
-            }}>
+
+            {/* 기본 정보 */}
+            <SettingsSection title="기본 정보">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>이름</label>
+                  <label style={labelStyle}>이름</label>
                   <input
                     defaultValue={currentWorkspace.name}
                     onBlur={(e) => {
                       const v = e.target.value.trim()
                       if (v && v !== currentWorkspace.name) updateWorkspace(workspaceId, { name: v })
                     }}
-                    style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
+                    style={inputStyle}
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>설명</label>
+                  <label style={labelStyle}>설명</label>
                   <textarea
                     defaultValue={currentWorkspace.description || ''}
                     onBlur={(e) => {
@@ -418,29 +484,149 @@ export default function WorkspaceDetailPage() {
                       if (v !== (currentWorkspace.description || '')) updateWorkspace(workspaceId, { description: v })
                     }}
                     rows={3}
-                    style={{ width: '100%', padding: '10px 14px', fontSize: 14, resize: 'none', boxSizing: 'border-box' }}
+                    style={{ ...inputStyle, resize: 'none' }}
                   />
                 </div>
               </div>
+            </SettingsSection>
+
+            {/* 1-A: AI 모델 설정 */}
+            <SettingsSection title="AI 모델 설정" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a4 4 0 014 4v1a4 4 0 01-8 0V6a4 4 0 014-4z"/><path d="M16 14H8a4 4 0 00-4 4v2h16v-2a4 4 0 00-4-4z"/></svg>}>
+              <div>
+                <label style={labelStyle}>모델 선택</label>
+                <select
+                  value={aiConfig.model}
+                  onChange={(e) => setAiConfig({ ...aiConfig, model: e.target.value })}
+                  style={inputStyle}
+                >
+                  <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (기본, 빠름)</option>
+                  <option value="claude-opus-4-20250514">Claude Opus 4 (최고 품질, 느림)</option>
+                </select>
+                <p style={hintStyle}>모든 프로젝트에 동일하게 적용됩니다</p>
+              </div>
+            </SettingsSection>
+
+            {/* 1-C: AI 역할 설정 */}
+            <SettingsSection title="AI 역할 설정" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>}>
+              <p style={{ ...hintStyle, marginBottom: 12, marginTop: 0 }}>AI의 역할을 절차별로 조절합니다</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {[
+                  { key: 'guide', label: '안내', desc: '단계 설명', color: '#3B82F6' },
+                  { key: 'generate', label: '생성', desc: '초안/예시', color: '#F59E0B' },
+                  { key: 'check', label: '점검', desc: '정합성 검토', color: '#22C55E' },
+                  { key: 'record', label: '기록', desc: '자동 저장', color: '#6B7280' },
+                ].map(({ key, label, desc, color }) => (
+                  <label
+                    key={key}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '10px 14px',
+                      borderRadius: 'var(--radius-md)',
+                      border: `1px solid ${enabledAI[key] ? color + '40' : 'var(--color-border)'}`,
+                      background: enabledAI[key] ? color + '08' : 'transparent',
+                      cursor: 'pointer',
+                      transition: 'all var(--transition-fast)',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={enabledAI[key]}
+                      onChange={() => toggleAIRole(key)}
+                      style={{ accentColor: color, width: 16, height: 16 }}
+                    />
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{label}</span>
+                      <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginLeft: 6 }}>({desc})</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </SettingsSection>
+
+            {/* 1-B: 워크플로우 커스터마이징 */}
+            <SettingsSection title="워크플로우 설정" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>}>
+              <p style={{ ...hintStyle, marginBottom: 12, marginTop: 0 }}>불필요한 절차를 숨길 수 있습니다</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {PROCEDURE_LIST.map((proc) => {
+                  const phase = Object.values(PHASES).find((p) => p.id === proc.phase)
+                  const isHidden = hiddenProcedures.includes(proc.code)
+                  return (
+                    <label
+                      key={proc.code}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '8px 12px',
+                        borderRadius: 'var(--radius-md)',
+                        cursor: 'pointer',
+                        transition: 'background var(--transition-fast)',
+                        opacity: isHidden ? 0.5 : 1,
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-tertiary)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!isHidden}
+                        onChange={() => toggleProcedure(proc.code)}
+                        style={{ accentColor: phase?.color || '#3B82F6', width: 16, height: 16 }}
+                      />
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        width: 44,
+                        padding: '2px 0',
+                        borderRadius: 4,
+                        background: (phase?.color || '#3B82F6') + '14',
+                        color: phase?.color || '#3B82F6',
+                        flexShrink: 0,
+                      }}>
+                        {proc.code}
+                      </span>
+                      <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>{proc.name}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </SettingsSection>
+
+            {/* 저장 버튼 */}
+            <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={handleSaveSettings}
+                disabled={settingsSaving}
+                className="btn btn-primary"
+                style={{ padding: '10px 24px', fontSize: 14, opacity: settingsSaving ? 0.6 : 1 }}
+              >
+                {settingsSaving ? '저장 중...' : '설정 저장'}
+              </button>
             </div>
 
             {/* 위험 영역 */}
-            <div style={{
-              marginTop: 32,
-              background: '#FEF2F2',
-              borderRadius: 'var(--radius-xl)',
-              border: '1px solid #FECACA',
-              padding: 24,
-            }}>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: '#991B1B', margin: '0 0 8px' }}>위험 영역</h3>
-              <p style={{ fontSize: 13, color: '#DC2626', margin: '0 0 16px' }}>
-                워크스페이스를 삭제하면 모든 프로젝트와 데이터가 영구 삭제됩니다.
-              </p>
-              <button onClick={handleDeleteWorkspace} className="btn btn-danger" style={{ fontSize: 13 }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                워크스페이스 삭제
-              </button>
-            </div>
+            {isOwner && (
+              <div style={{
+                marginTop: 32,
+                background: '#FEF2F2',
+                borderRadius: 'var(--radius-xl)',
+                border: '1px solid #FECACA',
+                padding: 24,
+              }}>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: '#991B1B', margin: '0 0 8px' }}>위험 영역</h3>
+                <p style={{ fontSize: 13, color: '#DC2626', margin: '0 0 16px' }}>
+                  워크스페이스를 삭제하면 모든 프로젝트와 데이터가 영구 삭제됩니다.
+                </p>
+                <button onClick={handleDeleteWorkspace} className="btn btn-danger" style={{ fontSize: 13 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                  워크스페이스 삭제
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -514,6 +700,72 @@ export default function WorkspaceDetailPage() {
           </form>
         </Modal>
       )}
+
+      {/* Feature 3: 호스트 셋업 위자드 */}
+      {showSetupWizard && (
+        <HostSetupWizard
+          workspaceId={workspaceId}
+          workspace={currentWorkspace}
+          onComplete={(config) => {
+            localStorage.setItem(`cw_wizard_done_${workspaceId}`, '1')
+            setShowSetupWizard(false)
+            if (config) {
+              setAiConfig(config.aiConfig || aiConfig)
+              setHiddenProcedures(config.hiddenProcedures || [])
+              setEnabledAI(config.enabledAI || enabledAI)
+              updateWorkspace(workspaceId, {
+                ai_config: config.aiConfig || aiConfig,
+                workflow_config: {
+                  hiddenProcedures: config.hiddenProcedures || [],
+                  enabledAI: config.enabledAI || enabledAI,
+                },
+              }).catch(() => {})
+            }
+          }}
+          onDismiss={() => {
+            localStorage.setItem(`cw_wizard_done_${workspaceId}`, '1')
+            setShowSetupWizard(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// 공유 스타일
+// ============================================================
+
+const labelStyle = { display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }
+const inputStyle = { width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }
+const hintStyle = { fontSize: 12, color: 'var(--color-text-tertiary)', margin: '6px 0 0' }
+
+// ============================================================
+// 설정 섹션 컴포넌트
+// ============================================================
+
+function SettingsSection({ title, icon, children }) {
+  return (
+    <div style={{
+      marginBottom: 20,
+      background: 'var(--color-bg-secondary)',
+      borderRadius: 'var(--radius-xl)',
+      border: '1px solid var(--color-border)',
+      padding: 24,
+    }}>
+      <h3 style={{
+        fontSize: 14,
+        fontWeight: 600,
+        color: 'var(--color-text-primary)',
+        margin: '0 0 16px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}>
+        {icon}
+        {title}
+      </h3>
+      {children}
     </div>
   )
 }

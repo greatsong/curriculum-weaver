@@ -15,6 +15,7 @@ import ProjectPage from './pages/ProjectPage'
 const DataManage = lazy(() => import('./pages/DataManage'))
 const GraphPage = lazy(() => import('./pages/GraphPage'))
 const IntroPage = lazy(() => import('./pages/IntroPage'))
+const DemoMode = lazy(() => import('./components/DemoMode'))
 
 // 레거시 호환: 기존 SessionPage (로드 실패 시 워크스페이스로 리다이렉트)
 const LegacySessionRedirect = lazy(() =>
@@ -201,6 +202,9 @@ export default function App() {
 
         {/* 인트로 (공개) */}
         <Route path="/intro" element={<IntroPage />} />
+
+        {/* 데모 (공개) */}
+        <Route path="/demo" element={<DemoMode />} />
 
         {/* 워크스페이스 */}
         <Route

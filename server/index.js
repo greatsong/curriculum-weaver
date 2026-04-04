@@ -32,6 +32,7 @@ import { reportRouter } from './routes/report.js'
 import { commentsRouter } from './routes/comments.js'
 import { boardsRouter } from './routes/boards.js'
 import { sessionsRouter } from './routes/sessions.js'
+import { demoRouter } from './routes/demo.js'
 
 // 인메모리 스토어 초기화 (로컬 성취기준/링크 데이터 로드)
 const defaultSessionId = initStore()
@@ -242,6 +243,9 @@ app.use('/api/boards', boardsRouter)
 
 // 세션 (레거시 + 성취기준)
 app.use('/api/sessions', sessionsRouter)
+
+// 데모 (인증 불필요)
+app.use('/api/demo', demoRouter)
 
 // ── 에러 핸들러 ──
 app.use((err, req, res, next) => {

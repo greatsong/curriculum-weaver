@@ -17,6 +17,7 @@ import StandardSearch from '../components/StandardSearch'
 import ReportDownload from '../components/ReportDownload'
 import MaterialUploadBar from '../components/MaterialUploadBar'
 import Tutorial from '../components/Tutorial'
+import InteractiveTour from '../components/InteractiveTour'
 
 // Error Boundary — ChatPanel 등 하위 컴포넌트 크래시 시 전체 페이지 보호
 class ErrorBoundary extends Component {
@@ -148,6 +149,7 @@ function NicknameModal({ onConfirm }) {
 export default function ProjectPage() {
   const { workspaceId, projectId } = useParams()
   const navigate = useNavigate()
+  const isDemo = new URLSearchParams(window.location.search).get('demo') === 'true' || workspaceId?.startsWith('demo-')
 
   const { currentProject, fetchProject, updateProcedure } = useProjectStore()
   const { currentWorkspace, fetchWorkspace } = useWorkspaceStore()
@@ -162,6 +164,7 @@ export default function ProjectPage() {
 
   const [showStandardSearch, setShowStandardSearch] = useState(false)
   const [showTutorial, setShowTutorial] = useState(() => !localStorage.getItem('cw_tutorial_done'))
+  const [showTour, setShowTour] = useState(() => !localStorage.getItem('cw_tour_done'))
   const [activePanel, setActivePanel] = useState('chat')
   const [boardUpdated, setBoardUpdated] = useState(false)
   const [showReport, setShowReport] = useState(false)
@@ -372,8 +375,8 @@ export default function ProjectPage() {
             </button>
           ))}
           <button
-            onClick={() => { localStorage.removeItem('cw_tutorial_done'); setShowTutorial(true) }}
-            title="튜토리얼"
+            onClick={() => { localStorage.removeItem('cw_tour_done'); setShowTour(true) }}
+            title="투어 가이드"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -395,19 +398,52 @@ export default function ProjectPage() {
         </div>
       </header>
 
+      {/* 데모 배너 */}
+      {isDemo && (
+        <div style={{
+          background: 'linear-gradient(90deg, #8B5CF6, #3B82F6)',
+          color: '#fff',
+          padding: '8px 16px',
+          fontSize: 13,
+          fontWeight: 500,
+          textAlign: 'center',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 12,
+          flexShrink: 0,
+        }}>
+          <span>이것은 AI 시뮬레이션 데모입니다. 실제 프로젝트를 시작하려면 워크스페이스를 만드세요.</span>
+          <button
+            onClick={() => navigate('/workspaces')}
+            style={{
+              padding: '4px 12px', background: 'rgba(255,255,255,0.2)',
+              border: '1px solid rgba(255,255,255,0.3)', borderRadius: 6,
+              color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+              fontFamily: 'var(--font-sans)',
+            }}
+          >
+            워크스페이스 만들기
+          </button>
+        </div>
+      )}
+
       {/* 자료 관리 바 */}
       <MaterialUploadBar sessionId={projectId} />
 
       {/* 절차 네비게이션 */}
-      <ProcedureNav
-        currentProcedure={currentProcedure}
-        onProcedureChange={handleProcedureChange}
-      />
+      <div data-tour="procedure-nav">
+        <ProcedureNav
+          currentProcedure={currentProcedure}
+          onProcedureChange={handleProcedureChange}
+        />
+      </div>
 
       {/* 메인 콘텐츠 — 3-panel layout */}
       <div className="flex-1 flex overflow-hidden">
         {/* 좌측: 채팅 */}
         <div
+          data-tour="chat-panel"
           className={`${activePanel === 'chat' ? 'flex' : 'hidden'} md:flex`}
           style={{
             width: '100%',
@@ -429,6 +465,7 @@ export default function ProjectPage() {
 
         {/* 중앙: 설계 캔버스 */}
         <div
+          data-tour="design-board"
           className={`${activePanel === 'board' ? 'block' : 'hidden'} md:block`}
           style={{
             flex: 1,
@@ -444,6 +481,7 @@ export default function ProjectPage() {
 
         {/* 우측: 원칙 패널 */}
         <div
+          data-tour="principle-panel"
           className={`${activePanel === 'principles' ? 'block' : 'hidden'} md:block`}
           style={{
             width: '100%',
@@ -526,6 +564,7 @@ export default function ProjectPage() {
         />
       )}
       {showTutorial && <Tutorial onComplete={() => setShowTutorial(false)} />}
+      {showTour && <InteractiveTour onComplete={() => setShowTour(false)} />}
     </div>
   )
 }
