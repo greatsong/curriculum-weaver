@@ -1463,9 +1463,9 @@ export default function Graph3D({ embedded = false }) {
                       : 'bg-gray-700 text-gray-200 rounded-bl-sm'
                   }`}>
                     {msg.role === 'assistant' ? (
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm prose-invert max-w-none text-xs">
+                      <div className="prose prose-sm prose-invert max-w-none text-xs"><ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {msg.content || ''}
-                      </ReactMarkdown>
+                      </ReactMarkdown></div>
                     ) : (msg.content || '')}
                   </div>
                 </div>
@@ -1475,9 +1475,9 @@ export default function Graph3D({ embedded = false }) {
               {chatStreaming && chatStreamingText && (
                 <div className="flex justify-start">
                   <div className="max-w-[90%] bg-gray-700 text-gray-200 rounded-xl rounded-bl-sm px-3 py-2 text-xs leading-relaxed">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm prose-invert max-w-none text-xs">
+                    <div className="prose prose-sm prose-invert max-w-none text-xs"><ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {chatStreamingText.replace(/<new_links>[\s\S]*?<\/new_links>/g, '').replace(/<new_links[\s\S]*$/g, '').trim() || '...'}
-                    </ReactMarkdown>
+                    </ReactMarkdown></div>
                     <span className="inline-block w-1 h-3 bg-blue-500 animate-pulse ml-0.5" />
                   </div>
                 </div>
