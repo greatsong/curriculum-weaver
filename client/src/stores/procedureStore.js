@@ -55,9 +55,23 @@ export const useProcedureStore = create((set, get) => ({
 
   // ── 보드 로드/업데이트 ────
 
-  loadBoards: async (projectId, procedureCode) => {
+  loadBoards: async (projectId, procedureCode, { demoBoards } = {}) => {
     set({ loading: true })
     const code = procedureCode || get().currentProcedure
+
+    // 데모 모드: _boards에서 직접 로드 (인증 불필요)
+    if (demoBoards) {
+      const boardType = BOARD_TYPES[code] || code
+      const demoBoardData = demoBoards[code]
+      const boards = {}
+      if (demoBoardData) {
+        const content = demoBoardData.content || demoBoardData
+        boards[boardType] = { board_type: boardType, content }
+      }
+      set({ boards, loading: false })
+      return
+    }
+
     try {
       // 새 API 우선, 실패 시 레거시 폴백
       let design = null

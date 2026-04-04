@@ -273,7 +273,11 @@ export default function ProjectPage() {
 
   useEffect(() => {
     if (!currentProject) return
-    loadBoards(projectId, currentProcedure)
+    if (currentProject._demo && currentProject._boards) {
+      loadBoards(projectId, currentProcedure, { demoBoards: currentProject._boards })
+    } else {
+      loadBoards(projectId, currentProcedure)
+    }
     loadStandards(projectId)
     loadMaterials(projectId)
     loadPrinciples(currentProcedure)
@@ -281,9 +285,11 @@ export default function ProjectPage() {
 
   const handleProcedureChange = async (code) => {
     setProcedure(code)
-    await updateProcedure(projectId, code)
-    socket.emit('stage_changed', { sessionId: projectId, stage: code })
-    requestProcedureIntro(projectId, code)
+    if (!isDemo) {
+      await updateProcedure(projectId, code)
+      socket.emit('stage_changed', { sessionId: projectId, stage: code })
+      requestProcedureIntro(projectId, code)
+    }
   }
 
   const handleCopyInvite = () => {
