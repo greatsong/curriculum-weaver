@@ -4,6 +4,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import { useAuthStore } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { socket, joinSession, leaveSession } from '../lib/socket'
 import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
@@ -151,6 +152,7 @@ export default function ProjectPage() {
   const navigate = useNavigate()
   const isDemo = new URLSearchParams(window.location.search).get('demo') === 'true' || workspaceId?.startsWith('demo-')
 
+  const { user } = useAuthStore()
   const { currentProject, fetchProject, updateProcedure } = useProjectStore()
   const { currentWorkspace, fetchWorkspace } = useWorkspaceStore()
   const {
@@ -168,7 +170,11 @@ export default function ProjectPage() {
   const [activePanel, setActivePanel] = useState('chat')
   const [boardUpdated, setBoardUpdated] = useState(false)
   const [showReport, setShowReport] = useState(false)
-  const [needsNickname, setNeedsNickname] = useState(() => !localStorage.getItem('cw_nickname'))
+  // 로그인 사용자는 닉네임 모달 불필요
+  const [needsNickname, setNeedsNickname] = useState(() => {
+    if (user) return false // 로그인 상태면 건너뛰기
+    return !localStorage.getItem('cw_nickname')
+  })
 
   const joinedRef = useRef(false)
   const introRequestedRef = useRef(false)
@@ -197,7 +203,7 @@ export default function ProjectPage() {
         introRequestedRef.current = true
         const msgs = useChatStore.getState().messages
         const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
-        if (!hasContent) {
+        if (!hasContent && !showTour) {
           const proc = useProcedureStore.getState().currentProcedure
           setTimeout(() => requestProcedureIntro(projectId, proc), 500)
         }
@@ -220,11 +226,20 @@ export default function ProjectPage() {
   }, [projectId])
 
   useEffect(() => {
-    const savedName = localStorage.getItem('cw_nickname')
-    const savedSubject = localStorage.getItem('cw_subject') || ''
-    if (savedName) connectSocket({ name: savedName, subject: savedSubject })
+    // 로그인 사용자: Google 프로필에서 자동 연결
+    if (user) {
+      const displayName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || '교사'
+      const subject = user.user_metadata?.subject || ''
+      localStorage.setItem('cw_nickname', displayName)
+      connectSocket({ name: displayName, subject })
+    } else {
+      // 비로그인 (데모 등): localStorage에서
+      const savedName = localStorage.getItem('cw_nickname')
+      const savedSubject = localStorage.getItem('cw_subject') || ''
+      if (savedName) connectSocket({ name: savedName, subject: savedSubject })
+    }
     return () => joinedRef.cleanup?.()
-  }, [projectId, connectSocket])
+  }, [projectId, connectSocket, user])
 
   const handleNicknameConfirm = (info) => {
     setNeedsNickname(false)
@@ -564,7 +579,16 @@ export default function ProjectPage() {
         />
       )}
       {showTutorial && <Tutorial onComplete={() => setShowTutorial(false)} />}
-      {showTour && <InteractiveTour onComplete={() => setShowTour(false)} />}
+      {showTour && <InteractiveTour onComplete={() => {
+        setShowTour(false)
+        // 투어 완료 후 AI 환영 메시지 요청
+        const msgs = useChatStore.getState().messages
+        const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
+        if (!hasContent) {
+          const proc = useProcedureStore.getState().currentProcedure
+          requestProcedureIntro(projectId, proc)
+        }
+      }} />}
     </div>
   )
 }

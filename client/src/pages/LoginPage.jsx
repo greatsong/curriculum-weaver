@@ -10,6 +10,9 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [schoolName, setSchoolName] = useState('')
+  const [subject, setSubject] = useState('')
+  const [privacyConsent, setPrivacyConsent] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
@@ -23,7 +26,7 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!email.trim() || !password.trim()) return
-    if (mode === 'signup' && !displayName.trim()) return
+    if (mode === 'signup' && (!displayName.trim() || !privacyConsent)) return
 
     setSubmitting(true)
     clearError()
@@ -34,7 +37,10 @@ export default function LoginPage() {
         await login(email.trim(), password)
         navigate('/workspaces', { replace: true })
       } else {
-        const data = await signup(email.trim(), password, displayName.trim())
+        const data = await signup(email.trim(), password, displayName.trim(), {
+          school_name: schoolName.trim(),
+          subject: subject.trim(),
+        })
         if (data.user && !data.session) {
           setSuccessMessage('인증 이메일이 발송되었습니다. 이메일을 확인해주세요.')
         } else {
@@ -46,6 +52,14 @@ export default function LoginPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const fieldLabelStyle = {
+    display: 'block',
+    fontSize: 13,
+    fontWeight: 500,
+    color: 'var(--color-text-secondary)',
+    marginBottom: 6,
   }
 
   return (
@@ -112,41 +126,49 @@ export default function LoginPage() {
             </div>
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* 이름 (회원가입) */}
+              {/* 회원가입 추가 필드 */}
               {mode === 'signup' && (
-                <div>
-                  <label style={{
-                    display: 'block',
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: 'var(--color-text-secondary)',
-                    marginBottom: 6,
-                  }}>
-                    이름
-                  </label>
-                  <input
-                    type="text"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="예: 김교사"
-                    maxLength={20}
-                    required
-                    style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
-                  />
-                </div>
+                <>
+                  <div>
+                    <label style={fieldLabelStyle}>이름 *</label>
+                    <input
+                      type="text"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="예: 김교사"
+                      maxLength={20}
+                      required
+                      style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={fieldLabelStyle}>소속 학교</label>
+                    <input
+                      type="text"
+                      value={schoolName}
+                      onChange={(e) => setSchoolName(e.target.value)}
+                      placeholder="예: OO중학교"
+                      maxLength={50}
+                      style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={fieldLabelStyle}>담당 교과</label>
+                    <input
+                      type="text"
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      placeholder="예: 과학, 수학"
+                      maxLength={50}
+                      style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
+                    />
+                  </div>
+                </>
               )}
 
               {/* 이메일 */}
               <div>
-                <label style={{
-                  display: 'block',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: 'var(--color-text-secondary)',
-                  marginBottom: 6,
-                }}>
-                  이메일
-                </label>
+                <label style={fieldLabelStyle}>이메일</label>
                 <input
                   type="email"
                   value={email}
@@ -160,15 +182,7 @@ export default function LoginPage() {
 
               {/* 비밀번호 */}
               <div>
-                <label style={{
-                  display: 'block',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: 'var(--color-text-secondary)',
-                  marginBottom: 6,
-                }}>
-                  비밀번호
-                </label>
+                <label style={fieldLabelStyle}>비밀번호</label>
                 <div style={{ position: 'relative' }}>
                   <input
                     type={showPassword ? 'text' : 'password'}
@@ -206,6 +220,33 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
+
+              {/* 개인정보 동의 (회원가입) */}
+              {mode === 'signup' && (
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                  fontSize: 13,
+                  color: 'var(--color-text-secondary)',
+                  cursor: 'pointer',
+                  lineHeight: 1.5,
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={privacyConsent}
+                    onChange={(e) => setPrivacyConsent(e.target.checked)}
+                    style={{ marginTop: 3, accentColor: '#3B82F6' }}
+                  />
+                  <span>
+                    <strong style={{ color: 'var(--color-text-primary)' }}>[필수]</strong> 개인정보 수집·이용에 동의합니다.
+                    <br />
+                    <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                      수집 항목: 이름, 이메일, 소속, 담당 교과 | 목적: 서비스 제공 및 팀 협업 | 보유 기간: 회원 탈퇴 시까지
+                    </span>
+                  </span>
+                </label>
+              )}
 
               {/* 에러 */}
               {error && (

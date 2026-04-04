@@ -6,6 +6,7 @@ export const useAuthStore = create((set, get) => ({
   user: null,
   session: null,
   loading: true,
+  initialized: false,
   error: null,
 
   /**
@@ -23,7 +24,7 @@ export const useAuthStore = create((set, get) => ({
         email: 'dev@curriculum-weaver.local',
         user_metadata: { display_name: '개발자' },
       }
-      set({ user: devUser, session: { access_token: 'dev-token', user: devUser }, loading: false })
+      set({ user: devUser, session: { access_token: 'dev-token', user: devUser }, loading: false, initialized: true })
       return
     }
 
@@ -32,9 +33,9 @@ export const useAuthStore = create((set, get) => ({
       if (error) throw error
 
       if (session?.user) {
-        set({ user: session.user, session, loading: false })
+        set({ user: session.user, session, loading: false, initialized: true })
       } else {
-        set({ user: null, session: null, loading: false })
+        set({ user: null, session: null, loading: false, initialized: true })
       }
 
       // Auth 상태 변경 구독
@@ -78,7 +79,7 @@ export const useAuthStore = create((set, get) => ({
   /**
    * 이메일/비밀번호 회원가입
    */
-  signup: async (email, password, displayName) => {
+  signup: async (email, password, displayName, extra = {}) => {
     set({ error: null })
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -87,6 +88,8 @@ export const useAuthStore = create((set, get) => ({
         options: {
           data: {
             display_name: displayName,
+            school_name: extra.school_name || '',
+            subject: extra.subject || '',
           },
         },
       })
