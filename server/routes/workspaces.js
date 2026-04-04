@@ -145,6 +145,58 @@ router.delete('/:id', requireRole('owner'), async (req, res) => {
 })
 
 // ============================================================
+// 초대
+// ============================================================
+
+/**
+ * POST /api/workspaces/:id/invite
+ * 이메일로 멤버 초대 (owner/host만)
+ *
+ * @param {string} id - 워크스페이스 ID
+ * @body {{ email: string, role?: string }}
+ * @returns {object} 추가된 멤버
+ */
+router.post('/:id/invite', requireRole('owner', 'host'), async (req, res) => {
+  try {
+    const { email, role = 'member' } = req.body
+    const workspaceId = req.params.id
+
+    if (!email?.trim()) {
+      return res.status(400).json({ error: '이메일을 입력하세요.' })
+    }
+
+    // Supabase Admin API로 이메일로 사용자 조회
+    const supabase = (await import('../lib/supabaseAdmin.js')).supabaseAdmin
+    const { data: { users }, error: listErr } = await supabase.auth.admin.listUsers()
+    if (listErr) throw listErr
+
+    const targetUser = users.find((u) => u.email === email.trim().toLowerCase())
+    if (!targetUser) {
+      return res.status(404).json({ error: '해당 이메일로 가입된 사용자가 없습니다. 먼저 회원가입을 안내해 주세요.' })
+    }
+
+    // 이미 멤버인지 확인
+    const existingRole = await getMemberRole(workspaceId, targetUser.id)
+    if (existingRole) {
+      return res.status(409).json({ error: '이미 이 워크스페이스의 멤버입니다.' })
+    }
+
+    // 역할 매핑: 프론트에서 'member'로 보내면 'editor'로 매핑
+    const mappedRole = role === 'member' ? 'editor' : role
+    const validRoles = ['host', 'editor', 'viewer']
+    if (!validRoles.includes(mappedRole)) {
+      return res.status(400).json({ error: `유효하지 않은 역할입니다. 허용: ${validRoles.join(', ')}` })
+    }
+
+    const member = await addMember(workspaceId, targetUser.id, mappedRole)
+    res.status(201).json({ ...member, email: targetUser.email })
+  } catch (err) {
+    console.error('[workspaces] 초대 오류:', err.message)
+    res.status(500).json({ error: '초대에 실패했습니다.' })
+  }
+})
+
+// ============================================================
 // 멤버 관리
 // ============================================================
 
