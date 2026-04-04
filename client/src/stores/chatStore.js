@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { apiGet, apiPost, apiStreamPost } from '../lib/api'
 import { socket } from '../lib/socket'
 import { useProcedureStore } from './procedureStore'
+import { useWorkspaceStore } from './workspaceStore'
 
 // ── XML 파서 유틸 ────────────────────────────
 
@@ -144,8 +145,18 @@ export const useChatStore = create((set, get) => ({
   // ── 메시지 전송 + AI 응답 ────
 
   sendMessage: async (projectId, content, procedureCode) => {
-    const senderName = localStorage.getItem('cw_nickname') || '교사'
-    const senderSubject = localStorage.getItem('cw_subject') || ''
+    // 로그인 사용자 정보 우선 사용
+    let senderName = localStorage.getItem('cw_nickname') || '교사'
+    let senderSubject = localStorage.getItem('cw_subject') || ''
+    try {
+      const { useAuthStore } = await import('./authStore')
+      const user = useAuthStore.getState().user
+      if (user) {
+        const meta = user.user_metadata || {}
+        senderName = meta.display_name || meta.full_name || user.email?.split('@')[0] || senderName
+        senderSubject = meta.subject ? `${meta.school_name || ''} ${meta.subject}`.trim() : senderSubject
+      }
+    } catch { /* 무시 */ }
 
     // 1) 교사 메시지 저장
     const teacherMsg = await apiPost('/api/chat/teacher', {
@@ -170,10 +181,14 @@ export const useChatStore = create((set, get) => ({
       stageAdvanceSuggestion: null,
     })
 
+    // AI 역할 프리셋을 워크스페이스 설정에서 가져옴
+    const wsAiRole = useWorkspaceStore.getState().currentWorkspace?.workflow_config?.aiRole
+
     await apiStreamPost('/api/chat/message', {
       session_id: projectId,
       content,
       stage: procedureCode,
+      aiRole: wsAiRole || undefined,
     }, {
       onText: (text) => {
         set((state) => ({ streamingText: state.streamingText + text }))
