@@ -217,9 +217,7 @@ export default function ChatPanel({ sessionId, stage, onStageChange }) {
                     }),
                   }}>
                     {msg.sender_type === 'ai' ? (
-                      <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {msg.content || ''}
-                      </ReactMarkdown></div>
+                      <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} children={msg.content || ''} /></div>
                     ) : (
                       msg.content
                     )}
@@ -242,9 +240,7 @@ export default function ChatPanel({ sessionId, stage, onStageChange }) {
                 fontSize: 14,
                 lineHeight: 1.6,
               }}>
-                <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {cleanStreamingText(streamingText) || ''}
-                </ReactMarkdown></div>
+                <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} children={cleanStreamingText(streamingText) || ''} /></div>
                 <span style={{
                   display: 'inline-block',
                   width: 5,

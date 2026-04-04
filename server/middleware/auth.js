@@ -47,6 +47,20 @@ export async function requireAuth(req, res, next) {
       return res.status(401).json({ error: '유효하지 않은 토큰입니다.' })
     }
 
+    // users 테이블에 프로필 자동 생성 (없으면 upsert)
+    try {
+      const displayName = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || '교사'
+      await supabaseAdmin.from('users').upsert({
+        id: user.id,
+        email: user.email,
+        display_name: displayName,
+        school_name: user.user_metadata?.school_name || '',
+        subject: user.user_metadata?.subject || '',
+      }, { onConflict: 'id', ignoreDuplicates: false })
+    } catch {
+      // 프로필 upsert 실패는 무시 (인증 자체는 성공)
+    }
+
     req.user = user
     req.token = token
     next()

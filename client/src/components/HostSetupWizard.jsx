@@ -63,7 +63,7 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
   }
 
   // Step 2: AI 설정
-  const [aiModel, setAiModel] = useState('claude-sonnet-4-20250514')
+  const [aiModel, setAiModel] = useState('claude-sonnet-4-6')
   const [enabledAI, setEnabledAI] = useState({ guide: true, generate: true, check: true, record: true })
 
   // Step 3: 워크플로우
@@ -271,8 +271,8 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
                   <label style={labelStyle}>AI 모델</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {[
-                      { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4', desc: '기본, 빠른 응답 속도', badge: '추천' },
-                      { value: 'claude-opus-4-20250514', label: 'Claude Opus 4', desc: '최고 품질, 응답이 느릴 수 있음', badge: null },
+                      { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', desc: '기본, 빠른 응답 속도', badge: '추천' },
+                      { value: 'claude-opus-4-6', label: 'Claude Opus 4', desc: '최고 품질, 응답이 느릴 수 있음', badge: null },
                     ].map(({ value, label, desc, badge }) => (
                       <label
                         key={value}

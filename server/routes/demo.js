@@ -86,7 +86,7 @@ ${description ? `설명: ${description}` : ''}
 반드시 유효한 JSON만 응답하세요. 설명 텍스트 없이 JSON만 반환하세요.`
 
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 16000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],

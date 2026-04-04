@@ -25,7 +25,7 @@ export default function WorkspaceDetailPage() {
   const [creating, setCreating] = useState(false)
 
   // Feature 1: 호스트 설정 상태
-  const [aiConfig, setAiConfig] = useState({ model: 'claude-sonnet-4-20250514' })
+  const [aiConfig, setAiConfig] = useState({ model: 'claude-sonnet-4-6' })
   const [hiddenProcedures, setHiddenProcedures] = useState([])
   const [enabledAI, setEnabledAI] = useState({ guide: true, generate: true, check: true, record: true })
   const [settingsSaving, setSettingsSaving] = useState(false)
@@ -43,7 +43,7 @@ export default function WorkspaceDetailPage() {
     if (currentWorkspace) {
       const ac = currentWorkspace.ai_config || {}
       setAiConfig({
-        model: ac.model || 'claude-sonnet-4-20250514',
+        model: ac.model || 'claude-sonnet-4-6',
       })
       const wc = currentWorkspace.workflow_config || {}
       setHiddenProcedures(wc.hiddenProcedures || [])
@@ -499,8 +499,8 @@ export default function WorkspaceDetailPage() {
                   onChange={(e) => setAiConfig({ ...aiConfig, model: e.target.value })}
                   style={inputStyle}
                 >
-                  <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (기본, 빠름)</option>
-                  <option value="claude-opus-4-20250514">Claude Opus 4 (최고 품질, 느림)</option>
+                  <option value="claude-sonnet-4-6">Claude Sonnet 4 (기본, 빠름)</option>
+                  <option value="claude-opus-4-6">Claude Opus 4 (최고 품질, 느림)</option>
                 </select>
                 <p style={hintStyle}>모든 프로젝트에 동일하게 적용됩니다</p>
               </div>

@@ -14,7 +14,7 @@ function useFadeIn(threshold = 0.15) {
     if (!el) return
     const obs = new IntersectionObserver(
       ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect() } },
-      { threshold },
+      { threshold, rootMargin: '200px 0px' },
     )
     obs.observe(el)
     return () => obs.disconnect()
@@ -380,7 +380,7 @@ function MockRealtimeCollab() {
 const FAQ_DATA = [
   {
     q: '커리큘럼 위버는 무료인가요?',
-    a: '현재 베타 기간 동안 무료로 제공됩니다. 정식 출시 후에는 교사 개인 사용은 무료, 학교/기관 단위의 확장 기능은 별도 요금제가 적용될 예정입니다.',
+    a: '네, 커리큘럼 위버는 서울특별시교육청에서 제작한 서비스로 모든 선생님께 무료로 제공됩니다.',
   },
   {
     q: '어떤 AI를 사용하나요?',
@@ -517,7 +517,7 @@ export default function GuidePage() {
         <div className="relative max-w-[1120px] mx-auto px-5 md:px-8 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-full text-xs text-blue-700 font-medium mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-            베타 서비스 운영 중
+            서울특별시교육청 제작 · 모든 선생님 무료
           </div>
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 leading-tight tracking-tight mb-5">
             AI와 함께<br className="sm:hidden" /> 융합 수업을<br />설계하세요
