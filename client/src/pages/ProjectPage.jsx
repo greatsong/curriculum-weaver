@@ -178,24 +178,38 @@ export default function ProjectPage() {
   const introRequestedRef = useRef(false)
   const messagesLoadedRef = useRef(false)
 
+  // 메시지 로드 함수 (인증 실패 시 1회 재시도)
+  const loadMessagesWithRetry = useCallback(async (pid) => {
+    messagesLoadedRef.current = false
+    const tryLoad = async () => {
+      await loadMessages(pid)
+      const msgs = useChatStore.getState().messages
+      return msgs.length > 0
+    }
+    let loaded = await tryLoad()
+    // 첫 시도 실패 시 1.5초 후 재시도 (auth 초기화 대기)
+    if (!loaded) {
+      await new Promise((r) => setTimeout(r, 1500))
+      loaded = await tryLoad()
+    }
+    messagesLoadedRef.current = true
+    if (!introRequestedRef.current) {
+      introRequestedRef.current = true
+      const msgs = useChatStore.getState().messages
+      const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
+      const proj = useProjectStore.getState().currentProject
+      const isReadOnly = proj?.status === 'simulation' || proj?.status === 'generating' || proj?.status === 'failed' || proj?.title?.startsWith('[시뮬레이션]')
+      if (!isReadOnly && !hasContent && localStorage.getItem('cw_tour_done')) {
+        const proc = useProcedureStore.getState().currentProcedure
+        if (proc) requestProcedureIntro(projectId, proc)
+      }
+    }
+  }, [projectId])
+
   useEffect(() => {
     fetchProject(projectId)
     if (workspaceId) fetchWorkspace(workspaceId)
-    messagesLoadedRef.current = false
-    loadMessages(projectId).then(() => {
-      messagesLoadedRef.current = true
-      if (!introRequestedRef.current) {
-        introRequestedRef.current = true
-        const msgs = useChatStore.getState().messages
-        const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
-        const proj = useProjectStore.getState().currentProject
-        const isReadOnly = proj?.status === 'simulation' || proj?.status === 'generating' || proj?.status === 'failed' || proj?.title?.startsWith('[시뮬레이션]')
-        if (!isReadOnly && !hasContent && localStorage.getItem('cw_tour_done')) {
-          const proc = useProcedureStore.getState().currentProcedure
-          if (proc) requestProcedureIntro(projectId, proc)
-        }
-      }
-    })
+    loadMessagesWithRetry(projectId)
     loadGeneralPrinciples()
   }, [projectId, workspaceId])
 

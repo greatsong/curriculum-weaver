@@ -239,11 +239,23 @@ export const useProcedureStore = create((set, get) => ({
     }
   },
 
-  loadGeneralPrinciples: async () => {
-    try {
-      const data = await apiGet('/api/principles/general')
-      set({ generalPrinciples: Array.isArray(data) ? data : (data?.principles ?? []) })
-    } catch {
+  loadGeneralPrinciples: async (retries = 2) => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const data = await apiGet('/api/principles/general')
+        const result = Array.isArray(data) ? data : (data?.principles ?? [])
+        if (result.length > 0) {
+          set({ generalPrinciples: result })
+          return
+        }
+      } catch {
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)))
+        }
+      }
+    }
+    // 최종 실패 시에도 빈 배열이 아닌 기존 값 유지
+    if (get().generalPrinciples.length === 0) {
       set({ generalPrinciples: [] })
     }
   },
