@@ -153,8 +153,12 @@ export const useChatStore = create((set, get) => ({
       const user = useAuthStore.getState().user
       if (user) {
         const meta = user.user_metadata || {}
-        senderName = meta.display_name || meta.full_name || user.email?.split('@')[0] || senderName
-        senderSubject = meta.subject ? `${meta.school_name || ''} ${meta.subject}`.trim() : senderSubject
+        senderName = meta.display_name || meta.full_name || meta.name || senderName
+        // 소속/과목 정보: 프로필 우선, localStorage 폴백
+        if (meta.subject || meta.school_name) {
+          const parts = [meta.school_name, meta.subject].filter(Boolean)
+          senderSubject = parts.join(' ') || senderSubject
+        }
       }
     } catch { /* 무시 */ }
 
