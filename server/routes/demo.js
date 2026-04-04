@@ -65,13 +65,12 @@ demoRouter.post('/generate', async (req, res) => {
     })
   }
 
-  // SSE 헤더 설정
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  })
+  // SSE 헤더 설정 (writeHead 대신 setHeader로 CORS 헤더 보존)
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.setHeader('X-Accel-Buffering', 'no')
+  res.flushHeaders()
 
   const sendEvent = (data) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`)
