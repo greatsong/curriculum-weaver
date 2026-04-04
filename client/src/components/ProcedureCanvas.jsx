@@ -220,6 +220,7 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
           board={board}
           editing={editing}
           setEditing={setEditing}
+          readOnly={readOnly}
           onUpdate={async (content) => {
             await updateBoard(projectId, procedureCode, content)
             setEditing(false)
@@ -375,7 +376,7 @@ function CoherenceCheckCard({ result }) {
 }
 
 // ── 보드 카드 ──
-function BoardCard({ boardType, schema, board, editing, setEditing, onUpdate, onRequestAI }) {
+function BoardCard({ boardType, schema, board, editing, setEditing, onUpdate, onRequestAI, readOnly = false }) {
   const label = BOARD_TYPE_LABELS[boardType] || boardType
   const hasContent = board?.content && Object.keys(board.content).length > 0 &&
     Object.values(board.content).some((v) => (Array.isArray(v) ? v.length > 0 : v !== '' && v !== null && v !== 0))
