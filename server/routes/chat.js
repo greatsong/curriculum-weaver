@@ -244,7 +244,7 @@ chatRouter.post('/seed', async (req, res) => {
 
 // ─── 절차 진입 인트로 메시지 (SSE 스트리밍) ───
 chatRouter.post('/procedure-intro', async (req, res) => {
-  const { session_id, procedure } = req.body
+  const { session_id, procedure, aiModel } = req.body
 
   if (!session_id || !procedure) {
     return res.status(400).json({ error: '세션 ID와 절차 코드가 필요합니다.' })
@@ -268,7 +268,7 @@ chatRouter.post('/procedure-intro', async (req, res) => {
 
     let fullResponse = ''
     await buildProcedureIntroResponse(
-      { procedure, sessionTitle: project?.title || '', boards: designs },
+      { procedure, sessionTitle: project?.title || '', boards: designs, aiModel: aiModel || undefined },
       {
         onText: (text) => {
           fullResponse += text
@@ -333,7 +333,7 @@ chatRouter.post('/stage-intro', async (req, res) => {
 
     let fullResponse = ''
     await buildProcedureIntroResponse(
-      { procedure, sessionTitle: project?.title || '', boards: designs },
+      { procedure, sessionTitle: project?.title || '', boards: designs, aiModel: aiModel || undefined },
       {
         onText: (text) => {
           fullResponse += text
@@ -366,7 +366,7 @@ chatRouter.post('/stage-intro', async (req, res) => {
 
 // ─── AI 채팅 메시지 전송 (SSE 스트리밍) ───
 chatRouter.post('/message', async (req, res) => {
-  const { session_id, content, procedure, currentStep, aiRole } = req.body
+  const { session_id, content, procedure, currentStep, aiRole, aiModel } = req.body
   // 하위 호환: stage → procedure
   const activeProcedure = procedure || req.body.stage
 
@@ -405,6 +405,7 @@ chatRouter.post('/message', async (req, res) => {
       procedure: activeProcedure,
       currentStep: currentStep ? Number(currentStep) : null,
       aiRole: aiRole || undefined,
+      aiModel: aiModel || undefined,
     }
 
     // 사용된 원칙 ID 추적

@@ -26,6 +26,21 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 // 동시 AI 요청 5개로 제한 (Anthropic API rate limit 준수)
 const aiQueue = new PQueue({ concurrency: 5, timeout: 60000 })
 
+// AI 모델 매핑 (빠른 모드 / 정밀 모드)
+const MODEL_MAP = {
+  fast: 'claude-sonnet-4-6',
+  precise: 'claude-opus-4-6',
+}
+
+/**
+ * aiModel 키로 모델 ID 반환
+ * @param {'fast'|'precise'} [aiModel='fast']
+ * @returns {string}
+ */
+function getModelId(aiModel) {
+  return MODEL_MAP[aiModel] || MODEL_MAP.fast
+}
+
 // ──────────────────────────────────────────
 // 헬퍼 함수: 스텝 컨텍스트
 // ──────────────────────────────────────────
@@ -542,7 +557,7 @@ ${sessionTitle ? `세션: ${sessionTitle}` : ''}
   try {
     await aiQueue.add(async () => {
       const stream = client.messages.stream({
-        model: 'claude-sonnet-4-6',
+        model: getModelId(context?.aiModel),
         max_tokens: 1200,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
@@ -610,7 +625,7 @@ export async function buildAIResponse(context, { onText, onError }) {
   try {
     await aiQueue.add(async () => {
       const stream = client.messages.stream({
-        model: 'claude-sonnet-4-6',
+        model: getModelId(context?.aiModel),
         max_tokens: 12000,
         system: systemPrompt,
         messages,

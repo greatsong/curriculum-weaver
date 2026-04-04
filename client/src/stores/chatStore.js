@@ -190,11 +190,14 @@ export const useChatStore = create((set, get) => ({
     // AI 역할 프리셋을 워크스페이스 설정에서 가져옴
     const wsAiRole = useWorkspaceStore.getState().currentWorkspace?.workflow_config?.aiRole
 
+    const aiModel = localStorage.getItem('cw_ai_model') || 'fast'
+
     await apiStreamPost('/api/chat/message', {
       session_id: projectId,
       content,
       stage: procedureCode,
       aiRole: wsAiRole || undefined,
+      aiModel,
     }, {
       onText: (text) => {
         set((state) => ({ streamingText: state.streamingText + text }))
@@ -311,9 +314,12 @@ export const useChatStore = create((set, get) => ({
 
     set({ streaming: true, streamingText: '' })
 
+    const aiModel = localStorage.getItem('cw_ai_model') || 'fast'
+
     await apiStreamPost('/api/chat/stage-intro', {
       session_id: projectId,
       stage: procedureCode,
+      aiModel,
     }, {
       onText: (text) => {
         set((state) => ({ streamingText: state.streamingText + text }))

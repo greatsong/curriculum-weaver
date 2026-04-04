@@ -31,6 +31,7 @@ export default function ChatPanel({ sessionId, stage, onStageChange }) {
   } = useChatStore()
   const { currentStep, getCurrentStep } = useProcedureStore()
   const [input, setInput] = useState('')
+  const [aiModel, setAiModel] = useState(() => localStorage.getItem('cw_ai_model') || 'fast')
   const scrollRef = useRef(null)
 
   const currentStepInfo = getCurrentStep()
@@ -69,6 +70,48 @@ export default function ChatPanel({ sessionId, stage, onStageChange }) {
 
   return (
     <div className="flex flex-col h-full" style={{ background: 'var(--color-bg-secondary)' }}>
+      {/* AI 모델 토글 */}
+      <div style={{
+        padding: '6px 16px',
+        borderBottom: '1px solid var(--color-border-subtle)',
+        background: 'var(--color-bg-primary)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        gap: 4,
+        flexShrink: 0,
+      }}>
+        <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginRight: 4 }}>AI</span>
+        {[
+          { key: 'fast', label: 'Sonnet', desc: '빠른' },
+          { key: 'precise', label: 'Opus', desc: '정밀' },
+        ].map(({ key, label, desc }) => {
+          const active = aiModel === key
+          return (
+            <button
+              key={key}
+              onClick={() => {
+                setAiModel(key)
+                localStorage.setItem('cw_ai_model', key)
+              }}
+              style={{
+                padding: '3px 10px',
+                fontSize: 11,
+                fontWeight: active ? 600 : 400,
+                color: active ? '#fff' : 'var(--color-text-secondary)',
+                background: active ? (key === 'fast' ? '#6B7280' : '#3B82F6') : 'transparent',
+                border: active ? 'none' : '1px solid var(--color-border)',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontFamily: 'var(--font-sans)',
+                transition: 'all 0.15s',
+              }}
+            >
+              {desc}
+            </button>
+          )
+        })}
+      </div>
       {/* 스텝 컨텍스트 바 */}
       {currentStepInfo && (
         <div style={{

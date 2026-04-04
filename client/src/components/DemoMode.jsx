@@ -3,9 +3,10 @@
  *
  * 로그인 없이 AI가 자동으로 19절차 보드를 생성하는 데모.
  * 교사가 기초 정보를 입력하면 AI가 전체 설계를 시뮬레이션한다.
+ * SSE 스트리밍으로 절차별 실시간 진행률을 표시한다.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Logo from './Logo'
 import { API_BASE } from '../lib/api'
@@ -42,16 +43,6 @@ const SUBJECT_OPTIONS = [
   '정보', '음악', '미술', '체육', '기술가정', '한문',
 ]
 
-// 정직한 상태 메시지 (경과 시간에 따라 변경)
-const STATUS_BY_ELAPSED = [
-  { at: 0,   msg: 'AI에게 19개 절차의 수업 설계를 요청했습니다...' },
-  { at: 15,  msg: 'AI가 응답을 생성하고 있습니다. 보통 2~4분 정도 걸려요.' },
-  { at: 45,  msg: '아직 생성 중입니다. 복잡한 설계일수록 시간이 더 걸립니다.' },
-  { at: 90,  msg: '거의 다 됐습니다. 잠시만 기다려주세요...' },
-  { at: 150, msg: '평소보다 오래 걸리고 있습니다. 조금만 더 기다려주세요.' },
-  { at: 240, msg: '응답 대기 중입니다. 최대 5분까지 소요될 수 있습니다.' },
-]
-
 export default function DemoMode() {
   const navigate = useNavigate()
   const { user, initialized } = useAuthStore()
@@ -66,8 +57,12 @@ export default function DemoMode() {
   // 생성 상태
   const [generating, setGenerating] = useState(false)
   const [elapsed, setElapsed] = useState(0)
-  const [statusMessage, setStatusMessage] = useState('')
   const [error, setError] = useState('')
+
+  // SSE 진행률
+  const [progressList, setProgressList] = useState([])   // { procedure, name, index, total }[]
+  const [progressTotal, setProgressTotal] = useState(19)
+  const abortRef = useRef(null)
 
   const toggleGrade = (val) => {
     setSelectedGrades((prev) =>
@@ -91,31 +86,24 @@ export default function DemoMode() {
 
   const canSubmit = selectedGrades.length > 0 && selectedSubjects.length >= 2 && topic.trim()
 
-  // 경과 시간 카운터 + 상태 메시지
+  // 경과 시간 카운터
   useEffect(() => {
     if (!generating) return
     setElapsed(0)
-    const interval = setInterval(() => {
-      setElapsed((e) => {
-        const next = e + 1
-        // 경과 시간에 맞는 메시지 선택
-        const status = [...STATUS_BY_ELAPSED].reverse().find((s) => next >= s.at)
-        if (status) setStatusMessage(status.msg)
-        return next
-      })
-    }, 1000)
+    const interval = setInterval(() => setElapsed((e) => e + 1), 1000)
     return () => clearInterval(interval)
   }, [generating])
 
   const handleGenerate = async () => {
     setGenerating(true)
     setElapsed(0)
-    setStatusMessage(STATUS_BY_ELAPSED[0].msg)
     setError('')
+    setProgressList([])
+
+    const controller = new AbortController()
+    abortRef.current = controller
 
     try {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 300_000) // 5분 타임아웃
       const res = await fetch(`${API_BASE}/api/demo/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -127,27 +115,62 @@ export default function DemoMode() {
         }),
         signal: controller.signal,
       })
-      clearTimeout(timer)
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || `HTTP ${res.status}`)
       }
 
-      const data = await res.json()
-      // 데모 결과 프로젝트로 이동 (워크스페이스 경유 없이)
-      setTimeout(() => {
-        navigate(`/demo/result/${data.projectId}`)
-      }, 600)
+      // SSE 스트리밍 읽기
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          try {
+            const parsed = JSON.parse(line.slice(6))
+
+            if (parsed.type === 'progress') {
+              setProgressList((prev) => [...prev, parsed])
+              setProgressTotal(parsed.total)
+            } else if (parsed.type === 'complete') {
+              setTimeout(() => {
+                navigate(`/demo/result/${parsed.projectId}`)
+              }, 800)
+              return
+            } else if (parsed.type === 'error') {
+              throw new Error(parsed.message)
+            }
+          } catch (parseErr) {
+            if (parseErr.message && !parseErr.message.includes('JSON')) {
+              throw parseErr
+            }
+          }
+        }
+      }
     } catch (err) {
       if (err.name === 'AbortError') {
-        setError('AI 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.')
+        setError('생성이 취소되었습니다.')
       } else {
         setError(err.message || '데모 생성 중 오류가 발생했습니다.')
       }
       setGenerating(false)
     }
   }
+
+  const progressPercent = progressList.length > 0
+    ? Math.round((progressList.length / progressTotal) * 100)
+    : 0
+  const lastProgress = progressList[progressList.length - 1]
 
   return (
     <div style={{
@@ -414,43 +437,119 @@ export default function DemoMode() {
             </div>
           </div>
         ) : (
-          /* 로딩 화면 */
+          /* 로딩 화면 — 실시간 진행률 */
           <div style={{
             width: '100%',
-            maxWidth: 440,
+            maxWidth: 480,
             background: '#fff',
             borderRadius: 20,
             boxShadow: '0 8px 40px rgba(0,0,0,0.08)',
-            padding: '48px 40px',
-            textAlign: 'center',
+            padding: '40px 36px',
           }}>
-            {/* 스피너 */}
-            <div style={{
-              width: 64, height: 64,
-              borderRadius: '50%',
-              border: '4px solid #E5E7EB',
-              borderTopColor: '#3B82F6',
-              animation: 'spin 0.8s linear infinite',
-              margin: '0 auto 24px',
-            }} />
+            {/* 상단: 진행률 원형 */}
+            <div style={{ textAlign: 'center', marginBottom: 28 }}>
+              <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 16px' }}>
+                {/* 배경 원 */}
+                <svg width="80" height="80" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="35" fill="none" stroke="#E5E7EB" strokeWidth="6" />
+                  <circle
+                    cx="40" cy="40" r="35" fill="none"
+                    stroke="#3B82F6" strokeWidth="6"
+                    strokeDasharray={`${2 * Math.PI * 35}`}
+                    strokeDashoffset={`${2 * Math.PI * 35 * (1 - progressPercent / 100)}`}
+                    strokeLinecap="round"
+                    transform="rotate(-90 40 40)"
+                    style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+                  />
+                </svg>
+                <span style={{
+                  position: 'absolute', inset: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 18, fontWeight: 700, color: '#111827',
+                  fontVariantNumeric: 'tabular-nums',
+                }}>
+                  {progressPercent}%
+                </span>
+              </div>
 
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: '0 0 8px' }}>
-              AI가 수업 설계를 생성하고 있습니다
-            </h2>
-            <p style={{ fontSize: 14, color: '#6B7280', margin: '0 0 20px' }}>
-              {statusMessage}
-            </p>
+              <h2 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: '0 0 6px' }}>
+                AI가 수업을 설계하고 있습니다
+              </h2>
+              <p style={{ fontSize: 13, color: '#6B7280', margin: 0 }}>
+                {progressList.length === 0
+                  ? 'AI에게 19개 절차의 수업 설계를 요청했습니다...'
+                  : `${progressList.length}/${progressTotal}개 절차 완료`
+                }
+              </p>
+            </div>
+
+            {/* 절차 진행 로그 */}
+            <div style={{
+              background: '#F9FAFB', borderRadius: 12, padding: '14px 16px',
+              maxHeight: 220, overflowY: 'auto', marginBottom: 20,
+              border: '1px solid #F3F4F6',
+            }}>
+              {progressList.length === 0 ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                  <div style={{
+                    width: 16, height: 16, borderRadius: '50%',
+                    border: '2px solid #E5E7EB', borderTopColor: '#3B82F6',
+                    animation: 'spin 0.8s linear infinite',
+                  }} />
+                  <span style={{ fontSize: 13, color: '#9CA3AF' }}>응답 대기 중...</span>
+                </div>
+              ) : (
+                progressList.map((p, i) => (
+                  <div key={p.procedure} style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '3px 0',
+                    animation: 'fadeIn 0.3s ease',
+                  }}>
+                    <span style={{
+                      width: 18, height: 18, borderRadius: '50%',
+                      background: '#10B981', color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 10, fontWeight: 700, flexShrink: 0,
+                    }}>
+                      ✓
+                    </span>
+                    <span style={{ fontSize: 12, color: '#6B7280', fontFamily: 'monospace', minWidth: 44 }}>
+                      {p.procedure}
+                    </span>
+                    <span style={{ fontSize: 12, color: '#374151' }}>{p.name}</span>
+                  </div>
+                ))
+              )}
+              {/* 현재 생성 중 표시 */}
+              {progressList.length > 0 && progressList.length < progressTotal && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0' }}>
+                  <div style={{
+                    width: 18, height: 18, borderRadius: '50%',
+                    border: '2px solid #E5E7EB', borderTopColor: '#3B82F6',
+                    animation: 'spin 0.8s linear infinite', flexShrink: 0,
+                  }} />
+                  <span style={{ fontSize: 12, color: '#9CA3AF' }}>다음 절차 생성 중...</span>
+                </div>
+              )}
+            </div>
 
             {/* 경과 시간 */}
-            <p style={{ fontSize: 24, fontWeight: 700, color: '#111827', margin: '0 0 4px', fontVariantNumeric: 'tabular-nums' }}>
-              {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
-            </p>
-            <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>
-              경과 시간
-            </p>
+            <div style={{ textAlign: 'center' }}>
+              <span style={{
+                fontSize: 14, color: '#9CA3AF',
+                fontVariantNumeric: 'tabular-nums',
+              }}>
+                {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')} 경과
+              </span>
+            </div>
           </div>
         )}
       </main>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
     </div>
   )
 }

@@ -3,6 +3,7 @@
  *
  * 로그인 없이 기초 정보만으로 19개 절차 보드 데이터를 자동 생성.
  * 임시 워크스페이스/프로젝트를 인메모리 스토어에 생성하고 AI를 호출.
+ * SSE 스트리밍으로 절차별 진행률을 실시간 전송.
  */
 
 import { Router } from 'express'
@@ -46,10 +47,14 @@ demoRouter.get('/:projectId/result', (req, res) => {
 
 /**
  * POST /api/demo/generate
- * 데모 수업 설계 생성
+ * 데모 수업 설계 생성 (SSE 스트리밍)
+ *
+ * 절차별 진행률을 SSE로 실시간 전송:
+ * - data: {"type":"progress","procedure":"T-1-1","name":"팀 비전 공유","index":2,"total":19}
+ * - data: {"type":"complete","projectId":"...","savedBoards":19,"totalProcedures":19}
+ * - data: {"type":"error","message":"..."}
  *
  * @body {{ grade: string, subjects: string[], topic: string, description?: string }}
- * @returns {{ workspaceId: string, projectId: string }}
  */
 demoRouter.post('/generate', async (req, res) => {
   const { grade, subjects, topic, description } = req.body
@@ -58,6 +63,18 @@ demoRouter.post('/generate', async (req, res) => {
     return res.status(400).json({
       error: '학년, 교과(2개 이상), 주제 키워드는 필수입니다.',
     })
+  }
+
+  // SSE 헤더 설정
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  })
+
+  const sendEvent = (data) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`)
   }
 
   try {
@@ -71,7 +88,9 @@ demoRouter.post('/generate', async (req, res) => {
     })
     const projectId = session.id
 
-    // 2. 보드 스키마 텍스트 생성 (주요 절차만)
+    sendEvent({ type: 'started', projectId, workspaceId })
+
+    // 2. 보드 스키마 텍스트 생성
     const schemaDescriptions = PROCEDURE_LIST
       .map((proc) => {
         const boardType = BOARD_TYPES[proc.code]
@@ -80,7 +99,7 @@ demoRouter.post('/generate', async (req, res) => {
       })
       .join('\n\n')
 
-    // 3. AI 호출
+    // 3. AI 스트리밍 호출
     const systemPrompt = `당신은 한국 교육과정 기반 융합수업 설계 전문가입니다.
 TADDs-DIE 협력적 수업설계 모형에 따라 전체 19개 절차의 설계 결과물을 JSON으로 생성하세요.
 
@@ -112,35 +131,59 @@ ${description ? `설명: ${description}` : ''}
 각 절차의 보드 데이터는 해당 스키마의 필드를 포함해야 합니다.
 반드시 유효한 JSON만 응답하세요. 설명 텍스트 없이 JSON만 반환하세요.`
 
-    const response = await client.messages.create({
+    // 스트리밍으로 AI 응답 수신 + 절차 감지
+    let fullText = ''
+    const detectedProcedures = new Set()
+
+    // 절차 코드 목록 (감지용)
+    const procedureCodes = PROCEDURE_LIST.map((p) => p.code)
+    const procedureNameMap = Object.fromEntries(PROCEDURE_LIST.map((p) => [p.code, p.name]))
+
+    const stream = await client.messages.stream({
       model: 'claude-sonnet-4-6',
       max_tokens: 16000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     })
 
-    // 4. AI 응답 파싱
-    const aiText = response.content
-      .filter((block) => block.type === 'text')
-      .map((block) => block.text)
-      .join('')
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+        fullText += event.delta.text
 
-    // JSON 추출 (코드 블록이나 순수 JSON)
+        // 절차 코드 감지: "prep": 또는 "T-1-1": 패턴
+        for (const code of procedureCodes) {
+          if (!detectedProcedures.has(code)) {
+            // JSON 키로 등장하는지 확인
+            const pattern = `"${code}"`
+            if (fullText.includes(pattern)) {
+              detectedProcedures.add(code)
+              const index = detectedProcedures.size
+              sendEvent({
+                type: 'progress',
+                procedure: code,
+                name: procedureNameMap[code] || code,
+                index,
+                total: procedureCodes.length,
+              })
+            }
+          }
+        }
+      }
+    }
+
+    // 4. AI 응답 파싱
     let boardsData = {}
     try {
-      // 코드 블록에서 JSON 추출 시도
-      const jsonMatch = aiText.match(/```(?:json)?\s*([\s\S]*?)```/)
-      const jsonStr = jsonMatch ? jsonMatch[1].trim() : aiText.trim()
+      const jsonMatch = fullText.match(/```(?:json)?\s*([\s\S]*?)```/)
+      const jsonStr = jsonMatch ? jsonMatch[1].trim() : fullText.trim()
       boardsData = JSON.parse(jsonStr)
     } catch (parseErr) {
-      // 부분 파싱 시도: 각 절차별로 개별 추출
       console.warn('[demo] JSON 전체 파싱 실패, 부분 파싱 시도:', parseErr.message)
       try {
-        // { 로 시작하는 가장 큰 JSON 블록 찾기
-        const startIdx = aiText.indexOf('{')
-        const endIdx = aiText.lastIndexOf('}')
+        const startIdx = fullText.indexOf('{')
+        const endIdx = fullText.lastIndexOf('}')
         if (startIdx !== -1 && endIdx > startIdx) {
-          boardsData = JSON.parse(aiText.slice(startIdx, endIdx + 1))
+          boardsData = JSON.parse(fullText.slice(startIdx, endIdx + 1))
         }
       } catch {
         console.error('[demo] 부분 파싱도 실패')
@@ -165,17 +208,18 @@ ${description ? `설명: ${description}` : ''}
 
     console.log(`[demo] 생성 완료 — ${savedCount}/${PROCEDURE_LIST.length}개 보드 저장`)
 
-    // 6. 결과 반환
-    res.json({
-      workspaceId,
+    // 6. 완료 이벤트 전송
+    sendEvent({
+      type: 'complete',
       projectId,
+      workspaceId,
       savedBoards: savedCount,
       totalProcedures: PROCEDURE_LIST.length,
     })
+    res.end()
   } catch (error) {
     console.error('[demo] 생성 오류:', error)
-    res.status(500).json({
-      error: '데모 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
-    })
+    sendEvent({ type: 'error', message: '데모 생성 중 오류가 발생했습니다.' })
+    res.end()
   }
 })
