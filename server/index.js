@@ -174,13 +174,15 @@ io.on('connection', (socket) => {
   })
 
   // 새 메시지 브로드캐스트
-  socket.on('new_message', ({ projectId, message }) => {
-    socket.to(projectId).emit('message_added', message)
+  socket.on('new_message', ({ projectId, sessionId, message }) => {
+    const roomId = projectId || sessionId
+    if (roomId) socket.to(roomId).emit('message_added', message)
   })
 
   // AI 응답 완료 브로드캐스트
-  socket.on('ai_response_done', ({ projectId, message }) => {
-    socket.to(projectId).emit('message_added', message)
+  socket.on('ai_response_done', ({ projectId, sessionId, message }) => {
+    const roomId = projectId || sessionId
+    if (roomId) socket.to(roomId).emit('message_added', message)
   })
 
   // 설계 캔버스 업데이트 브로드캐스트 (절차 기반)
