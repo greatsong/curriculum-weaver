@@ -1,4 +1,4 @@
-// import { supabase } from './supabase'  // 나중에 다시 활성화
+import { supabase } from './supabase'
 
 export const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -13,9 +13,20 @@ export class ApiError extends Error {
   }
 }
 
-// 테스트 모드: 인증 없이 사용
-function getHeaders() {
-  return { 'Content-Type': 'application/json' }
+/**
+ * Supabase 세션에서 Authorization 헤더를 포함한 헤더 객체를 반환한다
+ */
+async function getHeaders() {
+  const headers = { 'Content-Type': 'application/json' }
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`
+    }
+  } catch {
+    // 인증 없이 계속 진행 (테스트 모드 등)
+  }
+  return headers
 }
 
 async function fetchWithTimeout(url, options = {}, timeout = DEFAULT_TIMEOUT_MS) {
@@ -43,7 +54,7 @@ async function fetchWithTimeout(url, options = {}, timeout = DEFAULT_TIMEOUT_MS)
 }
 
 export async function apiGet(path, params = {}) {
-  const headers = getHeaders()
+  const headers = await getHeaders()
   const qs = new URLSearchParams(params).toString()
   const fullPath = `${API_BASE}${path}`
   const url = qs ? `${fullPath}?${qs}` : fullPath
@@ -52,7 +63,7 @@ export async function apiGet(path, params = {}) {
 }
 
 export async function apiPost(path, body = {}) {
-  const headers = getHeaders()
+  const headers = await getHeaders()
   const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'POST',
     headers,
@@ -62,7 +73,7 @@ export async function apiPost(path, body = {}) {
 }
 
 export async function apiPut(path, body = {}) {
-  const headers = getHeaders()
+  const headers = await getHeaders()
   const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'PUT',
     headers,
@@ -72,7 +83,7 @@ export async function apiPut(path, body = {}) {
 }
 
 export async function apiDelete(path) {
-  const headers = getHeaders()
+  const headers = await getHeaders()
   const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'DELETE',
     headers,
@@ -90,12 +101,24 @@ export async function apiUploadFile(path, file, extraFields = {}) {
     formData.append(key, value)
   }
 
+  // Authorization 헤더만 추가 (Content-Type은 브라우저가 설정)
+  const authHeaders = {}
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.access_token) {
+      authHeaders['Authorization'] = `Bearer ${session.access_token}`
+    }
+  } catch {
+    // 인증 없이 계속 진행
+  }
+
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 120_000) // 2분 타임아웃
+  const timer = setTimeout(() => controller.abort(), 120_000)
 
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
+      headers: authHeaders,
       body: formData,
       signal: controller.signal,
     })
@@ -121,9 +144,20 @@ export async function apiUploadFile(path, file, extraFields = {}) {
  * SSE 스트리밍 POST 요청 (AI 채팅용)
  */
 export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardSuggestions, onStageAdvance, onDone, onError }) {
+  // Authorization 헤더 추가
+  const headers = { 'Content-Type': 'application/json' }
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`
+    }
+  } catch {
+    // 인증 없이 계속 진행
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   })
 
@@ -157,7 +191,8 @@ export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardS
         if (parsed.type === 'text') onText?.(parsed.content)
         else if (parsed.type === 'principles') onPrinciples?.(parsed.principles)
         else if (parsed.type === 'board_suggestions') onBoardSuggestions?.(parsed.suggestions, parsed.appliedBoards)
-        else if (parsed.type === 'stage_advance') onStageAdvance?.(parsed)
+        else if (parsed.type === 'stage_advance' || parsed.type === 'procedure_advance') onStageAdvance?.(parsed)
+        else if (parsed.type === 'step_advance') onStageAdvance?.(parsed)
         else if (parsed.type === 'error') onError?.(parsed.message)
       } catch {
         // 파싱 실패 무시

@@ -1,31 +1,20 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() || 'https://placeholder.supabase.co'
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() || 'placeholder'
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-const navigatorLockWithFallback = async (name, acquireTimeout, fn) => {
-  if (typeof navigator !== 'undefined' && navigator.locks) {
-    try {
-      return await navigator.locks.request(
-        name,
-        { mode: 'exclusive', ifAvailable: true },
-        async (lock) => {
-          if (lock) return await fn()
-          return await fn()
-        },
-      )
-    } catch {
-      return await fn()
-    }
-  }
-  return await fn()
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.warn('[Supabase] 환경변수가 설정되지 않았습니다. VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY를 확인하세요.')
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-    lock: navigatorLockWithFallback,
-  },
-})
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder',
+  {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+    },
+  }
+)

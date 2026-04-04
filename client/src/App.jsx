@@ -1,37 +1,260 @@
-import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
-// import { useAuthStore } from './stores/authStore'  // 나중에 다시 활성화
-import Dashboard from './pages/Dashboard'
-import SessionPage from './pages/SessionPage'
-import DataManage from './pages/DataManage'
+import { lazy, Suspense, useEffect, useState } from 'react'
+import { Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom'
+import { useAuthStore } from './stores/authStore'
+import { Check } from 'lucide-react'
 
+// 즉시 로드 (핵심 페이지)
+import LoginPage from './pages/LoginPage'
+import WorkspacesPage from './pages/WorkspacesPage'
+import WorkspaceDetailPage from './pages/WorkspaceDetailPage'
+import ProjectPage from './pages/ProjectPage'
+
+// 지연 로드
+const DataManage = lazy(() => import('./pages/DataManage'))
 const GraphPage = lazy(() => import('./pages/GraphPage'))
 const IntroPage = lazy(() => import('./pages/IntroPage'))
-// 테스트 모드: 로그인 없이 바로 사용
-// ProtectedRoute는 나중에 Supabase Auth 활성화 시 다시 사용
-// function ProtectedRoute({ children }) {
-//   const { user, loading } = useAuthStore()
-//   if (loading) return <div>로딩 중...</div>
-//   if (!user) return <Navigate to="/login" replace />
-//   return children
-// }
 
-// 첫 방문 시 /intro로 리다이렉트
+// 레거시 호환: 기존 SessionPage → 리다이렉트
+const LegacySessionRedirect = lazy(() =>
+  import('./pages/SessionPage').catch(() => ({
+    default: () => <Navigate to="/workspaces" replace />,
+  }))
+)
+
+/**
+ * 인증 필수 라우트 래퍼
+ */
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuthStore()
+  const location = useLocation()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-400">로딩 중...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />
+  }
+
+  return children
+}
+
+/**
+ * 루트 경로 핸들러
+ */
 function HomeRoute() {
-  const introDone = localStorage.getItem('cw_intro_done')
-  if (!introDone) return <Navigate to="/intro" replace />
-  return <Dashboard />
+  const { user, loading } = useAuthStore()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (user) {
+    return <Navigate to="/workspaces" replace />
+  }
+
+  return <Navigate to="/login" replace />
+}
+
+/**
+ * 이미 로그인된 사용자가 로그인 페이지 접근 시 리다이렉트
+ */
+function AuthRoute({ children }) {
+  const { user, loading } = useAuthStore()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (user) {
+    return <Navigate to="/workspaces" replace />
+  }
+
+  return children
+}
+
+/**
+ * 초대 수락 페이지
+ */
+function InviteAcceptPage() {
+  const { token } = useParams()
+  const navigate = useNavigate()
+  const [status, setStatus] = useState('loading')
+  const [error, setError] = useState('')
+  const [workspace, setWorkspace] = useState(null)
+
+  useEffect(() => {
+    async function accept() {
+      try {
+        const { useWorkspaceStore } = await import('./stores/workspaceStore')
+        const ws = await useWorkspaceStore.getState().acceptInvite(token)
+        setWorkspace(ws)
+        setStatus('success')
+        setTimeout(() => navigate(`/workspaces/${ws.id}`), 3000)
+      } catch (err) {
+        setError(err.message)
+        setStatus('error')
+      }
+    }
+    accept()
+  }, [token, navigate])
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-gray-500">초대를 처리 중입니다...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center max-w-sm mx-4">
+          <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3">
+            <span className="text-red-600 text-xl">!</span>
+          </div>
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">초대 수락 실패</h2>
+          <p className="text-sm text-gray-500 mb-4">{error}</p>
+          <button
+            onClick={() => navigate('/workspaces')}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
+          >
+            워크스페이스 목록으로
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="text-center max-w-sm mx-4">
+        <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
+          <Check size={24} className="text-green-600" />
+        </div>
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">참여 완료</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          {workspace?.name || '워크스페이스'}에 참여했습니다.
+          <br />잠시 후 자동으로 이동합니다.
+        </p>
+        <button
+          onClick={() => navigate(`/workspaces/${workspace?.id}`)}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
+        >
+          바로 이동
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export default function App() {
+  const { initialize, cleanup } = useAuthStore()
+
+  useEffect(() => {
+    initialize()
+    return () => cleanup()
+  }, [])
+
   return (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
       <Routes>
+        {/* 홈 */}
         <Route path="/" element={<HomeRoute />} />
+
+        {/* 인증 */}
+        <Route
+          path="/login"
+          element={
+            <AuthRoute>
+              <LoginPage />
+            </AuthRoute>
+          }
+        />
+
+        {/* 인트로 (공개) */}
         <Route path="/intro" element={<IntroPage />} />
-        <Route path="/session/:sessionId" element={<SessionPage />} />
-        <Route path="/data" element={<DataManage />} />
+
+        {/* 워크스페이스 */}
+        <Route
+          path="/workspaces"
+          element={
+            <ProtectedRoute>
+              <WorkspacesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/workspaces/:workspaceId"
+          element={
+            <ProtectedRoute>
+              <WorkspaceDetailPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 프로젝트 (메인 작업 공간) */}
+        <Route
+          path="/workspaces/:workspaceId/projects/:projectId"
+          element={
+            <ProtectedRoute>
+              <ProjectPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 초대 수락 */}
+        <Route
+          path="/invite/:token"
+          element={
+            <ProtectedRoute>
+              <InviteAcceptPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 관리 (관리자) */}
+        <Route
+          path="/data"
+          element={
+            <ProtectedRoute>
+              <DataManage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 공개 페이지 */}
         <Route path="/graph" element={<GraphPage />} />
+
+        {/* 레거시 호환: /session/:id */}
+        <Route path="/session/:sessionId" element={<LegacySessionRedirect />} />
+
+        {/* 404 */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>

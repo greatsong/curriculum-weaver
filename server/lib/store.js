@@ -7,7 +7,6 @@ import crypto from 'crypto'
 import { PRINCIPLES } from '../data/principles.js'
 import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
 import { ALL_STANDARDS } from '../data/standards.js'
-import { SOCIAL_STANDARDS } from '../data/standards_social.js'
 import { GENERATED_LINKS } from '../data/generatedLinks.js'
 import { SEED_SESSIONS } from '../data/seedSessions.js'
 
@@ -45,11 +44,9 @@ export function initStore() {
     principles.set(p.id, { ...p, is_active: true, version: 1, created_at: new Date().toISOString() })
   }
 
-  // 성취기준 로드 (중복 코드 제거 + 사회 데이터 통합)
+  // 성취기준 로드
   const seenCodes = new Set()
-  const socialFixed = SOCIAL_STANDARDS.map(s => ({ ...s, subject_group: '사회' }))
-  const mergedStandards = [...ALL_STANDARDS, ...socialFixed]
-  for (const s of mergedStandards) {
+  for (const s of ALL_STANDARDS) {
     if (seenCodes.has(s.code)) continue
     seenCodes.add(s.code)
     const id = uuid()
@@ -198,7 +195,7 @@ export const Sessions = {
 export const Messages = {
   list: (sessionId) => messages.get(sessionId) || [],
 
-  add: (sessionId, { sender_type, content, stage_context, principles_used, sender_name, sender_subject }) => {
+  add: (sessionId, { sender_type, content, stage_context, principles_used, sender_name, sender_subject, ai_suggestions, coherence_check }) => {
     const msg = {
       id: uuid(),
       session_id: sessionId,
@@ -208,11 +205,22 @@ export const Messages = {
       principles_used: principles_used || [],
       sender_name: sender_name || null,
       sender_subject: sender_subject || null,
+      ai_suggestions: ai_suggestions || null,
+      coherence_check: coherence_check || null,
       created_at: new Date().toISOString(),
     }
     if (!messages.has(sessionId)) messages.set(sessionId, [])
     messages.get(sessionId).push(msg)
     return msg
+  },
+
+  // ID로 메시지 조회 (제안 수락/거부 시 사용)
+  get: (messageId) => {
+    for (const msgList of messages.values()) {
+      const found = msgList.find(m => m.id === messageId)
+      if (found) return found
+    }
+    return null
   },
 }
 
@@ -231,6 +239,15 @@ export const Boards = {
       if (board.id === id) return board
     }
     return null
+  },
+
+  // 세션의 모든 보드를 반환 (정합성 점검용)
+  listAll: (sessionId) => {
+    const result = []
+    for (const [key, board] of boards) {
+      if (key.startsWith(`${sessionId}:`)) result.push(board)
+    }
+    return result
   },
 
   upsert: (sessionId, stage, boardType, content) => {

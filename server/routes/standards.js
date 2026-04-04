@@ -1,17 +1,85 @@
+/**
+ * 성취기준 라우트
+ *
+ * 교육과정 성취기준 검색, 필터, 그래프, 프로젝트 연결 관리.
+ *
+ * - 검색/필터: supabaseService 우선, DB 비어있으면 로컬 데이터 폴백
+ * - 그래프: 로컬 데이터 기반 (TF-IDF/UMAP 임베딩)
+ * - 프로젝트 연결: 기존 session 기반 → project 기반으로 변경
+ *
+ * 라우트:
+ * - GET  /api/standards/search                          — 성취기준 검색
+ * - GET  /api/standards/subjects                        — 교과 목록
+ * - GET  /api/standards/grades                          — 학년군 목록
+ * - GET  /api/standards/domains                         — 영역 목록
+ * - GET  /api/standards/school-levels                   — 학교급 목록
+ * - GET  /api/standards/categories                      — 교육과정 구분 목록
+ * - GET  /api/standards/all                             — 전체 목록
+ * - GET  /api/standards/graph                           — 그래프 데이터 (로컬)
+ * - GET  /api/standards/:id/links                       — 연결 조회
+ * - POST /api/standards/project/:projectId              — 프로젝트에 성취기준 추가
+ * - DELETE /api/standards/project/:projectId/:standardId — 프로젝트에서 제거
+ * - GET  /api/standards/project/:projectId              — 프로젝트 성취기준 조회
+ * - POST /api/standards/upload                          — 벌크 업로드
+ * - DELETE /api/standards/all                           — 전체 초기화
+ * - POST /api/standards/graph/chat                      — AI 그래프 채팅 (SSE)
+ * - POST /api/standards/graph/add-links                 — AI 추천 링크 추가
+ */
 import { Router } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
-import { Standards, StandardLinks, SessionStandards } from '../lib/store.js'
+import { Standards, StandardLinks } from '../lib/store.js'
 import { computeEmbedding3D, invalidateEmbeddingCache } from '../services/embeddings.js'
+import { requireAuth, optionalAuth } from '../middleware/auth.js'
+import {
+  searchStandards, getStandardsByProject,
+  addStandardToProject, removeStandardFromProject,
+  getProject, getMemberRole, logActivity,
+} from '../lib/supabaseService.js'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export const standardsRouter = Router()
 
-// 성취기준 검색
+// ============================================================
+// 검색/필터 엔드포인트 (supabaseService 우선, 로컬 폴백)
+// ============================================================
+
+/**
+ * GET /api/standards/search
+ * 성취기준 검색
+ *
+ * supabaseService.searchStandards로 DB 검색 시도.
+ * DB가 비어있으면 로컬 인메모리 데이터 폴백.
+ *
+ * @query {string} [q]                    - 검색어 (내용, 코드, 키워드)
+ * @query {string} [subject]              - 교과 필터
+ * @query {string} [grade]                - 학년군 필터
+ * @query {string} [domain]               - 영역 필터
+ * @query {string} [school_level]         - 학교급 필터
+ * @query {string} [curriculum_category]  - 교육과정 구분 필터
+ * @returns {object[]} 검색 결과
+ */
 standardsRouter.get('/search', async (req, res) => {
-  const { q, subject, grade, domain, school_level, curriculum_category } = req.query
-  const results = Standards.search({ q, subject, grade, domain, school_level, curriculum_category })
-  res.json(results)
+  try {
+    const { q, subject, grade, domain, school_level, curriculum_category } = req.query
+
+    // supabaseService로 검색 시도
+    try {
+      const dbResults = await searchStandards(q, { subject, grade_group: grade, school_level })
+      if (dbResults && dbResults.length > 0) {
+        return res.json(dbResults)
+      }
+    } catch {
+      // DB 검색 실패 → 로컬 폴백
+    }
+
+    // 로컬 데이터 폴백
+    const results = Standards.search({ q, subject, grade, domain, school_level, curriculum_category })
+    res.json(results)
+  } catch (err) {
+    console.error('[standards] 검색 오류:', err.message)
+    res.status(500).json({ error: '성취기준 검색에 실패했습니다.' })
+  }
 })
 
 // 교과 목록 조회
@@ -59,6 +127,10 @@ standardsRouter.get('/all', async (req, res) => {
   }
 })
 
+// ============================================================
+// 그래프 엔드포인트 (로컬 데이터 기반)
+// ============================================================
+
 // 성취기준 간 그래프 데이터 (임베딩 3D 좌표 포함)
 standardsRouter.get('/graph', async (req, res) => {
   const graph = StandardLinks.getGraph()
@@ -79,20 +151,134 @@ standardsRouter.get('/:id/links', async (req, res) => {
   res.json(links)
 })
 
-// 세션에 성취기준 추가
-standardsRouter.post('/session/:sessionId', async (req, res) => {
-  const { standard_id, is_primary } = req.body
-  const result = SessionStandards.add(req.params.sessionId, standard_id, is_primary || false)
-  if (!result) return res.status(409).json({ error: '이미 추가된 성취기준입니다.' })
-  res.status(201).json(result)
+// ============================================================
+// 프로젝트 기반 성취기준 연결 (기존 세션 기반 대체)
+// ============================================================
+
+/**
+ * POST /api/standards/project/:projectId
+ * 프로젝트에 성취기준 추가
+ *
+ * 인증 필수. 프로젝트의 워크스페이스 멤버(editor 이상)만 가능.
+ *
+ * @param {string} projectId - 프로젝트 ID
+ * @body {{ standard_id: string, is_primary?: boolean }}
+ */
+standardsRouter.post('/project/:projectId', requireAuth, async (req, res) => {
+  try {
+    const { projectId } = req.params
+    const { standard_id, is_primary } = req.body
+
+    if (!standard_id) {
+      return res.status(400).json({ error: 'standard_id는 필수입니다.' })
+    }
+
+    // 프로젝트 존재 + 멤버십 확인
+    const project = await getProject(projectId)
+    if (!project) {
+      return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+    }
+
+    const role = await getMemberRole(project.workspace_id, req.user.id)
+    if (!role) {
+      return res.status(403).json({ error: '이 프로젝트에 접근 권한이 없습니다.' })
+    }
+    if (role === 'viewer') {
+      return res.status(403).json({ error: '성취기준 추가 권한이 없습니다. (editor 이상 필요)' })
+    }
+
+    await addStandardToProject(projectId, standard_id, req.user.id, is_primary || false)
+
+    // 활동 로그 기록
+    await logActivity({
+      project_id: projectId,
+      user_id: req.user.id,
+      action_type: 'standard_added',
+      after_data: { standard_id, is_primary: is_primary || false },
+    })
+
+    res.status(201).json({ ok: true, message: '성취기준이 추가되었습니다.' })
+  } catch (err) {
+    console.error('[standards] 프로젝트 성취기준 추가 오류:', err.message)
+    res.status(500).json({ error: '성취기준 추가에 실패했습니다.' })
+  }
 })
 
-// 세션에서 성취기준 제거
-standardsRouter.delete('/session/:sessionId/:standardId', async (req, res) => {
-  const removed = SessionStandards.remove(req.params.sessionId, req.params.standardId)
-  if (!removed) return res.status(404).json({ error: '해당 성취기준이 세션에 없습니다.' })
-  res.json({ ok: true })
+/**
+ * DELETE /api/standards/project/:projectId/:standardId
+ * 프로젝트에서 성취기준 제거
+ *
+ * @param {string} projectId - 프로젝트 ID
+ * @param {string} standardId - 성취기준 ID
+ */
+standardsRouter.delete('/project/:projectId/:standardId', requireAuth, async (req, res) => {
+  try {
+    const { projectId, standardId } = req.params
+
+    // 프로젝트 존재 + 멤버십 확인
+    const project = await getProject(projectId)
+    if (!project) {
+      return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+    }
+
+    const role = await getMemberRole(project.workspace_id, req.user.id)
+    if (!role) {
+      return res.status(403).json({ error: '이 프로젝트에 접근 권한이 없습니다.' })
+    }
+    if (role === 'viewer') {
+      return res.status(403).json({ error: '성취기준 제거 권한이 없습니다. (editor 이상 필요)' })
+    }
+
+    await removeStandardFromProject(projectId, standardId)
+
+    // 활동 로그 기록
+    await logActivity({
+      project_id: projectId,
+      user_id: req.user.id,
+      action_type: 'standard_removed',
+      after_data: { standard_id: standardId },
+    })
+
+    res.json({ ok: true, message: '성취기준이 제거되었습니다.' })
+  } catch (err) {
+    console.error('[standards] 프로젝트 성취기준 제거 오류:', err.message)
+    res.status(500).json({ error: '성취기준 제거에 실패했습니다.' })
+  }
 })
+
+/**
+ * GET /api/standards/project/:projectId
+ * 프로젝트에 연결된 성취기준 목록 조회
+ *
+ * @param {string} projectId - 프로젝트 ID
+ * @returns {object[]} 성취기준 목록 (is_primary, added_by, added_at 포함)
+ */
+standardsRouter.get('/project/:projectId', requireAuth, async (req, res) => {
+  try {
+    const { projectId } = req.params
+
+    // 프로젝트 존재 + 멤버십 확인
+    const project = await getProject(projectId)
+    if (!project) {
+      return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+    }
+
+    const role = await getMemberRole(project.workspace_id, req.user.id)
+    if (!role) {
+      return res.status(403).json({ error: '이 프로젝트에 접근 권한이 없습니다.' })
+    }
+
+    const standards = await getStandardsByProject(projectId)
+    res.json(standards)
+  } catch (err) {
+    console.error('[standards] 프로젝트 성취기준 조회 오류:', err.message)
+    res.status(500).json({ error: '성취기준 조회에 실패했습니다.' })
+  }
+})
+
+// ============================================================
+// 벌크 업로드/초기화 (관리용, 기존 유지)
+// ============================================================
 
 // 성취기준 벌크 업로드
 standardsRouter.post('/upload', async (req, res) => {
@@ -131,9 +317,15 @@ standardsRouter.delete('/all', async (req, res) => {
   res.json({ ok: true, message: '모든 성취기준과 연결이 초기화되었습니다.' })
 })
 
+// ============================================================
+// AI 그래프 채팅 (SSE 스트리밍, 기존 유지)
+// ============================================================
+
 /**
+ * POST /api/standards/graph/chat
  * 그래프 탐색 AI 채팅 (SSE 스트리밍)
- * AI가 전체 성취기준과 연결 데이터를 읽고, 새로운 교과 간 연결을 추천합니다.
+ *
+ * AI가 전체 성취기준과 연결 데이터를 읽고, 새로운 교과 간 연결을 추천.
  */
 standardsRouter.post('/graph/chat', async (req, res) => {
   const { message, history = [], context = {} } = req.body
@@ -195,12 +387,10 @@ ${visibleLinksSummary}` : '[현재 보이는 연결 없음]'}
 
     let additionalStandardsSection = ''
     if (focusSubjectGroups.size > 0) {
-      // 포커스 교과군의 성취기준 중 그래프에 표시되지 않은 것들
       const additional = allStandards.filter(s =>
         focusSubjectGroups.has(s.subject_group || s.subject) && !visibleCodes.has(s.code)
       )
       if (additional.length > 0) {
-        // 학교급 필터가 있으면 같은 학교급만
         const schoolLevels = context.schoolLevel || []
         const filtered = schoolLevels.length > 0
           ? additional.filter(s => schoolLevels.includes(s.school_level))
@@ -255,7 +445,7 @@ ${overviewSection}`
       systemPrompt = systemPrompt.slice(0, MAX_PROMPT_CHARS) + '\n\n[컨텍스트가 길어 일부 생략됨]'
     }
 
-    console.log(`[graph/chat] 프롬프트 크기: ${systemPrompt.length}자, 포커스: ${[...focusSubjectGroups].join(',')||'전체'}, 연결: ${graph.links.length}개`)
+    console.log(`[graph/chat] 프롬프트 크기: ${systemPrompt.length}자, 포커스: ${[...focusSubjectGroups].join(',') || '전체'}, 연결: ${graph.links.length}개`)
 
     const messages = []
     for (const msg of history.slice(-6)) {

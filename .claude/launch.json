@@ -10,7 +10,7 @@
     {
       "name": "fusion-planner",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd /Users/greatsong/greatsong-project/fusion-planner && node -e \"import('dotenv/config').then(() => import('./server/index.js'))\" & cd /Users/greatsong/greatsong-project/fusion-planner/client && npx vite --port 4015"],
+      "runtimeArgs": ["-c", "(cd /Users/greatsong/greatsong-project/fusion-planner/server && node index.js) & sleep 2 && cd /Users/greatsong/greatsong-project/fusion-planner/client && exec npx vite --host --port 4015"],
       "port": 4015
     }
   ]

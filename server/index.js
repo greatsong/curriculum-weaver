@@ -1,20 +1,33 @@
+/**
+ * 커리큘럼 위버 서버 엔트리포인트
+ *
+ * Express + Socket.IO 실시간 협업 서버.
+ * Supabase 기반 인증/데이터 + 인메모리 폴백 모드 지원.
+ */
 import 'dotenv/config'
 import express from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
 import helmet from 'helmet'
 import cors from 'cors'
-import { initStore, Messages, Standards } from './lib/store.js'
+import { initStore, Standards } from './lib/store.js'
 import { precomputeEmbeddings } from './services/embeddings.js'
-import { sessionsRouter } from './routes/sessions.js'
+
+// ── 라우트 임포트 ──
+import authRouter from './routes/auth.js'
+import workspacesRouter from './routes/workspaces.js'
+import invitesRouter from './routes/invites.js'
+import projectsRouter from './routes/projects.js'
+import designsRouter from './routes/designs.js'
+import versionsRouter from './routes/versions.js'
+import activityLogsRouter from './routes/activityLogs.js'
 import { chatRouter } from './routes/chat.js'
-import { materialsRouter } from './routes/materials.js'
 import { standardsRouter } from './routes/standards.js'
-import { boardsRouter } from './routes/boards.js'
+import { materialsRouter } from './routes/materials.js'
 import { principlesRouter } from './routes/principles.js'
 import { reportRouter } from './routes/report.js'
 
-// 인메모리 스토어 초기화
+// 인메모리 스토어 초기화 (로컬 성취기준/링크 데이터 로드)
 const defaultSessionId = initStore()
 console.log(`  기본 세션 ID: ${defaultSessionId}`)
 
@@ -35,7 +48,7 @@ function checkOrigin(origin) {
   return !origin || allowedOrigins.includes(origin) || isVercelPreview
 }
 
-// Socket.IO
+// ── Socket.IO 설정 ──
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
@@ -44,87 +57,104 @@ const io = new Server(server, {
   },
 })
 
-// 세션별 접속자 관리 (sessionId -> Map<socketId, user>)
-const sessionMembers = new Map()
+// Socket.IO 인스턴스를 Express app에 등록 (라우트에서 req.app.get('io')로 접근)
+app.set('io', io)
+
+// 프로젝트별 접속자 관리 (projectId -> Map<socketId, user>)
+const projectMembers = new Map()
 
 io.on('connection', (socket) => {
-  let currentSessionId = null
+  let currentProjectId = null
 
-  socket.on('join_session', ({ sessionId, user }) => {
-    currentSessionId = sessionId
-    socket.join(sessionId)
+  // 프로젝트 참여 (기존 join_session 대체)
+  socket.on('join_project', ({ projectId, user }) => {
+    currentProjectId = projectId
+    socket.join(projectId)
 
-    if (!sessionMembers.has(sessionId)) {
-      sessionMembers.set(sessionId, new Map())
+    if (!projectMembers.has(projectId)) {
+      projectMembers.set(projectId, new Map())
     }
-    // 첫 번째 참여자를 호스트로 지정
-    const isHost = sessionMembers.get(sessionId).size === 0
+    const isHost = projectMembers.get(projectId).size === 0
     const userInfo = { ...user, socketId: socket.id, isHost }
-    sessionMembers.get(sessionId).set(socket.id, userInfo)
+    projectMembers.get(projectId).set(socket.id, userInfo)
 
     // 현재 접속자 목록을 룸 전체에 전송
-    const members = [...sessionMembers.get(sessionId).values()]
-    io.to(sessionId).emit('members_updated', members)
-    socket.to(sessionId).emit('member_joined', userInfo)
+    const members = [...projectMembers.get(projectId).values()]
+    io.to(projectId).emit('members_updated', members)
+    socket.to(projectId).emit('member_joined', userInfo)
+  })
 
-    // 새 멤버 환영 시스템 메시지 생성
-    const userName = user.name || '교사'
-    const userSubject = user.subject ? ` (${user.subject})` : ''
-    const welcomeContent = isHost
-      ? `${userName}${userSubject} 선생님, 환영합니다! 🎉 세션을 개설해 주셨군요. 다른 선생님들이 참여하시면 함께 수업을 설계해 보아요.`
-      : `${userName}${userSubject} 선생님이 참여하셨습니다! 🙌 반갑습니다, 함께 멋진 수업을 설계해 봐요!`
-    const welcomeMsg = Messages.add(sessionId, {
-      sender_type: 'system',
-      content: welcomeContent,
-    })
-    io.to(sessionId).emit('message_added', welcomeMsg)
+  // 프로젝트 퇴장
+  socket.on('leave_project', ({ projectId }) => {
+    socket.leave(projectId)
+    if (projectMembers.has(projectId)) {
+      const user = projectMembers.get(projectId).get(socket.id)
+      projectMembers.get(projectId).delete(socket.id)
+      const members = [...projectMembers.get(projectId).values()]
+      io.to(projectId).emit('members_updated', members)
+      if (user) socket.to(projectId).emit('member_left', user)
+      if (projectMembers.get(projectId).size === 0) {
+        projectMembers.delete(projectId)
+      }
+    }
+    currentProjectId = null
+  })
+
+  // 하위 호환성: 기존 session 기반 이벤트도 지원
+  socket.on('join_session', ({ sessionId, user }) => {
+    socket.emit('join_project', { projectId: sessionId, user })
+    socket.join(sessionId)
   })
 
   socket.on('leave_session', ({ sessionId }) => {
     socket.leave(sessionId)
-    if (sessionMembers.has(sessionId)) {
-      const user = sessionMembers.get(sessionId).get(socket.id)
-      sessionMembers.get(sessionId).delete(socket.id)
-      const members = [...sessionMembers.get(sessionId).values()]
-      io.to(sessionId).emit('members_updated', members)
-      if (user) socket.to(sessionId).emit('member_left', user)
-      if (sessionMembers.get(sessionId).size === 0) {
-        sessionMembers.delete(sessionId)
-      }
-    }
-    currentSessionId = null
   })
 
-  socket.on('new_message', ({ sessionId, message }) => {
-    socket.to(sessionId).emit('message_added', message)
+  // 새 메시지 브로드캐스트
+  socket.on('new_message', ({ projectId, message }) => {
+    socket.to(projectId).emit('message_added', message)
   })
 
-  socket.on('ai_response_done', ({ sessionId, message }) => {
-    socket.to(sessionId).emit('message_added', message)
+  // AI 응답 완료 브로드캐스트
+  socket.on('ai_response_done', ({ projectId, message }) => {
+    socket.to(projectId).emit('message_added', message)
+  })
+
+  // 설계 캔버스 업데이트 브로드캐스트 (절차 기반)
+  socket.on('design_updated', ({ projectId, procedureCode, design }) => {
+    socket.to(projectId).emit('design_changed', { procedureCode, design })
+  })
+
+  // 절차 변경 브로드캐스트
+  socket.on('procedure_changed', ({ projectId, procedureCode }) => {
+    socket.to(projectId).emit('procedure_updated', procedureCode)
+  })
+
+  // 하위 호환성: 기존 stage 이벤트
+  socket.on('stage_changed', ({ sessionId, stage }) => {
+    socket.to(sessionId).emit('stage_updated', stage)
   })
 
   socket.on('board_updated', ({ sessionId, board }) => {
     socket.to(sessionId).emit('board_changed', board)
   })
 
-  socket.on('stage_changed', ({ sessionId, stage }) => {
-    socket.to(sessionId).emit('stage_updated', stage)
-  })
-
+  // 연결 해제
   socket.on('disconnect', () => {
-    if (currentSessionId && sessionMembers.has(currentSessionId)) {
-      const user = sessionMembers.get(currentSessionId).get(socket.id)
-      sessionMembers.get(currentSessionId).delete(socket.id)
-      const members = [...sessionMembers.get(currentSessionId).values()]
-      io.to(currentSessionId).emit('members_updated', members)
-      if (user) io.to(currentSessionId).emit('member_left', user)
-      if (sessionMembers.get(currentSessionId).size === 0) {
-        sessionMembers.delete(currentSessionId)
+    if (currentProjectId && projectMembers.has(currentProjectId)) {
+      const user = projectMembers.get(currentProjectId).get(socket.id)
+      projectMembers.get(currentProjectId).delete(socket.id)
+      const members = [...projectMembers.get(currentProjectId).values()]
+      io.to(currentProjectId).emit('members_updated', members)
+      if (user) io.to(currentProjectId).emit('member_left', user)
+      if (projectMembers.get(currentProjectId).size === 0) {
+        projectMembers.delete(currentProjectId)
       }
     }
   })
 })
 
+// ── 미들웨어 ──
 app.use(helmet())
 
 app.use(cors({
@@ -138,7 +168,7 @@ app.use(cors({
 }))
 app.use(express.json({ limit: '5mb' }))
 
-// 헬스 체크
+// ── 헬스 체크 ──
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -147,16 +177,43 @@ app.get('/api/health', (req, res) => {
   })
 })
 
-// 라우트
-app.use('/api/sessions', sessionsRouter)
+// ── 라우트 마운트 ──
+
+// 인증
+app.use('/api/auth', authRouter)
+
+// 워크스페이스 + 초대
+app.use('/api/workspaces', workspacesRouter)
+app.use('/api/invites', invitesRouter)
+
+// 프로젝트 (워크스페이스 하위 + 개별 접근)
+app.use('/api', projectsRouter)
+
+// 설계 캔버스 (프로젝트 하위)
+app.use('/api', designsRouter)
+
+// 버전 (설계 하위 + 개별 접근)
+app.use('/api', versionsRouter)
+
+// 활동 로그 (프로젝트 하위)
+app.use('/api', activityLogsRouter)
+
+// AI 채팅
 app.use('/api/chat', chatRouter)
-app.use('/api/materials', materialsRouter)
+
+// 성취기준
 app.use('/api/standards', standardsRouter)
-app.use('/api/boards', boardsRouter)
+
+// 자료
+app.use('/api/materials', materialsRouter)
+
+// 설계 원리
 app.use('/api/principles', principlesRouter)
+
+// 보고서
 app.use('/api/report', reportRouter)
 
-// 에러 핸들러
+// ── 에러 핸들러 ──
 app.use((err, req, res, next) => {
   console.error(err)
   res.status(err.status || 500).json({
@@ -164,7 +221,9 @@ app.use((err, req, res, next) => {
   })
 })
 
+// ── 서버 시작 ──
 server.listen(PORT, () => {
   console.log(`커리큘럼 위버 서버: http://localhost:${PORT}`)
   console.log(`  Socket.IO 실시간 협업 활성화`)
+  console.log(`  라우트: auth, workspaces, invites, projects, designs, versions, logs, chat, standards, materials, principles, report`)
 })
