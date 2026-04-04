@@ -10,8 +10,23 @@ export const useAuthStore = create((set, get) => ({
 
   /**
    * 앱 시작 시 기존 세션을 확인하고 Auth state 변경을 구독한다
+   * Supabase 미설정 시 개발 모드로 자동 전환
    */
   initialize: async () => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+
+    // 개발 모드: Supabase 미설정 시 더미 사용자로 바이패스
+    if (!supabaseUrl || supabaseUrl === 'https://placeholder.supabase.co') {
+      console.info('[Auth] 개발 모드: Supabase 미설정 → 더미 사용자로 진입')
+      const devUser = {
+        id: 'dev-user-001',
+        email: 'dev@curriculum-weaver.local',
+        user_metadata: { display_name: '개발자' },
+      }
+      set({ user: devUser, session: { access_token: 'dev-token', user: devUser }, loading: false })
+      return
+    }
+
     try {
       const { data: { session }, error } = await supabase.auth.getSession()
       if (error) throw error

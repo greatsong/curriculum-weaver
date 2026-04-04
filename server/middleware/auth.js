@@ -18,6 +18,17 @@ import { getMemberRole } from '../lib/supabaseService.js'
  * @param {import('express').NextFunction} next
  */
 export async function requireAuth(req, res, next) {
+  // 개발 모드: Supabase 미설정 시 더미 사용자로 바이패스
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    req.user = {
+      id: 'dev-user-001',
+      email: 'dev@curriculum-weaver.local',
+      user_metadata: { display_name: '개발자' },
+    }
+    req.token = 'dev-token'
+    return next()
+  }
+
   const authHeader = req.headers.authorization
   if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: '인증 토큰이 필요합니다.' })

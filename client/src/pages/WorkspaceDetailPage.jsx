@@ -353,14 +353,14 @@ export default function WorkspaceDetailPage() {
                         fontWeight: 600,
                         flexShrink: 0,
                       }}>
-                        {(member.display_name || member.email || '?')[0].toUpperCase()}
+                        {(member.display_name || member.email || member.user_id || '?')[0]?.toUpperCase() || '?'}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {member.display_name || member.email}
+                          {member.display_name || member.email || member.user_id?.slice(0, 8) || '멤버'}
                         </p>
                         <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: '1px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {member.email}
+                          {member.email || member.role}
                         </p>
                       </div>
                       <span style={{

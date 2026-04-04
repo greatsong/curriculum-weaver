@@ -14,7 +14,7 @@ export const useProjectStore = create((set, get) => ({
     set({ loading: true, error: null })
     try {
       const data = await apiGet(`/api/workspaces/${workspaceId}/projects`)
-      set({ projects: data, loading: false })
+      set({ projects: data?.projects ?? data ?? [], loading: false })
     } catch (err) {
       set({ error: err.message, loading: false })
     }
