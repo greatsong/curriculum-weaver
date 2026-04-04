@@ -179,11 +179,13 @@ export default function ProjectPage() {
 
   const joinedRef = useRef(false)
   const introRequestedRef = useRef(false)
+  const messagesLoadedRef = useRef(false)
 
   useEffect(() => {
     fetchProject(projectId)
     if (workspaceId) fetchWorkspace(workspaceId)
-    loadMessages(projectId)
+    messagesLoadedRef.current = false
+    loadMessages(projectId).then(() => { messagesLoadedRef.current = true })
     loadGeneralPrinciples()
   }, [projectId, workspaceId])
 
@@ -202,12 +204,20 @@ export default function ProjectPage() {
       setMembers(members)
       if (!introRequestedRef.current) {
         introRequestedRef.current = true
-        const msgs = useChatStore.getState().messages
-        const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
-        if (!hasContent && !showTour) {
-          const proc = useProcedureStore.getState().currentProcedure
-          setTimeout(() => requestProcedureIntro(projectId, proc), 500)
+        // loadMessages 완료를 기다린 후 인트로 필요 여부 판단
+        const checkAndIntro = () => {
+          if (!messagesLoadedRef.current) {
+            setTimeout(checkAndIntro, 200)
+            return
+          }
+          const msgs = useChatStore.getState().messages
+          const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
+          if (!hasContent && !showTour) {
+            const proc = useProcedureStore.getState().currentProcedure
+            requestProcedureIntro(projectId, proc)
+          }
         }
+        setTimeout(checkAndIntro, 300)
       }
     }
     const handleStageUpdated = (stage) => setProcedure(stage)
