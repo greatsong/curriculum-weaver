@@ -30,24 +30,23 @@ export default function IntroPage() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* 히어로 섹션 */}
       <div className="max-w-4xl mx-auto px-4 pt-12 sm:pt-20 pb-8 text-center">
-        <div className="flex justify-center mb-6">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
-            <Bot size={40} className="text-white" />
-          </div>
-        </div>
+        {/* 서울특별시교육청 배지 */}
+        <p className="text-xs font-medium text-gray-400 tracking-widest uppercase mb-6">
+          서울특별시교육청 &middot; Human-AI Agency
+        </p>
 
         <div className="flex items-center justify-center gap-2 mb-4">
-          <Logo size={28} />
+          <Logo size={32} />
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">커리큘럼 위버</h1>
         </div>
 
         <p className="text-lg sm:text-xl text-gray-600 mb-2">
-          협력적 수업설계를 지원하는 AI 에이전트
+          협력적 수업설계를 위한 AI 에이전트
         </p>
         <p className="text-sm text-gray-500 max-w-xl mx-auto leading-relaxed">
-          안녕하세요! 저는 선생님의 협력적 수업설계를 지원하기 위해 개발된 AI 에이전트입니다.
-          퍼실리테이터로서 팀 활동을 이끌고, 다양한 예시 자료와 질문을 던져
-          선생님의 협력적 수업설계 역량 개발을 촉진합니다.
+          교사 팀의 협력적 수업설계 과정을 AI가 퍼실리테이터로서 함께합니다.
+          단계별 핵심 질문과 예시 자료를 통해 설계를 안내하고,
+          40가지 검증된 설계 원칙으로 수업의 품질을 높입니다.
         </p>
       </div>
 
@@ -116,10 +115,17 @@ export default function IntroPage() {
             <Sparkles size={16} className="opacity-70" />
           </button>
           <p className="text-xs text-gray-400 text-center">
-            대시보드에서 새 세션을 만들거나, 초대 코드로 기존 세션에 참여할 수 있습니다
+            워크스페이스를 만들어 동료 교사를 초대하고, 함께 수업을 설계하세요
           </p>
         </div>
       </div>
+
+      {/* 푸터 */}
+      <footer className="pb-8 text-center">
+        <p className="text-xs text-gray-300">
+          서울특별시교육청 &middot; Human-AI Agency
+        </p>
+      </footer>
     </div>
   )
 }

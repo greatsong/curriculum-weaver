@@ -120,7 +120,7 @@ export default function LoginPage() {
                 margin: 0,
               }}>
                 {mode === 'login'
-                  ? 'AI 협력 수업 설계를 시작하세요'
+                  ? 'AI와 함께 협력적 수업을 설계해보세요!'
                   : '팀과 함께 융합 수업을 설계하세요'}
               </p>
             </div>
@@ -173,7 +173,7 @@ export default function LoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="teacher@school.edu"
+                  placeholder="seoul@sen.go.kr"
                   required
                   autoComplete="email"
                   style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
@@ -333,11 +333,11 @@ export default function LoginPage() {
           {/* 하단 설명 */}
           <p style={{
             textAlign: 'center',
-            fontSize: 12,
+            fontSize: 11,
             color: 'var(--color-text-tertiary)',
             marginTop: 24,
           }}>
-            40가지 설계 원리 기반 AI 협력 수업설계 플랫폼
+            서울특별시교육청 &middot; Human-AI Agency
           </p>
         </div>
       </main>
