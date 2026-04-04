@@ -47,6 +47,12 @@ sessionsRouter.post('/join', async (req, res) => {
 sessionsRouter.put('/:id', async (req, res) => {
   const { current_stage, status, title, description } = req.body
 
+  // status 값 검증
+  const VALID_STATUSES = ['active', 'completed', 'archived']
+  if (status !== undefined && !VALID_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `유효하지 않은 status: ${status}. 허용: ${VALID_STATUSES.join(', ')}` })
+  }
+
   const updateData = {}
   if (current_stage !== undefined) updateData.current_stage = current_stage
   if (status !== undefined) updateData.status = status

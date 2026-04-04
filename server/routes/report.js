@@ -10,13 +10,13 @@
  * - GET /api/report/:projectId/preview  — HTML 프리뷰 (인앱 표시용)
  */
 import { Router } from 'express'
-import { optionalAuth } from '../middleware/auth.js'
+import { requireAuth } from '../middleware/auth.js'
 import { collectReportData, generateHTML, generateMarkdown } from '../services/reportGenerator.js'
 
 export const reportRouter = Router()
 
-// 선택적 인증 (보고서는 링크 공유 가능하도록)
-reportRouter.use(optionalAuth)
+// 인증 필수 (보고서 접근 제어)
+reportRouter.use(requireAuth)
 
 /**
  * GET /api/report/:projectId/html

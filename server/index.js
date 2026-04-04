@@ -12,6 +12,7 @@ import helmet from 'helmet'
 import cors from 'cors'
 import { initStore, Standards } from './lib/store.js'
 import { precomputeEmbeddings } from './services/embeddings.js'
+import { supabaseAdmin } from './lib/supabaseAdmin.js'
 
 // ── Rate Limiter 임포트 ──
 import { apiLimiter, aiChatLimiter, authLimiter } from './middleware/rateLimit.js'
@@ -74,14 +75,48 @@ const io = new Server(server, {
 // Socket.IO 인스턴스를 Express app에 등록 (라우트에서 req.app.get('io')로 접근)
 app.set('io', io)
 
+// ── Socket.IO JWT 인증 미들웨어 ──
+io.use(async (socket, next) => {
+  // 개발 모드: Supabase 미설정 시 바이패스
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT) {
+      return next(new Error('서버 인증 설정 오류'))
+    }
+    socket.user = { id: 'dev-user-001', email: 'dev@curriculum-weaver.local' }
+    return next()
+  }
+
+  const token = socket.handshake.auth?.token
+  if (!token) {
+    return next(new Error('인증 토큰이 필요합니다.'))
+  }
+
+  try {
+    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
+    if (error || !user) {
+      return next(new Error('유효하지 않은 토큰입니다.'))
+    }
+    socket.user = user
+    next()
+  } catch (err) {
+    console.error('[socket.io] 인증 오류:', err.message)
+    next(new Error('인증 처리 중 오류가 발생했습니다.'))
+  }
+})
+
 // 프로젝트별 접속자 관리 (projectId -> Map<socketId, user>)
 const projectMembers = new Map()
 
 io.on('connection', (socket) => {
   let currentProjectId = null
 
-  // 프로젝트 참여 (기존 join_session 대체)
+  // 프로젝트 참여 (기존 join_session 대체) — 인증된 사용자만 접근 가능
   socket.on('join_project', ({ projectId, user }) => {
+    if (!socket.user) {
+      socket.emit('error', { message: '인증이 필요합니다.' })
+      return
+    }
+
     currentProjectId = projectId
     socket.join(projectId)
 
@@ -169,7 +204,33 @@ io.on('connection', (socket) => {
 })
 
 // ── 미들웨어 ──
-app.use(helmet())
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      connectSrc: [
+        "'self'",
+        // Supabase
+        process.env.SUPABASE_URL || 'https://*.supabase.co',
+        // Anthropic API (서버에서만 사용하지만 안전을 위해)
+        'https://api.anthropic.com',
+        // WebSocket
+        "wss:",
+        "ws:",
+        // 로컬 개발
+        ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:*', 'ws://localhost:*'] : []),
+      ].filter(Boolean),
+      imgSrc: ["'self'", "data:", "blob:"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
+}))
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -252,8 +313,9 @@ app.use('/api', commentsRouter)
 // ── 에러 핸들러 ──
 app.use((err, req, res, next) => {
   console.error(err)
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT
   res.status(err.status || 500).json({
-    error: err.message || '서버 내부 오류',
+    error: isProduction ? '서버 내부 오류가 발생했습니다.' : (err.message || '서버 내부 오류'),
   })
 })
 

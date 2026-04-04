@@ -171,6 +171,13 @@ chatRouter.post('/seed', async (req, res) => {
   if (!session_id || !content?.trim() || !sender_type) {
     return res.status(400).json({ error: '필수 필드: session_id, sender_type, content' })
   }
+
+  // sender_type 값 검증
+  const VALID_SENDER_TYPES = ['teacher', 'ai', 'system']
+  if (!VALID_SENDER_TYPES.includes(sender_type)) {
+    return res.status(400).json({ error: `유효하지 않은 sender_type: ${sender_type}. 허용: ${VALID_SENDER_TYPES.join(', ')}` })
+  }
+
   const msg = Messages.add(session_id, {
     sender_type,
     content: content.trim(),
@@ -310,6 +317,11 @@ chatRouter.post('/message', async (req, res) => {
 
   if (!session_id || !content?.trim()) {
     return res.status(400).json({ error: '세션 ID와 메시지 내용이 필요합니다.' })
+  }
+
+  // 사용자 입력 길이 제한 (프롬프트 인젝션 방어)
+  if (content.length > 5000) {
+    return res.status(400).json({ error: '메시지가 너무 깁니다. (최대 5,000자)' })
   }
 
   // SSE 헤더

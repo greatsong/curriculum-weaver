@@ -29,7 +29,7 @@ import { Router } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
 import { Standards, StandardLinks } from '../lib/store.js'
 import { computeEmbedding3D, invalidateEmbeddingCache } from '../services/embeddings.js'
-import { requireAuth, optionalAuth } from '../middleware/auth.js'
+import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js'
 import {
   searchStandards, getStandardsByProject,
   addStandardToProject, removeStandardFromProject,
@@ -280,8 +280,8 @@ standardsRouter.get('/project/:projectId', requireAuth, async (req, res) => {
 // 벌크 업로드/초기화 (관리용, 기존 유지)
 // ============================================================
 
-// 성취기준 벌크 업로드
-standardsRouter.post('/upload', async (req, res) => {
+// 성취기준 벌크 업로드 (관리자 전용)
+standardsRouter.post('/upload', requireAuth, requireAdmin, async (req, res) => {
   const { standards: items, links } = req.body
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'standards 배열이 필요합니다.' })
@@ -290,7 +290,7 @@ standardsRouter.post('/upload', async (req, res) => {
   // 필수 필드 검증
   for (const item of items) {
     if (!item.code || !item.subject || !item.content) {
-      return res.status(400).json({ error: `code, subject, content는 필수입니다. 문제: ${JSON.stringify(item)}` })
+      return res.status(400).json({ error: 'code, subject, content는 필수입니다.' })
     }
   }
 
@@ -318,7 +318,7 @@ standardsRouter.post('/upload', async (req, res) => {
  *   1. ETL 스크립트로 standards_full.js 재생성
  *   2. 이 엔드포인트 호출 → 인메모리 인덱스 갱신
  */
-standardsRouter.post('/refresh', async (req, res) => {
+standardsRouter.post('/refresh', requireAuth, requireAdmin, async (req, res) => {
   try {
     const count = Standards.reload()
     // 임베딩 캐시도 무효화
@@ -326,12 +326,12 @@ standardsRouter.post('/refresh', async (req, res) => {
     res.json({ success: true, count, message: `성취기준 ${count}개 로드 완료` })
   } catch (err) {
     console.error('[standards] refresh 오류:', err.message)
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: '성취기준 데이터 갱신에 실패했습니다.' })
   }
 })
 
-// 성취기준 전체 초기화 (새 데이터 교체용)
-standardsRouter.delete('/all', async (req, res) => {
+// 성취기준 전체 초기화 (관리자 전용)
+standardsRouter.delete('/all', requireAuth, requireAdmin, async (req, res) => {
   Standards.clear()
   invalidateEmbeddingCache()
   res.json({ ok: true, message: '모든 성취기준과 연결이 초기화되었습니다.' })
@@ -351,6 +351,11 @@ standardsRouter.post('/graph/chat', async (req, res) => {
   const { message, history = [], context = {} } = req.body
   if (!message?.trim()) {
     return res.status(400).json({ error: '메시지가 필요합니다.' })
+  }
+
+  // 사용자 입력 길이 제한 (프롬프트 인젝션 방어)
+  if (message.length > 5000) {
+    return res.status(400).json({ error: '메시지가 너무 깁니다. (최대 5,000자)' })
   }
 
   res.setHeader('Content-Type', 'text/event-stream')
@@ -508,16 +513,16 @@ ${overviewSection}`
     console.error('그래프 AI 채팅 오류:', error?.message || error)
     const errMsg = error?.status === 401 ? 'API 키가 유효하지 않습니다.'
       : error?.status === 429 ? 'API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.'
-      : error?.status === 400 ? `API 요청 오류: ${error?.message || ''}`
-      : `응답 생성 중 오류: ${error?.message || '알 수 없는 오류'}`
+      : error?.status === 400 ? 'AI 요청 처리 중 오류가 발생했습니다.'
+      : '응답 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
     res.write(`data: ${JSON.stringify({ type: 'error', message: errMsg })}\n\n`)
     res.write(`data: [DONE]\n\n`)
     res.end()
   }
 })
 
-// AI가 추천한 링크를 실제로 추가하는 엔드포인트
-standardsRouter.post('/graph/add-links', async (req, res) => {
+// AI가 추천한 링크를 실제로 추가하는 엔드포인트 (인증 필수)
+standardsRouter.post('/graph/add-links', requireAuth, async (req, res) => {
   const { links } = req.body
   if (!Array.isArray(links) || links.length === 0) {
     return res.status(400).json({ error: '추가할 링크 배열이 필요합니다.' })
