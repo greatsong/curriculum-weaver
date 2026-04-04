@@ -97,8 +97,8 @@ export default function DemoMode() {
     const interval = setInterval(() => {
       idx = (idx + 1) % PROGRESS_MESSAGES.length
       setProgressMessage(PROGRESS_MESSAGES[idx])
-      setProgress((p) => Math.min(p + Math.random() * 12 + 3, 92))
-    }, 3000)
+      setProgress((p) => Math.min(p + Math.random() * 4 + 1, 95))
+    }, 5000)
     return () => clearInterval(interval)
   }, [generating])
 
@@ -109,6 +109,8 @@ export default function DemoMode() {
     setError('')
 
     try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 300_000) // 5분 타임아웃
       const res = await fetch(`${API_BASE}/api/demo/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -118,7 +120,9 @@ export default function DemoMode() {
           topic: topic.trim(),
           description: description.trim(),
         }),
+        signal: controller.signal,
       })
+      clearTimeout(timer)
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -133,7 +137,11 @@ export default function DemoMode() {
         navigate(`/demo/result/${data.projectId}`)
       }, 600)
     } catch (err) {
-      setError(err.message || '데모 생성 중 오류가 발생했습니다.')
+      if (err.name === 'AbortError') {
+        setError('AI 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.')
+      } else {
+        setError(err.message || '데모 생성 중 오류가 발생했습니다.')
+      }
       setGenerating(false)
     }
   }
