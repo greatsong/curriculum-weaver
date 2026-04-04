@@ -528,7 +528,11 @@ export default function DemoMode() {
                     border: '2px solid #E5E7EB', borderTopColor: '#3B82F6',
                     animation: 'spin 0.8s linear infinite', flexShrink: 0,
                   }} />
-                  <span style={{ fontSize: 12, color: '#9CA3AF' }}>다음 절차 생성 중...</span>
+                  <span style={{ fontSize: 12, color: '#9CA3AF' }}>
+                    {lastProgress?.nextName
+                      ? `${lastProgress.nextProcedure} ${lastProgress.nextName} 생성 중...`
+                      : '마무리 중...'}
+                  </span>
                 </div>
               )}
             </div>
