@@ -57,13 +57,28 @@ export const useProcedureStore = create((set, get) => ({
 
   loadBoards: async (projectId, procedureCode) => {
     set({ loading: true })
+    const code = procedureCode || get().currentProcedure
     try {
-      // stage 파라미터에 procedure code를 전달
-      const data = await apiGet(`/api/boards/${projectId}/${procedureCode || get().currentProcedure}`)
+      // 새 API 우선, 실패 시 레거시 폴백
+      let design = null
+      try {
+        design = await apiGet(`/api/projects/${projectId}/designs/${code}`)
+      } catch {
+        // 레거시 폴백
+        const data = await apiGet(`/api/boards/${projectId}/${code}`)
+        const boardList = Array.isArray(data) ? data : (data?.boards ?? [])
+        const boards = {}
+        for (const board of boardList) {
+          boards[board.board_type || board.procedure_code] = board
+        }
+        set({ boards, loading: false })
+        return
+      }
+      // 새 API: 단일 design 객체 → boards에 BOARD_TYPES 키로 저장 (ProcedureCanvas 호환)
       const boards = {}
-      const boardList = Array.isArray(data) ? data : (data?.boards ?? [])
-      for (const board of boardList) {
-        boards[board.board_type] = board
+      const boardType = BOARD_TYPES[code] || code
+      if (design && design.content && Object.keys(design.content).length > 0) {
+        boards[boardType] = { ...design, board_type: boardType, content: design.content }
       }
       set({ boards, loading: false })
     } catch {

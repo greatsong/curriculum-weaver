@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, Component } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useProcedureStore } from '../stores/procedureStore'
@@ -17,6 +17,27 @@ import StandardSearch from '../components/StandardSearch'
 import ReportDownload from '../components/ReportDownload'
 import MaterialUploadBar from '../components/MaterialUploadBar'
 import Tutorial from '../components/Tutorial'
+
+// Error Boundary — ChatPanel 등 하위 컴포넌트 크래시 시 전체 페이지 보호
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null } }
+  static getDerivedStateFromError(error) { return { hasError: true, error } }
+  componentDidCatch(error, info) { console.error('[ErrorBoundary]', error, info) }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 20, textAlign: 'center', color: 'var(--color-text-secondary)' }}>
+          <p style={{ fontSize: 14 }}>컴포넌트 로딩 중 오류가 발생했습니다.</p>
+          <button onClick={() => this.setState({ hasError: false, error: null })}
+            style={{ marginTop: 8, padding: '6px 16px', borderRadius: 6, border: '1px solid var(--color-border)', fontSize: 13, cursor: 'pointer' }}>
+            다시 시도
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // 참여자 정보 입력 모달
 function NicknameModal({ onConfirm }) {
@@ -397,11 +418,13 @@ export default function ProjectPage() {
             background: 'var(--color-bg-secondary)',
           }}
         >
-          <ChatPanel
-            sessionId={projectId}
-            stage={currentProcedure}
-            onStageChange={handleProcedureChange}
-          />
+          <ErrorBoundary>
+            <ChatPanel
+              sessionId={projectId}
+              stage={currentProcedure}
+              onStageChange={handleProcedureChange}
+            />
+          </ErrorBoundary>
         </div>
 
         {/* 중앙: 설계 캔버스 */}
@@ -414,7 +437,9 @@ export default function ProjectPage() {
             width: '100%',
           }}
         >
-          <ProcedureCanvas projectId={projectId} procedureCode={currentProcedure} />
+          <ErrorBoundary>
+            <ProcedureCanvas projectId={projectId} procedureCode={currentProcedure} />
+          </ErrorBoundary>
         </div>
 
         {/* 우측: 원칙 패널 */}
@@ -429,7 +454,9 @@ export default function ProjectPage() {
             overflow: 'auto',
           }}
         >
-          <PrinciplePanel stage={currentProcedure} />
+          <ErrorBoundary>
+            <PrinciplePanel stage={currentProcedure} />
+          </ErrorBoundary>
         </div>
       </div>
 
