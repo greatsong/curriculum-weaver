@@ -522,7 +522,7 @@ export async function getDesignById(id) {
  * @param {number} [offset=0]
  * @returns {Promise<object[]>}
  */
-export async function getMessages(projectId, limit = 50, offset = 0) {
+export async function getMessages(projectId, limit = 200, offset = 0) {
   const sb = getSupabase()
   if (!sb) {
     const all = mem.messages.get(projectId) || []
@@ -530,12 +530,33 @@ export async function getMessages(projectId, limit = 50, offset = 0) {
   }
   return handleResult(
     await sb.from('messages')
-      .select('*, users:user_id(display_name)')
+      .select('*')
       .eq('project_id', projectId)
       .order('created_at', { ascending: true })
       .range(offset, offset + limit - 1),
     '메시지 목록 조회 실패'
   )
+}
+
+/**
+ * 단일 메시지 조회
+ * @param {string} messageId
+ * @returns {Promise<object|null>}
+ */
+export async function getMessage(messageId) {
+  const sb = getSupabase()
+  if (!sb) {
+    for (const msgs of mem.messages.values()) {
+      const found = msgs.find((m) => m.id === messageId)
+      if (found) return found
+    }
+    return null
+  }
+  const { data } = await sb.from('messages')
+    .select('*')
+    .eq('id', messageId)
+    .single()
+  return data || null
 }
 
 /**
@@ -1123,7 +1144,7 @@ const supabaseService = {
   // 버전
   createVersion, getVersions, getVersion,
   // 메시지
-  getMessages, createMessage,
+  getMessages, getMessage, createMessage,
   // 댓글
   getComments, getCommentById, createComment, updateComment, deleteComment, resolveComment, unresolveComment,
   // 활동 로그

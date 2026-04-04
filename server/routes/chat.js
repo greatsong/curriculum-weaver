@@ -13,7 +13,8 @@
 import { Router } from 'express'
 import { optionalAuth } from '../middleware/auth.js'
 import { buildAIResponse, buildProcedureIntroResponse } from '../services/aiAgent.js'
-import { Sessions, Messages, Boards, Materials } from '../lib/store.js'
+import { Sessions, Boards, Materials } from '../lib/store.js'
+import { getMessages, getMessage, createMessage } from '../lib/supabaseService.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES } from 'curriculum-weaver-shared/constants.js'
 import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
 
@@ -143,8 +144,19 @@ chatRouter.use(optionalAuth)
 
 // ─── 채팅 메시지 목록 조회 ───
 chatRouter.get('/:sessionId', async (req, res) => {
-  const messages = Messages.list(req.params.sessionId)
-  res.json(messages)
+  try {
+    const messages = await getMessages(req.params.sessionId)
+    // 클라이언트 호환: procedure_context → stage_context 별칭
+    const mapped = messages.map((m) => ({
+      ...m,
+      stage_context: m.procedure_context || m.stage_context,
+      session_id: m.project_id || m.session_id,
+    }))
+    res.json(mapped)
+  } catch (err) {
+    console.error('메시지 목록 조회 오류:', err.message)
+    res.json([])
+  }
 })
 
 // ─── 교사 메시지 저장 ───
@@ -154,15 +166,22 @@ chatRouter.post('/teacher', async (req, res) => {
     return res.status(400).json({ error: '세션 ID와 메시지 내용이 필요합니다.' })
   }
 
-  const msg = Messages.add(session_id, {
-    sender_type: 'teacher',
-    content: content.trim(),
-    // 하위 호환: stage_context에도 procedure 코드 저장
-    stage_context: procedure || req.body.stage || null,
-    sender_name: sender_name || '교사',
-    sender_subject: sender_subject || '',
-  })
-  res.status(201).json(msg)
+  try {
+    const msg = await createMessage({
+      project_id: session_id,
+      user_id: req.user?.id || null,
+      sender_type: 'teacher',
+      content: content.trim(),
+      procedure_context: procedure || req.body.stage || null,
+      sender_name: sender_name || '교사',
+      sender_subject: sender_subject || '',
+    })
+    // 클라이언트 호환: stage_context 필드도 포함
+    res.status(201).json({ ...msg, stage_context: msg.procedure_context, session_id })
+  } catch (err) {
+    console.error('교사 메시지 저장 오류:', err.message)
+    res.status(500).json({ error: '메시지 저장에 실패했습니다.' })
+  }
 })
 
 // ─── 시드 데이터용: 일반 메시지 직접 추가 ───
@@ -178,15 +197,21 @@ chatRouter.post('/seed', async (req, res) => {
     return res.status(400).json({ error: `유효하지 않은 sender_type: ${sender_type}. 허용: ${VALID_SENDER_TYPES.join(', ')}` })
   }
 
-  const msg = Messages.add(session_id, {
-    sender_type,
-    content: content.trim(),
-    stage_context: procedure || req.body.stage || null,
-    principles_used: principles_used || [],
-    sender_name: sender_name || null,
-    sender_subject: sender_subject || null,
-  })
-  res.status(201).json(msg)
+  try {
+    const msg = await createMessage({
+      project_id: session_id,
+      sender_type,
+      content: content.trim(),
+      procedure_context: procedure || req.body.stage || null,
+      principles_used: principles_used || [],
+      sender_name: sender_name || null,
+      sender_subject: sender_subject || null,
+    })
+    res.status(201).json({ ...msg, stage_context: msg.procedure_context, session_id })
+  } catch (err) {
+    console.error('시드 메시지 저장 오류:', err.message)
+    res.status(500).json({ error: '메시지 저장에 실패했습니다.' })
+  }
 })
 
 // ─── 절차 진입 인트로 메시지 (SSE 스트리밍) ───
@@ -227,12 +252,13 @@ chatRouter.post('/procedure-intro', async (req, res) => {
       }
     )
 
-    // 인트로 메시지를 스토어에 저장
+    // 인트로 메시지를 Supabase에 저장
     if (fullResponse.trim()) {
-      Messages.add(session_id, {
+      await createMessage({
+        project_id: session_id,
         sender_type: 'ai',
         content: fullResponse.trim(),
-        stage_context: procedure,
+        procedure_context: procedure,
       })
     }
 
@@ -292,10 +318,11 @@ chatRouter.post('/stage-intro', async (req, res) => {
     )
 
     if (fullResponse.trim()) {
-      Messages.add(session_id, {
+      await createMessage({
+        project_id: session_id,
         sender_type: 'ai',
         content: fullResponse.trim(),
-        stage_context: procedure,
+        procedure_context: procedure,
       })
     }
 
@@ -332,11 +359,12 @@ chatRouter.post('/message', async (req, res) => {
   res.flushHeaders()
 
   try {
-    // 인메모리 스토어에서 컨텍스트 로드
+    // 컨텍스트 로드
     const session = Sessions.get(session_id)
     const boards = Boards.listAll ? Boards.listAll(session_id) : []
     const materials = Materials.list(session_id)
-    const recentMessages = Messages.list(session_id).slice(-20)
+    const allMessages = await getMessages(session_id)
+    const recentMessages = allMessages.slice(-20)
 
     // 성취기준 (세션에 연결된 성취기준이 있으면 로드)
     const standards = [] // TODO: supabaseService에서 로드
@@ -431,16 +459,15 @@ chatRouter.post('/message', async (req, res) => {
       })}\n\n`)
     }
 
-    // 클린 텍스트를 스토어에 저장 (AI 제안은 별도 필드로 저장)
+    // 클린 텍스트를 Supabase에 저장 (AI 제안은 별도 필드로 저장)
     if (finalCleanText) {
-      const savedMsg = Messages.add(session_id, {
+      const savedMsg = await createMessage({
+        project_id: session_id,
         sender_type: 'ai',
         content: finalCleanText,
-        stage_context: activeProcedure,
+        procedure_context: activeProcedure,
         principles_used: principlesUsed,
-        // AI 제안은 메시지에 메타데이터로 첨부
         ai_suggestions: suggestions.length > 0 ? suggestions : undefined,
-        coherence_check: coherenceCheck || undefined,
       })
 
       // 저장된 메시지 ID를 클라이언트에 전송 (제안 수락/거부 시 참조)
@@ -481,7 +508,7 @@ chatRouter.post('/suggestion/:messageId/accept', async (req, res) => {
 
   try {
     // 메시지에서 제안 데이터 조회
-    const message = Messages.get ? Messages.get(messageId) : null
+    const message = await getMessage(messageId)
     const suggestions = message?.ai_suggestions || req.body.suggestions || []
     const suggestion = suggestions[suggestionIndex]
 
