@@ -188,7 +188,9 @@ export default function ProjectPage() {
         introRequestedRef.current = true
         const msgs = useChatStore.getState().messages
         const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
-        if (!hasContent && localStorage.getItem('cw_tour_done')) {
+        const proj = useProjectStore.getState().currentProject
+        const isReadOnly = proj?.status === 'simulation' || proj?.status === 'generating' || proj?.status === 'failed' || proj?.title?.startsWith('[시뮬레이션]')
+        if (!isReadOnly && !hasContent && localStorage.getItem('cw_tour_done')) {
           const proc = useProcedureStore.getState().currentProcedure
           if (proc) requestProcedureIntro(projectId, proc)
         }
@@ -266,7 +268,10 @@ export default function ProjectPage() {
     setProcedure(code)
     await updateProcedure(projectId, code)
     socket.emit('stage_changed', { sessionId: projectId, stage: code })
-    requestProcedureIntro(projectId, code)
+    // 시뮬레이션/generating/failed 프로젝트에서는 AI 인트로 요청하지 않음
+    if (!isSimulation && !isGenerating && !isFailed) {
+      requestProcedureIntro(projectId, code)
+    }
   }
 
   const handleCopyInvite = () => {
@@ -615,7 +620,9 @@ export default function ProjectPage() {
         // 투어 완료 후 AI 환영 메시지 요청
         const msgs = useChatStore.getState().messages
         const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
-        if (!hasContent) {
+        const proj = useProjectStore.getState().currentProject
+        const isReadOnly2 = proj?.status === 'simulation' || proj?.status === 'generating' || proj?.status === 'failed' || proj?.title?.startsWith('[시뮬레이션]')
+        if (!isReadOnly2 && !hasContent) {
           const proc = useProcedureStore.getState().currentProcedure
           requestProcedureIntro(projectId, proc)
         }
