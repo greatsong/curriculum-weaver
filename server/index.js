@@ -15,7 +15,7 @@ import { precomputeEmbeddings } from './services/embeddings.js'
 import { supabaseAdmin } from './lib/supabaseAdmin.js'
 
 // ── Rate Limiter 임포트 ──
-import { apiLimiter, aiChatLimiter, authLimiter } from './middleware/rateLimit.js'
+import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter } from './middleware/rateLimit.js'
 
 // ── 라우트 임포트 ──
 import authRouter from './routes/auth.js'
@@ -110,11 +110,26 @@ const projectMembers = new Map()
 io.on('connection', (socket) => {
   let currentProjectId = null
 
-  // 프로젝트 참여 공통 로직
-  function handleJoinProject(projectId, user) {
+  // 프로젝트 참여 공통 로직 (멤버십 검증 포함)
+  async function handleJoinProject(projectId, user) {
     if (!socket.user) {
       socket.emit('error', { message: '인증이 필요합니다.' })
       return
+    }
+
+    // 프로젝트 멤버십 검증
+    try {
+      const { getProject, getMemberRole } = await import('./lib/supabaseService.js')
+      const project = await getProject(projectId)
+      if (project?.workspace_id) {
+        const role = await getMemberRole(project.workspace_id, socket.user.id)
+        if (!role) {
+          socket.emit('error', { message: '이 프로젝트에 접근 권한이 없습니다.' })
+          return
+        }
+      }
+    } catch {
+      // Supabase 연결 실패 또는 레거시 세션 → 통과
     }
 
     currentProjectId = projectId
@@ -173,26 +188,31 @@ io.on('connection', (socket) => {
     currentProjectId = null
   })
 
+  // 참여 중인 방에서만 이벤트 중계 허용
+  function isInRoom(roomId) {
+    return roomId && socket.rooms.has(roomId)
+  }
+
   // 새 메시지 브로드캐스트
   socket.on('new_message', ({ projectId, sessionId, message }) => {
     const roomId = projectId || sessionId
-    if (roomId) socket.to(roomId).emit('message_added', message)
+    if (isInRoom(roomId)) socket.to(roomId).emit('message_added', message)
   })
 
   // AI 응답 완료 브로드캐스트
   socket.on('ai_response_done', ({ projectId, sessionId, message }) => {
     const roomId = projectId || sessionId
-    if (roomId) socket.to(roomId).emit('message_added', message)
+    if (isInRoom(roomId)) socket.to(roomId).emit('message_added', message)
   })
 
   // 설계 캔버스 업데이트 브로드캐스트 (절차 기반)
   socket.on('design_updated', ({ projectId, procedureCode, design }) => {
-    socket.to(projectId).emit('design_changed', { procedureCode, design })
+    if (isInRoom(projectId)) socket.to(projectId).emit('design_changed', { procedureCode, design })
   })
 
   // 절차 변경 브로드캐스트
   socket.on('procedure_changed', ({ projectId, procedureCode }) => {
-    socket.to(projectId).emit('procedure_updated', procedureCode)
+    if (isInRoom(projectId)) socket.to(projectId).emit('procedure_updated', procedureCode)
   })
 
   // 하위 호환성: 기존 stage 이벤트
@@ -267,6 +287,13 @@ app.use('/api/auth', authLimiter)     // 인증: 분당 5회 (IP당)
 app.use('/api/chat/message', aiChatLimiter)
 app.use('/api/chat/procedure-intro', aiChatLimiter)
 app.use('/api/chat/stage-intro', aiChatLimiter)
+
+// AI 비용 큰 공개 엔드포인트 보호
+app.use('/api/demo/generate', aiChatLimiter)
+app.use('/api/standards/graph/chat', aiChatLimiter)
+
+// 파일 업로드: 분당 5회 (사용자당)
+app.use('/api/materials/upload', uploadLimiter)
 
 // ── 헬스 체크 ──
 app.get('/api/health', (req, res) => {

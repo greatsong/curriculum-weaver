@@ -312,7 +312,12 @@ export const GeneralPrinciples = {
 export const Principles = {
   list: (stage) => {
     const all = [...principles.values()].filter((p) => p.is_active)
-    if (stage) return all.filter((p) => p.stage === parseInt(stage)).sort((a, b) => a.sort_order - b.sort_order)
+    if (stage) {
+      // procedure 코드(문자열)와 숫자 stage 모두 지원
+      const numStage = parseInt(stage)
+      return all.filter((p) => p.stage === stage || p.stage === numStage || p.procedure === stage)
+        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    }
     return all.sort((a, b) => a.stage - b.stage || a.sort_order - b.sort_order)
   },
 

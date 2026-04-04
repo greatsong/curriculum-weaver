@@ -56,25 +56,18 @@ router.get('/projects/:projectId/logs', async (req, res) => {
 
     // Supabase 직접 쿼리 (필터 지원)
     // getActivityLogs는 기본 조회만 지원하므로, 필터가 있으면 직접 쿼리
-    if (procedure || action_type) {
-      // supabaseAdmin이 사용 가능한지 확인 (폴백 모드일 수 있음)
-      const logs = await getFilteredLogs(projectId, { procedure, action_type, limit, offset })
-      res.json({
-        logs,
-        total: logs.length, // 인메모리 모드에서는 정확한 total을 알기 어려움
-        limit,
-        offset,
-      })
-    } else {
-      // 필터 없이 기본 조회 (offset도 지원)
-      const logs = await getFilteredLogs(projectId, { procedure: null, action_type: null, limit, offset })
-      res.json({
-        logs,
-        total: logs.length,
-        limit,
-        offset,
-      })
-    }
+    const result = await getFilteredLogs(projectId, {
+      procedure: procedure || null,
+      action_type: action_type || null,
+      limit,
+      offset,
+    })
+    res.json({
+      logs: result.logs,
+      total: result.total,
+      limit,
+      offset,
+    })
   } catch (err) {
     console.error('[activityLogs] 조회 오류:', err.message)
     res.status(500).json({ error: '활동 로그 조회에 실패했습니다.' })
@@ -92,7 +85,16 @@ router.get('/projects/:projectId/logs', async (req, res) => {
  */
 async function getFilteredLogs(projectId, { procedure, action_type, limit, offset }) {
   try {
-    // Supabase 직접 쿼리 시도
+    // 1) 전체 건수 조회
+    let countQuery = supabaseAdmin
+      .from('activity_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', projectId)
+    if (procedure) countQuery = countQuery.eq('procedure_code', procedure)
+    if (action_type) countQuery = countQuery.eq('action_type', action_type)
+    const { count: totalCount } = await countQuery
+
+    // 2) 페이지 데이터 조회
     let query = supabaseAdmin
       .from('activity_logs')
       .select('*, users:user_id(display_name)')
@@ -110,7 +112,7 @@ async function getFilteredLogs(projectId, { procedure, action_type, limit, offse
 
     const { data, error } = await query
     if (error) throw error
-    return data || []
+    return { logs: data || [], total: totalCount ?? (data?.length || 0) }
   } catch {
     // Supabase 사용 불가 시 인메모리 폴백
     const allLogs = await getActivityLogs(projectId, 1000)
@@ -123,7 +125,7 @@ async function getFilteredLogs(projectId, { procedure, action_type, limit, offse
       filtered = filtered.filter(l => l.action_type === action_type)
     }
 
-    return filtered.slice(offset, offset + limit)
+    return { logs: filtered.slice(offset, offset + limit), total: filtered.length }
   }
 }
 
