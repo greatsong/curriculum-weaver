@@ -63,6 +63,7 @@ export default function DemoMode() {
   const [generating, setGenerating] = useState(false)
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState('')
+  const [partialProject, setPartialProject] = useState(null) // { projectId, workspaceId, savedBoards }
 
   // SSE 진행률
   const [progressList, setProgressList] = useState([])
@@ -170,18 +171,25 @@ export default function DemoMode() {
           try {
             const parsed = JSON.parse(line.slice(6))
 
-            if (parsed.type === 'progress') {
+            if (parsed.type === 'started') {
+              setPartialProject({ projectId: parsed.projectId, workspaceId: parsed.workspaceId, savedBoards: 0 })
+            } else if (parsed.type === 'progress') {
               setProgressList((prev) => [...prev, parsed])
               setProgressTotal(parsed.total)
             } else if (parsed.type === 'heartbeat') {
               setTokenCount(parsed.tokens)
               if (parsed.phase) setCurrentPhase(parsed.phase)
             } else if (parsed.type === 'phase_complete') {
-              // 1차/2차 완료 알림
+              setPartialProject((prev) => prev ? { ...prev, savedBoards: (prev.savedBoards || 0) + parsed.saved } : prev)
             } else if (parsed.type === 'complete') {
               setTimeout(() => {
                 navigate(`/workspaces/${parsed.workspaceId}/projects/${parsed.projectId}`)
               }, 800)
+              return
+            } else if (parsed.type === 'partial_failure') {
+              setPartialProject({ projectId: parsed.projectId, workspaceId: parsed.workspaceId, savedBoards: parsed.savedBoards })
+              setError(parsed.message || `${parsed.savedBoards}개만 저장되어 생성에 실패했습니다.`)
+              setGenerating(false)
               return
             } else if (parsed.type === 'error') {
               throw new Error(parsed.message)
@@ -295,7 +303,7 @@ export default function DemoMode() {
             </div>
 
             <div style={{ padding: '28px 32px' }}>
-              {/* 에러 */}
+              {/* 에러 + 부분 생성 복구 */}
               {error && (
                 <div style={{
                   padding: '10px 14px', marginBottom: 16,
@@ -303,6 +311,19 @@ export default function DemoMode() {
                   borderRadius: 10, fontSize: 13, color: '#DC2626',
                 }}>
                   {error}
+                  {partialProject?.savedBoards > 0 && (
+                    <button
+                      onClick={() => navigate(`/workspaces/${partialProject.workspaceId}/projects/${partialProject.projectId}`)}
+                      style={{
+                        display: 'block', marginTop: 8, padding: '6px 14px',
+                        background: '#fff', border: '1px solid #FECACA', borderRadius: 6,
+                        fontSize: 12, color: '#DC2626', cursor: 'pointer',
+                        fontFamily: 'var(--font-sans, inherit)',
+                      }}
+                    >
+                      부분 생성된 프로젝트 보기 ({partialProject.savedBoards}개 절차)
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -449,8 +470,9 @@ export default function DemoMode() {
                 <label style={labelStyle}>주제 키워드 *</label>
                 <input
                   value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
+                  onChange={(e) => setTopic(e.target.value.slice(0, 100))}
                   placeholder="예: 기후변화, AI 윤리, 지역사회 문제..."
+                  maxLength={100}
                   style={inputStyle}
                 />
               </div>
@@ -460,9 +482,10 @@ export default function DemoMode() {
                 <label style={labelStyle}>간략한 설명 (선택)</label>
                 <textarea
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => setDescription(e.target.value.slice(0, 500))}
                   placeholder="수업의 목표나 특별히 고려할 사항이 있다면 입력하세요"
                   rows={2}
+                  maxLength={500}
                   style={{ ...inputStyle, resize: 'none' }}
                 />
               </div>
@@ -592,13 +615,26 @@ export default function DemoMode() {
               )}
             </div>
 
-            <div style={{ textAlign: 'center' }}>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
               <span style={{
                 fontSize: 14, color: '#9CA3AF',
                 fontVariantNumeric: 'tabular-nums',
               }}>
                 {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')} 경과
               </span>
+              <button
+                onClick={() => abortRef.current?.abort()}
+                style={{
+                  padding: '8px 20px', background: 'transparent', color: '#9CA3AF',
+                  border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 13,
+                  cursor: 'pointer', fontFamily: 'var(--font-sans, inherit)',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.borderColor = '#FCA5A5' }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = '#9CA3AF'; e.currentTarget.style.borderColor = '#E5E7EB' }}
+              >
+                생성 취소
+              </button>
             </div>
           </div>
         )}

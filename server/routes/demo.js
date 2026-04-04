@@ -12,7 +12,7 @@
 import { Router } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireAuth } from '../middleware/auth.js'
-import { createProject, upsertDesign, createMessage } from '../lib/supabaseService.js'
+import { createProject, updateProject, upsertDesign, createMessage, getMemberRole } from '../lib/supabaseService.js'
 import { PROCEDURES, BOARD_TYPES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
 import { getBoardSchemaForPrompt } from 'curriculum-weaver-shared/boardSchemas.js'
 
@@ -224,6 +224,20 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
     })
   }
 
+  // P0 #1: 워크스페이스 멤버십 검증
+  const memberRole = await getMemberRole(workspaceId, userId)
+  if (!memberRole) {
+    return res.status(403).json({ error: '해당 워크스페이스의 멤버가 아닙니다.' })
+  }
+
+  // P2 #10: 입력 길이 제한
+  if (topic.length > 100) {
+    return res.status(400).json({ error: '주제 키워드는 100자 이내로 입력하세요.' })
+  }
+  if (description && description.length > 500) {
+    return res.status(400).json({ error: '설명은 500자 이내로 입력하세요.' })
+  }
+
   // SSE 헤더
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
@@ -232,21 +246,32 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
   res.flushHeaders()
 
   const sendEvent = (data) => {
-    res.write(`data: ${JSON.stringify(data)}\n\n`)
+    if (!aborted) {
+      try { res.write(`data: ${JSON.stringify(data)}\n\n`) } catch {}
+    }
   }
 
+  let projectId = null
+  let aborted = false
+
+  res.on('close', () => {
+    aborted = true
+    console.log('[demo] 클라이언트 연결 끊김 (disconnect/취소)')
+  })
+
   try {
-    // ── 1. 프로젝트 생성 (simulation 상태) ──
+    // ── 1. 프로젝트 생성 (generating 상태) ──
     const projectTitle = `[시뮬레이션] ${topic}`
     console.log(`[demo] 프로젝트 생성 — workspace: ${workspaceId}, 주제: ${topic}`)
 
+    // P0 #2: generating 상태로 생성 → 성공 시 simulation, 실패 시 failed
     const project = await createProject(workspaceId, {
       title: projectTitle,
       description: description || `AI 시뮬레이션으로 자동 생성된 ${grade} ${subjects.join('+')} 융합수업 설계`,
       current_procedure: 'prep',
-      status: 'simulation',
+      status: 'generating',
     })
-    const projectId = project.id
+    projectId = project.id
     console.log(`[demo] 프로젝트 생성 완료 — id: ${projectId}`)
 
     sendEvent({ type: 'started', projectId, workspaceId })
@@ -385,6 +410,11 @@ JSON 형식:
     sendEvent({ type: 'phase_complete', phase: 1, saved: phase1Saved, total: PHASE1_CODES.length })
 
     // ── 5. 2차 호출: Ds-1-1 ~ E-2-1 ──
+    if (aborted) {
+      console.log('[demo] 클라이언트 disconnect — 2차 호출 스킵, 부분 저장 유지')
+      await updateProject(projectId, { status: phase1Saved >= 5 ? 'simulation' : 'failed' })
+      return res.end()
+    }
     console.log('[demo] === 2차 호출 시작 (Ds-1-1 ~ E-2-1) ===')
     const phase1Summary = buildPhase1Summary(phase1Data)
     const phase2Schema = buildSchemaText(PHASE2_CODES)
@@ -465,17 +495,37 @@ JSON 형식:
     const totalSaved = phase1Saved + phase2Saved
     console.log(`[demo] === 전체 완료: ${totalSaved}/${ALL_CODES.length}개 보드 저장 ===`)
 
-    sendEvent({
-      type: 'complete',
-      projectId,
-      workspaceId,
-      savedBoards: totalSaved,
-      totalProcedures: ALL_CODES.length,
-    })
+    // P0 #3: 최소 저장 검증 — 5개 미만이면 부분 실패 처리
+    const MIN_BOARDS = 5
+    if (totalSaved < MIN_BOARDS) {
+      await updateProject(projectId, { status: 'failed' })
+      sendEvent({
+        type: 'partial_failure',
+        projectId,
+        workspaceId,
+        savedBoards: totalSaved,
+        totalProcedures: ALL_CODES.length,
+        message: `${totalSaved}개만 저장되어 생성에 실패했습니다. 다시 시도해 주세요.`,
+      })
+    } else {
+      // P0 #2: generating → simulation 전환
+      await updateProject(projectId, { status: 'simulation' })
+      sendEvent({
+        type: 'complete',
+        projectId,
+        workspaceId,
+        savedBoards: totalSaved,
+        totalProcedures: ALL_CODES.length,
+      })
+    }
     res.end()
   } catch (error) {
     console.error('[demo] 생성 오류:', error)
-    sendEvent({ type: 'error', message: '데모 생성 중 오류가 발생했습니다.' })
+    // P0 #2: 실패 시 failed 상태로 전환
+    if (projectId) {
+      await updateProject(projectId, { status: 'failed' }).catch(() => {})
+    }
+    sendEvent({ type: 'error', message: '데모 생성 중 오류가 발생했습니다.', projectId })
     res.end()
   }
 })

@@ -277,6 +277,8 @@ export default function ProjectPage() {
   }
 
   const isSimulation = currentProject?.status === 'simulation' || currentProject?.title?.startsWith('[시뮬레이션]')
+  const isGenerating = currentProject?.status === 'generating'
+  const isFailed = currentProject?.status === 'failed'
 
   if (!currentProject) {
     return (
@@ -415,8 +417,44 @@ export default function ProjectPage() {
         </div>
       </header>
 
-      {/* 시뮬레이션 프로젝트 배너 */}
-      {isSimulation && (
+      {/* 프로젝트 상태 배너 */}
+      {isGenerating && (
+        <div style={{
+          background: 'linear-gradient(90deg, #F59E0B, #EF4444)',
+          color: '#fff',
+          padding: '8px 16px',
+          fontSize: 13,
+          fontWeight: 500,
+          textAlign: 'center',
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+        }}>
+          <div style={{ width: 14, height: 14, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          AI가 수업을 생성하고 있습니다. 잠시 후 새로고침 해주세요.
+        </div>
+      )}
+      {isFailed && (
+        <div style={{
+          background: '#DC2626',
+          color: '#fff',
+          padding: '8px 16px',
+          fontSize: 13,
+          fontWeight: 500,
+          textAlign: 'center',
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          AI 생성에 실패한 프로젝트입니다. 부분 생성된 내용만 확인할 수 있습니다.
+        </div>
+      )}
+      {isSimulation && !isGenerating && !isFailed && (
         <div style={{
           background: 'linear-gradient(90deg, #8B5CF6, #3B82F6)',
           color: '#fff',
@@ -466,7 +504,7 @@ export default function ProjectPage() {
               sessionId={projectId}
               stage={currentProcedure}
               onStageChange={handleProcedureChange}
-              readOnly={isSimulation}
+              readOnly={isSimulation || isGenerating || isFailed}
             />
           </ErrorBoundary>
         </div>
@@ -483,7 +521,7 @@ export default function ProjectPage() {
           }}
         >
           <ErrorBoundary>
-            <ProcedureCanvas projectId={projectId} procedureCode={currentProcedure} readOnly={isSimulation} />
+            <ProcedureCanvas projectId={projectId} procedureCode={currentProcedure} readOnly={isSimulation || isGenerating || isFailed} />
           </ErrorBoundary>
         </div>
 
