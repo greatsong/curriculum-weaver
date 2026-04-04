@@ -7,7 +7,7 @@
 
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PROCEDURES, PHASES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, PHASES, PROCEDURE_LIST, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculum-weaver-shared/constants.js'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useProjectStore } from '../stores/projectStore'
 
@@ -64,7 +64,20 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
 
   // Step 2: AI 설정
   const [aiModel, setAiModel] = useState('claude-sonnet-4-6')
-  const [enabledAI, setEnabledAI] = useState({ guide: true, generate: true, check: true, record: true })
+  const [aiRole, setAiRole] = useState(DEFAULT_AI_ROLE)
+  const [enabledAI, setEnabledAI] = useState({ ...AI_ROLE_PRESETS[DEFAULT_AI_ROLE].enabledActions })
+
+  const handleAiRoleChange = (roleId) => {
+    if (roleId === 'custom') {
+      setAiRole('custom')
+      return
+    }
+    const preset = AI_ROLE_PRESETS[roleId]
+    if (preset) {
+      setAiRole(roleId)
+      setEnabledAI({ ...preset.enabledActions })
+    }
+  }
 
   // Step 3: 워크플로우
   const [selectedPreset, setSelectedPreset] = useState('secondary')
@@ -110,9 +123,10 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
       aiConfig: { model: aiModel },
       hiddenProcedures,
       enabledAI,
+      aiRole,
       targetGrade,
     })
-  }, [aiModel, hiddenProcedures, enabledAI, targetGrade, onComplete])
+  }, [aiModel, hiddenProcedures, enabledAI, aiRole, targetGrade, onComplete])
 
   const handleCreateProjectAndFinish = async () => {
     try {
@@ -309,41 +323,97 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
                 </div>
 
                 <div>
-                  <label style={labelStyle}>AI 역할</label>
+                  <label style={labelStyle}>AI 역할 프리셋</label>
+                  <p style={{ fontSize: 12, color: '#9CA3AF', margin: '0 0 10px' }}>AI의 개입 수준을 선택하세요. 팀 성격에 맞게 조절할 수 있습니다.</p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    {[
-                      { key: 'guide', label: '안내', desc: '단계 설명', color: '#3B82F6' },
-                      { key: 'generate', label: '생성', desc: '초안/예시', color: '#F59E0B' },
-                      { key: 'check', label: '점검', desc: '정합성 검토', color: '#22C55E' },
-                      { key: 'record', label: '기록', desc: '자동 저장', color: '#6B7280' },
-                    ].map(({ key, label, desc, color }) => (
-                      <label
-                        key={key}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 10,
-                          padding: '10px 14px',
-                          borderRadius: 10,
-                          border: `1px solid ${enabledAI[key] ? color + '40' : '#E5E7EB'}`,
-                          background: enabledAI[key] ? color + '08' : '#fff',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={enabledAI[key]}
-                          onChange={() => setEnabledAI((prev) => ({ ...prev, [key]: !prev[key] }))}
-                          style={{ accentColor: color, width: 16, height: 16 }}
-                        />
-                        <div>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{label}</span>
-                          <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 4 }}>({desc})</span>
-                        </div>
-                      </label>
-                    ))}
+                    {AI_ROLE_PRESET_LIST.map((preset) => {
+                      const isSelected = aiRole === preset.id
+                      const isDefault = preset.id === DEFAULT_AI_ROLE
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleAiRoleChange(preset.id)}
+                          style={{
+                            padding: '12px 14px',
+                            border: `2px solid ${isSelected ? '#3B82F6' : '#E5E7EB'}`,
+                            borderRadius: 12,
+                            background: isSelected ? '#EFF6FF' : '#fff',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            textAlign: 'left',
+                            fontFamily: 'var(--font-sans, inherit)',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            <span style={{ fontSize: 18 }}>{preset.icon}</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#2563EB' : '#111827' }}>{preset.name}</span>
+                            {isDefault && (
+                              <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 9999, background: '#DBEAFE', color: '#2563EB', fontWeight: 600 }}>기본</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#6B7280', lineHeight: 1.4 }}>{preset.description}</div>
+                          <div style={{ fontSize: 10, color: '#9CA3AF', marginTop: 4, lineHeight: 1.3 }}>{preset.detail}</div>
+                        </button>
+                      )
+                    })}
                   </div>
+                </div>
+
+                {/* 커스텀 토글 */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => handleAiRoleChange(aiRole === 'custom' ? DEFAULT_AI_ROLE : 'custom')}
+                    style={{
+                      fontSize: 12,
+                      color: aiRole === 'custom' ? '#2563EB' : '#9CA3AF',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '4px 0',
+                      fontFamily: 'var(--font-sans, inherit)',
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    {aiRole === 'custom' ? '프리셋으로 돌아가기' : '직접 설정 (커스텀)'}
+                  </button>
+                  {aiRole === 'custom' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                      {[
+                        { key: 'guide', label: '안내', desc: '단계 설명', color: '#3B82F6' },
+                        { key: 'generate', label: '생성', desc: '초안/예시', color: '#F59E0B' },
+                        { key: 'check', label: '점검', desc: '정합성 검토', color: '#22C55E' },
+                        { key: 'record', label: '기록', desc: '자동 저장', color: '#6B7280' },
+                      ].map(({ key, label, desc, color }) => (
+                        <label
+                          key={key}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            padding: '10px 14px',
+                            borderRadius: 10,
+                            border: `1px solid ${enabledAI[key] ? color + '40' : '#E5E7EB'}`,
+                            background: enabledAI[key] ? color + '08' : '#fff',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={enabledAI[key]}
+                            onChange={() => setEnabledAI((prev) => ({ ...prev, [key]: !prev[key] }))}
+                            style={{ accentColor: color, width: 16, height: 16 }}
+                          />
+                          <div>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{label}</span>
+                            <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 4 }}>({desc})</span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -189,10 +189,9 @@ export default function ChatPanel({ sessionId, stage, onStageChange }) {
                     textAlign: msg.sender_type === 'teacher' ? 'right' : 'left',
                   }}>
                     {msg.sender_type === 'ai' ? 'AI 공동설계자' : (
-                      <>
-                        {msg.sender_name}
-                        {msg.sender_subject ? ` -- ${msg.sender_subject}` : ''}
-                      </>
+                      msg.sender_subject
+                        ? `${msg.sender_name} · ${msg.sender_subject}`
+                        : msg.sender_name || '교사'
                     )}
                   </p>
                   {/* 메시지 버블 */}

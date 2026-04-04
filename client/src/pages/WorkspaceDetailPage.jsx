@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
-import { PROCEDURES, PHASES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, PHASES, PROCEDURE_LIST, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculum-weaver-shared/constants.js'
 import Logo from '../components/Logo'
 import HostSetupWizard from '../components/HostSetupWizard'
 
@@ -28,6 +28,7 @@ export default function WorkspaceDetailPage() {
   const [aiConfig, setAiConfig] = useState({ model: 'claude-sonnet-4-6' })
   const [hiddenProcedures, setHiddenProcedures] = useState([])
   const [enabledAI, setEnabledAI] = useState({ guide: true, generate: true, check: true, record: true })
+  const [aiRole, setAiRole] = useState(DEFAULT_AI_ROLE)
   const [settingsSaving, setSettingsSaving] = useState(false)
 
   // Feature 3: 셋업 위자드
@@ -53,6 +54,7 @@ export default function WorkspaceDetailPage() {
         check: wc.enabledAI?.check !== false,
         record: wc.enabledAI?.record !== false,
       })
+      setAiRole(wc.aiRole || DEFAULT_AI_ROLE)
     }
   }, [currentWorkspace])
 
@@ -79,6 +81,7 @@ export default function WorkspaceDetailPage() {
         workflow_config: {
           hiddenProcedures,
           enabledAI,
+          aiRole,
         },
       })
     } catch (err) {
@@ -86,7 +89,7 @@ export default function WorkspaceDetailPage() {
     } finally {
       setSettingsSaving(false)
     }
-  }, [workspaceId, aiConfig, hiddenProcedures, enabledAI, updateWorkspace])
+  }, [workspaceId, aiConfig, hiddenProcedures, enabledAI, aiRole, updateWorkspace])
 
   const toggleProcedure = (code) => {
     setHiddenProcedures((prev) =>
@@ -506,43 +509,119 @@ export default function WorkspaceDetailPage() {
               </div>
             </SettingsSection>
 
-            {/* 1-C: AI 역할 설정 */}
-            <SettingsSection title="AI 역할 설정" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>}>
-              <p style={{ ...hintStyle, marginBottom: 12, marginTop: 0 }}>AI의 역할을 절차별로 조절합니다</p>
+            {/* 1-C: AI 역할 프리셋 설정 */}
+            <SettingsSection title="AI 역할 프리셋" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>}>
+              <p style={{ ...hintStyle, marginBottom: 12, marginTop: 0 }}>AI의 개입 수준을 선택하세요</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {[
-                  { key: 'guide', label: '안내', desc: '단계 설명', color: '#3B82F6' },
-                  { key: 'generate', label: '생성', desc: '초안/예시', color: '#F59E0B' },
-                  { key: 'check', label: '점검', desc: '정합성 검토', color: '#22C55E' },
-                  { key: 'record', label: '기록', desc: '자동 저장', color: '#6B7280' },
-                ].map(({ key, label, desc, color }) => (
-                  <label
-                    key={key}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                      padding: '10px 14px',
-                      borderRadius: 'var(--radius-md)',
-                      border: `1px solid ${enabledAI[key] ? color + '40' : 'var(--color-border)'}`,
-                      background: enabledAI[key] ? color + '08' : 'transparent',
-                      cursor: 'pointer',
-                      transition: 'all var(--transition-fast)',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={enabledAI[key]}
-                      onChange={() => toggleAIRole(key)}
-                      style={{ accentColor: color, width: 16, height: 16 }}
-                    />
-                    <div>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{label}</span>
-                      <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginLeft: 6 }}>({desc})</span>
-                    </div>
-                  </label>
-                ))}
+                {AI_ROLE_PRESET_LIST.map((preset) => {
+                  const isSelected = aiRole === preset.id
+                  const isDefault = preset.id === DEFAULT_AI_ROLE
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setAiRole(preset.id)
+                        setEnabledAI({ ...preset.enabledActions })
+                      }}
+                      style={{
+                        padding: '12px 14px',
+                        border: `2px solid ${isSelected ? '#3B82F6' : 'var(--color-border)'}`,
+                        borderRadius: 'var(--radius-lg)',
+                        background: isSelected ? '#EFF6FF' : 'var(--color-bg-secondary)',
+                        cursor: 'pointer',
+                        transition: 'all var(--transition-fast)',
+                        textAlign: 'left',
+                        fontFamily: 'var(--font-sans)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                        <span style={{ fontSize: 18 }}>{preset.icon}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#2563EB' : 'var(--color-text-primary)' }}>{preset.name}</span>
+                        {isDefault && (
+                          <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 9999, background: '#DBEAFE', color: '#2563EB', fontWeight: 600 }}>기본</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--color-text-secondary)', lineHeight: 1.4 }}>{preset.description}</div>
+                      <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 4, lineHeight: 1.3 }}>{preset.detail}</div>
+                    </button>
+                  )
+                })}
               </div>
+
+              {/* 현재 선택된 역할의 활성화 상태 표시 */}
+              {aiRole && aiRole !== 'custom' && (
+                <div style={{ marginTop: 10, padding: '10px 14px', background: 'var(--color-bg-tertiary)', borderRadius: 'var(--radius-md)', fontSize: 12, color: 'var(--color-text-secondary)' }}>
+                  <span style={{ fontWeight: 600 }}>활성화된 기능: </span>
+                  {Object.entries(enabledAI).map(([key, val]) => (
+                    <span key={key} style={{ marginLeft: 6, color: val ? '#16A34A' : '#D1D5DB', fontWeight: val ? 600 : 400 }}>
+                      {{ guide: '안내', generate: '생성', check: '점검', record: '기록' }[key]}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* 커스텀 세부 조절 */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (aiRole === 'custom') {
+                    setAiRole(DEFAULT_AI_ROLE)
+                    setEnabledAI({ ...AI_ROLE_PRESETS[DEFAULT_AI_ROLE].enabledActions })
+                  } else {
+                    setAiRole('custom')
+                  }
+                }}
+                style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  color: aiRole === 'custom' ? '#2563EB' : 'var(--color-text-tertiary)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px 0',
+                  fontFamily: 'var(--font-sans)',
+                  textDecoration: 'underline',
+                }}
+              >
+                {aiRole === 'custom' ? '프리셋으로 돌아가기' : '직접 설정 (커스텀)'}
+              </button>
+              {aiRole === 'custom' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+                  {[
+                    { key: 'guide', label: '안내', desc: '단계 설명', color: '#3B82F6' },
+                    { key: 'generate', label: '생성', desc: '초안/예시', color: '#F59E0B' },
+                    { key: 'check', label: '점검', desc: '정합성 검토', color: '#22C55E' },
+                    { key: 'record', label: '기록', desc: '자동 저장', color: '#6B7280' },
+                  ].map(({ key, label, desc, color }) => (
+                    <label
+                      key={key}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        padding: '10px 14px',
+                        borderRadius: 'var(--radius-md)',
+                        border: `1px solid ${enabledAI[key] ? color + '40' : 'var(--color-border)'}`,
+                        background: enabledAI[key] ? color + '08' : 'transparent',
+                        cursor: 'pointer',
+                        transition: 'all var(--transition-fast)',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={enabledAI[key]}
+                        onChange={() => toggleAIRole(key)}
+                        style={{ accentColor: color, width: 16, height: 16 }}
+                      />
+                      <div>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{label}</span>
+                        <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginLeft: 6 }}>({desc})</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
             </SettingsSection>
 
             {/* 1-B: 워크플로우 커스터마이징 */}

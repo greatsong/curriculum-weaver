@@ -42,13 +42,14 @@ const SUBJECT_OPTIONS = [
   '정보', '음악', '미술', '체육', '기술가정', '한문',
 ]
 
-const PROGRESS_MESSAGES = [
-  '교육과정을 분석하고 있습니다...',
-  '융합 주제를 탐색하고 있습니다...',
-  '학습 목표를 설계하고 있습니다...',
-  '활동 구조를 구성하고 있습니다...',
-  '평가 계획을 수립하고 있습니다...',
-  '최종 점검 중입니다...',
+// 정직한 상태 메시지 (경과 시간에 따라 변경)
+const STATUS_BY_ELAPSED = [
+  { at: 0,   msg: 'AI에게 19개 절차의 수업 설계를 요청했습니다...' },
+  { at: 15,  msg: 'AI가 응답을 생성하고 있습니다. 보통 2~4분 정도 걸려요.' },
+  { at: 45,  msg: '아직 생성 중입니다. 복잡한 설계일수록 시간이 더 걸립니다.' },
+  { at: 90,  msg: '거의 다 됐습니다. 잠시만 기다려주세요...' },
+  { at: 150, msg: '평소보다 오래 걸리고 있습니다. 조금만 더 기다려주세요.' },
+  { at: 240, msg: '응답 대기 중입니다. 최대 5분까지 소요될 수 있습니다.' },
 ]
 
 export default function DemoMode() {
@@ -64,8 +65,8 @@ export default function DemoMode() {
 
   // 생성 상태
   const [generating, setGenerating] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [progressMessage, setProgressMessage] = useState('')
+  const [elapsed, setElapsed] = useState(0)
+  const [statusMessage, setStatusMessage] = useState('')
   const [error, setError] = useState('')
 
   const toggleGrade = (val) => {
@@ -90,22 +91,26 @@ export default function DemoMode() {
 
   const canSubmit = selectedGrades.length > 0 && selectedSubjects.length >= 2 && topic.trim()
 
-  // 프로그레스 애니메이션
+  // 경과 시간 카운터 + 상태 메시지
   useEffect(() => {
     if (!generating) return
-    let idx = 0
+    setElapsed(0)
     const interval = setInterval(() => {
-      idx = (idx + 1) % PROGRESS_MESSAGES.length
-      setProgressMessage(PROGRESS_MESSAGES[idx])
-      setProgress((p) => Math.min(p + Math.random() * 4 + 1, 95))
-    }, 5000)
+      setElapsed((e) => {
+        const next = e + 1
+        // 경과 시간에 맞는 메시지 선택
+        const status = [...STATUS_BY_ELAPSED].reverse().find((s) => next >= s.at)
+        if (status) setStatusMessage(status.msg)
+        return next
+      })
+    }, 1000)
     return () => clearInterval(interval)
   }, [generating])
 
   const handleGenerate = async () => {
     setGenerating(true)
-    setProgress(5)
-    setProgressMessage(PROGRESS_MESSAGES[0])
+    setElapsed(0)
+    setStatusMessage(STATUS_BY_ELAPSED[0].msg)
     setError('')
 
     try {
@@ -130,8 +135,6 @@ export default function DemoMode() {
       }
 
       const data = await res.json()
-      setProgress(100)
-
       // 데모 결과 프로젝트로 이동 (워크스페이스 경유 없이)
       setTimeout(() => {
         navigate(`/demo/result/${data.projectId}`)
@@ -432,26 +435,18 @@ export default function DemoMode() {
             }} />
 
             <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: '0 0 8px' }}>
-              AI가 수업 설계를 시뮬레이션 중입니다
+              AI가 수업 설계를 생성하고 있습니다
             </h2>
-            <p style={{ fontSize: 14, color: '#6B7280', margin: '0 0 24px' }}>
-              {progressMessage}
+            <p style={{ fontSize: 14, color: '#6B7280', margin: '0 0 20px' }}>
+              {statusMessage}
             </p>
 
-            {/* 프로그레스 바 */}
-            <div style={{
-              height: 6, background: '#F3F4F6', borderRadius: 9999,
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                height: '100%', background: 'linear-gradient(90deg, #3B82F6, #8B5CF6)',
-                borderRadius: 9999,
-                width: `${progress}%`,
-                transition: 'width 0.5s ease',
-              }} />
-            </div>
-            <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 8 }}>
-              {Math.round(progress)}% 완료
+            {/* 경과 시간 */}
+            <p style={{ fontSize: 24, fontWeight: 700, color: '#111827', margin: '0 0 4px', fontVariantNumeric: 'tabular-nums' }}>
+              {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+            </p>
+            <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>
+              경과 시간
             </p>
           </div>
         )}

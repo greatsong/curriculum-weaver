@@ -110,8 +110,8 @@ const projectMembers = new Map()
 io.on('connection', (socket) => {
   let currentProjectId = null
 
-  // 프로젝트 참여 (기존 join_session 대체) — 인증된 사용자만 접근 가능
-  socket.on('join_project', ({ projectId, user }) => {
+  // 프로젝트 참여 공통 로직
+  function handleJoinProject(projectId, user) {
     if (!socket.user) {
       socket.emit('error', { message: '인증이 필요합니다.' })
       return
@@ -131,6 +131,10 @@ io.on('connection', (socket) => {
     const members = [...projectMembers.get(projectId).values()]
     io.to(projectId).emit('members_updated', members)
     socket.to(projectId).emit('member_joined', userInfo)
+  }
+
+  socket.on('join_project', ({ projectId, user }) => {
+    handleJoinProject(projectId, user)
   })
 
   // 프로젝트 퇴장
@@ -151,12 +155,22 @@ io.on('connection', (socket) => {
 
   // 하위 호환성: 기존 session 기반 이벤트도 지원
   socket.on('join_session', ({ sessionId, user }) => {
-    socket.emit('join_project', { projectId: sessionId, user })
-    socket.join(sessionId)
+    handleJoinProject(sessionId, user)
   })
 
   socket.on('leave_session', ({ sessionId }) => {
     socket.leave(sessionId)
+    if (projectMembers.has(sessionId)) {
+      const user = projectMembers.get(sessionId).get(socket.id)
+      projectMembers.get(sessionId).delete(socket.id)
+      const members = [...projectMembers.get(sessionId).values()]
+      io.to(sessionId).emit('members_updated', members)
+      if (user) socket.to(sessionId).emit('member_left', user)
+      if (projectMembers.get(sessionId).size === 0) {
+        projectMembers.delete(sessionId)
+      }
+    }
+    currentProjectId = null
   })
 
   // 새 메시지 브로드캐스트

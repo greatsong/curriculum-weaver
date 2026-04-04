@@ -656,6 +656,46 @@ export default function GuidePage() {
           </div>
           <MockChatPanel />
         </div>
+
+        {/* AI 역할 프리셋 카드 */}
+        <div className="mt-16">
+          <h3 className="text-lg font-bold text-slate-900 mb-2 text-center">팀에 맞는 AI 역할을 선택하세요</h3>
+          <p className="text-sm text-slate-500 mb-8 text-center">교사 팀의 경험과 선호에 따라 AI의 개입 수준을 조절할 수 있습니다.</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { icon: '\uD83D\uDCDD', name: '기록자', desc: '대화에 개입하지 않고 안내와 정리만 합니다', detail: '경험 많은 교사팀', actions: ['안내', '기록'], color: 'slate' },
+              { icon: '\uD83D\uDD0D', name: '조언자', desc: '꼭 필요할 때만 개입하여 조언합니다', detail: '어느 정도 경험 있는 팀', actions: ['안내', '점검', '기록'], color: 'blue' },
+              { icon: '\uD83C\uDFAF', name: '사회자', desc: '논의를 촉진하고 균형 잡힌 의견을 제시합니다', detail: '대부분의 팀 (기본)', actions: ['안내', '생성', '점검', '기록'], color: 'violet', isDefault: true },
+              { icon: '\uD83D\uDCA1', name: '공동설계자', desc: '팀원처럼 적극적으로 의견을 내고 제안합니다', detail: 'AI 협력에 익숙한 팀', actions: ['안내', '생성', '점검', '기록'], color: 'amber' },
+            ].map((preset, i) => (
+              <div
+                key={i}
+                className={`relative rounded-xl p-5 border transition-all ${
+                  preset.isDefault
+                    ? 'border-violet-200 bg-violet-50/50 shadow-sm'
+                    : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm'
+                }`}
+              >
+                {preset.isDefault && (
+                  <span className="absolute -top-2.5 right-3 px-2 py-0.5 bg-violet-100 text-violet-700 text-[10px] font-bold rounded-full">
+                    기본
+                  </span>
+                )}
+                <span className="text-2xl block mb-2">{preset.icon}</span>
+                <div className="text-sm font-bold text-slate-900 mb-1">{preset.name}</div>
+                <div className="text-[11px] text-slate-500 leading-relaxed mb-3">{preset.desc}</div>
+                <div className="text-[10px] text-slate-400 mb-2">{preset.detail}</div>
+                <div className="flex flex-wrap gap-1">
+                  {preset.actions.map((action) => (
+                    <span key={action} className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] rounded font-medium">
+                      {action}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </Section>
 
       {/* S4-2: 설계 보드 */}

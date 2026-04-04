@@ -311,7 +311,7 @@ chatRouter.post('/stage-intro', async (req, res) => {
 
 // ─── AI 채팅 메시지 전송 (SSE 스트리밍) ───
 chatRouter.post('/message', async (req, res) => {
-  const { session_id, content, procedure, currentStep } = req.body
+  const { session_id, content, procedure, currentStep, aiRole } = req.body
   // 하위 호환: stage → procedure
   const activeProcedure = procedure || req.body.stage
 
@@ -350,6 +350,7 @@ chatRouter.post('/message', async (req, res) => {
       userMessage: content,
       procedure: activeProcedure,
       currentStep: currentStep ? Number(currentStep) : null,
+      aiRole: aiRole || undefined,
     }
 
     // 사용된 원칙 ID 추적

@@ -345,6 +345,107 @@ export const PROCEDURE_ACTIVITIES = {
 }
 
 // ──────────────────────────────────────────
+// AI 역할 프리셋 (4종)
+// ──────────────────────────────────────────
+
+/**
+ * AI 역할 프리셋 정의
+ *
+ * 각 프리셋은 AI의 개입 수준과 대화 톤을 결정합니다.
+ * enabledActions: guide/generate/check/record 각각의 활성화 여부
+ * promptTone: 시스템 프롬프트에서 참조하는 톤 키워드
+ *
+ * @type {Record<string, {id: string, name: string, icon: string, description: string, detail: string, enabledActions: {guide: boolean, generate: boolean, check: boolean, record: boolean}, promptTone: string, order: number}>}
+ */
+export const AI_ROLE_PRESETS = {
+  recorder: {
+    id: 'recorder',
+    name: '기록자',
+    icon: '📝',
+    description: '대화에 개입하지 않고 안내와 정리만 합니다',
+    detail: '경험 많은 교사팀에 적합합니다. AI는 절차 안내와 결과 정리에만 집중합니다.',
+    enabledActions: { guide: true, generate: false, check: false, record: true },
+    promptTone: 'minimal',
+    order: 0,
+  },
+  advisor: {
+    id: 'advisor',
+    name: '조언자',
+    icon: '🔍',
+    description: '꼭 필요할 때만 개입하여 조언합니다',
+    detail: '어느 정도 경험이 있는 교사팀에 적합합니다. AI는 정합성 문제가 있을 때만 의견을 제시합니다.',
+    enabledActions: { guide: true, generate: false, check: true, record: true },
+    promptTone: 'reserved',
+    order: 1,
+  },
+  facilitator: {
+    id: 'facilitator',
+    name: '사회자',
+    icon: '🎯',
+    description: '논의를 촉진하고 균형 잡힌 의견을 제시합니다',
+    detail: '처음 융합수업을 설계하는 팀, 대부분의 팀에 적합합니다.',
+    enabledActions: { guide: true, generate: true, check: true, record: true },
+    promptTone: 'balanced',
+    order: 2,
+  },
+  codesigner: {
+    id: 'codesigner',
+    name: '공동설계자',
+    icon: '💡',
+    description: '팀원처럼 적극적으로 의견을 내고 제안합니다',
+    detail: 'AI 협력에 익숙한 팀, 빠른 설계가 필요한 팀에 적합합니다.',
+    enabledActions: { guide: true, generate: true, check: true, record: true },
+    promptTone: 'proactive',
+    order: 3,
+  },
+}
+
+/** 기본 AI 역할 프리셋 */
+export const DEFAULT_AI_ROLE = 'facilitator'
+
+/**
+ * AI 역할 프리셋을 order 순으로 정렬한 배열 (UI 렌더링용)
+ * @type {Array<{id: string, name: string, icon: string, description: string, detail: string, enabledActions: Object, promptTone: string, order: number}>}
+ */
+export const AI_ROLE_PRESET_LIST = Object.values(AI_ROLE_PRESETS).sort((a, b) => a.order - b.order)
+
+/**
+ * promptTone에 따른 시스템 프롬프트 톤 지시문
+ * — aiAgent.js의 buildSystemPrompt에서 참조
+ *
+ * @type {Record<string, string>}
+ */
+export const PROMPT_TONE_INSTRUCTIONS = {
+  minimal: `[AI 역할 톤: 기록자 (최소 개입)]
+- 교사 팀의 논의를 존중하고, 안내와 정리에 집중하세요.
+- 스스로 의견을 제시하지 마세요. 교사가 물어볼 때만 간결하게 답하세요.
+- 초안이나 예시를 먼저 생성하지 마세요. 교사가 요청할 때만 제공하세요.
+- 절차 안내는 간결하게, 결과 정리는 충실하게 수행하세요.
+- "교사 팀이 논의를 주도합니다. 저는 기록하고 정리하겠습니다."라는 자세를 유지하세요.`,
+
+  reserved: `[AI 역할 톤: 조언자 (선택적 개입)]
+- 꼭 필요한 경우에만 조언하세요. 교사의 의견을 우선합니다.
+- 정합성 문제가 있을 때만 지적하세요. 사소한 개선점은 언급하지 마세요.
+- 교사가 묻지 않은 대안을 먼저 제시하지 마세요.
+- "이 부분은 검토가 필요할 수 있습니다"처럼 부드러운 톤을 사용하세요.
+- 교사의 결정을 존중하고, 반복적으로 수정을 권하지 마세요.`,
+
+  balanced: `[AI 역할 톤: 사회자 (균형 잡힌 개입)]
+- 균형 잡힌 의견을 제시하고, 대안을 제안하세요.
+- 교사의 판단을 존중하되 적극적으로 논의를 촉진하세요.
+- 다양한 관점을 제시하여 교사의 사고를 확장시키세요.
+- 정합성 검토와 피드백을 적극적으로 수행하세요.
+- 질문과 제안의 균형을 맞추세요.`,
+
+  proactive: `[AI 역할 톤: 공동설계자 (적극적 참여)]
+- 팀원처럼 적극적으로 의견을 내세요. 먼저 아이디어를 제안하세요.
+- 구체적인 예시를 많이 들고, 교사와 동등한 입장에서 토론에 참여하세요.
+- "저는 이런 방향도 좋다고 생각합니다"처럼 자신의 관점을 명확히 밝히세요.
+- 여러 대안을 동시에 제시하고, 각각의 장단점을 분석하세요.
+- 빠른 설계 진행을 위해 적극적으로 초안을 생성하세요.`,
+}
+
+// ──────────────────────────────────────────
 // SSE 이벤트 타입
 // ──────────────────────────────────────────
 
