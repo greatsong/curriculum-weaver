@@ -152,6 +152,8 @@ JSON 형식:
 
     // 스트리밍으로 AI 응답 수신 + 절차 감지
     let fullText = ''
+    let tokenCount = 0
+    let lastTokenEvent = 0
     const detectedProcedures = new Set()
 
     // 절차 코드 목록 (감지용)
@@ -168,6 +170,13 @@ JSON 형식:
     for await (const event of stream) {
       if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
         fullText += event.delta.text
+        tokenCount++
+
+        // 500토큰마다 heartbeat 전송 (AI가 아직 생성 중임을 알림)
+        if (tokenCount - lastTokenEvent >= 500) {
+          lastTokenEvent = tokenCount
+          sendEvent({ type: 'heartbeat', tokens: tokenCount })
+        }
 
         // 절차 코드 감지: "prep": 또는 "T-1-1": 패턴
         for (const code of procedureCodes) {

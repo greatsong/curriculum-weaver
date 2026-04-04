@@ -62,6 +62,7 @@ export default function DemoMode() {
   // SSE 진행률
   const [progressList, setProgressList] = useState([])   // { procedure, name, index, total }[]
   const [progressTotal, setProgressTotal] = useState(19)
+  const [tokenCount, setTokenCount] = useState(0)
   const abortRef = useRef(null)
 
   const toggleGrade = (val) => {
@@ -142,6 +143,8 @@ export default function DemoMode() {
             if (parsed.type === 'progress') {
               setProgressList((prev) => [...prev, parsed])
               setProgressTotal(parsed.total)
+            } else if (parsed.type === 'heartbeat') {
+              setTokenCount(parsed.tokens)
             } else if (parsed.type === 'complete') {
               setTimeout(() => {
                 navigate(`/demo/result/${parsed.projectId}`)
@@ -496,7 +499,9 @@ export default function DemoMode() {
                     border: '2px solid #E5E7EB', borderTopColor: '#3B82F6',
                     animation: 'spin 0.8s linear infinite',
                   }} />
-                  <span style={{ fontSize: 13, color: '#9CA3AF' }}>응답 대기 중...</span>
+                  <span style={{ fontSize: 13, color: '#9CA3AF' }}>
+                    {tokenCount > 0 ? `AI 생성 중... (${tokenCount.toLocaleString()}토큰)` : '응답 대기 중...'}
+                  </span>
                 </div>
               ) : (
                 progressList.map((p, i) => (
@@ -532,6 +537,7 @@ export default function DemoMode() {
                     {lastProgress?.nextName
                       ? `${lastProgress.nextProcedure} ${lastProgress.nextName} 생성 중...`
                       : '마무리 중...'}
+                    {tokenCount > 0 && <span style={{ marginLeft: 6, fontSize: 11, color: '#D1D5DB' }}>({tokenCount.toLocaleString()}토큰)</span>}
                   </span>
                 </div>
               )}
