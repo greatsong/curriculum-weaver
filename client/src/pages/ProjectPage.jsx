@@ -276,6 +276,8 @@ export default function ProjectPage() {
       .catch(() => alert(`링크를 복사하세요: ${url}`))
   }
 
+  const isSimulation = currentProject?.status === 'simulation' || currentProject?.title?.startsWith('[시뮬레이션]')
+
   if (!currentProject) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
@@ -414,7 +416,7 @@ export default function ProjectPage() {
       </header>
 
       {/* 시뮬레이션 프로젝트 배너 */}
-      {currentProject?.title?.startsWith('[시뮬레이션]') && (
+      {isSimulation && (
         <div style={{
           background: 'linear-gradient(90deg, #8B5CF6, #3B82F6)',
           color: '#fff',
@@ -423,8 +425,13 @@ export default function ProjectPage() {
           fontWeight: 500,
           textAlign: 'center',
           flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
         }}>
-          이 프로젝트는 AI 시뮬레이션으로 자동 생성되었습니다. 보드를 자유롭게 편집하세요.
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          AI 시뮬레이션으로 자동 생성된 읽기 전용 프로젝트입니다
         </div>
       )}
 
@@ -459,6 +466,7 @@ export default function ProjectPage() {
               sessionId={projectId}
               stage={currentProcedure}
               onStageChange={handleProcedureChange}
+              readOnly={isSimulation}
             />
           </ErrorBoundary>
         </div>
@@ -475,7 +483,7 @@ export default function ProjectPage() {
           }}
         >
           <ErrorBoundary>
-            <ProcedureCanvas projectId={projectId} procedureCode={currentProcedure} />
+            <ProcedureCanvas projectId={projectId} procedureCode={currentProcedure} readOnly={isSimulation} />
           </ErrorBoundary>
         </div>
 

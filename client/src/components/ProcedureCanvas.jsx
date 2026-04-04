@@ -8,7 +8,7 @@ import { BOARD_SCHEMAS, getBoardSchemaForProcedure, createEmptyBoard } from 'cur
 import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
 
-export default function ProcedureCanvas({ projectId, procedureCode }) {
+export default function ProcedureCanvas({ projectId, procedureCode, readOnly = false }) {
   const { boards, currentStep, setStep, updateBoard } = useProcedureStore()
   const { pendingSuggestions, coherenceCheckResult, acceptSuggestion, editAcceptSuggestion, rejectSuggestion, sendMessage } = useChatStore()
   const [editing, setEditing] = useState(false)
@@ -195,7 +195,7 @@ export default function ProcedureCanvas({ projectId, procedureCode }) {
       )}
 
       {/* AI 제안 카드 */}
-      {relevantSuggestions.length > 0 && (
+      {!readOnly && relevantSuggestions.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {relevantSuggestions.map((suggestion) => (
             <SuggestionCard
@@ -397,7 +397,7 @@ function BoardCard({ boardType, schema, board, editing, setEditing, onUpdate, on
         {board?.version > 1 && (
           <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>v{board.version}</span>
         )}
-        {hasContent && !editing && (
+        {hasContent && !editing && !readOnly && (
           <button
             onClick={() => setEditing(true)}
             style={{
@@ -434,18 +434,24 @@ function BoardCard({ boardType, schema, board, editing, setEditing, onUpdate, on
         ) : (
           <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-text-tertiary)' }}>
             <p style={{ fontSize: 13, margin: '0 0 4px' }}>아직 내용이 없습니다</p>
-            <p style={{ fontSize: 12, margin: '0 0 16px' }}>AI와 대화하면 자동으로 이 보드가 채워집니다</p>
-            <button
-              onClick={onRequestAI}
-              className="btn btn-secondary"
-              style={{ fontSize: 12, padding: '6px 14px', margin: '0 auto' }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"/>
-                <line x1="12" y1="8" x2="12" y2="12"/><line x1="8" y1="10" x2="16" y2="10"/>
-              </svg>
-              AI에게 이 보드 내용 요청
-            </button>
+            {readOnly ? (
+              <p style={{ fontSize: 12, margin: 0 }}>이 절차의 시뮬레이션 결과가 생성되지 않았습니다</p>
+            ) : (
+              <>
+                <p style={{ fontSize: 12, margin: '0 0 16px' }}>AI와 대화하면 자동으로 이 보드가 채워집니다</p>
+                <button
+                  onClick={onRequestAI}
+                  className="btn btn-secondary"
+                  style={{ fontSize: 12, padding: '6px 14px', margin: '0 auto' }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/><line x1="8" y1="10" x2="16" y2="10"/>
+                  </svg>
+                  AI에게 이 보드 내용 요청
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
