@@ -26,62 +26,8 @@ export default function PrinciplePanel({ stage }) {
 
   return (
     <div className="p-4">
-      {/* 총괄 원리 섹션 */}
+      {/* 단계별 원리 섹션 (위) */}
       <div className="mb-6">
-        <div className="flex items-center gap-2 mb-3">
-          <Layers size={16} className="text-purple-600" />
-          <h3 className="font-semibold text-gray-900 text-sm">총괄 원리</h3>
-          <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
-            모든 단계 공통
-          </span>
-        </div>
-
-        {generalPrinciples.length === 0 ? (
-          <div className="text-center py-4 text-gray-400">
-            <p className="text-xs">총괄 원리를 불러오는 중...</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {generalPrinciples.map((gp) => (
-              <div key={gp.id} className="bg-purple-50 rounded-lg border border-purple-100">
-                <button
-                  onClick={() => toggleGP(gp.id)}
-                  className="w-full flex items-start gap-2 p-3 text-left hover:bg-purple-100/50 transition-colors rounded-lg"
-                >
-                  <span className="text-xs font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded shrink-0 mt-0.5">
-                    {gp.id.replace('GP0', '')}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-purple-900">{gp.name}</p>
-                    <p className="text-xs text-purple-700 mt-0.5 leading-relaxed">{gp.description}</p>
-                  </div>
-                  {expandedGP === gp.id
-                    ? <ChevronDown size={14} className="text-purple-400 shrink-0 mt-1" />
-                    : <ChevronRight size={14} className="text-purple-400 shrink-0 mt-1" />
-                  }
-                </button>
-
-                {expandedGP === gp.id && (
-                  <div className="px-3 pb-3 space-y-1.5">
-                    {gp.guidelines.map((g, i) => (
-                      <div key={g.id} className="flex gap-2 text-xs text-purple-800 bg-white/60 rounded p-2">
-                        <span className="text-purple-400 shrink-0 font-mono">{i + 1}</span>
-                        <span className="leading-relaxed">{g.content}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* 구분선 */}
-      <hr className="border-gray-200 mb-4" />
-
-      {/* 단계별 원리 섹션 */}
-      <div>
         <div className="flex items-center gap-2 mb-3">
           <Target size={16} className="text-blue-600" />
           <h3 className="font-semibold text-gray-900 text-sm">단계별 원리</h3>
@@ -123,6 +69,60 @@ export default function PrinciplePanel({ stage }) {
                           <span className="font-medium">{p.name}</span>
                           <p className="text-blue-600 mt-0.5 leading-relaxed">{p.description}</p>
                         </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 구분선 */}
+      <hr className="border-gray-200 mb-4" />
+
+      {/* 총괄 원리 섹션 (아래) */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Layers size={16} className="text-purple-600" />
+          <h3 className="font-semibold text-gray-900 text-sm">총괄 원리</h3>
+          <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">
+            모든 단계 공통
+          </span>
+        </div>
+
+        {generalPrinciples.length === 0 ? (
+          <div className="text-center py-4 text-gray-400">
+            <p className="text-xs">총괄 원리를 불러오는 중...</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {generalPrinciples.map((gp) => (
+              <div key={gp.id} className="bg-purple-50 rounded-lg border border-purple-100">
+                <button
+                  onClick={() => toggleGP(gp.id)}
+                  className="w-full flex items-start gap-2 p-3 text-left hover:bg-purple-100/50 transition-colors rounded-lg"
+                >
+                  <span className="text-xs font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded shrink-0 mt-0.5">
+                    {gp.id.replace('GP0', '')}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-purple-900">{gp.name}</p>
+                    <p className="text-xs text-purple-700 mt-0.5 leading-relaxed">{gp.description}</p>
+                  </div>
+                  {expandedGP === gp.id
+                    ? <ChevronDown size={14} className="text-purple-400 shrink-0 mt-1" />
+                    : <ChevronRight size={14} className="text-purple-400 shrink-0 mt-1" />
+                  }
+                </button>
+
+                {expandedGP === gp.id && (
+                  <div className="px-3 pb-3 space-y-1.5">
+                    {gp.guidelines.map((g, i) => (
+                      <div key={g.id} className="flex gap-2 text-xs text-purple-800 bg-white/60 rounded p-2">
+                        <span className="text-purple-400 shrink-0 font-mono">{i + 1}</span>
+                        <span className="leading-relaxed">{g.content}</span>
                       </div>
                     ))}
                   </div>
