@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { API_BASE } from '../lib/api'
 import { supabase } from '../lib/supabase'
+import { socket } from '../lib/socket'
 
 async function getHeaders() {
   const headers = { 'Content-Type': 'application/json' }
@@ -187,5 +188,56 @@ export const useCommentStore = create((set, get) => ({
       }
       return { comments: updated }
     })
+  },
+
+  /**
+   * 실시간 댓글 이벤트 구독
+   */
+  subscribeComments: () => {
+    const addHandler = (comment) => {
+      if (!comment?.design_id) return
+      set((state) => ({
+        comments: {
+          ...state.comments,
+          [comment.design_id]: [...(state.comments[comment.design_id] || []).filter(c => c.id !== comment.id), comment],
+        },
+      }))
+    }
+    const updateHandler = (comment) => {
+      if (!comment?.id) return
+      set((state) => {
+        const updated = {}
+        for (const [key, list] of Object.entries(state.comments)) {
+          updated[key] = list.map((c) => c.id === comment.id ? { ...c, ...comment } : c)
+        }
+        return { comments: updated }
+      })
+    }
+    const resolveHandler = ({ commentId, resolved }) => {
+      set((state) => {
+        const updated = {}
+        for (const [key, list] of Object.entries(state.comments)) {
+          updated[key] = list.map((c) =>
+            c.id === commentId ? { ...c, resolved, resolved_at: resolved ? new Date().toISOString() : null } : c
+          )
+        }
+        return { comments: updated }
+      })
+    }
+
+    socket.on('comment_added', addHandler)
+    socket.on('comment_updated', updateHandler)
+    socket.on('comment_resolved', resolveHandler)
+    set({ _commentHandlers: { addHandler, updateHandler, resolveHandler } })
+  },
+
+  unsubscribeComments: () => {
+    const handlers = get()._commentHandlers
+    if (handlers) {
+      socket.off('comment_added', handlers.addHandler)
+      socket.off('comment_updated', handlers.updateHandler)
+      socket.off('comment_resolved', handlers.resolveHandler)
+    }
+    set({ _commentHandlers: null })
   },
 }))

@@ -201,9 +201,9 @@ export default function ProcedureCanvas({ projectId, procedureCode }) {
             <SuggestionCard
               key={suggestion.id}
               suggestion={suggestion}
-              onAccept={() => acceptSuggestion(suggestion.id)}
-              onReject={() => rejectSuggestion(suggestion.id)}
-              onEditAccept={(edited) => editAcceptSuggestion(suggestion.id, edited)}
+              onAccept={() => acceptSuggestion(suggestion.id, projectId)}
+              onReject={() => rejectSuggestion(suggestion.id, projectId)}
+              onEditAccept={(edited) => editAcceptSuggestion(suggestion.id, edited, projectId)}
             />
           ))}
         </div>

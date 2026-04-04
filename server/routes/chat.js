@@ -11,12 +11,39 @@
  */
 
 import { Router } from 'express'
-import { optionalAuth } from '../middleware/auth.js'
+import { requireAuth } from '../middleware/auth.js'
 import { buildAIResponse, buildProcedureIntroResponse } from '../services/aiAgent.js'
-import { Sessions, Boards, Materials } from '../lib/store.js'
-import { getMessages, getMessage, createMessage } from '../lib/supabaseService.js'
+import {
+  getMessages, getMessage, createMessage,
+  getProject, getMemberRole, getDesignsByProject,
+  getStandardsByProject, upsertDesign,
+} from '../lib/supabaseService.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES } from 'curriculum-weaver-shared/constants.js'
 import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
+
+/**
+ * 프로젝트 멤버십 검증 미들웨어
+ * session_id(=projectId)로 프로젝트를 찾고, 워크스페이스 멤버인지 확인
+ */
+async function checkProjectAccess(req, res, next) {
+  const projectId = req.params.sessionId || req.body?.session_id
+  if (!projectId) return next() // 프로젝트 ID 없으면 개별 라우트에서 처리
+  try {
+    const project = await getProject(projectId)
+    if (!project) return next() // 레거시 세션/데모일 수 있으므로 통과
+    if (project.workspace_id && req.user?.id) {
+      const role = await getMemberRole(project.workspace_id, req.user.id)
+      if (!role) {
+        return res.status(403).json({ error: '이 프로젝트에 접근 권한이 없습니다.' })
+      }
+      req.projectRole = role
+    }
+    req.project = project
+  } catch {
+    // Supabase 연결 실패 시 통과 (폴백 모드)
+  }
+  next()
+}
 
 // ──────────────────────────────────────────
 // XML 파서: AI 응답에서 구조화 블록 추출
@@ -140,7 +167,8 @@ function extractLegacyBoardUpdates(text) {
 // ──────────────────────────────────────────
 
 export const chatRouter = Router()
-chatRouter.use(optionalAuth)
+chatRouter.use(requireAuth)
+chatRouter.use(checkProjectAccess)
 
 // ─── 채팅 메시지 목록 조회 ───
 chatRouter.get('/:sessionId', async (req, res) => {
@@ -235,12 +263,12 @@ chatRouter.post('/procedure-intro', async (req, res) => {
   res.flushHeaders()
 
   try {
-    const session = Sessions.get(session_id)
-    const boards = Boards.listAll ? Boards.listAll(session_id) : []
+    const project = req.project || await getProject(session_id).catch(() => null)
+    const designs = await getDesignsByProject(session_id).catch(() => [])
 
     let fullResponse = ''
     await buildProcedureIntroResponse(
-      { procedure, sessionTitle: session?.title || '', boards },
+      { procedure, sessionTitle: project?.title || '', boards: designs },
       {
         onText: (text) => {
           fullResponse += text
@@ -300,12 +328,12 @@ chatRouter.post('/stage-intro', async (req, res) => {
   res.flushHeaders()
 
   try {
-    const session = Sessions.get(session_id)
-    const boards = Boards.listAll ? Boards.listAll(session_id) : []
+    const project = req.project || await getProject(session_id).catch(() => null)
+    const designs = await getDesignsByProject(session_id).catch(() => [])
 
     let fullResponse = ''
     await buildProcedureIntroResponse(
-      { procedure, sessionTitle: session?.title || '', boards },
+      { procedure, sessionTitle: project?.title || '', boards: designs },
       {
         onText: (text) => {
           fullResponse += text
@@ -359,21 +387,19 @@ chatRouter.post('/message', async (req, res) => {
   res.flushHeaders()
 
   try {
-    // 컨텍스트 로드
-    const session = Sessions.get(session_id)
-    const boards = Boards.listAll ? Boards.listAll(session_id) : []
-    const materials = Materials.list(session_id)
+    // 컨텍스트 로드 (Supabase 영속 저장소)
+    const project = req.project || await getProject(session_id).catch(() => null)
+    const designs = await getDesignsByProject(session_id).catch(() => [])
     const allMessages = await getMessages(session_id)
     const recentMessages = allMessages.slice(-20)
-
-    // 성취기준 (세션에 연결된 성취기준이 있으면 로드)
-    const standards = [] // TODO: supabaseService에서 로드
+    const standards = await getStandardsByProject(session_id).catch(() => [])
+    const materials = [] // TODO: 자료 Supabase 전환 후 로드
 
     const context = {
-      session,
+      session: project,
       standards,
       materials,
-      boards,
+      boards: designs,
       recentMessages,
       userMessage: content,
       procedure: activeProcedure,
@@ -522,22 +548,24 @@ chatRouter.post('/suggestion/:messageId/accept', async (req, res) => {
       return res.status(400).json({ error: `절차 ${procedure}에 대응하는 보드 타입이 없습니다.` })
     }
 
-    // 보드 upsert (인메모리 스토어 사용)
-    const updatedBoard = Boards.upsert
-      ? Boards.upsert(session_id, procedure, boardType, suggestion.content)
-      : null
+    // Supabase에 설계 저장
+    let updatedDesign = null
+    try {
+      updatedDesign = await upsertDesign(session_id, procedure, suggestion.content, req.user?.id)
+    } catch (err) {
+      console.warn(`[제안 수락] Supabase 저장 실패, 계속 진행:`, err.message)
+    }
 
     // 제안 상태 업데이트
     suggestion.status = 'accepted'
 
-    // 활동 로그 (나중에 Supabase activity_log 테이블에 저장)
-    console.log(`[활동] 제안 수락 — 세션: ${session_id}, 절차: ${procedure}, 보드: ${boardType}`)
+    console.log(`[활동] 제안 수락 — 프로젝트: ${session_id}, 절차: ${procedure}, 보드: ${boardType}`)
 
     res.json({
       success: true,
       boardType,
       content: suggestion.content,
-      board: updatedBoard,
+      design: updatedDesign,
     })
   } catch (error) {
     console.error('제안 수락 오류:', error)
@@ -564,18 +592,20 @@ chatRouter.post('/suggestion/:messageId/edit-accept', async (req, res) => {
       return res.status(400).json({ error: `절차 ${procedure}에 대응하는 보드 타입이 없습니다.` })
     }
 
-    const updatedBoard = Boards.upsert
-      ? Boards.upsert(session_id, procedure, boardType, editedContent)
-      : null
+    let updatedDesign = null
+    try {
+      updatedDesign = await upsertDesign(session_id, procedure, editedContent, req.user?.id)
+    } catch (err) {
+      console.warn(`[제안 편집수락] Supabase 저장 실패:`, err.message)
+    }
 
-    // 활동 로그
-    console.log(`[활동] 제안 편집수락 — 세션: ${session_id}, 절차: ${procedure}, 보드: ${boardType}`)
+    console.log(`[활동] 제안 편집수락 — 프로젝트: ${session_id}, 절차: ${procedure}, 보드: ${boardType}`)
 
     res.json({
       success: true,
       boardType,
       content: editedContent,
-      board: updatedBoard,
+      design: updatedDesign,
     })
   } catch (error) {
     console.error('제안 편집수락 오류:', error)

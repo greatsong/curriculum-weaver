@@ -12,11 +12,25 @@
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth.js'
 import { collectReportData, generateHTML, generateMarkdown } from '../services/reportGenerator.js'
+import { getProject, getMemberRole } from '../lib/supabaseService.js'
 
 export const reportRouter = Router()
 
-// 인증 필수 (보고서 접근 제어)
+// 인증 필수 + 멤버십 검증
 reportRouter.use(requireAuth)
+reportRouter.use(async (req, res, next) => {
+  const projectId = req.params.projectId
+  if (!projectId) return next()
+  try {
+    const project = await getProject(projectId)
+    if (!project) return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+    if (project.workspace_id) {
+      const role = await getMemberRole(project.workspace_id, req.user.id)
+      if (!role) return res.status(403).json({ error: '이 프로젝트의 보고서에 접근 권한이 없습니다.' })
+    }
+  } catch { /* Supabase 연결 실패 시 통과 */ }
+  next()
+})
 
 /**
  * GET /api/report/:projectId/html

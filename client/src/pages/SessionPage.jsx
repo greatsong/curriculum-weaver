@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Share2, BookMarked, HelpCircle, MessageSquare, LayoutDashboard, BookOpen, UserCircle, Download } from 'lucide-react'
+import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
 import { useSessionStore } from '../stores/sessionStore'
 import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
@@ -135,8 +136,11 @@ export default function SessionPage() {
         const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
         if (!hasContent) {
           const session = useSessionStore.getState().currentSession
-          const stage = session?.current_stage || 1
-          setTimeout(() => requestProcedureIntro(sessionId, stage), 500)
+          const stage = session?.current_stage
+          // 숫자 stage는 서버가 거부하므로 문자열(procedure 코드)일 때만 인트로 요청
+          if (stage && typeof stage === 'string' && PROCEDURES[stage]) {
+            setTimeout(() => requestProcedureIntro(sessionId, stage), 500)
+          }
         }
       }
     }
@@ -202,8 +206,10 @@ export default function SessionPage() {
 
   const handleStageChange = async (stage) => {
     await updateStage(sessionId, stage)
-    // 단계 전환 후 AI 인트로 가이드 자동 요청
-    requestProcedureIntro(sessionId, stage)
+    // 단계 전환 후 AI 인트로 가이드 자동 요청 (procedure 코드일 때만)
+    if (typeof stage === 'string' && PROCEDURES[stage]) {
+      requestProcedureIntro(sessionId, stage)
+    }
   }
 
   const handleCopyInvite = () => {

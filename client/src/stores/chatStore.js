@@ -3,6 +3,7 @@ import { apiGet, apiPost, apiStreamPost } from '../lib/api'
 import { socket } from '../lib/socket'
 import { useProcedureStore } from './procedureStore'
 import { useWorkspaceStore } from './workspaceStore'
+import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
 
 // ── XML 파서 유틸 ────────────────────────────
 
@@ -201,6 +202,20 @@ export const useChatStore = create((set, get) => ({
       onPrinciples: () => {},
       onBoardSuggestions: (suggestions, appliedBoards) => {
         set({ boardSuggestions: suggestions || [] })
+        // 서버 형식 suggestions → pendingSuggestions로 변환
+        if (suggestions?.length > 0) {
+          set({
+            pendingSuggestions: suggestions.map((s, i) => ({
+              id: `suggestion-${Date.now()}-${i}`,
+              procedureCode: s.procedure || procedureCode,
+              field: s.step || s.action || 'content',
+              value: s.content,
+              rationale: '',
+              status: 'pending',
+              _serverIndex: i,
+            })),
+          })
+        }
         // 서버에서 자동 반영된 보드 → procedureStore에 업데이트
         if (appliedBoards?.length > 0) {
           const procState = useProcedureStore.getState()
@@ -213,10 +228,27 @@ export const useChatStore = create((set, get) => ({
         }
       },
       onStageAdvance: (data) => {
-        set({ stageAdvanceSuggestion: data })
+        // 서버 shape (current/suggested/reason) → 클라이언트 shape (next_procedure/summary/next_name)
+        const advance = {
+          next_procedure: data.suggested || data.next_procedure || data.next_stage,
+          summary: data.reason || data.summary || '',
+          next_name: PROCEDURES[data.suggested]?.name || data.next_name || '',
+          current: data.current,
+        }
+        set({
+          stageAdvanceSuggestion: advance,
+          procedureAdvanceSuggestion: advance,
+        })
       },
       onCoherenceCheck: (data) => {
-        set({ coherenceCheckResult: data })
+        // 서버 shape (aligned/feedback/details) → 클라이언트 shape (status/issues/suggestions)
+        set({
+          coherenceCheckResult: {
+            status: data.aligned ? 'pass' : 'warning',
+            issues: data.feedback || '',
+            suggestions: Array.isArray(data.details) ? data.details.join(', ') : (data.details || ''),
+          },
+        })
       },
       onMessageSaved: (data) => {
         if (data?.messageId) set({ _lastAiMessageId: data.messageId })
@@ -378,7 +410,7 @@ export const useChatStore = create((set, get) => ({
           session_id: projectId,
           procedure: suggestion.procedureCode,
           suggestionIndex: idx >= 0 ? idx : 0,
-          editedValue,
+          editedContent: editedValue,
         })
       } catch (err) {
         console.error('제안 편집 수락 서버 저장 실패:', err)

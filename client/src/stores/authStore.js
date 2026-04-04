@@ -122,7 +122,7 @@ export const useAuthStore = create((set, get) => ({
    */
   updateProfile: async (data) => {
     try {
-      const updated = await apiPut('/api/auth/profile', data)
+      const updated = await apiPut('/api/auth/me', data)
       // Supabase user metadata도 업데이트
       if (data.display_name) {
         await supabase.auth.updateUser({

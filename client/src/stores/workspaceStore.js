@@ -113,11 +113,12 @@ export const useWorkspaceStore = create((set, get) => ({
    */
   acceptInvite: async (token) => {
     try {
-      const workspace = await apiPost('/api/workspaces/accept-invite', { token })
-      set((state) => ({
-        workspaces: [workspace, ...state.workspaces],
-      }))
-      return workspace
+      const result = await apiPost(`/api/invites/${token}/accept`, {})
+      // 서버 응답: { message, workspace_id, role }
+      // 워크스페이스 목록 새로고침
+      const { fetchWorkspaces } = get()
+      await fetchWorkspaces()
+      return result
     } catch (err) {
       set({ error: err.message })
       throw err

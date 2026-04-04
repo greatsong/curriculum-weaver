@@ -2,9 +2,24 @@ import { Router } from 'express'
 import multer from 'multer'
 import { requireAuth } from '../middleware/auth.js'
 import { Materials } from '../lib/store.js'
+import { getProject, getMemberRole } from '../lib/supabaseService.js'
 
 export const materialsRouter = Router()
 materialsRouter.use(requireAuth)
+
+// 멤버십 검증 미들웨어
+async function checkMaterialAccess(req, res, next) {
+  const projectId = req.params.sessionId || req.body?.session_id
+  if (!projectId) return next()
+  try {
+    const project = await getProject(projectId)
+    if (project?.workspace_id) {
+      const role = await getMemberRole(project.workspace_id, req.user.id)
+      if (!role) return res.status(403).json({ error: '이 프로젝트에 접근 권한이 없습니다.' })
+    }
+  } catch { /* Supabase 연결 실패 시 통과 */ }
+  next()
+}
 
 const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'hwp', 'hwpx', 'ppt', 'pptx', 'xls', 'xlsx', 'csv', 'txt', 'jpg', 'jpeg', 'png', 'webp']
 
@@ -21,7 +36,7 @@ const upload = multer({
 })
 
 // 세션 자료 목록 조회
-materialsRouter.get('/:sessionId', async (req, res) => {
+materialsRouter.get('/:sessionId', checkMaterialAccess, async (req, res) => {
   const materials = Materials.list(req.params.sessionId)
   res.json(materials)
 })
@@ -32,6 +47,15 @@ materialsRouter.post('/upload', upload.single('file'), async (req, res) => {
 
   const { session_id } = req.body
   if (!session_id) return res.status(400).json({ error: '세션 ID가 필요합니다.' })
+
+  // 멤버십 검증
+  try {
+    const project = await getProject(session_id)
+    if (project?.workspace_id) {
+      const role = await getMemberRole(project.workspace_id, req.user.id)
+      if (!role) return res.status(403).json({ error: '이 프로젝트에 접근 권한이 없습니다.' })
+    }
+  } catch { /* 폴백 */ }
 
   const file = req.file
   const fileExt = file.originalname.split('.').pop().toLowerCase()
@@ -56,6 +80,15 @@ materialsRouter.post('/url', async (req, res) => {
   const { session_id, url, category, title } = req.body
   if (!session_id) return res.status(400).json({ error: '세션 ID가 필요합니다.' })
   if (!url) return res.status(400).json({ error: 'URL이 필요합니다.' })
+
+  // 멤버십 검증
+  try {
+    const project = await getProject(session_id)
+    if (project?.workspace_id) {
+      const role = await getMemberRole(project.workspace_id, req.user.id)
+      if (!role) return res.status(403).json({ error: '이 프로젝트에 접근 권한이 없습니다.' })
+    }
+  } catch { /* 폴백 */ }
 
   const material = Materials.add(session_id, {
     file_name: title || url,

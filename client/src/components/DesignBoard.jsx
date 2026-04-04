@@ -69,9 +69,7 @@ export default function DesignBoard({ sessionId, stage }) {
             suggestion={suggestion}
             isHost={isHost}
             onUpdate={async (content) => {
-              if (board?.id) {
-                await updateBoard(board.id, content)
-              }
+              await updateBoard(sessionId, stage, content)
             }}
             onRequestAI={() => {
               const label = BOARD_TYPE_LABELS[boardType]

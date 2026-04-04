@@ -282,9 +282,9 @@ export default function ChatPanel({ sessionId, stage, onStageChange }) {
             <InlineSuggestionCard
               key={suggestion.id}
               suggestion={suggestion}
-              onAccept={() => acceptSuggestion(suggestion.id)}
-              onReject={() => rejectSuggestion(suggestion.id)}
-              onEditAccept={(val) => editAcceptSuggestion(suggestion.id, val)}
+              onAccept={() => acceptSuggestion(suggestion.id, sessionId)}
+              onReject={() => rejectSuggestion(suggestion.id, sessionId)}
+              onEditAccept={(val) => editAcceptSuggestion(suggestion.id, val, sessionId)}
             />
           ))}
 

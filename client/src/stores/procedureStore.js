@@ -87,19 +87,39 @@ export const useProcedureStore = create((set, get) => ({
   },
 
   subscribeBoardUpdates: () => {
-    const handler = (board) => {
+    // 레거시 보드 변경 이벤트
+    const boardHandler = (board) => {
       set((state) => ({
         boards: { ...state.boards, [board.board_type]: board },
       }))
     }
-    socket.on('board_changed', handler)
-    set({ _boardHandler: handler })
+    // 신규 설계 변경 이벤트 (designs API 연동)
+    const designHandler = ({ procedureCode, design }) => {
+      const boardType = BOARD_TYPES[procedureCode]
+      if (boardType && design) {
+        set((state) => ({
+          boards: {
+            ...state.boards,
+            [boardType]: { ...design, board_type: boardType, content: design.content },
+          },
+        }))
+      }
+    }
+    socket.on('board_changed', boardHandler)
+    socket.on('design_changed', designHandler)
+    socket.on('design_updated', designHandler)
+    set({ _boardHandler: boardHandler, _designHandler: designHandler })
   },
 
   unsubscribeBoardUpdates: () => {
-    const handler = get()._boardHandler
-    if (handler) socket.off('board_changed', handler)
-    set({ _boardHandler: null })
+    const boardHandler = get()._boardHandler
+    const designHandler = get()._designHandler
+    if (boardHandler) socket.off('board_changed', boardHandler)
+    if (designHandler) {
+      socket.off('design_changed', designHandler)
+      socket.off('design_updated', designHandler)
+    }
+    set({ _boardHandler: null, _designHandler: null })
   },
 
   updateBoard: async (projectId, procedureCode, content) => {
