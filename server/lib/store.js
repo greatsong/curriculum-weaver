@@ -4,11 +4,16 @@
  * 서버 재시작 시 초기화됨
  */
 import crypto from 'crypto'
+import { readFileSync, existsSync } from 'fs'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
 import { PRINCIPLES } from '../data/principles.js'
 import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
 import { ALL_STANDARDS } from '../data/standards.js'
 import { GENERATED_LINKS } from '../data/generatedLinks.js'
 import { SEED_SESSIONS } from '../data/seedSessions.js'
+
+const __storeDir = dirname(fileURLToPath(import.meta.url))
 
 function uuid() {
   return crypto.randomUUID()
@@ -375,6 +380,54 @@ export const Standards = {
   clear: () => {
     standards.clear()
     standardLinks.clear()
+  },
+
+  /**
+   * 디스크에서 성취기준 데이터를 다시 로드 (서버 재시작 없이 갱신)
+   * standards_full.js 우선, 없으면 standards.js 폴백
+   * @returns {number} 로드된 성취기준 수
+   */
+  reload: () => {
+    const dataDir = join(__storeDir, '..', 'data')
+
+    // JSON 파싱 방식으로 JS 파일에서 데이터 추출 (ESM 캐시 우회)
+    let newData = null
+    const fullPath = join(dataDir, 'standards_full.js')
+    const fallbackPath = join(dataDir, 'standards.js')
+
+    for (const p of [fullPath, fallbackPath]) {
+      if (!existsSync(p)) continue
+      try {
+        const raw = readFileSync(p, 'utf-8')
+        const match = raw.match(/export const ALL_STANDARDS = (\[[\s\S]*\]);/)
+        if (match) {
+          newData = JSON.parse(match[1])
+          console.log(`[reload] 파일 로드: ${p} (${newData.length}개)`)
+          break
+        }
+      } catch (e) {
+        console.warn(`[reload] 파일 파싱 실패 (${p}):`, e.message)
+      }
+    }
+
+    if (!newData) {
+      throw new Error('성취���준 데이터 파일을 찾을 수 없거나 파싱에 실패했습니다.')
+    }
+
+    // ��존 데이터 클리어
+    standards.clear()
+
+    // 새 데이터 로드
+    const seenCodes = new Set()
+    for (const s of newData) {
+      if (seenCodes.has(s.code)) continue
+      seenCodes.add(s.code)
+      const id = uuid()
+      standards.set(id, { id, ...s, created_at: new Date().toISOString() })
+    }
+
+    console.log(`[reload] 성취기준 ${standards.size}개 로드 완료`)
+    return standards.size
   },
 }
 

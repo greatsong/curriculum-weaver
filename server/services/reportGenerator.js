@@ -1,12 +1,20 @@
 /**
  * 결과 보고서 생성 서비스
- * 세션의 전체 설계 데이터를 수집하여 HTML / Markdown 형식으로 변환
+ *
+ * 프로젝트의 전체 설계 데이터를 수집하여 HTML / Markdown 형식으로 변환.
+ * 새로운 6-Phase, 16+1 Procedure 구조 기반.
  */
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { Sessions, Boards, Messages, SessionStandards, Principles, Materials } from '../lib/store.js'
-import { STAGES, PHASES, BOARD_TYPES, BOARD_TYPE_LABELS } from '../../shared/constants.js'
+import {
+  getProject, getDesignsByProject, getStandardsByProject,
+  getMessages,
+} from '../lib/supabaseService.js'
+import {
+  PHASES, PHASE_LIST, PROCEDURES, PROCEDURE_LIST,
+  BOARD_TYPES, BOARD_TYPE_LABELS, getProceduresByPhase,
+} from '../../shared/constants.js'
 import { BOARD_SCHEMAS } from '../../shared/boardSchemas.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -19,89 +27,113 @@ try {
   logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`
 } catch { /* 로고 파일이 없으면 무시 */ }
 
+// Phase별 색상
+const PHASE_COLORS = {
+  prep: '#64748b',
+  T:    '#8b5cf6',
+  A:    '#3b82f6',
+  Ds:   '#22c55e',
+  DI:   '#f59e0b',
+  E:    '#ef4444',
+}
+
+// Phase별 아이콘 (이모지)
+const PHASE_ICONS = {
+  prep: '📋',
+  T:    '👥',
+  A:    '🔍',
+  Ds:   '🧭',
+  DI:   '🚀',
+  E:    '🔄',
+}
+
 /**
- * 세션의 전체 데이터를 수집
+ * 프로젝트의 전체 데이터를 수집
+ *
+ * @param {string} projectId - 프로젝트 ID
+ * @returns {Promise<object|null>} 보고서 데이터 또는 null
  */
-export function collectReportData(sessionId) {
-  const session = Sessions.get(sessionId)
-  if (!session) return null
+export async function collectReportData(projectId) {
+  const project = await getProject(projectId)
+  if (!project) return null
 
-  // 전체 단계 보드 수집
-  const allBoards = {}
-  for (let stage = 1; stage <= 10; stage++) {
-    allBoards[stage] = Boards.listByStage(sessionId, stage)
-  }
+  // 전체 설계 캔버스 수집
+  const designs = await getDesignsByProject(projectId)
 
-  // 메시지 통계
-  const msgs = Messages.list(sessionId)
-  const messageStats = {
-    total: msgs.length,
-    teacher: msgs.filter((m) => m.sender_type === 'teacher').length,
-    ai: msgs.filter((m) => m.sender_type === 'ai').length,
-    system: msgs.filter((m) => m.sender_type === 'system').length,
+  // 절차 코드 → 설계 매핑
+  const designMap = {}
+  for (const d of designs) {
+    designMap[d.procedure_code] = d
   }
-
-  // 사용된 원칙 집계
-  const principleUsage = {}
-  for (const msg of msgs) {
-    if (msg.principles_used) {
-      for (const pid of msg.principles_used) {
-        principleUsage[pid] = (principleUsage[pid] || 0) + 1
-      }
-    }
-  }
-
-  // 참여자 수집: 메시지의 sender_name + team_roles 보드에서 추출
-  const participantMap = new Map()
-  for (const msg of msgs) {
-    if (msg.sender_type === 'teacher' && msg.sender_name) {
-      const key = msg.sender_name
-      if (!participantMap.has(key)) {
-        participantMap.set(key, { name: msg.sender_name, subject: msg.sender_subject || '' })
-      }
-    }
-  }
-  // team_roles 보드에서도 추가 (더 상세한 정보)
-  const teamRolesBoards = allBoards[2] || []
-  for (const board of teamRolesBoards) {
-    if (board.board_type === 'team_roles' && board.content?.members) {
-      for (const m of board.content.members) {
-        if (m.name) {
-          participantMap.set(m.name, {
-            name: m.name,
-            subject: m.subject || '',
-            role: m.role || '',
-            strength: m.strength || '',
-          })
-        }
-      }
-    }
-  }
-  const participants = [...participantMap.values()]
 
   // 성취기준
-  const standards = SessionStandards.list(sessionId)
+  const standards = await getStandardsByProject(projectId)
 
-  // 자료
-  const materials = Materials.list(sessionId)
+  // 메시지 통계
+  let messageStats = { total: 0, teacher: 0, ai: 0, system: 0 }
+  try {
+    const msgs = await getMessages(projectId, 9999, 0)
+    messageStats = {
+      total: msgs.length,
+      teacher: msgs.filter(m => m.sender_type === 'teacher').length,
+      ai: msgs.filter(m => m.sender_type === 'ai').length,
+      system: msgs.filter(m => m.sender_type === 'system').length,
+    }
+  } catch { /* 메시지 없으면 무시 */ }
 
-  // 원칙 전체 목록
-  const allPrinciples = Principles.list()
+  // 참여자 추출: role_assignment 보드에서 추출
+  const participants = []
+  const roleDesign = designMap['T-2-1']
+  if (roleDesign?.content?.roles) {
+    for (const r of roleDesign.content.roles) {
+      if (r.memberName) {
+        participants.push({
+          name: r.memberName,
+          subject: r.subject || '',
+          role: r.role || '',
+          strengths: r.strengths || '',
+        })
+      }
+    }
+  }
+
+  // 절차별 완료 상태 계산
+  const procedureStatus = {}
+  for (const proc of PROCEDURE_LIST) {
+    const design = designMap[proc.code]
+    if (!design) {
+      procedureStatus[proc.code] = 'empty'
+    } else if (design.save_status === 'confirmed') {
+      procedureStatus[proc.code] = 'confirmed'
+    } else if (design.save_status === 'draft') {
+      procedureStatus[proc.code] = 'draft'
+    } else {
+      procedureStatus[proc.code] = 'in_progress'
+    }
+  }
+
+  // 완료 절차 수
+  const confirmedCount = Object.values(procedureStatus).filter(s => s === 'confirmed').length
+  const totalProcedures = PROCEDURE_LIST.length
 
   return {
-    session,
-    allBoards,
-    messageStats,
-    principleUsage,
-    participants,
+    project,
+    designMap,
     standards,
-    materials,
-    allPrinciples,
+    messageStats,
+    participants,
+    procedureStatus,
+    confirmedCount,
+    totalProcedures,
   }
 }
 
 /**
- * 보드 콘텐츠를 읽기 쉬운 텍스트로 변환
+ * 보드 콘텐츠를 렌더링 가능한 섹션으로 변환
+ *
+ * @param {string} boardType - 보드 타입 코드
+ * @param {object} content - 보드 콘텐츠
+ * @returns {Array|null} 섹션 배열 또는 null
  */
 function renderBoardContent(boardType, content) {
   if (!content || Object.keys(content).length === 0) return null
@@ -110,53 +142,115 @@ function renderBoardContent(boardType, content) {
 
   const sections = []
   for (const field of schema.fields) {
-    const value = content[field.key]
+    const value = content[field.name]
     if (!value || (Array.isArray(value) && value.length === 0) || value === '') continue
 
     if (field.type === 'table' && Array.isArray(value)) {
-      sections.push({ label: field.label, type: 'table', columns: field.columns, rows: value })
+      sections.push({
+        label: field.label,
+        type: 'table',
+        columns: field.columns,
+        rows: value,
+      })
     } else if (field.type === 'list' && Array.isArray(value)) {
-      sections.push({ label: field.label, type: 'list', items: value })
+      // 객체 배열 (itemSchema 있음) vs 문자열 배열
+      if (field.itemSchema && value.length > 0 && typeof value[0] === 'object') {
+        const cols = Object.entries(field.itemSchema).map(([key, v]) => ({ name: key, label: v.label }))
+        sections.push({
+          label: field.label,
+          type: 'table',
+          columns: cols,
+          rows: value,
+        })
+      } else {
+        sections.push({ label: field.label, type: 'list', items: value })
+      }
     } else if (field.type === 'tags' && Array.isArray(value)) {
       sections.push({ label: field.label, type: 'tags', items: value })
-    } else {
+    } else if (field.type === 'json' && value) {
+      // JSON 필드는 텍스트로 요약
+      sections.push({ label: field.label, type: 'text', value: typeof value === 'string' ? value : JSON.stringify(value, null, 2) })
+    } else if (typeof value === 'string' || typeof value === 'number') {
       sections.push({ label: field.label, type: 'text', value: String(value) })
     }
   }
   return sections.length > 0 ? sections : null
 }
 
-// ────────────── HTML 보고서 ──────────────
+// ════════════════════════════════════════════
+// Executive Summary 자동 생성
+// ════════════════════════════════════════════
+
+/**
+ * 확정된 보드 내용으로 요약문 생성
+ */
+function generateExecutiveSummary(data) {
+  const { project, designMap, participants, confirmedCount, totalProcedures, standards } = data
+  const lines = []
+
+  // 주제
+  const topicDesign = designMap['A-1-2']
+  if (topicDesign?.content?.selectedTopic) {
+    lines.push(`선정 주제: ${topicDesign.content.selectedTopic}`)
+  }
+
+  // 비전
+  const visionDesign = designMap['T-1-1']
+  if (visionDesign?.content?.commonVision) {
+    lines.push(`팀 비전: ${visionDesign.content.commonVision}`)
+  }
+
+  // 통합 목표
+  const objDesign = designMap['A-2-2']
+  if (objDesign?.content?.integratedObjectives?.length > 0) {
+    lines.push(`통합 학습목표: ${objDesign.content.integratedObjectives.length}개 설정`)
+  }
+
+  // 참여자
+  if (participants.length > 0) {
+    const subjects = [...new Set(participants.map(p => p.subject).filter(Boolean))]
+    lines.push(`참여 교과: ${subjects.join(', ') || '미정'}`)
+  }
+
+  // 성취기준
+  if (standards.length > 0) {
+    lines.push(`관련 성취기준: ${standards.length}개`)
+  }
+
+  // 진행률
+  lines.push(`설계 진행: ${confirmedCount}/${totalProcedures} 절차 완료`)
+
+  return lines
+}
+
+// ════════════════════════════════════════════
+// HTML 보고서 생성
+// ════════════════════════════════════════════
 
 export function generateHTML(data) {
-  const { session, allBoards, messageStats, principleUsage, participants, standards, allPrinciples } = data
-  const createdDate = new Date(session.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+  const { project, designMap, messageStats, participants, standards, procedureStatus, confirmedCount, totalProcedures } = data
+  const createdDate = new Date(project.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
   const now = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
-
-  const topPrinciples = Object.entries(principleUsage)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([pid, count]) => {
-      const p = allPrinciples.find((pr) => pr.id === pid)
-      return p ? { id: pid, name: p.name, count } : null
-    })
-    .filter(Boolean)
+  const summary = generateExecutiveSummary(data)
 
   // 참여자 아바타 색상 팔레트
-  const avatarColors = ['#E8856C', '#D9A348', '#5BA07B', '#5B93C5', '#9B7FBD', '#C77BA2', '#6AADAD', '#B5855A']
+  const avatarColors = ['#8b5cf6', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#84cc16']
+
+  // 워크스페이스 이름 (프로젝트에 포함된 경우)
+  const workspaceName = project.workspace?.name || ''
 
   let html = `<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${esc(session.title)} — 융합 수업 설계 보고서</title>
+<title>${esc(project.title)} — 융합 수업 설계 보고서</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    font-family: 'Noto Sans KR', -apple-system, sans-serif;
+    font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     color: #37352f; background: #fff;
     line-height: 1.7; font-size: 15px;
     -webkit-font-smoothing: antialiased;
@@ -164,25 +258,20 @@ export function generateHTML(data) {
 
   .page { max-width: 900px; margin: 0 auto; padding: 0 96px; }
 
-  /* ── 표지 헤더 ── */
+  /* ── 표지 ── */
   .cover { padding: 80px 0 40px; }
   .cover-top {
     display: flex; align-items: center; gap: 14px; margin-bottom: 32px;
   }
-  .cover-logo {
-    width: 52px; height: 52px; border-radius: 12px;
-  }
+  .cover-logo { width: 52px; height: 52px; border-radius: 12px; }
   .cover-brand {
-    font-size: 14px; font-weight: 500; color: #9b9a97;
-    letter-spacing: .3px;
+    font-size: 14px; font-weight: 500; color: #9b9a97; letter-spacing: .3px;
   }
   .cover h1 {
     font-size: 40px; font-weight: 700; line-height: 1.2;
     color: #37352f; letter-spacing: -1px; margin-bottom: 8px;
   }
-  .cover-desc {
-    font-size: 16px; color: #787774; margin-bottom: 24px;
-  }
+  .cover-desc { font-size: 16px; color: #787774; margin-bottom: 24px; }
   .cover-props {
     display: flex; gap: 36px; flex-wrap: wrap;
     font-size: 14px; color: #9b9a97; padding-top: 12px;
@@ -192,22 +281,55 @@ export function generateHTML(data) {
   .cover-props .prop-value { color: #37352f; font-weight: 500; }
 
   /* ── 구분선 ── */
-  .divider {
-    border: none; border-top: 1px solid #e3e2e0;
-    margin: 36px 0;
-  }
+  .divider { border: none; border-top: 1px solid #e3e2e0; margin: 36px 0; }
 
   /* ── 섹션 제목 ── */
   .section-title {
     font-size: 24px; font-weight: 700; color: #37352f;
     margin-bottom: 20px; display: flex; align-items: center; gap: 10px;
   }
-  .section-title .emoji { font-size: 24px; }
+
+  /* ── Phase 헤더 (컬러 좌측 보더) ── */
+  .phase-header {
+    font-size: 22px; font-weight: 700; color: #37352f;
+    margin: 40px 0 20px; padding: 14px 20px;
+    border-left: 5px solid #ccc; background: #fafafa;
+    border-radius: 0 8px 8px 0;
+    display: flex; align-items: center; gap: 10px;
+    page-break-before: auto;
+  }
+  .phase-badge {
+    display: inline-block; padding: 3px 12px; border-radius: 4px;
+    font-size: 12px; font-weight: 700; color: #fff;
+  }
+
+  /* ── Procedure 블록 ── */
+  .proc-block {
+    background: #fbfbfa; border: 1px solid #e3e2e0;
+    border-radius: 8px; padding: 20px 24px; margin-bottom: 16px;
+    page-break-inside: avoid;
+  }
+  .proc-header {
+    font-size: 16px; font-weight: 600; color: #37352f;
+    margin-bottom: 4px; display: flex; align-items: center; gap: 10px;
+  }
+  .proc-code {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; color: #fff;
+  }
+  .proc-desc {
+    font-size: 13px; color: #9b9a97; margin-bottom: 14px;
+  }
+  .proc-status {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; margin-left: 8px;
+  }
+  .status-confirmed { background: #DBEDDB; color: #2D7A3A; }
+  .status-draft { background: #FDECC8; color: #9A6700; }
+  .status-empty { background: #f1f0ee; color: #9b9a97; }
 
   /* ── 참여자 ── */
-  .members-grid {
-    display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px;
-  }
+  .members-grid { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
   .member-chip {
     display: flex; align-items: center; gap: 10px;
     background: #f7f6f3; border-radius: 8px; padding: 10px 16px;
@@ -226,35 +348,23 @@ export function generateHTML(data) {
     gap: 12px; margin-bottom: 24px;
   }
   .stat-box {
-    background: #f7f6f3; border-radius: 8px;
-    padding: 20px; text-align: center;
+    background: #f7f6f3; border-radius: 8px; padding: 20px; text-align: center;
   }
-  .stat-num {
-    font-size: 28px; font-weight: 700; color: #37352f; line-height: 1;
-  }
-  .stat-label {
-    font-size: 13px; color: #9b9a97; margin-top: 4px;
-  }
+  .stat-num { font-size: 28px; font-weight: 700; color: #37352f; line-height: 1; }
+  .stat-label { font-size: 13px; color: #9b9a97; margin-top: 4px; }
 
-  /* ── 원칙 목록 ── */
-  .principle-row {
-    display: flex; align-items: center; gap: 10px;
-    padding: 6px 0;
+  /* ── 요약 ── */
+  .summary-list { list-style: none; padding: 0; margin-bottom: 24px; }
+  .summary-list li {
+    padding: 6px 0 6px 20px; position: relative; font-size: 14px; color: #37352f;
   }
-  .principle-id {
-    display: inline-block; padding: 2px 8px; border-radius: 4px;
-    font-size: 12px; font-weight: 600; color: #fff;
-    background: #9b7fbd;
-  }
-  .principle-name { font-size: 14px; color: #37352f; flex: 1; }
-  .principle-cnt {
-    font-size: 12px; color: #9b9a97;
+  .summary-list li::before {
+    content: '▸'; position: absolute; left: 2px; top: 6px; color: #8b5cf6; font-weight: 700;
   }
 
   /* ── 성취기준 ── */
   .std-item {
-    display: flex; gap: 10px; padding: 8px 0;
-    border-bottom: 1px solid #f1f0ee;
+    display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f1f0ee;
   }
   .std-item:last-child { border-bottom: none; }
   .std-code {
@@ -264,44 +374,15 @@ export function generateHTML(data) {
   }
   .std-content { font-size: 14px; color: #37352f; }
 
-  /* ── 단계 그룹 ── */
-  .phase-title {
-    font-size: 20px; font-weight: 700; color: #37352f;
-    display: flex; align-items: center; gap: 8px;
-    margin-bottom: 16px;
-  }
-  .phase-badge {
-    display: inline-block; padding: 3px 10px; border-radius: 4px;
-    font-size: 12px; font-weight: 600; color: #fff;
-  }
-
-  .stage-block {
-    background: #fbfbfa; border: 1px solid #e3e2e0;
-    border-radius: 8px; padding: 20px 24px; margin-bottom: 12px;
-  }
-  .stage-header {
-    font-size: 15px; font-weight: 600; color: #37352f;
-    margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
-  }
-  .stage-code {
-    display: inline-block; padding: 2px 8px; border-radius: 4px;
-    font-size: 11px; font-weight: 700; color: #fff;
-  }
-
-  /* ── 보드 ── */
+  /* ── 보드 필드 ── */
+  .board-section { margin-bottom: 16px; }
   .board-label {
     font-size: 13px; font-weight: 600; color: #9b9a97;
     margin-bottom: 8px; padding-left: 10px;
     border-left: 3px solid #e3e2e0;
   }
-  .board-section { margin-bottom: 16px; }
-
-  /* ── 필드 ── */
   .f-group { margin-bottom: 10px; }
-  .f-label {
-    font-size: 12px; font-weight: 600; color: #9b9a97;
-    margin-bottom: 2px;
-  }
+  .f-label { font-size: 12px; font-weight: 600; color: #9b9a97; margin-bottom: 2px; }
   .f-value { font-size: 14px; color: #37352f; white-space: pre-wrap; }
 
   /* ── 테이블 (노션 스타일) ── */
@@ -313,8 +394,7 @@ export function generateHTML(data) {
   th {
     background: #f7f6f3; color: #9b9a97; font-weight: 600;
     text-align: left; padding: 8px 12px;
-    border-bottom: 1px solid #e3e2e0;
-    font-size: 12px;
+    border-bottom: 1px solid #e3e2e0; font-size: 12px;
   }
   td {
     padding: 8px 12px; border-bottom: 1px solid #f1f0ee;
@@ -325,11 +405,10 @@ export function generateHTML(data) {
   /* ── 리스트 ── */
   .n-list { list-style: none; padding: 0; }
   .n-list li {
-    padding: 4px 0 4px 20px; position: relative;
-    font-size: 14px; color: #37352f;
+    padding: 4px 0 4px 20px; position: relative; font-size: 14px; color: #37352f;
   }
   .n-list li::before {
-    content: '•'; position: absolute; left: 4px; top: 4px;
+    content: '\\2022'; position: absolute; left: 4px; top: 4px;
     color: #37352f; font-weight: 700;
   }
 
@@ -346,6 +425,18 @@ export function generateHTML(data) {
   .tag-orange { background: #FADEC9; color: #CC5E2B; }
   .tag-yellow { background: #FDECC8; color: #9A6700; }
 
+  /* ── 점검 결과 (AI 리뷰) ── */
+  .check-result {
+    background: #f3f0ff; border-left: 3px solid #8b5cf6;
+    padding: 10px 14px; border-radius: 0 6px 6px 0;
+    font-size: 13px; color: #37352f; margin-top: 8px;
+    white-space: pre-wrap;
+  }
+  .check-label {
+    font-size: 11px; font-weight: 600; color: #8b5cf6;
+    margin-bottom: 4px;
+  }
+
   /* ── 푸터 ── */
   .footer {
     padding: 40px 0; text-align: center;
@@ -360,7 +451,9 @@ export function generateHTML(data) {
 
   @media print {
     .page { padding: 0 48px; }
-    .stage-block { page-break-inside: avoid; }
+    .proc-block { page-break-inside: avoid; }
+    .phase-header { page-break-before: always; }
+    .phase-header:first-of-type { page-break-before: auto; }
   }
 
   @media (max-width: 640px) {
@@ -382,12 +475,13 @@ export function generateHTML(data) {
       ${logoBase64 ? `<img src="${logoBase64}" alt="" class="cover-logo">` : ''}
       <span class="cover-brand">커리큘럼 위버 · 융합 수업 설계 보고서</span>
     </div>
-    <h1>${esc(session.title)}</h1>
-    ${session.description ? `<p class="cover-desc">${esc(session.description)}</p>` : ''}
+    <h1>${esc(project.title)}</h1>
+    ${project.description ? `<p class="cover-desc">${esc(project.description)}</p>` : ''}
     <div class="cover-props">
+      ${workspaceName ? `<span><span class="prop-label">워크스페이스</span><span class="prop-value">${esc(workspaceName)}</span></span>` : ''}
       <span><span class="prop-label">생성일</span><span class="prop-value">${createdDate}</span></span>
       <span><span class="prop-label">보고서</span><span class="prop-value">${now}</span></span>
-      <span><span class="prop-label">진행 단계</span><span class="prop-value">${session.current_stage}/10</span></span>
+      <span><span class="prop-label">진행</span><span class="prop-value">${confirmedCount}/${totalProcedures} 절차 완료</span></span>
     </div>
   </div>
 `
@@ -395,7 +489,7 @@ export function generateHTML(data) {
   // ── 참여자 ──
   if (participants.length > 0) {
     html += `<hr class="divider">
-  <div class="section-title"><span class="emoji">👤</span> 참여 선생님</div>
+  <div class="section-title">참여 선생님</div>
   <div class="members-grid">`
     participants.forEach((p, i) => {
       const color = avatarColors[i % avatarColors.length]
@@ -413,79 +507,85 @@ export function generateHTML(data) {
     html += `</div>`
   }
 
-  // ── 협력 과정 통계 ──
+  // ── Executive Summary ──
   html += `<hr class="divider">
-  <div class="section-title"><span class="emoji">📊</span> 협력 설계 과정 요약</div>
+  <div class="section-title">요약</div>
   <div class="stats-row">
+    <div class="stat-box"><div class="stat-num">${confirmedCount}</div><div class="stat-label">완료 절차</div></div>
     <div class="stat-box"><div class="stat-num">${messageStats.total}</div><div class="stat-label">전체 대화</div></div>
     <div class="stat-box"><div class="stat-num">${messageStats.teacher}</div><div class="stat-label">교사 메시지</div></div>
-    <div class="stat-box"><div class="stat-num">${messageStats.ai}</div><div class="stat-label">AI 조교 응답</div></div>
-    <div class="stat-box"><div class="stat-num">${Object.keys(principleUsage).length}</div><div class="stat-label">활용 설계 원칙</div></div>
+    <div class="stat-box"><div class="stat-num">${messageStats.ai}</div><div class="stat-label">AI 응답</div></div>
   </div>
-`
-
-  if (topPrinciples.length > 0) {
-    html += `<p style="font-size:14px;font-weight:600;color:#37352f;margin-bottom:8px;">주요 활용 설계 원칙</p>`
-    for (const p of topPrinciples) {
-      html += `<div class="principle-row">
-        <span class="principle-id">${esc(p.id)}</span>
-        <span class="principle-name">${esc(p.name)}</span>
-        <span class="principle-cnt">${p.count}회</span>
-      </div>`
-    }
+  <ul class="summary-list">`
+  for (const line of summary) {
+    html += `<li>${esc(line)}</li>`
   }
+  html += `</ul>`
 
   // ── 성취기준 ──
   if (standards.length > 0) {
     html += `<hr class="divider">
-  <div class="section-title"><span class="emoji">📋</span> 선택된 성취기준 <span style="font-size:14px;font-weight:400;color:#9b9a97;">${standards.length}개</span></div>`
+  <div class="section-title">관련 성취기준 <span style="font-size:14px;font-weight:400;color:#9b9a97;">${standards.length}개</span></div>`
     for (const s of standards) {
-      const std = s.curriculum_standards
-      if (!std) continue
+      const std = s.curriculum_standards || s
+      const code = std.code || s.standard_id || ''
+      const content = std.content || ''
+      if (!code && !content) continue
       html += `<div class="std-item">
-      <span class="std-code">${esc(std.code)}</span>
-      <span class="std-content">${esc(std.content)}</span>
+      <span class="std-code">${esc(code)}</span>
+      <span class="std-content">${esc(content)}</span>
     </div>`
     }
   }
 
-  // ── 단계별 설계 보드 ──
-  const phaseColors = { T: '#9b7fbd', A: '#5B93C5', Ds: '#5BA07B', DI: '#D9A348', E: '#E8856C' }
+  // ── Phase별 절차 보드 ──
+  for (const phase of PHASE_LIST) {
+    const procedures = getProceduresByPhase(phase.id)
+    const phaseColor = PHASE_COLORS[phase.id] || '#64748b'
 
-  for (const phase of PHASES) {
-    const phaseStages = STAGES.filter((s) => s.phase === phase.id)
-    const hasContent = phaseStages.some((s) => {
-      const boards = allBoards[s.id] || []
-      return boards.some((b) => renderBoardContent(b.board_type, b.content))
+    // 이 Phase에 내용이 있는 절차가 있는지 확인
+    const hasContent = procedures.some(proc => {
+      const boardType = BOARD_TYPES[proc.code]
+      const design = designMap[proc.code]
+      return design && renderBoardContent(boardType, design.content)
     })
     if (!hasContent) continue
 
-    html += `<hr class="divider">
-  <div class="phase-title">
-    <span class="emoji">${phaseIcon(phase.id)}</span>
+    html += `
+  <div class="phase-header" style="border-left-color: ${phaseColor};">
+    <span>${PHASE_ICONS[phase.id] || ''}</span>
     ${esc(phase.name)}
-    <span class="phase-badge" style="background:${phaseColors[phase.id]};">${phase.id}</span>
+    <span class="phase-badge" style="background:${phaseColor};">${phase.id}</span>
   </div>`
 
-    for (const stage of phaseStages) {
-      const boards = allBoards[stage.id] || []
-      const boardContents = boards
-        .map((b) => ({ type: b.board_type, sections: renderBoardContent(b.board_type, b.content) }))
-        .filter((b) => b.sections)
+    for (const proc of procedures) {
+      const boardType = BOARD_TYPES[proc.code]
+      const design = designMap[proc.code]
+      const sections = design ? renderBoardContent(boardType, design.content) : null
 
-      if (boardContents.length === 0) continue
+      if (!sections) continue
 
-      html += `<div class="stage-block">
-    <div class="stage-header">
-      <span class="stage-code" style="background:${phaseColors[phase.id]};">${esc(stage.code)}</span>
-      ${esc(stage.shortName)}
-    </div>`
+      const status = procedureStatus[proc.code] || 'empty'
+      const statusLabel = status === 'confirmed' ? '확정' : status === 'draft' ? '초안' : ''
+      const statusClass = status === 'confirmed' ? 'status-confirmed' : status === 'draft' ? 'status-draft' : 'status-empty'
 
-      for (const board of boardContents) {
-        const label = BOARD_TYPE_LABELS[board.type] || board.type
-        html += `<div class="board-section"><div class="board-label">${esc(label)}</div>`
-        html += renderSectionsHTML(board.sections)
-        html += `</div>`
+      html += `
+  <div class="proc-block">
+    <div class="proc-header">
+      <span class="proc-code" style="background:${phaseColor};">${esc(proc.code)}</span>
+      ${esc(proc.name)}
+      ${statusLabel ? `<span class="proc-status ${statusClass}">${statusLabel}</span>` : ''}
+    </div>
+    <div class="proc-desc">${esc(proc.description)}</div>`
+
+      html += renderSectionsHTML(sections)
+
+      // AI 점검 결과가 있으면 별도 표시 (Check 필드)
+      if (design?.content) {
+        const checkFields = getCheckFields(boardType, design.content)
+        for (const cf of checkFields) {
+          html += `<div class="check-result"><div class="check-label">AI 점검: ${esc(cf.label)}</div>${esc(cf.value)}</div>`
+        }
       }
 
       html += `</div>`
@@ -506,11 +606,32 @@ export function generateHTML(data) {
   return html
 }
 
+/**
+ * AI 점검 결과 필드 추출 (필드명에 Check, Alignment 등 포함)
+ */
+function getCheckFields(boardType, content) {
+  const schema = BOARD_SCHEMAS[boardType]
+  if (!schema) return []
+  const results = []
+  for (const field of schema.fields) {
+    const isCheck = field.name.toLowerCase().includes('check') ||
+                    field.name.toLowerCase().includes('alignment')
+    if (isCheck && content[field.name] && typeof content[field.name] === 'string' && content[field.name].trim()) {
+      results.push({ label: field.label, value: content[field.name] })
+    }
+  }
+  return results
+}
+
+/**
+ * 섹션 배열 → HTML 렌더링 (체크 필드는 별도 처리되므로 제외)
+ */
 function renderSectionsHTML(sections) {
   const tagClasses = ['tag-blue', 'tag-green', 'tag-purple', 'tag-pink', 'tag-orange', 'tag-yellow']
   let html = ''
   for (const sec of sections) {
     if (sec.type === 'table') {
+      html += `<div class="board-section"><div class="board-label">${esc(sec.label)}</div>`
       html += `<table><thead><tr>`
       for (const col of sec.columns) {
         html += `<th>${esc(col.label)}</th>`
@@ -519,19 +640,19 @@ function renderSectionsHTML(sections) {
       for (const row of sec.rows) {
         html += `<tr>`
         for (const col of sec.columns) {
-          html += `<td>${esc(String(row[col.key] || ''))}</td>`
+          html += `<td>${esc(String(row[col.name] || row[col.key] || ''))}</td>`
         }
         html += `</tr>`
       }
-      html += `</tbody></table>`
+      html += `</tbody></table></div>`
     } else if (sec.type === 'list') {
-      html += `<div class="f-group"><div class="f-label">${esc(sec.label)}</div><ul class="n-list">`
+      html += `<div class="board-section"><div class="board-label">${esc(sec.label)}</div><ul class="n-list">`
       for (const item of sec.items) {
         html += `<li>${esc(String(item))}</li>`
       }
       html += `</ul></div>`
     } else if (sec.type === 'tags') {
-      html += `<div class="f-group"><div class="f-label">${esc(sec.label)}</div><div class="tags">`
+      html += `<div class="board-section"><div class="board-label">${esc(sec.label)}</div><div class="tags">`
       sec.items.forEach((item, i) => {
         html += `<span class="tag ${tagClasses[i % tagClasses.length]}">${esc(String(item))}</span>`
       })
@@ -543,23 +664,26 @@ function renderSectionsHTML(sections) {
   return html
 }
 
-// ────────────── Markdown 보고서 ──────────────
+// ════════════════════════════════════════════
+// Markdown 보고서 생성
+// ════════════════════════════════════════════
 
 export function generateMarkdown(data) {
-  const { session, allBoards, messageStats, principleUsage, participants, standards, allPrinciples } = data
-  const createdDate = new Date(session.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+  const { project, designMap, messageStats, participants, standards, procedureStatus, confirmedCount, totalProcedures } = data
+  const createdDate = new Date(project.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
   const now = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
+  const summary = generateExecutiveSummary(data)
 
-  let md = `# ${session.title}\n\n`
+  let md = `# ${project.title}\n\n`
   md += `> TADDs-DIE 협력적 수업 설계 보고서\n\n`
-  if (session.description) md += `${session.description}\n\n`
+  if (project.description) md += `${project.description}\n\n`
   md += `- **생성일**: ${createdDate}\n`
   md += `- **보고서 생성**: ${now}\n`
-  md += `- **설계 단계**: ${session.current_stage}/10\n\n`
+  md += `- **설계 진행**: ${confirmedCount}/${totalProcedures} 절차 완료\n\n`
 
   // 참여자
   if (participants.length > 0) {
-    md += `## 👤 참여 선생님\n\n`
+    md += `## 참여 선생님\n\n`
     for (const p of participants) {
       const detail = [p.subject, p.role].filter(Boolean).join(' · ')
       md += `- **${p.name}**${detail ? ` — ${detail}` : ''}\n`
@@ -569,70 +693,69 @@ export function generateMarkdown(data) {
 
   md += `---\n\n`
 
-  // 통계
-  md += `## 📊 협력 설계 과정 요약\n\n`
+  // 요약
+  md += `## 요약\n\n`
   md += `| 항목 | 수치 |\n|------|------|\n`
+  md += `| 완료 절차 | ${confirmedCount}/${totalProcedures} |\n`
   md += `| 전체 대화 | ${messageStats.total} |\n`
   md += `| 교사 메시지 | ${messageStats.teacher} |\n`
-  md += `| AI 조교 응답 | ${messageStats.ai} |\n`
-  md += `| 활용 설계 원칙 | ${Object.keys(principleUsage).length}개 |\n\n`
+  md += `| AI 응답 | ${messageStats.ai} |\n\n`
 
-  // 활용 원칙
-  const topPrinciples = Object.entries(principleUsage)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([pid, count]) => {
-      const p = allPrinciples.find((pr) => pr.id === pid)
-      return p ? { id: pid, name: p.name, count } : null
-    })
-    .filter(Boolean)
-
-  if (topPrinciples.length > 0) {
-    md += `### 주요 활용 설계 원칙\n\n`
-    for (const p of topPrinciples) {
-      md += `- **${p.id}** ${p.name} (${p.count}회)\n`
+  if (summary.length > 0) {
+    for (const line of summary) {
+      md += `- ${line}\n`
     }
     md += `\n`
   }
 
   // 성취기준
   if (standards.length > 0) {
-    md += `## 📋 선택된 성취기준\n\n`
+    md += `## 관련 성취기준\n\n`
     for (const s of standards) {
-      const std = s.curriculum_standards
-      if (!std) continue
-      md += `- \`${std.code}\` ${std.content}\n`
+      const std = s.curriculum_standards || s
+      const code = std.code || s.standard_id || ''
+      const content = std.content || ''
+      if (!code && !content) continue
+      md += `- \`${code}\` ${content}\n`
     }
     md += `\n`
   }
 
   md += `---\n\n`
 
-  // 단계별 보드
-  for (const phase of PHASES) {
-    const phaseStages = STAGES.filter((s) => s.phase === phase.id)
-    const hasContent = phaseStages.some((s) => {
-      const boards = allBoards[s.id] || []
-      return boards.some((b) => renderBoardContent(b.board_type, b.content))
+  // Phase별 절차
+  for (const phase of PHASE_LIST) {
+    const procedures = getProceduresByPhase(phase.id)
+    const phaseIcon = PHASE_ICONS[phase.id] || ''
+
+    const hasContent = procedures.some(proc => {
+      const boardType = BOARD_TYPES[proc.code]
+      const design = designMap[proc.code]
+      return design && renderBoardContent(boardType, design.content)
     })
     if (!hasContent) continue
 
-    md += `## ${phaseIcon(phase.id)} ${phase.name} (${phase.id})\n\n`
+    md += `## ${phaseIcon} ${phase.name} (${phase.id})\n\n`
 
-    for (const stage of phaseStages) {
-      const boards = allBoards[stage.id] || []
-      const boardContents = boards
-        .map((b) => ({ type: b.board_type, sections: renderBoardContent(b.board_type, b.content) }))
-        .filter((b) => b.sections)
+    for (const proc of procedures) {
+      const boardType = BOARD_TYPES[proc.code]
+      const design = designMap[proc.code]
+      const sections = design ? renderBoardContent(boardType, design.content) : null
+      if (!sections) continue
 
-      if (boardContents.length === 0) continue
+      const status = procedureStatus[proc.code] || 'empty'
+      const statusTag = status === 'confirmed' ? ' [확정]' : status === 'draft' ? ' [초안]' : ''
 
-      md += `### ${stage.code}: ${stage.shortName}\n\n`
+      md += `### ${proc.code}: ${proc.name}${statusTag}\n\n`
+      md += `> ${proc.description}\n\n`
+      md += renderSectionsMD(sections)
 
-      for (const board of boardContents) {
-        const label = BOARD_TYPE_LABELS[board.type] || board.type
-        md += `#### ${label}\n\n`
-        md += renderSectionsMD(board.sections)
+      // AI 점검 결과
+      if (design?.content) {
+        const checkFields = getCheckFields(boardType, design.content)
+        for (const cf of checkFields) {
+          md += `> **AI 점검: ${cf.label}**\n>\n> ${cf.value.replace(/\n/g, '\n> ')}\n\n`
+        }
       }
     }
   }
@@ -649,11 +772,15 @@ function renderSectionsMD(sections) {
   let md = ''
   for (const sec of sections) {
     if (sec.type === 'table') {
-      // 헤더
-      md += `| ${sec.columns.map((c) => c.label).join(' | ')} |\n`
+      md += `**${sec.label}**\n\n`
+      md += `| ${sec.columns.map(c => c.label).join(' | ')} |\n`
       md += `| ${sec.columns.map(() => '---').join(' | ')} |\n`
       for (const row of sec.rows) {
-        md += `| ${sec.columns.map((c) => String(row[c.key] || '').replace(/\|/g, '\\|').replace(/\n/g, ' ')).join(' | ')} |\n`
+        const cells = sec.columns.map(c => {
+          const val = String(row[c.name] || row[c.key] || '')
+          return val.replace(/\|/g, '\\|').replace(/\n/g, ' ')
+        })
+        md += `| ${cells.join(' | ')} |\n`
       }
       md += `\n`
     } else if (sec.type === 'list') {
@@ -663,7 +790,7 @@ function renderSectionsMD(sections) {
       }
       md += `\n`
     } else if (sec.type === 'tags') {
-      md += `**${sec.label}**: ${sec.items.map((i) => `\`${i}\``).join(', ')}\n\n`
+      md += `**${sec.label}**: ${sec.items.map(i => `\`${i}\``).join(', ')}\n\n`
     } else {
       md += `**${sec.label}**: ${sec.value}\n\n`
     }
@@ -671,7 +798,9 @@ function renderSectionsMD(sections) {
   return md
 }
 
-// ────────────── 유틸 ──────────────
+// ════════════════════════════════════════════
+// 유틸리티
+// ════════════════════════════════════════════
 
 function esc(str) {
   return String(str)
@@ -679,9 +808,4 @@ function esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-}
-
-function phaseIcon(phaseId) {
-  const icons = { T: '👥', A: '🔍', Ds: '🧭', DI: '🚀', E: '🔄' }
-  return icons[phaseId] || '📌'
 }

@@ -1,7 +1,9 @@
+// Pretendard Variable 폰트 로드
+import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css'
+
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
-import { Check } from 'lucide-react'
 
 // 즉시 로드 (핵심 페이지)
 import LoginPage from './pages/LoginPage'
@@ -30,10 +32,10 @@ function ProtectedRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-gray-400">로딩 중...</p>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 28, height: 28, border: '3px solid var(--color-border)', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+          <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', margin: 0 }}>로딩 중...</p>
         </div>
       </div>
     )
@@ -54,8 +56,8 @@ function HomeRoute() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
+        <div style={{ width: 28, height: 28, border: '3px solid var(--color-border, #E5E7EB)', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
       </div>
     )
   }
@@ -75,8 +77,8 @@ function AuthRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
+        <div style={{ width: 28, height: 28, border: '3px solid var(--color-border, #E5E7EB)', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
       </div>
     )
   }
@@ -148,8 +150,8 @@ function InviteAcceptPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="text-center max-w-sm mx-4">
-        <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
-          <Check size={24} className="text-green-600" />
+        <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         </div>
         <h2 className="text-lg font-semibold text-gray-900 mb-2">참여 완료</h2>
         <p className="text-sm text-gray-500 mb-4">

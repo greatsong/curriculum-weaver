@@ -2,12 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import Logo from '../components/Logo'
-import { Eye, EyeOff, LogIn, UserPlus } from 'lucide-react'
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const { login, signup, error, clearError } = useAuthStore()
-  const [mode, setMode] = useState('login') // 'login' | 'signup'
+  const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -36,7 +35,6 @@ export default function LoginPage() {
         navigate('/workspaces', { replace: true })
       } else {
         const data = await signup(email.trim(), password, displayName.trim())
-        // Supabase 이메일 인증이 필요한 경우
         if (data.user && !data.session) {
           setSuccessMessage('인증 이메일이 발송되었습니다. 이메일을 확인해주세요.')
         } else {
@@ -51,43 +49,79 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* 헤더 */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
-          <Logo size={32} />
-          <h1 className="text-xl font-bold text-gray-900">커리큘럼 위버</h1>
-        </div>
-      </header>
+    <div
+      className="min-h-screen flex flex-col"
+      style={{
+        background: 'linear-gradient(135deg, #FAFBFC 0%, #EFF6FF 50%, #F5F3FF 100%)',
+      }}
+    >
+      {/* 미니멀 로고 */}
+      <div style={{ padding: '32px 32px 0' }}>
+        <a
+          href="/"
+          onClick={(e) => { e.preventDefault(); navigate('/') }}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 10,
+            textDecoration: 'none',
+            transition: 'opacity var(--transition-fast)',
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+          onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+        >
+          <Logo size={28} />
+          <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+            커리큘럼 위버
+          </span>
+        </a>
+      </div>
 
-      {/* 로그인 폼 */}
+      {/* 중앙 로그인 카드 */}
       <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm">
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 sm:p-8">
-            {/* 아이콘 + 제목 */}
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-3">
-                {mode === 'login' ? (
-                  <LogIn size={28} className="text-blue-600" />
-                ) : (
-                  <UserPlus size={28} className="text-blue-600" />
-                )}
-              </div>
-              <h2 className="text-xl font-bold text-gray-900">
-                {mode === 'login' ? '로그인' : '회원가입'}
+        <div className="w-full" style={{ maxWidth: 400 }}>
+          <div
+            className="animate-slide-up"
+            style={{
+              background: 'var(--color-bg-secondary)',
+              borderRadius: 'var(--radius-xl)',
+              border: '1px solid var(--color-border)',
+              boxShadow: 'var(--shadow-lg)',
+              padding: '40px 32px',
+            }}
+          >
+            {/* 제목 */}
+            <div style={{ textAlign: 'center', marginBottom: 32 }}>
+              <h2 style={{
+                fontSize: 22,
+                fontWeight: 700,
+                color: 'var(--color-text-primary)',
+                margin: '0 0 8px',
+              }}>
+                {mode === 'login' ? '다시 오신 것을 환영합니다' : '새 계정 만들기'}
               </h2>
-              <p className="text-sm text-gray-500 mt-1">
+              <p style={{
+                fontSize: 14,
+                color: 'var(--color-text-secondary)',
+                margin: 0,
+              }}>
                 {mode === 'login'
                   ? 'AI 협력 수업 설계를 시작하세요'
-                  : '새 계정을 만들어 팀에 참여하세요'}
+                  : '팀과 함께 융합 수업을 설계하세요'}
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* 이름 (회원가입) */}
               {mode === 'signup' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label style={{
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: 'var(--color-text-secondary)',
+                    marginBottom: 6,
+                  }}>
                     이름
                   </label>
                   <input
@@ -97,14 +131,20 @@ export default function LoginPage() {
                     placeholder="예: 김교사"
                     maxLength={20}
                     required
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
                   />
                 </div>
               )}
 
               {/* 이메일 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label style={{
+                  display: 'block',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: 'var(--color-text-secondary)',
+                  marginBottom: 6,
+                }}>
                   이메일
                 </label>
                 <input
@@ -114,16 +154,22 @@ export default function LoginPage() {
                   placeholder="teacher@school.edu"
                   required
                   autoComplete="email"
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
                 />
               </div>
 
               {/* 비밀번호 */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label style={{
+                  display: 'block',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: 'var(--color-text-secondary)',
+                  marginBottom: 6,
+                }}>
                   비밀번호
                 </label>
-                <div className="relative">
+                <div style={{ position: 'relative' }}>
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
@@ -132,38 +178,83 @@ export default function LoginPage() {
                     required
                     minLength={mode === 'signup' ? 6 : undefined}
                     autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                    className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    style={{ width: '100%', padding: '10px 40px 10px 14px', fontSize: 14, boxSizing: 'border-box' }}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     tabIndex={-1}
+                    style={{
+                      position: 'absolute',
+                      right: 10,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      padding: 4,
+                      cursor: 'pointer',
+                      color: 'var(--color-text-tertiary)',
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
                   >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showPassword ? (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    )}
                   </button>
                 </div>
               </div>
 
-              {/* 에러 메시지 */}
+              {/* 에러 */}
               {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm text-red-600">{error}</p>
+                <div style={{
+                  padding: '10px 14px',
+                  background: '#FEF2F2',
+                  border: '1px solid #FECACA',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: 13,
+                  color: '#DC2626',
+                }}>
+                  {error}
                 </div>
               )}
 
-              {/* 성공 메시지 */}
+              {/* 성공 */}
               {successMessage && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <p className="text-sm text-green-600">{successMessage}</p>
+                <div style={{
+                  padding: '10px 14px',
+                  background: '#F0FDF4',
+                  border: '1px solid #BBF7D0',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: 13,
+                  color: '#16A34A',
+                }}>
+                  {successMessage}
                 </div>
               )}
 
-              {/* 제출 버튼 */}
+              {/* 제출 */}
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  background: '#111827',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: submitting ? 'not-allowed' : 'pointer',
+                  opacity: submitting ? 0.5 : 1,
+                  transition: 'all var(--transition-fast)',
+                  fontFamily: 'var(--font-sans)',
+                }}
+                onMouseEnter={(e) => { if (!submitting) e.currentTarget.style.background = '#1F2937' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = '#111827' }}
               >
                 {submitting
                   ? '처리 중...'
@@ -174,18 +265,39 @@ export default function LoginPage() {
             </form>
 
             {/* 모드 전환 */}
-            <div className="mt-6 text-center">
-              <p className="text-sm text-gray-500">
+            <div style={{ marginTop: 24, textAlign: 'center' }}>
+              <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0 }}>
                 {mode === 'login' ? '계정이 없으신가요?' : '이미 계정이 있으신가요?'}
                 <button
                   onClick={toggleMode}
-                  className="ml-1.5 text-blue-600 font-medium hover:text-blue-700"
+                  style={{
+                    marginLeft: 6,
+                    background: 'none',
+                    border: 'none',
+                    color: '#3B82F6',
+                    fontWeight: 600,
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = '#2563EB'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = '#3B82F6'}
                 >
                   {mode === 'login' ? '회원가입' : '로그인'}
                 </button>
               </p>
             </div>
           </div>
+
+          {/* 하단 설명 */}
+          <p style={{
+            textAlign: 'center',
+            fontSize: 12,
+            color: 'var(--color-text-tertiary)',
+            marginTop: 24,
+          }}>
+            40가지 설계 원리 기반 AI 협력 수업설계 플랫폼
+          </p>
         </div>
       </main>
     </div>

@@ -1,13 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import {
-  Plus, Users, FolderOpen, ArrowRight, ArrowLeft, Settings,
-  Trash2, UserPlus, Clock, Copy, Mail, Shield, ChevronLeft,
-} from 'lucide-react'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
-import { PROCEDURES, PHASES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, PHASES } from 'curriculum-weaver-shared/constants.js'
 import Logo from '../components/Logo'
 
 export default function WorkspaceDetailPage() {
@@ -17,7 +13,7 @@ export default function WorkspaceDetailPage() {
   const { currentWorkspace, fetchWorkspace, updateWorkspace, deleteWorkspace, inviteMember } = useWorkspaceStore()
   const { projects, loading: projectsLoading, fetchProjects, createProject, deleteProject } = useProjectStore()
 
-  const [activeTab, setActiveTab] = useState('projects') // 'projects' | 'members' | 'settings'
+  const [activeTab, setActiveTab] = useState('projects')
   const [showCreateProject, setShowCreateProject] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
   const [projectTitle, setProjectTitle] = useState('')
@@ -78,135 +74,228 @@ export default function WorkspaceDetailPage() {
 
   if (!currentWorkspace) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
+        <div style={{
+          width: 28,
+          height: 28,
+          border: '3px solid var(--color-border)',
+          borderTopColor: '#3B82F6',
+          borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+        }} />
       </div>
     )
   }
 
   const members = currentWorkspace.members || []
 
+  const tabs = [
+    { key: 'projects', label: '프로젝트', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg> },
+    { key: 'members', label: '멤버', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> },
+    ...(isOwner ? [{ key: 'settings', label: '설정', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg> }] : []),
+  ]
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen" style={{ background: 'var(--color-bg-primary)' }}>
       {/* 헤더 */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
+      <header style={{
+        background: 'var(--color-bg-secondary)',
+        borderBottom: '1px solid var(--color-border)',
+      }}>
+        <div style={{
+          maxWidth: 1120,
+          margin: '0 auto',
+          padding: '16px 24px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+        }}>
           <button
             onClick={() => navigate('/workspaces')}
-            className="flex items-center gap-1 text-gray-500 hover:text-gray-700 transition min-w-[44px] min-h-[44px] justify-center"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 36,
+              height: 36,
+              borderRadius: 'var(--radius-md)',
+              border: 'none',
+              background: 'none',
+              color: 'var(--color-text-secondary)',
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-tertiary)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'none' }}
           >
-            <ChevronLeft size={20} />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <Logo size={24} />
-          <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-bold text-gray-900 truncate">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 style={{
+              fontSize: 17,
+              fontWeight: 700,
+              color: 'var(--color-text-primary)',
+              margin: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}>
               {currentWorkspace.name}
             </h1>
             {currentWorkspace.description && (
-              <p className="text-sm text-gray-500 truncate">{currentWorkspace.description}</p>
+              <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentWorkspace.description}
+              </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowInvite(true)}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition"
-            >
-              <UserPlus size={14} />
-              <span className="hidden sm:inline">초대</span>
-            </button>
-          </div>
+          <button
+            onClick={() => setShowInvite(true)}
+            className="btn btn-secondary"
+            style={{ padding: '6px 14px', fontSize: 13 }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+            <span className="hidden sm:inline">초대</span>
+          </button>
         </div>
       </header>
 
       {/* 탭 */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex gap-0">
-          {[
-            { key: 'projects', label: '프로젝트', icon: FolderOpen },
-            { key: 'members', label: '멤버', icon: Users },
-            ...(isOwner ? [{ key: 'settings', label: '설정', icon: Settings }] : []),
-          ].map((tab) => (
+      <div style={{ background: 'var(--color-bg-secondary)', borderBottom: '1px solid var(--color-border)' }}>
+        <div style={{ maxWidth: 1120, margin: '0 auto', padding: '0 24px', display: 'flex', gap: 0 }}>
+          {tabs.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition ${
-                activeTab === tab.key
-                  ? 'text-blue-600 border-blue-600'
-                  : 'text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300'
-              }`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '12px 16px',
+                fontSize: 13,
+                fontWeight: 500,
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                borderBottom: `2px solid ${activeTab === tab.key ? '#3B82F6' : 'transparent'}`,
+                color: activeTab === tab.key ? '#3B82F6' : 'var(--color-text-secondary)',
+                transition: 'all var(--transition-fast)',
+                fontFamily: 'var(--font-sans)',
+              }}
             >
-              <tab.icon size={16} />
+              {tab.icon}
               {tab.label}
             </button>
           ))}
         </div>
       </div>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main style={{ maxWidth: 1120, margin: '0 auto', padding: '32px 24px' }}>
         {/* 프로젝트 탭 */}
         {activeTab === 'projects' && (
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-800">프로젝트</h2>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <h2 style={{ fontSize: 17, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>프로젝트</h2>
               <button
                 onClick={() => setShowCreateProject(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
+                className="btn btn-primary"
+                style={{ padding: '7px 14px', fontSize: 13 }}
               >
-                <Plus size={16} /> 새 프로젝트
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                새 프로젝트
               </button>
             </div>
 
             {projectsLoading ? (
-              <div className="text-center py-12 text-gray-400">로딩 중...</div>
+              <div style={{ textAlign: 'center', padding: '64px 0', color: 'var(--color-text-tertiary)' }}>
+                <div style={{ width: 24, height: 24, border: '3px solid var(--color-border)', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+                <span style={{ fontSize: 13 }}>로딩 중...</span>
+              </div>
             ) : projects.length === 0 ? (
-              <div className="text-center py-16 bg-white rounded-xl border border-gray-200">
-                <FolderOpen size={48} className="mx-auto mb-2 text-gray-300" />
-                <p className="text-gray-500 mb-2">아직 프로젝트가 없습니다</p>
-                <p className="text-sm text-gray-400">새 프로젝트를 만들어 수업 설계를 시작하세요</p>
+              <div style={{
+                textAlign: 'center',
+                padding: '64px 24px',
+                background: 'var(--color-bg-secondary)',
+                borderRadius: 'var(--radius-xl)',
+                border: '1px solid var(--color-border)',
+              }}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto 12px', display: 'block' }}>
+                  <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+                </svg>
+                <p style={{ fontSize: 15, fontWeight: 500, color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>아직 프로젝트가 없습니다</p>
+                <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', margin: 0 }}>새 프로젝트를 만들어 수업 설계를 시작하세요</p>
               </div>
             ) : (
-              <div className="grid gap-4">
-                {projects.map((project) => {
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {projects.map((project, idx) => {
                   const proc = PROCEDURES[project.current_procedure] || PROCEDURES['T-1-1']
                   const phase = Object.values(PHASES).find((p) => p.id === proc?.phase)
                   return (
                     <button
                       key={project.id}
                       onClick={() => navigate(`/workspaces/${workspaceId}/projects/${project.id}`)}
-                      className="flex items-center gap-3 sm:gap-4 bg-white rounded-xl border border-gray-200 p-4 sm:p-5 hover:shadow-md hover:border-blue-300 transition text-left group w-full"
+                      className="card animate-slide-up"
+                      style={{
+                        animationDelay: `${idx * 40}ms`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 16,
+                        padding: '16px 20px',
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        width: '100%',
+                      }}
                     >
-                      <div
-                        className="w-12 h-12 rounded-xl flex items-center justify-center text-xs font-bold shrink-0"
-                        style={{
-                          backgroundColor: `${phase?.color || '#3b82f6'}15`,
-                          color: phase?.color || '#3b82f6',
-                        }}
-                      >
+                      {/* Phase badge */}
+                      <div style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 'var(--radius-lg)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        flexShrink: 0,
+                        background: `${phase?.color || '#3b82f6'}12`,
+                        color: phase?.color || '#3b82f6',
+                      }}>
                         {project.current_procedure || 'T-1-1'}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-gray-900 truncate">{project.title}</h3>
-                        <p className="text-sm text-gray-500 flex items-center gap-2 mt-1">
-                          <Clock size={14} />
-                          <span>{proc?.name || '비전설정'}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {project.title}
+                        </h3>
+                        <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                          {proc?.name || '비전설정'}
                         </p>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (confirm('이 프로젝트를 삭제하시겠습니까?')) {
-                              deleteProject(project.id)
-                            }
+                            if (confirm('이 프로젝트를 삭제하시겠습니까?')) deleteProject(project.id)
                           }}
-                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 32,
+                            height: 32,
+                            borderRadius: 'var(--radius-md)',
+                            border: 'none',
+                            background: 'none',
+                            color: 'var(--color-text-tertiary)',
+                            cursor: 'pointer',
+                            transition: 'all var(--transition-fast)',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#FEE2E2'; e.currentTarget.style.color = '#DC2626' }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
                         >
-                          <Trash2 size={16} />
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                         </button>
-                        <ArrowRight
-                          size={20}
-                          className="text-gray-300 group-hover:text-blue-500 transition"
-                        />
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                       </div>
                     </button>
                   )
@@ -219,38 +308,77 @@ export default function WorkspaceDetailPage() {
         {/* 멤버 탭 */}
         {activeTab === 'members' && (
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-800">멤버</h2>
-              <button
-                onClick={() => setShowInvite(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
-              >
-                <UserPlus size={16} /> 멤버 초대
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <h2 style={{ fontSize: 17, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>멤버</h2>
+              <button onClick={() => setShowInvite(true)} className="btn btn-primary" style={{ padding: '7px 14px', fontSize: 13 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                멤버 초대
               </button>
             </div>
-            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+            <div style={{
+              background: 'var(--color-bg-secondary)',
+              borderRadius: 'var(--radius-xl)',
+              border: '1px solid var(--color-border)',
+              overflow: 'hidden',
+            }}>
               {members.length === 0 ? (
-                <div className="p-6 text-center text-gray-400 text-sm">
+                <div style={{ padding: 32, textAlign: 'center', fontSize: 13, color: 'var(--color-text-tertiary)' }}>
                   아직 멤버가 없습니다
                 </div>
               ) : (
-                members.map((member) => (
-                  <div key={member.id || member.user_id} className="flex items-center gap-3 px-5 py-3">
-                    <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-600">
-                      {(member.display_name || member.email || '?')[0].toUpperCase()}
+                members.map((member, idx) => {
+                  const colors = ['#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981', '#06B6D4']
+                  const avatarColor = colors[idx % colors.length]
+                  return (
+                    <div
+                      key={member.id || member.user_id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '12px 20px',
+                        borderBottom: idx < members.length - 1 ? '1px solid var(--color-border-subtle)' : 'none',
+                      }}
+                    >
+                      <div style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: '50%',
+                        background: avatarColor,
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        flexShrink: 0,
+                      }}>
+                        {(member.display_name || member.email || '?')[0].toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {member.display_name || member.email}
+                        </p>
+                        <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: '1px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {member.email}
+                        </p>
+                      </div>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '2px 10px',
+                        borderRadius: 9999,
+                        fontSize: 11,
+                        fontWeight: 500,
+                        background: member.role === 'owner' ? '#FFFBEB' : 'var(--color-bg-tertiary)',
+                        color: member.role === 'owner' ? '#D97706' : 'var(--color-text-secondary)',
+                      }}>
+                        {member.role === 'owner' ? '소유자' : member.role === 'admin' ? '관리자' : '멤버'}
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
-                        {member.display_name || member.email}
-                      </p>
-                      <p className="text-xs text-gray-400 truncate">{member.email}</p>
-                    </div>
-                    <span className="flex items-center gap-1 text-xs text-gray-400">
-                      {member.role === 'owner' && <Shield size={12} className="text-amber-500" />}
-                      {member.role === 'owner' ? '소유자' : member.role === 'admin' ? '관리자' : '멤버'}
-                    </span>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </div>
@@ -258,49 +386,56 @@ export default function WorkspaceDetailPage() {
 
         {/* 설정 탭 */}
         {activeTab === 'settings' && isOwner && (
-          <div className="max-w-lg">
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">워크스페이스 설정</h2>
-            <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">이름</label>
-                <input
-                  defaultValue={currentWorkspace.name}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim()
-                    if (v && v !== currentWorkspace.name) {
-                      updateWorkspace(workspaceId, { name: v })
-                    }
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">설명</label>
-                <textarea
-                  defaultValue={currentWorkspace.description || ''}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim()
-                    if (v !== (currentWorkspace.description || '')) {
-                      updateWorkspace(workspaceId, { description: v })
-                    }
-                  }}
-                  rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                />
+          <div style={{ maxWidth: 480 }}>
+            <h2 style={{ fontSize: 17, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 20px' }}>워크스페이스 설정</h2>
+            <div style={{
+              background: 'var(--color-bg-secondary)',
+              borderRadius: 'var(--radius-xl)',
+              border: '1px solid var(--color-border)',
+              padding: 24,
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>이름</label>
+                  <input
+                    defaultValue={currentWorkspace.name}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim()
+                      if (v && v !== currentWorkspace.name) updateWorkspace(workspaceId, { name: v })
+                    }}
+                    style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>설명</label>
+                  <textarea
+                    defaultValue={currentWorkspace.description || ''}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim()
+                      if (v !== (currentWorkspace.description || '')) updateWorkspace(workspaceId, { description: v })
+                    }}
+                    rows={3}
+                    style={{ width: '100%', padding: '10px 14px', fontSize: 14, resize: 'none', boxSizing: 'border-box' }}
+                  />
+                </div>
               </div>
             </div>
 
             {/* 위험 영역 */}
-            <div className="mt-8 bg-red-50 rounded-xl border border-red-200 p-5">
-              <h3 className="text-sm font-semibold text-red-800 mb-2">위험 영역</h3>
-              <p className="text-sm text-red-600 mb-3">
+            <div style={{
+              marginTop: 32,
+              background: '#FEF2F2',
+              borderRadius: 'var(--radius-xl)',
+              border: '1px solid #FECACA',
+              padding: 24,
+            }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: '#991B1B', margin: '0 0 8px' }}>위험 영역</h3>
+              <p style={{ fontSize: 13, color: '#DC2626', margin: '0 0 16px' }}>
                 워크스페이스를 삭제하면 모든 프로젝트와 데이터가 영구 삭제됩니다.
               </p>
-              <button
-                onClick={handleDeleteWorkspace}
-                className="flex items-center gap-1 px-3 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition"
-              >
-                <Trash2 size={14} /> 워크스페이스 삭제
+              <button onClick={handleDeleteWorkspace} className="btn btn-danger" style={{ fontSize: 13 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                워크스페이스 삭제
               </button>
             </div>
           </div>
@@ -309,103 +444,93 @@ export default function WorkspaceDetailPage() {
 
       {/* 프로젝트 생성 모달 */}
       {showCreateProject && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowCreateProject(false)}>
-          <form
-            onSubmit={handleCreateProject}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-xl p-4 sm:p-6 w-full max-w-md mx-4 sm:mx-auto shadow-2xl"
-          >
-            <h2 className="text-lg font-bold mb-4">새 프로젝트 만들기</h2>
-            <input
-              value={projectTitle}
-              onChange={(e) => setProjectTitle(e.target.value)}
-              placeholder="프로젝트 제목 (예: 3학년 기후변화 융합수업)"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              autoFocus
-              required
-            />
-            <textarea
-              value={projectDescription}
-              onChange={(e) => setProjectDescription(e.target.value)}
-              placeholder="간략한 설명 (선택)"
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            />
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowCreateProject(false)}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-              >
-                취소
-              </button>
-              <button
-                type="submit"
-                disabled={creating}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-              >
+        <Modal onClose={() => setShowCreateProject(false)}>
+          <form onSubmit={handleCreateProject}>
+            <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 20px', color: 'var(--color-text-primary)' }}>새 프로젝트 만들기</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <input
+                value={projectTitle}
+                onChange={(e) => setProjectTitle(e.target.value)}
+                placeholder="프로젝트 제목 (예: 3학년 기후변화 융합수업)"
+                autoFocus
+                required
+                style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
+              />
+              <textarea
+                value={projectDescription}
+                onChange={(e) => setProjectDescription(e.target.value)}
+                placeholder="간략한 설명 (선택)"
+                rows={2}
+                style={{ width: '100%', padding: '10px 14px', fontSize: 14, resize: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+              <button type="button" onClick={() => setShowCreateProject(false)} className="btn btn-ghost" style={{ fontSize: 13 }}>취소</button>
+              <button type="submit" disabled={creating} className="btn btn-primary" style={{ fontSize: 13, opacity: creating ? 0.5 : 1 }}>
                 {creating ? '생성 중...' : '만들기'}
               </button>
             </div>
           </form>
-        </div>
+        </Modal>
       )}
 
       {/* 멤버 초대 모달 */}
       {showInvite && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowInvite(false)}>
-          <form
-            onSubmit={handleInvite}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-xl p-4 sm:p-6 w-full max-w-sm mx-4 sm:mx-auto shadow-2xl"
-          >
-            <h2 className="text-lg font-bold mb-4">멤버 초대</h2>
-            <div className="space-y-3">
+        <Modal onClose={() => setShowInvite(false)}>
+          <form onSubmit={handleInvite}>
+            <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 20px', color: 'var(--color-text-primary)' }}>멤버 초대</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
-                <div className="relative">
-                  <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="email"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="teacher@school.edu"
-                    className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    autoFocus
-                    required
-                  />
-                </div>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>이메일</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="teacher@school.edu"
+                  autoFocus
+                  required
+                  style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">역할</label>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>역할</label>
                 <select
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
                 >
                   <option value="member">멤버</option>
                   <option value="admin">관리자</option>
                 </select>
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                type="button"
-                onClick={() => setShowInvite(false)}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-              >
-                취소
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                초대 보내기
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+              <button type="button" onClick={() => setShowInvite(false)} className="btn btn-ghost" style={{ fontSize: 13 }}>취소</button>
+              <button type="submit" className="btn btn-primary" style={{ fontSize: 13 }}>초대 보내기</button>
             </div>
           </form>
-        </div>
+        </Modal>
       )}
+    </div>
+  )
+}
+
+function Modal({ onClose, children }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.2)', backdropFilter: 'blur(4px)' }} onClick={onClose} />
+      <div className="animate-slide-up" style={{
+        position: 'relative',
+        background: 'var(--color-bg-secondary)',
+        borderRadius: 'var(--radius-xl)',
+        border: '1px solid var(--color-border)',
+        boxShadow: 'var(--shadow-xl)',
+        padding: 28,
+        width: '100%',
+        maxWidth: 420,
+      }}>
+        {children}
+      </div>
     </div>
   )
 }

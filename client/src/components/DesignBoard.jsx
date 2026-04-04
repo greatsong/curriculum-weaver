@@ -1,20 +1,22 @@
 import { useState } from 'react'
-import { STAGES, PHASES, BOARD_TYPES, BOARD_TYPE_LABELS, STAGE_ACTIVITIES } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, PHASES, BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_ACTIVITIES, getPhaseForProcedure } from 'curriculum-weaver-shared/constants.js'
 import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
-import { useStageStore } from '../stores/stageStore'
+import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { socket } from '../lib/socket'
 import { FileText, Check, X, Edit3, MessageSquarePlus, Plus, Trash2, Lightbulb } from 'lucide-react'
 
 export default function DesignBoard({ sessionId, stage }) {
-  const { boards, loading, updateBoard } = useStageStore()
+  const { boards, loading, updateBoard } = useProcedureStore()
   const { boardSuggestions, sendMessage } = useChatStore()
   const members = useSessionStore((s) => s.members)
   const isHost = members.find((m) => m.socketId === socket.id)?.isHost ?? false
-  const stageInfo = STAGES.find((s) => s.id === stage)
-  const phaseInfo = PHASES.find((p) => p.id === stageInfo?.phase)
-  const boardTypes = BOARD_TYPES[stage] || []
+  const procedureInfo = PROCEDURES[stage]
+  const phaseInfo = getPhaseForProcedure(stage)
+  // 새 구조: BOARD_TYPES는 procedure 코드 → board_type 코드 (1:1)
+  const boardType = BOARD_TYPES[stage]
+  const boardTypes = boardType ? [boardType] : []
 
   if (loading) {
     return (
@@ -32,24 +34,24 @@ export default function DesignBoard({ sessionId, stage }) {
           {phaseInfo && (
             <span className="text-xs font-bold px-2 py-0.5 rounded"
               style={{ color: phaseInfo.color, backgroundColor: `${phaseInfo.color}15` }}>
-              {stageInfo?.code}
+              {stage}
             </span>
           )}
           <span className="text-xs text-gray-400">{phaseInfo?.name}</span>
         </div>
         <h2 className="text-lg font-bold text-gray-900">
-          {stageInfo?.name}
+          {procedureInfo?.name}
         </h2>
-        <p className="text-sm text-gray-500 mt-1">{stageInfo?.description}</p>
+        <p className="text-sm text-gray-500 mt-1">{procedureInfo?.description}</p>
       </div>
 
       {/* 활동 설명 배너 */}
-      {STAGE_ACTIVITIES[stage] && (
+      {PROCEDURE_ACTIVITIES[stage] && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
           <Lightbulb size={18} className="text-amber-600 shrink-0 mt-0.5" />
           <div>
-            <h3 className="text-sm font-semibold text-amber-900">{STAGE_ACTIVITIES[stage].activity}</h3>
-            <p className="text-sm text-amber-700 mt-0.5">{STAGE_ACTIVITIES[stage].description}</p>
+            <h3 className="text-sm font-semibold text-amber-900">{PROCEDURE_ACTIVITIES[stage].activity}</h3>
+            <p className="text-sm text-amber-700 mt-0.5">{PROCEDURE_ACTIVITIES[stage].description}</p>
           </div>
         </div>
       )}

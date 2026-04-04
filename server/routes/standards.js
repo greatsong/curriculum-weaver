@@ -310,6 +310,26 @@ standardsRouter.post('/upload', async (req, res) => {
   })
 })
 
+/**
+ * POST /api/standards/refresh
+ * 디스크에서 성취기준 데이터를 다시 로드 (서버 재시작 없이 갱신)
+ *
+ * 사용 시나리오:
+ *   1. ETL 스크립트로 standards_full.js 재생성
+ *   2. 이 엔드포인트 호출 → 인메모리 인덱스 갱신
+ */
+standardsRouter.post('/refresh', async (req, res) => {
+  try {
+    const count = Standards.reload()
+    // 임베딩 캐시도 무효화
+    invalidateEmbeddingCache()
+    res.json({ success: true, count, message: `성취기준 ${count}개 로드 완료` })
+  } catch (err) {
+    console.error('[standards] refresh 오류:', err.message)
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // 성취기준 전체 초기화 (새 데이터 교체용)
 standardsRouter.delete('/all', async (req, res) => {
   Standards.clear()

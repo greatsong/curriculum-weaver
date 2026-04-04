@@ -602,6 +602,82 @@ export async function createComment(data) {
 }
 
 /**
+ * 댓글 단건 조회
+ * @param {string} id - 댓글 ID
+ * @returns {Promise<object|null>}
+ */
+export async function getCommentById(id) {
+  const sb = getSupabase()
+  if (!sb) {
+    for (const comments of mem.comments.values()) {
+      const c = comments.find(c => c.id === id)
+      if (c) return c
+    }
+    return null
+  }
+  const { data, error } = await sb.from('comments')
+    .select('*, users:user_id(display_name)')
+    .eq('id', id)
+    .single()
+  if (error) return null
+  return data
+}
+
+/**
+ * 댓글 본문 수정
+ * @param {string} id - 댓글 ID
+ * @param {string} body - 새 본문
+ * @returns {Promise<object|null>}
+ */
+export async function updateComment(id, body) {
+  const sb = getSupabase()
+  if (!sb) {
+    for (const comments of mem.comments.values()) {
+      const c = comments.find(c => c.id === id)
+      if (c) {
+        c.body = body
+        c.updated_at = now()
+        return c
+      }
+    }
+    return null
+  }
+  return handleResult(
+    await sb.from('comments')
+      .update({ body, updated_at: now() })
+      .eq('id', id)
+      .select()
+      .single(),
+    '댓글 수정 실패'
+  )
+}
+
+/**
+ * 댓글 삭제
+ * @param {string} id - 댓글 ID
+ * @returns {Promise<boolean>}
+ */
+export async function deleteComment(id) {
+  const sb = getSupabase()
+  if (!sb) {
+    for (const [designId, comments] of mem.comments.entries()) {
+      const idx = comments.findIndex(c => c.id === id)
+      if (idx !== -1) {
+        comments.splice(idx, 1)
+        return true
+      }
+    }
+    return false
+  }
+  const { error } = await sb.from('comments').delete().eq('id', id)
+  if (error) {
+    console.error('[supabaseService] 댓글 삭제 실패:', error.message)
+    return false
+  }
+  return true
+}
+
+/**
  * 댓글 해결 처리
  * @param {string} id - 댓글 ID
  * @param {string} userId - 해결한 사용자 ID
@@ -627,6 +703,34 @@ export async function resolveComment(id, userId) {
       .select()
       .single(),
     '댓글 해결 실패'
+  )
+}
+
+/**
+ * 댓글 해결 취소
+ * @param {string} id - 댓글 ID
+ * @returns {Promise<object|null>}
+ */
+export async function unresolveComment(id) {
+  const sb = getSupabase()
+  if (!sb) {
+    for (const comments of mem.comments.values()) {
+      const c = comments.find(c => c.id === id)
+      if (c) {
+        c.resolved = false
+        c.resolved_by = null
+        return c
+      }
+    }
+    return null
+  }
+  return handleResult(
+    await sb.from('comments')
+      .update({ resolved: false, resolved_by: null })
+      .eq('id', id)
+      .select()
+      .single(),
+    '댓글 해결 취소 실패'
   )
 }
 
@@ -1021,7 +1125,7 @@ const supabaseService = {
   // 메시지
   getMessages, createMessage,
   // 댓글
-  getComments, createComment, resolveComment,
+  getComments, getCommentById, createComment, updateComment, deleteComment, resolveComment, unresolveComment,
   // 활동 로그
   logActivity, getActivityLogs,
   // 멤버

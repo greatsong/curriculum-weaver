@@ -1,10 +1,10 @@
 import { useState, useRef } from 'react'
 import { MATERIAL_CATEGORIES } from 'curriculum-weaver-shared/constants.js'
-import { useStageStore } from '../stores/stageStore'
+import { useProcedureStore } from '../stores/procedureStore'
 import { Upload, Link, ChevronDown, ChevronUp, X, FileText, Globe, Loader2 } from 'lucide-react'
 
 export default function MaterialUploadBar({ sessionId }) {
-  const { materials, uploadMaterial, addUrlMaterial } = useStageStore()
+  const { materials, uploadMaterial, addUrlMaterial } = useProcedureStore()
   const [expanded, setExpanded] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState('reference')
   const [urlInput, setUrlInput] = useState('')

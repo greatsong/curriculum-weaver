@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react'
-import { useStageStore } from '../stores/stageStore'
-import { STAGES } from 'curriculum-weaver-shared/constants.js'
+import { useProcedureStore } from '../stores/procedureStore'
+import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
 import { Layers, Target, ChevronDown, ChevronRight } from 'lucide-react'
 
 export default function PrinciplePanel({ stage }) {
-  const { principles, generalPrinciples } = useStageStore()
-  const stageInfo = STAGES.find((s) => s.id === stage)
+  const { principles, generalPrinciples } = useProcedureStore()
+  // stage는 procedure 코드(예: 'T-1-1') 또는 레거시 숫자
+  const procedureInfo = PROCEDURES[stage]
   const [expandedGP, setExpandedGP] = useState(null)
   const [expandedSubstep, setExpandedSubstep] = useState(null)
 
@@ -87,7 +88,7 @@ export default function PrinciplePanel({ stage }) {
         </div>
 
         <p className="text-xs text-gray-500 mb-3">
-          {stageInfo?.name} 단계 전용 원리
+          {procedureInfo?.name} 단계 전용 원리
         </p>
 
         {principles.length === 0 ? (

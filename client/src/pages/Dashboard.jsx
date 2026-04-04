@@ -3,7 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, Users, Clock, ArrowRight, Database, HelpCircle, Globe, Archive, RotateCcw, Trash2 } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
 import Logo from '../components/Logo'
-import { STAGES, PHASES } from 'curriculum-weaver-shared/constants.js'
+// 레거시 호환: PROCEDURES를 STAGES 형태로 변환
+import { PROCEDURES, PHASE_LIST } from 'curriculum-weaver-shared/constants.js'
+const STAGES = Object.entries(PROCEDURES).map(([code, p]) => ({ id: code, ...p }))
+const PHASES = PHASE_LIST
 import Tutorial from '../components/Tutorial'
 
 export default function Dashboard() {

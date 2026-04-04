@@ -1,15 +1,22 @@
-import { STAGES, PHASES } from 'curriculum-weaver-shared/constants.js'
-import { Target, Settings, Search, Map, Building2, BarChart3, Compass, Package, Play, RotateCcw, Award, Rocket, Check, Users, RefreshCw } from 'lucide-react'
+import { PHASES, PHASE_LIST, PROCEDURES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
+import { Target, Settings, Search, Map, Building2, BarChart3, Compass, Package, Play, RotateCcw, Award, Rocket, Check, Users, RefreshCw, ClipboardList } from 'lucide-react'
 
-const STAGE_ICONS = {
-  Target, Settings, Search, Map, Building2, BarChart3, Compass, Package, Play, RotateCcw, Award, Rocket, Users, RefreshCw,
+const PROCEDURE_ICONS = {
+  Target, Settings, Search, Map, Building2, BarChart3, Compass, Package, Play, RotateCcw, Award, Rocket, Users, RefreshCw, ClipboardList,
 }
 
 export default function StageNav({ currentStage, onStageChange, completedStages = [] }) {
-  // 단계를 phase별로 그룹핑
-  const grouped = PHASES.map(phase => ({
+  // 절차를 phase별로 그룹핑
+  const grouped = PHASE_LIST.map(phase => ({
     ...phase,
-    stages: STAGES.filter(s => s.phase === phase.id),
+    stages: PROCEDURE_LIST.filter(p => p.phase === phase.id).map(p => ({
+      id: p.code,
+      code: p.code,
+      name: p.name,
+      shortName: p.name.length > 4 ? p.name.slice(0, 4) + '…' : p.name,
+      phase: p.phase,
+      icon: PHASES[p.phase.toUpperCase()] ? PHASES[p.phase.toUpperCase()].icon : 'Target',
+    })),
   }))
 
   return (
@@ -28,7 +35,7 @@ export default function StageNav({ currentStage, onStageChange, completedStages 
             {phase.stages.map((stage) => {
               const isActive = stage.id === currentStage
               const isCompleted = completedStages.includes(stage.id)
-              const Icon = STAGE_ICONS[stage.icon]
+              const Icon = PROCEDURE_ICONS[stage.icon]
 
               return (
                 <button

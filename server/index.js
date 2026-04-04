@@ -26,6 +26,7 @@ import { standardsRouter } from './routes/standards.js'
 import { materialsRouter } from './routes/materials.js'
 import { principlesRouter } from './routes/principles.js'
 import { reportRouter } from './routes/report.js'
+import { commentsRouter } from './routes/comments.js'
 
 // 인메모리 스토어 초기화 (로컬 성취기준/링크 데이터 로드)
 const defaultSessionId = initStore()
@@ -213,6 +214,9 @@ app.use('/api/principles', principlesRouter)
 // 보고서
 app.use('/api/report', reportRouter)
 
+// 댓글
+app.use('/api', commentsRouter)
+
 // ── 에러 핸들러 ──
 app.use((err, req, res, next) => {
   console.error(err)
@@ -225,5 +229,5 @@ app.use((err, req, res, next) => {
 server.listen(PORT, () => {
   console.log(`커리큘럼 위버 서버: http://localhost:${PORT}`)
   console.log(`  Socket.IO 실시간 협업 활성화`)
-  console.log(`  라우트: auth, workspaces, invites, projects, designs, versions, logs, chat, standards, materials, principles, report`)
+  console.log(`  라우트: auth, workspaces, invites, projects, designs, versions, logs, chat, standards, materials, principles, report, comments`)
 })

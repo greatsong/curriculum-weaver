@@ -7,45 +7,6 @@ import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { BOARD_SCHEMAS, getBoardSchemaForProcedure, createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
 import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
-import {
-  FileText, Check, X, Edit3, Plus, Trash2, Lightbulb,
-  BookOpen, Brain, Sparkles, MessageCircle, Share2, Sliders,
-  CheckCircle, Save, User, Users, Bot, MessageSquarePlus,
-  ChevronRight, ChevronDown, AlertTriangle,
-} from 'lucide-react'
-
-// 액션 타입 아이콘 매핑
-const ACTION_ICONS = {
-  guide: BookOpen,
-  judge: Brain,
-  generate: Sparkles,
-  discuss: MessageCircle,
-  share: Share2,
-  adjust: Sliders,
-  check: CheckCircle,
-  record: Save,
-}
-
-// 행위자 아이콘 매핑
-const ACTOR_ICONS = {
-  individual: User,
-  individual_ai: User,
-  team: Users,
-  team_ai: Users,
-  ai_only: Bot,
-}
-
-// Tailwind 색상 매핑
-const COLOR_MAP = {
-  blue: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', ring: 'ring-blue-500' },
-  purple: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', ring: 'ring-purple-500' },
-  amber: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', ring: 'ring-amber-500' },
-  green: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', ring: 'ring-green-500' },
-  cyan: { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200', ring: 'ring-cyan-500' },
-  orange: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', ring: 'ring-orange-500' },
-  emerald: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', ring: 'ring-emerald-500' },
-  gray: { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', ring: 'ring-gray-500' },
-}
 
 export default function ProcedureCanvas({ projectId, procedureCode }) {
   const { boards, currentStep, setStep, updateBoard } = useProcedureStore()
@@ -60,102 +21,170 @@ export default function ProcedureCanvas({ projectId, procedureCode }) {
   const schema = boardType ? BOARD_SCHEMAS[boardType] : null
   const board = boardType ? boards[boardType] : null
 
-  // 현재 절차에 관련된 pending suggestions
   const relevantSuggestions = pendingSuggestions.filter(
     (s) => s.procedureCode === procedureCode && s.status === 'pending'
   )
 
   if (!procInfo) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400">
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        color: 'var(--color-text-tertiary)',
+        fontSize: 14,
+      }}>
         절차를 선택해주세요
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* 절차 헤더 */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <div className="flex items-center gap-2 mb-1">
+      <div className="card" style={{ padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           {phase && (
-            <span
-              className="text-xs font-bold px-2 py-0.5 rounded"
-              style={{ color: phase.color, backgroundColor: `${phase.color}15` }}
-            >
+            <span style={{
+              fontSize: 11,
+              fontWeight: 700,
+              padding: '2px 8px',
+              borderRadius: 'var(--radius-sm)',
+              color: phase.color,
+              background: `${phase.color}12`,
+            }}>
               {procedureCode}
             </span>
           )}
-          <span className="text-xs text-gray-400">{phase?.name}</span>
+          <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{phase?.name}</span>
         </div>
-        <h2 className="text-lg font-bold text-gray-900">{procInfo.name}</h2>
-        <p className="text-sm text-gray-500 mt-1">{procInfo.description}</p>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 4px' }}>
+          {procInfo.name}
+        </h2>
+        <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.5 }}>
+          {procInfo.description}
+        </p>
       </div>
 
       {/* 활동 설명 배너 */}
       {activity && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-          <Lightbulb size={18} className="text-amber-600 shrink-0 mt-0.5" />
+        <div style={{
+          background: '#FFFBEB',
+          border: '1px solid #FDE68A',
+          borderRadius: 'var(--radius-lg)',
+          padding: 16,
+          display: 'flex',
+          gap: 12,
+          alignItems: 'flex-start',
+        }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+            <line x1="9" y1="18" x2="15" y2="18"/><line x1="10" y1="22" x2="14" y2="22"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0018 8 6 6 0 006 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 018.91 14"/>
+          </svg>
           <div>
-            <h3 className="text-sm font-semibold text-amber-900">{activity.activity}</h3>
-            <p className="text-sm text-amber-700 mt-0.5">{activity.description}</p>
+            <h3 style={{ fontSize: 13, fontWeight: 600, color: '#92400E', margin: '0 0 2px' }}>{activity.activity}</h3>
+            <p style={{ fontSize: 13, color: '#A16207', margin: 0, lineHeight: 1.5 }}>{activity.description}</p>
           </div>
         </div>
       )}
 
       {/* 스텝 타임라인 */}
       {steps.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">진행 스텝</h3>
-          <div className="space-y-2">
+        <div className="card" style={{ padding: 24 }}>
+          <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)', margin: '0 0 14px' }}>
+            진행 스텝
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {steps.map((step) => {
               const isActive = step.stepNumber === currentStep
               const actionInfo = ACTION_TYPES[step.actionType]
               const actorInfo = ACTOR_COLUMNS[step.actorColumn]
-              const colorSet = COLOR_MAP[actionInfo?.color] || COLOR_MAP.gray
-              const ActionIcon = ACTION_ICONS[step.actionType] || BookOpen
-              const ActorIcon = ACTOR_ICONS[step.actorColumn] || User
 
               return (
                 <button
                   key={step.stepNumber}
                   onClick={() => setStep(step.stepNumber)}
-                  className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition ${
-                    isActive
-                      ? `${colorSet.bg} border ${colorSet.border} ring-1 ${colorSet.ring}`
-                      : 'hover:bg-gray-50 border border-transparent'
-                  }`}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                    padding: 12,
+                    borderRadius: 'var(--radius-md)',
+                    textAlign: 'left',
+                    border: isActive ? '1px solid var(--color-border)' : '1px solid transparent',
+                    background: isActive ? 'var(--color-bg-primary)' : 'transparent',
+                    boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
+                    cursor: 'pointer',
+                    transition: 'all var(--transition-fast)',
+                    fontFamily: 'var(--font-sans)',
+                    width: '100%',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) e.currentTarget.style.background = 'var(--color-bg-primary)'
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) e.currentTarget.style.background = 'transparent'
+                  }}
                 >
                   {/* 스텝 번호 */}
-                  <span
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 ${
-                      isActive ? `${colorSet.text} ${colorSet.bg}` : 'text-gray-400 bg-gray-100'
-                    }`}
-                  >
+                  <span style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    flexShrink: 0,
+                    marginTop: 1,
+                    background: isActive ? (phase?.color || '#3B82F6') : 'var(--color-bg-tertiary)',
+                    color: isActive ? '#fff' : 'var(--color-text-tertiary)',
+                  }}>
                     {step.stepNumber}
                   </span>
 
                   {/* 스텝 내용 */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <ActionIcon size={14} className={isActive ? colorSet.text : 'text-gray-400'} />
-                      <span className={`text-xs font-medium ${isActive ? colorSet.text : 'text-gray-400'}`}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
+                      <span style={{
+                        fontSize: 11,
+                        fontWeight: 500,
+                        padding: '1px 6px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: isActive ? `${phase?.color || '#3B82F6'}15` : 'var(--color-bg-tertiary)',
+                        color: isActive ? (phase?.color || '#3B82F6') : 'var(--color-text-tertiary)',
+                      }}>
                         {actionInfo?.name}
                       </span>
-                      <span className="text-gray-300">|</span>
-                      <ActorIcon size={12} className="text-gray-400" />
-                      <span className="text-xs text-gray-400">{actorInfo?.name}</span>
+                      <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+                        {actorInfo?.name}
+                      </span>
                       {step.aiCapability && (
-                        <span className="px-1.5 py-0.5 bg-violet-100 text-violet-600 text-[10px] font-medium rounded">
+                        <span style={{
+                          padding: '1px 5px',
+                          background: '#F5F3FF',
+                          color: '#7C3AED',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          borderRadius: 'var(--radius-sm)',
+                        }}>
                           AI {step.aiCapability}
                         </span>
                       )}
                     </div>
-                    <p className={`text-sm ${isActive ? 'text-gray-900 font-medium' : 'text-gray-600'}`}>
+                    <p style={{
+                      fontSize: 13,
+                      fontWeight: isActive ? 600 : 400,
+                      color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+                      margin: 0,
+                    }}>
                       {step.title}
                     </p>
-                    {isActive && (
-                      <p className="text-xs text-gray-500 mt-1">{step.description}</p>
+                    {isActive && step.description && (
+                      <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: '4px 0 0', lineHeight: 1.4 }}>
+                        {step.description}
+                      </p>
                     )}
                   </div>
                 </button>
@@ -167,7 +196,7 @@ export default function ProcedureCanvas({ projectId, procedureCode }) {
 
       {/* AI 제안 카드 */}
       {relevantSuggestions.length > 0 && (
-        <div className="space-y-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {relevantSuggestions.map((suggestion) => (
             <SuggestionCard
               key={suggestion.id}
@@ -181,9 +210,7 @@ export default function ProcedureCanvas({ projectId, procedureCode }) {
       )}
 
       {/* 정합성 점검 결과 */}
-      {coherenceCheckResult && (
-        <CoherenceCheckCard result={coherenceCheckResult} />
-      )}
+      {coherenceCheckResult && <CoherenceCheckCard result={coherenceCheckResult} />}
 
       {/* 보드 카드 */}
       {boardType && schema && (
@@ -208,7 +235,6 @@ export default function ProcedureCanvas({ projectId, procedureCode }) {
 }
 
 // ── AI 제안 카드 ──
-
 function SuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
   const [showEdit, setShowEdit] = useState(false)
   const [editedValue, setEditedValue] = useState(
@@ -216,26 +242,41 @@ function SuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
   )
 
   return (
-    <div className="bg-violet-50 border border-violet-200 rounded-xl p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Sparkles size={16} className="text-violet-600" />
-        <span className="text-sm font-semibold text-violet-800">AI 제안</span>
-        <span className="text-xs text-violet-500">
-          {suggestion.field} 필드
-        </span>
+    <div className="glass-card" style={{
+      background: 'linear-gradient(135deg, rgba(245,243,255,0.8), rgba(239,246,255,0.6))',
+      border: '1px solid #DDD6FE',
+      borderRadius: 'var(--radius-lg)',
+      padding: 20,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+        <span style={{ fontSize: 13, fontWeight: 600, color: '#6D28D9' }}>AI 제안</span>
+        <span style={{ fontSize: 12, color: '#A78BFA' }}>{suggestion.field} 필드</span>
       </div>
 
       {suggestion.rationale && (
-        <p className="text-xs text-violet-600 mb-2 bg-violet-100 rounded-lg p-2">
+        <p style={{ fontSize: 12, color: '#7C3AED', background: '#EDE9FE', borderRadius: 'var(--radius-sm)', padding: '6px 10px', margin: '0 0 10px' }}>
           {suggestion.rationale}
         </p>
       )}
 
-      <div className="text-sm text-gray-700 bg-white rounded-lg p-3 mb-3 max-h-40 overflow-auto">
+      <div style={{
+        fontSize: 13,
+        color: 'var(--color-text-primary)',
+        background: 'var(--color-bg-secondary)',
+        borderRadius: 'var(--radius-md)',
+        padding: 12,
+        marginBottom: 12,
+        maxHeight: 160,
+        overflowY: 'auto',
+        lineHeight: 1.6,
+      }}>
         {typeof suggestion.value === 'string' ? (
-          <p className="whitespace-pre-wrap">{suggestion.value}</p>
+          <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{suggestion.value}</p>
         ) : (
-          <pre className="text-xs">{JSON.stringify(suggestion.value, null, 2)}</pre>
+          <pre style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{JSON.stringify(suggestion.value, null, 2)}</pre>
         )}
       </div>
 
@@ -244,38 +285,54 @@ function SuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
           value={editedValue}
           onChange={(e) => setEditedValue(e.target.value)}
           rows={4}
-          className="w-full px-3 py-2 border border-violet-200 rounded-lg text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-violet-500 resize-y"
+          style={{
+            width: '100%',
+            padding: '8px 12px',
+            border: '1px solid #DDD6FE',
+            borderRadius: 'var(--radius-md)',
+            fontSize: 13,
+            marginBottom: 12,
+            resize: 'vertical',
+            boxSizing: 'border-box',
+          }}
         />
       )}
 
-      <div className="flex items-center gap-2">
+      <div style={{ display: 'flex', gap: 8 }}>
         <button
           onClick={() => {
             if (showEdit) {
               let finalVal = editedValue
-              try { finalVal = JSON.parse(editedValue) } catch { /* 문자열 */ }
+              try { finalVal = JSON.parse(editedValue) } catch { /* string */ }
               onEditAccept(finalVal)
             } else {
               onAccept()
             }
           }}
-          className="flex items-center gap-1 px-3 py-1.5 bg-violet-600 text-white text-xs font-medium rounded-lg hover:bg-violet-700 transition"
+          className="btn"
+          style={{ fontSize: 12, padding: '6px 14px', background: '#7C3AED', color: '#fff', borderRadius: 9999 }}
+          onMouseEnter={(e) => e.currentTarget.style.background = '#6D28D9'}
+          onMouseLeave={(e) => e.currentTarget.style.background = '#7C3AED'}
         >
-          <Check size={12} />
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 8 6.5 11.5 13 4.5"/></svg>
           {showEdit ? '편집 후 수락' : '수락'}
         </button>
         <button
           onClick={() => setShowEdit(!showEdit)}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs text-violet-600 bg-white border border-violet-200 rounded-lg hover:bg-violet-50 transition"
+          className="btn btn-secondary"
+          style={{ fontSize: 12, padding: '6px 14px', borderRadius: 9999 }}
         >
-          <Edit3 size={12} />
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           {showEdit ? '편집 취소' : '편집'}
         </button>
         <button
           onClick={onReject}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+          className="btn btn-ghost"
+          style={{ fontSize: 12, padding: '6px 14px', borderRadius: 9999 }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#FEE2E2'; e.currentTarget.style.color = '#DC2626' }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#6B7280' }}
         >
-          <X size={12} />
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
           거부
         </button>
       </div>
@@ -284,69 +341,87 @@ function SuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
 }
 
 // ── 정합성 점검 카드 ──
-
 function CoherenceCheckCard({ result }) {
   const isGood = result.status === 'pass' || result.status === 'good'
-
   return (
-    <div className={`rounded-xl border p-4 ${
-      isGood
-        ? 'bg-emerald-50 border-emerald-200'
-        : 'bg-amber-50 border-amber-200'
-    }`}>
-      <div className="flex items-center gap-2 mb-2">
+    <div style={{
+      borderRadius: 'var(--radius-lg)',
+      border: `1px solid ${isGood ? '#BBF7D0' : '#FDE68A'}`,
+      background: isGood ? '#F0FDF4' : '#FFFBEB',
+      padding: 16,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         {isGood ? (
-          <CheckCircle size={16} className="text-emerald-600" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         ) : (
-          <AlertTriangle size={16} className="text-amber-600" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         )}
-        <span className={`text-sm font-semibold ${isGood ? 'text-emerald-800' : 'text-amber-800'}`}>
-          정합성 점검 결과
-        </span>
-        <span className={`text-xs px-1.5 py-0.5 rounded ${
-          isGood ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'
-        }`}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: isGood ? '#166534' : '#92400E' }}>정합성 점검 결과</span>
+        <span style={{
+          fontSize: 11,
+          padding: '1px 8px',
+          borderRadius: 9999,
+          background: isGood ? '#DCFCE7' : '#FEF3C7',
+          color: isGood ? '#16A34A' : '#D97706',
+          fontWeight: 500,
+        }}>
           {result.status}
         </span>
       </div>
-      {result.issues && (
-        <p className="text-sm text-gray-700 mb-1">{result.issues}</p>
-      )}
-      {result.suggestions && (
-        <p className="text-sm text-gray-600 italic">{result.suggestions}</p>
-      )}
+      {result.issues && <p style={{ fontSize: 13, color: 'var(--color-text-primary)', margin: '0 0 4px', lineHeight: 1.5 }}>{result.issues}</p>}
+      {result.suggestions && <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0, fontStyle: 'italic', lineHeight: 1.5 }}>{result.suggestions}</p>}
     </div>
   )
 }
 
 // ── 보드 카드 ──
-
 function BoardCard({ boardType, schema, board, editing, setEditing, onUpdate, onRequestAI }) {
   const label = BOARD_TYPE_LABELS[boardType] || boardType
   const hasContent = board?.content && Object.keys(board.content).length > 0 &&
     Object.values(board.content).some((v) => (Array.isArray(v) ? v.length > 0 : v !== '' && v !== null && v !== 0))
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-100 bg-gray-50">
-        <FileText size={16} className="text-gray-400" />
-        <h3 className="font-medium text-gray-700">{label}</h3>
+    <div className="card" style={{ overflow: 'hidden' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '12px 20px',
+        borderBottom: '1px solid var(--color-border-subtle)',
+        background: 'var(--color-bg-primary)',
+      }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-tertiary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+        </svg>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0, flex: 1 }}>{label}</h3>
         {board?.version > 1 && (
-          <span className="text-xs text-gray-400">v{board.version}</span>
+          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>v{board.version}</span>
         )}
-        <div className="ml-auto">
-          {hasContent && !editing && (
-            <button
-              onClick={() => setEditing(true)}
-              className="p-1 text-gray-400 hover:text-blue-600 rounded transition"
-            >
-              <Edit3 size={14} />
-            </button>
-          )}
-        </div>
+        {hasContent && !editing && (
+          <button
+            onClick={() => setEditing(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 28,
+              height: 28,
+              borderRadius: 'var(--radius-sm)',
+              border: 'none',
+              background: 'none',
+              color: 'var(--color-text-tertiary)',
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-tertiary)'; e.currentTarget.style.color = '#3B82F6' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          </button>
+        )}
       </div>
 
-      <div className="p-5">
+      <div style={{ padding: 20 }}>
         {editing && schema ? (
           <BoardEditor
             schema={schema}
@@ -357,14 +432,18 @@ function BoardCard({ boardType, schema, board, editing, setEditing, onUpdate, on
         ) : hasContent && schema ? (
           <BoardRenderer schema={schema} content={board.content} />
         ) : (
-          <div className="text-center py-8 text-gray-400">
-            <p className="text-sm">아직 내용이 없습니다</p>
-            <p className="text-xs mt-1 mb-3">AI와 대화하면 자동으로 이 보드가 채워집니다</p>
+          <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-text-tertiary)' }}>
+            <p style={{ fontSize: 13, margin: '0 0 4px' }}>아직 내용이 없습니다</p>
+            <p style={{ fontSize: 12, margin: '0 0 16px' }}>AI와 대화하면 자동으로 이 보드가 채워집니다</p>
             <button
               onClick={onRequestAI}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition mx-auto"
+              className="btn btn-secondary"
+              style={{ fontSize: 12, padding: '6px 14px', margin: '0 auto' }}
             >
-              <MessageSquarePlus size={14} />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"/>
+                <line x1="12" y1="8" x2="12" y2="12"/><line x1="8" y1="10" x2="16" y2="10"/>
+              </svg>
               AI에게 이 보드 내용 요청
             </button>
           </div>
@@ -374,22 +453,19 @@ function BoardCard({ boardType, schema, board, editing, setEditing, onUpdate, on
   )
 }
 
-// ── 스키마 기반 렌더러 (기존 DesignBoard에서 이관) ──
-
+// ── 스키마 기반 렌더러 ──
 function BoardRenderer({ schema, content }) {
   if (!schema || !content) return null
-
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {schema.fields.map((field) => {
         const value = content[field.name]
         if (value === undefined || value === null) return null
         if (Array.isArray(value) && value.length === 0) return null
         if (value === '' && field.type !== 'number') return null
-
         return (
           <div key={field.name}>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
               {field.label}
             </label>
             {field.type === 'table' ? (
@@ -398,18 +474,14 @@ function BoardRenderer({ schema, content }) {
               <ListRenderer items={value} itemSchema={field.itemSchema} />
             ) : field.type === 'tags' ? (
               <TagsRenderer tags={value} />
-            ) : field.type === 'select' ? (
-              <p className="text-sm font-medium text-gray-800">{value}</p>
             ) : field.type === 'textarea' ? (
-              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{value}</p>
-            ) : field.type === 'number' ? (
-              <p className="text-sm font-medium text-gray-800">{value}</p>
+              <p style={{ fontSize: 13, color: 'var(--color-text-primary)', whiteSpace: 'pre-wrap', lineHeight: 1.6, margin: 0 }}>{value}</p>
             ) : field.type === 'json' ? (
-              <pre className="text-xs text-gray-600 bg-gray-50 p-2 rounded-lg overflow-auto max-h-40">
+              <pre style={{ fontSize: 12, color: 'var(--color-text-secondary)', background: 'var(--color-bg-primary)', padding: 10, borderRadius: 'var(--radius-md)', overflowX: 'auto', maxHeight: 160, margin: 0, fontFamily: 'var(--font-mono)' }}>
                 {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
               </pre>
             ) : (
-              <p className="text-sm text-gray-800">{String(value)}</p>
+              <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-text-primary)', margin: 0 }}>{String(value)}</p>
             )}
           </div>
         )
@@ -421,22 +493,22 @@ function BoardRenderer({ schema, content }) {
 function TableRenderer({ columns, data }) {
   if (!Array.isArray(data) || data.length === 0) return null
   return (
-    <div className="overflow-auto rounded-lg border border-gray-200">
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50">
-          <tr>
+    <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+      <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ background: 'var(--color-bg-primary)' }}>
             {columns.map((col) => (
-              <th key={col.name} className="text-left px-3 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">
+              <th key={col.name} style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap', borderBottom: '1px solid var(--color-border)' }}>
                 {col.label}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody>
           {data.map((row, i) => (
-            <tr key={i} className="hover:bg-gray-50">
+            <tr key={i} style={{ borderBottom: i < data.length - 1 ? '1px solid var(--color-border-subtle)' : 'none' }}>
               {columns.map((col) => (
-                <td key={col.name} className="px-3 py-2 text-gray-700">
+                <td key={col.name} style={{ padding: '8px 12px', color: 'var(--color-text-primary)' }}>
                   {String(row[col.name] ?? '')}
                 </td>
               ))}
@@ -450,7 +522,6 @@ function TableRenderer({ columns, data }) {
 
 function ListRenderer({ items, itemSchema }) {
   if (!Array.isArray(items) || items.length === 0) return null
-
   const toText = (item) => {
     if (typeof item === 'string') return item
     if (item && typeof item === 'object') {
@@ -459,12 +530,11 @@ function ListRenderer({ items, itemSchema }) {
     }
     return String(item)
   }
-
   return (
-    <ul className="space-y-1">
+    <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
       {items.map((item, i) => (
-        <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-          <span className="text-blue-400 mt-1 shrink-0">-</span>
+        <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: 'var(--color-text-primary)', lineHeight: 1.5 }}>
+          <span style={{ color: '#3B82F6', marginTop: 2, flexShrink: 0 }}>-</span>
           <span>{toText(item)}</span>
         </li>
       ))}
@@ -475,9 +545,16 @@ function ListRenderer({ items, itemSchema }) {
 function TagsRenderer({ tags }) {
   if (!Array.isArray(tags) || tags.length === 0) return null
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
       {tags.map((tag, i) => (
-        <span key={i} className="px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full">
+        <span key={i} style={{
+          padding: '3px 10px',
+          background: '#EFF6FF',
+          color: '#2563EB',
+          fontSize: 12,
+          fontWeight: 500,
+          borderRadius: 9999,
+        }}>
           {tag}
         </span>
       ))}
@@ -486,13 +563,10 @@ function TagsRenderer({ tags }) {
 }
 
 // ── 보드 편집기 ──
-
 function BoardEditor({ schema, content, onSave, onCancel }) {
   const [draft, setDraft] = useState(JSON.parse(JSON.stringify(content || schema.empty)))
 
-  const updateField = (name, value) => {
-    setDraft((prev) => ({ ...prev, [name]: value }))
-  }
+  const updateField = (name, value) => setDraft((prev) => ({ ...prev, [name]: value }))
 
   const updateTableRow = (fieldName, rowIdx, colName, value) => {
     setDraft((prev) => {
@@ -504,27 +578,16 @@ function BoardEditor({ schema, content, onSave, onCancel }) {
 
   const addTableRow = (field) => {
     const emptyRow = {}
-    for (const col of field.columns) {
-      emptyRow[col.name] = ''
-    }
-    setDraft((prev) => ({
-      ...prev,
-      [field.name]: [...(prev[field.name] || []), emptyRow],
-    }))
+    for (const col of field.columns) emptyRow[col.name] = ''
+    setDraft((prev) => ({ ...prev, [field.name]: [...(prev[field.name] || []), emptyRow] }))
   }
 
   const removeTableRow = (fieldName, rowIdx) => {
-    setDraft((prev) => ({
-      ...prev,
-      [fieldName]: (prev[fieldName] || []).filter((_, i) => i !== rowIdx),
-    }))
+    setDraft((prev) => ({ ...prev, [fieldName]: (prev[fieldName] || []).filter((_, i) => i !== rowIdx) }))
   }
 
   const addListItem = (fieldName) => {
-    setDraft((prev) => ({
-      ...prev,
-      [fieldName]: [...(prev[fieldName] || []), ''],
-    }))
+    setDraft((prev) => ({ ...prev, [fieldName]: [...(prev[fieldName] || []), ''] }))
   }
 
   const updateListItem = (fieldName, idx, value) => {
@@ -536,78 +599,72 @@ function BoardEditor({ schema, content, onSave, onCancel }) {
   }
 
   const removeListItem = (fieldName, idx) => {
-    setDraft((prev) => ({
-      ...prev,
-      [fieldName]: (prev[fieldName] || []).filter((_, i) => i !== idx),
-    }))
+    setDraft((prev) => ({ ...prev, [fieldName]: (prev[fieldName] || []).filter((_, i) => i !== idx) }))
   }
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {schema.fields.map((field) => (
         <div key={field.name}>
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1.5">
+          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
             {field.label}
-            {field.required && <span className="text-red-400 ml-0.5">*</span>}
+            {field.required && <span style={{ color: '#EF4444', marginLeft: 2 }}>*</span>}
           </label>
           {field.description && (
-            <p className="text-xs text-gray-400 mb-1">{field.description}</p>
+            <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', margin: '0 0 6px' }}>{field.description}</p>
           )}
 
           {field.type === 'text' && (
             <input
               value={draft[field.name] || ''}
               onChange={(e) => updateField(field.name, e.target.value)}
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: 'var(--color-bg-primary)', boxSizing: 'border-box' }}
             />
           )}
-
           {field.type === 'textarea' && (
             <textarea
               value={draft[field.name] || ''}
               onChange={(e) => updateField(field.name, e.target.value)}
               rows={3}
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+              style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: 'var(--color-bg-primary)', resize: 'vertical', boxSizing: 'border-box' }}
             />
           )}
-
           {field.type === 'number' && (
             <input
               type="number"
               value={draft[field.name] ?? ''}
               onChange={(e) => updateField(field.name, e.target.value ? parseInt(e.target.value) : null)}
-              className="w-24 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{ width: 96, padding: '8px 12px', fontSize: 13, background: 'var(--color-bg-primary)', boxSizing: 'border-box' }}
             />
           )}
-
           {field.type === 'select' && (
             <select
               value={draft[field.name] || ''}
               onChange={(e) => updateField(field.name, e.target.value || null)}
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: 'var(--color-bg-primary)', boxSizing: 'border-box' }}
             >
               <option value="">선택...</option>
-              {field.options?.map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
+              {field.options?.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
             </select>
           )}
-
           {field.type === 'tags' && (
-            <div className="space-y-2">
-              <div className="flex flex-wrap gap-1.5">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {(draft[field.name] || []).map((tag, i) => (
-                  <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs rounded-full">
+                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', background: '#EFF6FF', color: '#2563EB', fontSize: 12, borderRadius: 9999 }}>
                     {tag}
-                    <button onClick={() => removeListItem(field.name, i)} className="hover:text-red-600">
-                      <X size={10} />
+                    <button
+                      onClick={() => removeListItem(field.name, i)}
+                      style={{ background: 'none', border: 'none', color: '#2563EB', cursor: 'pointer', padding: 0, display: 'flex' }}
+                    >
+                      <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                     </button>
                   </span>
                 ))}
               </div>
               <input
                 placeholder="입력 후 Enter"
-                className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                style={{ padding: '6px 10px', fontSize: 12, background: 'var(--color-bg-primary)', boxSizing: 'border-box', width: 200 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && e.target.value.trim()) {
                     updateField(field.name, [...(draft[field.name] || []), e.target.value.trim()])
@@ -617,63 +674,69 @@ function BoardEditor({ schema, content, onSave, onCancel }) {
               />
             </div>
           )}
-
           {field.type === 'list' && (
-            <div className="space-y-1.5">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {(draft[field.name] || []).map((item, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-gray-400 text-xs">{i + 1}.</span>
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', width: 16, textAlign: 'right' }}>{i + 1}.</span>
                   <input
                     value={typeof item === 'string' ? item : JSON.stringify(item)}
                     onChange={(e) => updateListItem(field.name, i, e.target.value)}
-                    className="flex-1 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    style={{ flex: 1, padding: '6px 10px', fontSize: 13, background: 'var(--color-bg-primary)', boxSizing: 'border-box' }}
                   />
-                  <button onClick={() => removeListItem(field.name, i)} className="text-gray-400 hover:text-red-500">
-                    <Trash2 size={14} />
+                  <button
+                    onClick={() => removeListItem(field.name, i)}
+                    style={{ background: 'none', border: 'none', color: 'var(--color-text-tertiary)', cursor: 'pointer', padding: 4, display: 'flex', transition: 'color var(--transition-fast)' }}
+                    onMouseEnter={(e) => e.currentTarget.style.color = '#DC2626'}
+                    onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-text-tertiary)'}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                   </button>
                 </div>
               ))}
               <button
                 onClick={() => addListItem(field.name)}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#3B82F6', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)', padding: '4px 0' }}
               >
-                <Plus size={12} /> 항목 추가
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                항목 추가
               </button>
             </div>
           )}
-
           {field.type === 'table' && (
-            <div className="space-y-2">
-              <div className="overflow-auto rounded-lg border border-gray-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+                <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'var(--color-bg-primary)' }}>
                       {field.columns.map((col) => (
-                        <th key={col.name} className="text-left px-2 py-1.5 text-xs font-medium text-gray-500 whitespace-nowrap">
+                        <th key={col.name} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
                           {col.label}
                         </th>
                       ))}
-                      <th className="w-8" />
+                      <th style={{ width: 32 }} />
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody>
                     {(draft[field.name] || []).map((row, rowIdx) => (
-                      <tr key={rowIdx}>
+                      <tr key={rowIdx} style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
                         {field.columns.map((col) => (
-                          <td key={col.name} className="px-1 py-1">
+                          <td key={col.name} style={{ padding: '4px 4px' }}>
                             <input
                               value={row[col.name] || ''}
                               onChange={(e) => updateTableRow(field.name, rowIdx, col.name, e.target.value)}
-                              className="w-full px-2 py-1 bg-white border border-gray-100 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              style={{ width: '100%', padding: '4px 8px', fontSize: 12, border: '1px solid var(--color-border-subtle)', borderRadius: 'var(--radius-sm)', boxSizing: 'border-box' }}
                             />
                           </td>
                         ))}
-                        <td className="px-1 py-1">
+                        <td style={{ padding: '4px' }}>
                           <button
                             onClick={() => removeTableRow(field.name, rowIdx)}
-                            className="text-gray-400 hover:text-red-500"
+                            style={{ background: 'none', border: 'none', color: 'var(--color-text-tertiary)', cursor: 'pointer', padding: 2, display: 'flex' }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = '#DC2626'}
+                            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-text-tertiary)'}
                           >
-                            <Trash2 size={12} />
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                           </button>
                         </td>
                       </tr>
@@ -683,29 +746,22 @@ function BoardEditor({ schema, content, onSave, onCancel }) {
               </div>
               <button
                 onClick={() => addTableRow(field)}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#3B82F6', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)', padding: '4px 0' }}
               >
-                <Plus size={12} /> 행 추가
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                행 추가
               </button>
             </div>
           )}
         </div>
       ))}
 
-      <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-        <button
-          onClick={() => onSave(draft)}
-          className="flex items-center gap-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition"
-        >
-          <Check size={14} />
+      <div style={{ display: 'flex', gap: 8, paddingTop: 12, borderTop: '1px solid var(--color-border-subtle)' }}>
+        <button onClick={() => onSave(draft)} className="btn btn-primary" style={{ fontSize: 13 }}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 8 6.5 11.5 13 4.5"/></svg>
           저장
         </button>
-        <button
-          onClick={onCancel}
-          className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition"
-        >
-          취소
-        </button>
+        <button onClick={onCancel} className="btn btn-ghost" style={{ fontSize: 13 }}>취소</button>
       </div>
     </div>
   )

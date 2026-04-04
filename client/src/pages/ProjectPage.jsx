@@ -1,9 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import {
-  Share2, BookMarked, HelpCircle, MessageSquare, LayoutDashboard,
-  BookOpen, UserCircle, Download, ChevronRight,
-} from 'lucide-react'
 import { useProjectStore } from '../stores/projectStore'
 import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
@@ -41,49 +37,86 @@ function NicknameModal({ onConfirm }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-      <form onSubmit={handleSubmit} className="relative bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-sm p-6">
-        <div className="flex flex-col items-center gap-3 mb-5">
-          <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center">
-            <UserCircle size={32} className="text-blue-500" />
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.15)', backdropFilter: 'blur(4px)' }} />
+      <form
+        onSubmit={handleSubmit}
+        className="animate-slide-up"
+        style={{
+          position: 'relative',
+          background: 'var(--color-bg-secondary)',
+          borderRadius: 'var(--radius-xl)',
+          border: '1px solid var(--color-border)',
+          boxShadow: 'var(--shadow-xl)',
+          width: '100%',
+          maxWidth: 380,
+          padding: 32,
+        }}
+      >
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div style={{
+            width: 52,
+            height: 52,
+            borderRadius: '50%',
+            background: '#EFF6FF',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '0 auto 12px',
+          }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            </svg>
           </div>
-          <div className="text-center">
-            <h2 className="text-lg font-semibold text-gray-900">참여자 정보</h2>
-            <p className="text-sm text-gray-500 mt-1">다른 선생님에게 표시될 정보예요</p>
-          </div>
+          <h2 style={{ fontSize: 17, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 4px' }}>참여자 정보</h2>
+          <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0 }}>다른 선생님에게 표시될 정보예요</p>
         </div>
-        <div className="space-y-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <input
             ref={inputRef}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="이름 또는 닉네임 (예: 김교사)"
             maxLength={10}
-            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            style={{ width: '100%', padding: '10px 14px', fontSize: 14, textAlign: 'center', boxSizing: 'border-box' }}
           />
           <input
             value={affiliation}
             onChange={(e) => setAffiliation(e.target.value)}
             placeholder="소속 (예: OO초등학교)"
             maxLength={20}
-            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            style={{ width: '100%', padding: '10px 14px', fontSize: 14, textAlign: 'center', boxSizing: 'border-box' }}
           />
           <input
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             placeholder="담당 과목 또는 전공 (예: 과학)"
             maxLength={15}
-            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
+            style={{ width: '100%', padding: '10px 14px', fontSize: 14, textAlign: 'center', boxSizing: 'border-box' }}
           />
         </div>
         <button
           type="submit"
-          className="w-full mt-4 px-4 py-3 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition"
+          style={{
+            width: '100%',
+            marginTop: 16,
+            padding: '12px 16px',
+            background: '#111827',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 'var(--radius-md)',
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'background var(--transition-fast)',
+            fontFamily: 'var(--font-sans)',
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = '#1F2937'}
+          onMouseLeave={(e) => e.currentTarget.style.background = '#111827'}
         >
           입장하기
         </button>
-        <p className="text-xs text-gray-400 text-center mt-3">
+        <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center', margin: '12px 0 0' }}>
           닉네임을 비워두면 자동 생성돼요
         </p>
       </form>
@@ -95,7 +128,6 @@ export default function ProjectPage() {
   const { workspaceId, projectId } = useParams()
   const navigate = useNavigate()
 
-  // stores
   const { currentProject, fetchProject, updateProcedure } = useProjectStore()
   const { currentWorkspace, fetchWorkspace } = useWorkspaceStore()
   const {
@@ -103,12 +135,10 @@ export default function ProjectPage() {
     loadPrinciples, loadGeneralPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset,
   } = useProcedureStore()
   const {
-    loadMessages, subscribe, unsubscribe, boardSuggestions,
-    requestProcedureIntro,
+    loadMessages, subscribe, unsubscribe, boardSuggestions, requestProcedureIntro,
   } = useChatStore()
   const { setMembers } = useSessionStore()
 
-  // local state
   const [showStandardSearch, setShowStandardSearch] = useState(false)
   const [showTutorial, setShowTutorial] = useState(() => !localStorage.getItem('cw_tutorial_done'))
   const [activePanel, setActivePanel] = useState('chat')
@@ -119,7 +149,6 @@ export default function ProjectPage() {
   const joinedRef = useRef(false)
   const introRequestedRef = useRef(false)
 
-  // 프로젝트 + 워크스페이스 데이터 로드
   useEffect(() => {
     fetchProject(projectId)
     if (workspaceId) fetchWorkspace(workspaceId)
@@ -127,18 +156,13 @@ export default function ProjectPage() {
     loadGeneralPrinciples()
   }, [projectId, workspaceId])
 
-  // 프로젝트에서 현재 절차 복원
   useEffect(() => {
-    if (currentProject?.current_procedure) {
-      setProcedure(currentProject.current_procedure)
-    }
+    if (currentProject?.current_procedure) setProcedure(currentProject.current_procedure)
   }, [currentProject?.current_procedure])
 
-  // 소켓 연결
   const connectSocket = useCallback(({ name: nickname, subject: subjectName }) => {
     if (joinedRef.current) return
     joinedRef.current = true
-
     joinSession(projectId, { name: nickname, subject: subjectName || '' })
     subscribe(projectId)
     subscribeBoardUpdates()
@@ -155,10 +179,7 @@ export default function ProjectPage() {
         }
       }
     }
-    const handleStageUpdated = (stage) => {
-      setProcedure(stage)
-    }
-
+    const handleStageUpdated = (stage) => setProcedure(stage)
     socket.on('members_updated', handleMembersUpdated)
     socket.on('stage_updated', handleStageUpdated)
 
@@ -174,7 +195,6 @@ export default function ProjectPage() {
     }
   }, [projectId])
 
-  // 닉네임 있으면 바로 연결
   useEffect(() => {
     const savedName = localStorage.getItem('cw_nickname')
     const savedSubject = localStorage.getItem('cw_subject') || ''
@@ -187,18 +207,14 @@ export default function ProjectPage() {
     connectSocket(info)
   }
 
-  // 보드 업데이트 알림 배지
   useEffect(() => {
-    if (boardSuggestions.length > 0 && activePanel !== 'board') {
-      setBoardUpdated(true)
-    }
+    if (boardSuggestions.length > 0 && activePanel !== 'board') setBoardUpdated(true)
   }, [boardSuggestions, activePanel])
 
   useEffect(() => {
     if (activePanel === 'board') setBoardUpdated(false)
   }, [activePanel])
 
-  // 절차 변경 시 데이터 로드
   useEffect(() => {
     if (!currentProject) return
     loadBoards(projectId, currentProcedure)
@@ -210,7 +226,6 @@ export default function ProjectPage() {
   const handleProcedureChange = async (code) => {
     setProcedure(code)
     await updateProcedure(projectId, code)
-    // 절차 전환 시 소켓 브로드캐스트
     socket.emit('stage_changed', { sessionId: projectId, stage: code })
     requestProcedureIntro(projectId, code)
   }
@@ -224,80 +239,137 @@ export default function ProjectPage() {
 
   if (!currentProject) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
+        <div style={{ width: 28, height: 28, border: '3px solid var(--color-border)', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
       </div>
     )
   }
 
   const MOBILE_TABS = [
-    { id: 'chat', label: '채팅', Icon: MessageSquare },
-    { id: 'board', label: '설계보드', Icon: LayoutDashboard },
-    { id: 'principles', label: '원칙', Icon: BookOpen },
+    { id: 'chat', label: '채팅', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"/></svg> },
+    { id: 'board', label: '설계보드', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
+    { id: 'principles', label: '원칙', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg> },
   ]
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden" style={{ height: '100dvh' }}>
+    <div className="h-screen flex flex-col overflow-hidden" style={{ height: '100dvh', background: 'var(--color-bg-primary)' }}>
       {/* 상단 헤더 */}
-      <header className="bg-white border-b border-gray-200 px-2 sm:px-4 py-2 flex items-center gap-1.5 sm:gap-3 shrink-0">
+      <header style={{
+        background: 'var(--color-bg-secondary)',
+        borderBottom: '1px solid var(--color-border)',
+        padding: '8px 12px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexShrink: 0,
+      }}>
         <a
           href={`/workspaces/${workspaceId}`}
           onClick={(e) => { e.preventDefault(); navigate(`/workspaces/${workspaceId}`) }}
-          className="flex items-center gap-1.5 hover:opacity-80 transition shrink-0 min-w-[44px] min-h-[44px]"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            textDecoration: 'none',
+            transition: 'opacity var(--transition-fast)',
+            flexShrink: 0,
+            minWidth: 44,
+            minHeight: 44,
+            justifyContent: 'center',
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+          onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
           title="워크스페이스로"
         >
           <Logo size={24} />
-          <span className="hidden sm:inline text-sm font-bold text-gray-900">커리큘럼 위버</span>
+          <span className="hidden sm:inline" style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+            커리큘럼 위버
+          </span>
         </a>
 
         {/* 브레드크럼 */}
-        <span className="text-gray-300 hidden sm:inline">|</span>
-        <div className="hidden sm:flex items-center gap-1 text-xs text-gray-400 min-w-0">
-          <Link to={`/workspaces/${workspaceId}`} className="hover:text-blue-600 transition truncate max-w-[100px]">
+        <span className="hidden sm:inline" style={{ color: 'var(--color-border)', fontSize: 16 }}>/</span>
+        <div className="hidden sm:flex items-center gap-1 text-xs min-w-0" style={{ color: 'var(--color-text-tertiary)' }}>
+          <Link
+            to={`/workspaces/${workspaceId}`}
+            style={{
+              color: 'inherit',
+              textDecoration: 'none',
+              maxWidth: 100,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              transition: 'color var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#3B82F6'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-text-tertiary)'}
+          >
             {currentWorkspace?.name || '워크스페이스'}
           </Link>
-          <ChevronRight size={12} />
-          <span className="text-gray-700 font-medium truncate">{currentProject.title}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          <span style={{ color: 'var(--color-text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {currentProject.title}
+          </span>
         </div>
-        <h1 className="sm:hidden font-semibold text-gray-900 truncate flex-1 text-sm">
+        <h1 className="sm:hidden" style={{ fontWeight: 600, color: 'var(--color-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, fontSize: 14, margin: 0 }}>
           {currentProject.title}
         </h1>
 
-        <div className="ml-auto flex items-center gap-1">
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
           <MemberList />
+          {[
+            { onClick: () => setShowReport(true), color: '#7C3AED', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>, label: '보고서', title: '결과 보고서' },
+            { onClick: () => setShowStandardSearch(true), color: '#16A34A', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>, label: '성취기준', title: '성취기준 탐색' },
+            { onClick: handleCopyInvite, color: '#3B82F6', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>, label: '초대', title: '초대 코드 복사' },
+          ].map(({ onClick, color, icon, label, title }) => (
+            <button
+              key={label}
+              onClick={onClick}
+              title={title}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '6px 8px',
+                background: 'none',
+                border: 'none',
+                borderRadius: 'var(--radius-md)',
+                fontSize: 13,
+                color,
+                cursor: 'pointer',
+                transition: 'all var(--transition-fast)',
+                fontFamily: 'var(--font-sans)',
+                minHeight: 44,
+                minWidth: 44,
+                justifyContent: 'center',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = `${color}08`}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+            >
+              {icon}
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+          ))}
           <button
-            onClick={() => setShowReport(true)}
-            className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-sm text-purple-600 hover:bg-purple-50 rounded-lg transition min-h-[44px]"
-            title="결과 보고서"
-          >
-            <Download size={16} />
-            <span className="hidden sm:inline">보고서</span>
-          </button>
-          <button
-            onClick={() => setShowStandardSearch(true)}
-            className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 rounded-lg transition min-h-[44px]"
-            title="성취기준 탐색"
-          >
-            <BookMarked size={16} />
-            <span className="hidden sm:inline">성취기준</span>
-          </button>
-          <button
-            onClick={handleCopyInvite}
-            className="flex items-center gap-1 px-2 sm:px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition min-h-[44px]"
-            title="초대 코드 복사"
-          >
-            <Share2 size={16} />
-            <span className="hidden sm:inline">초대</span>
-          </button>
-          <button
-            onClick={() => {
-              localStorage.removeItem('cw_tutorial_done')
-              setShowTutorial(true)
-            }}
-            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition min-w-[44px] min-h-[44px] flex items-center justify-center"
+            onClick={() => { localStorage.removeItem('cw_tutorial_done'); setShowTutorial(true) }}
             title="튜토리얼"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 44,
+              height: 44,
+              background: 'none',
+              border: 'none',
+              borderRadius: 'var(--radius-md)',
+              color: 'var(--color-text-tertiary)',
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-tertiary)'; e.currentTarget.style.color = '#3B82F6' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
           >
-            <HelpCircle size={18} />
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </button>
         </div>
       </header>
@@ -311,15 +383,20 @@ export default function ProjectPage() {
         onProcedureChange={handleProcedureChange}
       />
 
-      {/* 메인 콘텐츠 */}
+      {/* 메인 콘텐츠 — 3-panel layout */}
       <div className="flex-1 flex overflow-hidden">
         {/* 좌측: 채팅 */}
-        <div className={`
-          ${activePanel === 'chat' ? 'flex' : 'hidden'}
-          md:flex w-full md:w-[400px]
-          border-r-0 md:border-r border-gray-200
-          flex-col bg-white md:shrink-0
-        `}>
+        <div
+          className={`${activePanel === 'chat' ? 'flex' : 'hidden'} md:flex`}
+          style={{
+            width: '100%',
+            maxWidth: 400,
+            flexShrink: 0,
+            borderRight: '1px solid var(--color-border)',
+            flexDirection: 'column',
+            background: 'var(--color-bg-secondary)',
+          }}
+        >
           <ChatPanel
             sessionId={projectId}
             stage={currentProcedure}
@@ -328,40 +405,79 @@ export default function ProjectPage() {
         </div>
 
         {/* 중앙: 설계 캔버스 */}
-        <div className={`
-          ${activePanel === 'board' ? 'block' : 'hidden'}
-          md:block flex-1 overflow-auto p-3 sm:p-4 w-full
-        `}>
+        <div
+          className={`${activePanel === 'board' ? 'block' : 'hidden'} md:block`}
+          style={{
+            flex: 1,
+            overflow: 'auto',
+            padding: 16,
+            width: '100%',
+          }}
+        >
           <ProcedureCanvas projectId={projectId} procedureCode={currentProcedure} />
         </div>
 
         {/* 우측: 원칙 패널 */}
-        <div className={`
-          ${activePanel === 'principles' ? 'block' : 'hidden'}
-          md:block w-full md:w-[280px]
-          border-l-0 md:border-l border-gray-200
-          bg-white overflow-auto md:shrink-0
-        `}>
+        <div
+          className={`${activePanel === 'principles' ? 'block' : 'hidden'} md:block`}
+          style={{
+            width: '100%',
+            maxWidth: 280,
+            flexShrink: 0,
+            borderLeft: '1px solid var(--color-border)',
+            background: 'var(--color-bg-secondary)',
+            overflow: 'auto',
+          }}
+        >
           <PrinciplePanel stage={currentProcedure} />
         </div>
       </div>
 
       {/* 모바일 하단 탭 바 */}
-      <div className="md:hidden flex border-t border-gray-200 bg-white shrink-0 safe-bottom">
+      <div className="md:hidden safe-bottom" style={{
+        display: 'flex',
+        borderTop: '1px solid var(--color-border)',
+        background: 'var(--color-bg-secondary)',
+        flexShrink: 0,
+      }}>
         {MOBILE_TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActivePanel(tab.id)}
-            className={`relative flex-1 flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition min-h-[56px] justify-center ${
-              activePanel === tab.id
-                ? 'text-blue-600 bg-blue-50 border-t-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+              padding: '10px 0',
+              border: 'none',
+              background: activePanel === tab.id ? '#EFF6FF' : 'transparent',
+              color: activePanel === tab.id ? '#3B82F6' : 'var(--color-text-tertiary)',
+              fontSize: 11,
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+              fontFamily: 'var(--font-sans)',
+              minHeight: 56,
+              justifyContent: 'center',
+              borderTop: activePanel === tab.id ? '2px solid #3B82F6' : '2px solid transparent',
+              position: 'relative',
+            }}
           >
-            <tab.Icon size={20} />
+            {tab.icon}
             {tab.label}
             {tab.id === 'board' && boardUpdated && (
-              <span className="absolute top-1.5 right-1/4 w-2.5 h-2.5 bg-amber-500 rounded-full animate-pulse" />
+              <span style={{
+                position: 'absolute',
+                top: 8,
+                right: '25%',
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: '#F59E0B',
+                animation: 'pulse 2s infinite',
+              }} />
             )}
           </button>
         ))}
@@ -369,17 +485,12 @@ export default function ProjectPage() {
 
       {/* 모달들 */}
       {needsNickname && <NicknameModal onConfirm={handleNicknameConfirm} />}
-
       {showStandardSearch && (
         <StandardSearch
           sessionId={projectId}
-          onClose={() => {
-            setShowStandardSearch(false)
-            loadStandards(projectId)
-          }}
+          onClose={() => { setShowStandardSearch(false); loadStandards(projectId) }}
         />
       )}
-
       {showReport && (
         <ReportDownload
           sessionId={projectId}
@@ -387,10 +498,7 @@ export default function ProjectPage() {
           onClose={() => setShowReport(false)}
         />
       )}
-
-      {showTutorial && (
-        <Tutorial onComplete={() => setShowTutorial(false)} />
-      )}
+      {showTutorial && <Tutorial onComplete={() => setShowTutorial(false)} />}
     </div>
   )
 }

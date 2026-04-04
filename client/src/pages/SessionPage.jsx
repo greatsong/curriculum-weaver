@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Share2, BookMarked, HelpCircle, MessageSquare, LayoutDashboard, BookOpen, UserCircle, Download } from 'lucide-react'
 import { useSessionStore } from '../stores/sessionStore'
-import { useStageStore } from '../stores/stageStore'
+import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
 import { socket, joinSession, leaveSession } from '../lib/socket'
 import Logo from '../components/Logo'
@@ -94,7 +94,7 @@ export default function SessionPage() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
   const { currentSession, fetchSession, updateStage, setMembers } = useSessionStore()
-  const { loadBoards, loadStandards, loadMaterials, loadPrinciples, loadGeneralPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset } = useStageStore()
+  const { loadBoards, loadStandards, loadMaterials, loadPrinciples, loadGeneralPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset } = useProcedureStore()
   const { loadMessages, subscribe, unsubscribe, boardSuggestions, requestStageIntro } = useChatStore()
   const [showStandardSearch, setShowStandardSearch] = useState(false)
   const [showTutorial, setShowTutorial] = useState(
