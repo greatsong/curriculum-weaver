@@ -629,7 +629,7 @@ function TableRenderer({ columns, data }) {
               <td style={{ textAlign: 'center', padding: '10px 8px', fontSize: 11, color: '#94A3B8', fontWeight: 600 }}>{i + 1}</td>
               {columns.map((col) => (
                 <td key={col.name} style={{ padding: '10px 12px', color: 'var(--color-text-primary)', lineHeight: 1.5 }}>
-                  {String(row[col.name] ?? '')}
+                  {String(row[col.name] ?? row[col.label] ?? '')}
                 </td>
               ))}
             </tr>
@@ -843,7 +843,7 @@ function BoardEditor({ schema, content, onSave, onCancel }) {
                         {field.columns.map((col) => (
                           <td key={col.name} style={{ padding: '4px 4px' }}>
                             <input
-                              value={row[col.name] || ''}
+                              value={row[col.name] || row[col.label] || ''}
                               onChange={(e) => updateTableRow(field.name, rowIdx, col.name, e.target.value)}
                               style={{ width: '100%', padding: '4px 8px', fontSize: 12, border: '1px solid var(--color-border-subtle)', borderRadius: 'var(--radius-sm)', boxSizing: 'border-box' }}
                             />
