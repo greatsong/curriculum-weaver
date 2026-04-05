@@ -204,6 +204,36 @@ export default function DemoMode() {
     } catch (err) {
       if (err.name === 'AbortError') {
         setError('생성이 취소되었습니다.')
+      } else if (partialProject?.projectId) {
+        // SSE 연결 끊김 (모바일 백그라운드 등) — 서버는 계속 생성 중일 수 있음
+        // 프로젝트 상태를 폴링하여 완료 여부 확인
+        console.log('[demo] SSE 끊김 — 서버 완료 대기 폴링 시작')
+        setError('')
+        setCurrentPhase('서버에서 생성 완료 대기 중...')
+        const pollInterval = setInterval(async () => {
+          try {
+            const proj = await apiGet(`/api/projects/${partialProject.projectId}`)
+            if (proj?.status === 'simulation') {
+              clearInterval(pollInterval)
+              navigate(`/workspaces/${partialProject.workspaceId}/projects/${partialProject.projectId}`)
+            } else if (proj?.status === 'failed') {
+              clearInterval(pollInterval)
+              setError('서버에서 생성이 실패했습니다.')
+              setGenerating(false)
+            }
+          } catch {
+            // 폴링 실패는 무시 (다음 시도에서 재시도)
+          }
+        }, 5000) // 5초마다 확인
+        // 5분 후 타임아웃
+        setTimeout(() => {
+          clearInterval(pollInterval)
+          if (generating) {
+            setError('생성 시간이 초과되었습니다. 워크스페이스에서 프로젝트를 확인해주세요.')
+            setGenerating(false)
+          }
+        }, 5 * 60 * 1000)
+        return
       } else {
         setError(err.message || '데모 생성 중 오류가 발생했습니다.')
       }

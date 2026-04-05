@@ -13,8 +13,8 @@ import { Router } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireAuth } from '../middleware/auth.js'
 import { createProject, updateProject, upsertDesign, createMessage, getMemberRole } from '../lib/supabaseService.js'
-import { PROCEDURES, BOARD_TYPES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
-import { BOARD_SCHEMAS, BOARD_TYPE_LABELS } from 'curriculum-weaver-shared/boardSchemas.js'
+import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
+import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -439,10 +439,9 @@ JSON 형식:
     sendEvent({ type: 'phase_complete', phase: 1, saved: phase1Saved, total: PHASE1_CODES.length })
 
     // ── 5. 2차 호출: Ds-1-1 ~ E-2-1 ──
+    // disconnect 되어도 서버에서 끝까지 생성 (모바일 백그라운드 전환 대응)
     if (aborted) {
-      console.log('[demo] 클라이언트 disconnect — 2차 호출 스킵, 부분 저장 유지')
-      await updateProject(projectId, { status: phase1Saved >= 5 ? 'simulation' : 'failed' })
-      return res.end()
+      console.log('[demo] 클라이언트 disconnect — 서버에서 2차 호출 계속 진행')
     }
     console.log('[demo] === 2차 호출 시작 (Ds-1-1 ~ E-2-1) ===')
     const phase1Summary = buildPhase1Summary(phase1Data)
