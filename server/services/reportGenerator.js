@@ -812,7 +812,7 @@ function renderSectionsMD(sections) {
       md += `| ${sec.columns.map(() => '---').join(' | ')} |\n`
       for (const row of sec.rows) {
         const cells = sec.columns.map(c => {
-          const val = String(row[c.name] || row[c.key] || '')
+          const val = String(row[c.name] || row[c.label] || row[c.key] || '')
           return val.replace(/\|/g, '\\|').replace(/\n/g, ' ')
         })
         md += `| ${cells.join(' | ')} |\n`
@@ -826,6 +826,13 @@ function renderSectionsMD(sections) {
       md += `\n`
     } else if (sec.type === 'tags') {
       md += `**${sec.label}**: ${sec.items.map(i => `\`${i}\``).join(', ')}\n\n`
+    } else if (sec.type === 'cluster') {
+      md += `**${sec.label}**\n\n`
+      for (const [name, items] of Object.entries(sec.clusters)) {
+        const itemList = Array.isArray(items) ? items : [String(items)]
+        md += `- **${name}**: ${itemList.join(', ')}\n`
+      }
+      md += `\n`
     } else {
       md += `**${sec.label}**: ${sec.value}\n\n`
     }
