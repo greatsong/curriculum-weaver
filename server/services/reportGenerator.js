@@ -81,29 +81,34 @@ export async function collectReportData(projectId) {
     }
   } catch { /* 메시지 없으면 무시 */ }
 
-  // 참여자 추출: role_assignment 보드에서 추출
+  // 참여자 추출: role_assignment 보드에서 추출 (영문/한글 키 모두 대응)
   const participants = []
   const roleDesign = designMap['T-2-1']
   if (roleDesign?.content?.roles) {
     for (const r of roleDesign.content.roles) {
-      if (r.memberName) {
+      const name = r.memberName || r['교사명'] || r.name || ''
+      if (name) {
         participants.push({
-          name: r.memberName,
-          subject: r.subject || '',
-          role: r.role || '',
-          strengths: r.strengths || '',
+          name,
+          subject: r.subject || r['담당 교과'] || '',
+          role: r.role || r['팀 내 역할'] || '',
+          strengths: r.strengths || r['강점/전문성'] || '',
         })
       }
     }
   }
 
   // 절차별 완료 상태 계산
+  const isSimulation = project.status === 'simulation' || project.title?.startsWith('[시뮬레이션]')
   const procedureStatus = {}
   for (const proc of PROCEDURE_LIST) {
     const design = designMap[proc.code]
     if (!design) {
       procedureStatus[proc.code] = 'empty'
     } else if (design.save_status === 'confirmed') {
+      procedureStatus[proc.code] = 'confirmed'
+    } else if (isSimulation && design.content && Object.keys(design.content).length > 0) {
+      // 시뮬레이션 프로젝트: 내용이 있으면 완료 취급
       procedureStatus[proc.code] = 'confirmed'
     } else if (design.save_status === 'draft') {
       procedureStatus[proc.code] = 'draft'
@@ -168,8 +173,14 @@ function renderBoardContent(boardType, content) {
     } else if (field.type === 'tags' && Array.isArray(value)) {
       sections.push({ label: field.label, type: 'tags', items: value })
     } else if (field.type === 'json' && value) {
-      // JSON 필드는 텍스트로 요약
-      sections.push({ label: field.label, type: 'text', value: typeof value === 'string' ? value : JSON.stringify(value, null, 2) })
+      // JSON 필드: 클러스터맵 형태이면 cluster, 아니면 텍스트
+      const isClusterMap = typeof value === 'object' && !Array.isArray(value) &&
+        Object.values(value).some(v => Array.isArray(v))
+      if (isClusterMap) {
+        sections.push({ label: field.label, type: 'cluster', clusters: value })
+      } else {
+        sections.push({ label: field.label, type: 'text', value: typeof value === 'string' ? value : JSON.stringify(value, null, 2) })
+      }
     } else if (typeof value === 'string' || typeof value === 'number') {
       sections.push({ label: field.label, type: 'text', value: String(value) })
     }
@@ -640,7 +651,7 @@ function renderSectionsHTML(sections) {
       for (const row of sec.rows) {
         html += `<tr>`
         for (const col of sec.columns) {
-          html += `<td>${esc(String(row[col.name] || row[col.key] || ''))}</td>`
+          html += `<td>${esc(String(row[col.name] || row[col.label] || row[col.key] || ''))}</td>`
         }
         html += `</tr>`
       }
@@ -655,6 +666,30 @@ function renderSectionsHTML(sections) {
       html += `<div class="board-section"><div class="board-label">${esc(sec.label)}</div><div class="tags">`
       sec.items.forEach((item, i) => {
         html += `<span class="tag ${tagClasses[i % tagClasses.length]}">${esc(String(item))}</span>`
+      })
+      html += `</div></div>`
+    } else if (sec.type === 'cluster') {
+      const clusterColors = [
+        { bg: '#EFF6FF', border: '#BFDBFE', text: '#1E40AF', tag: '#DBEAFE' },
+        { bg: '#F0FDF4', border: '#BBF7D0', text: '#166534', tag: '#DCFCE7' },
+        { bg: '#FFF7ED', border: '#FED7AA', text: '#9A3412', tag: '#FFEDD5' },
+        { bg: '#FAF5FF', border: '#E9D5FF', text: '#6B21A8', tag: '#F3E8FF' },
+        { bg: '#FFF1F2', border: '#FECDD3', text: '#9F1239', tag: '#FFE4E6' },
+        { bg: '#F0FDFA', border: '#99F6E4', text: '#115E59', tag: '#CCFBF1' },
+      ]
+      html += `<div class="board-section"><div class="board-label">${esc(sec.label)}</div>`
+      html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;">`
+      const entries = Object.entries(sec.clusters)
+      entries.forEach(([name, items], idx) => {
+        const c = clusterColors[idx % clusterColors.length]
+        const itemList = Array.isArray(items) ? items : [String(items)]
+        html += `<div style="background:${c.bg};border:1px solid ${c.border};border-radius:8px;padding:14px;">`
+        html += `<div style="font-size:13px;font-weight:700;color:${c.text};margin-bottom:8px;">${esc(name)}</div>`
+        html += `<div style="display:flex;flex-wrap:wrap;gap:6px;">`
+        for (const item of itemList) {
+          html += `<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:${c.tag};color:${c.text};">${esc(String(item))}</span>`
+        }
+        html += `</div></div>`
       })
       html += `</div></div>`
     } else {
