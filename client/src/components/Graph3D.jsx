@@ -153,9 +153,10 @@ export default function Graph3D({ embedded = false }) {
     return map
   }, [graphData])
 
-  // 필터링된 그래프 데이터 (같은 교과 간 연결 제거)
-  // selectedNode가 변경될 때 ref 업데이트 (filteredData useMemo dependency에서 제거하기 위해)
+  // selectedNode ref 동기화 (non-focus 경로에서 사용)
   selectedNodeRef.current = selectedNode
+  // 포커스 모드에서만 selectedNode를 의존성에 포함
+  const focusNodeId = focusMode ? selectedNode?.id : null
 
   const filteredData = useMemo(() => {
     if (!graphData) return null
@@ -262,7 +263,7 @@ export default function Graph3D({ embedded = false }) {
     nodes = nodes.filter(n => linkedNodeIds.has(n.id))
 
     return { nodes, links, neighborNodeIds }
-  }, [graphData, selectedSubjects, selectedSchoolLevels, selectedGradeGroups, minOverlap, filterLinkType, nodeSubjectMap, focusMode])
+  }, [graphData, selectedSubjects, selectedSchoolLevels, selectedGradeGroups, minOverlap, filterLinkType, nodeSubjectMap, focusMode, focusNodeId])
 
   // 포스 시뮬레이션 설정 (반발력, 링크 거리 등)
   // 노드 수가 실제로 변경될 때만 reheat (선택만 변경 시 불필요한 reheat 방지)
@@ -302,6 +303,28 @@ export default function Graph3D({ embedded = false }) {
   const [semanticLoading, setSemanticLoading] = useState(false)
   const semanticTimerRef = useRef(null)
 
+  // 클라이언트 사이드 텍스트 검색 (시맨틱 검색 폴백용)
+  const textSearch = useCallback((q) => {
+    if (!graphData) return []
+    const query = q.toLowerCase()
+    return graphData.nodes
+      .map(n => {
+        let score = 0
+        if (n.subject?.toLowerCase().includes(query)) score += 200
+        if (n.subject_group?.toLowerCase().includes(query)) score += 150
+        if (n.code?.toLowerCase().includes(query)) score += 100
+        if ((n.keywords || []).some(k => k.toLowerCase().includes(query))) score += 80
+        if (n.content?.toLowerCase().includes(query)) score += 60
+        if (n.area?.toLowerCase().includes(query)) score += 40
+        if (n.grade_group?.toLowerCase().includes(query)) score += 20
+        if ((n.explanation || '').toLowerCase().includes(query)) score += 10
+        return score > 0 ? { ...n, _matchScore: score } : null
+      })
+      .filter(Boolean)
+      .sort((a, b) => b._matchScore - a._matchScore)
+      .slice(0, 50)
+  }, [graphData])
+
   useEffect(() => {
     if (!graphData || !searchQuery.trim()) {
       setSemanticResults([])
@@ -325,18 +348,19 @@ export default function Graph3D({ embedded = false }) {
           .filter(Boolean)
         setSemanticResults(matched)
       } catch {
-        setSemanticResults([])
+        // 시맨틱 검색 실패 → 클라이언트 텍스트 검색 폴백
+        setSemanticResults(textSearch(searchQuery.trim()))
       } finally {
         setSemanticLoading(false)
       }
     }, 600)
     return () => clearTimeout(semanticTimerRef.current)
-  }, [graphData, searchQuery])
+  }, [graphData, searchQuery, textSearch])
 
   // 최종 검색 결과 = 시맨틱 검색 결과
   const sortedSearchResults = semanticResults
 
-  // 검색 + 하이라이트
+  // 검색 + 하이라이트 (노드 ID 기반 — 인덱스 아닌 ID로 비교)
   useEffect(() => {
     if (sortedSearchResults.length === 0) {
       setHighlightNodes(new Set())
@@ -345,12 +369,9 @@ export default function Graph3D({ embedded = false }) {
       return
     }
     const nodeIds = new Set(sortedSearchResults.map(n => n.id))
-    const linkSet = new Set()
-    graphData.links.forEach((l, i) => {
-      if (nodeIds.has(getLinkSourceId(l)) || nodeIds.has(getLinkTargetId(l))) linkSet.add(i)
-    })
     setHighlightNodes(nodeIds)
-    setHighlightLinks(linkSet)
+    // 링크도 노드 ID 기반으로 매칭 (인덱스 대신)
+    setHighlightLinks(nodeIds) // highlightLinks를 노드 ID Set으로 재활용
   }, [sortedSearchResults, graphData])
 
   // 검색 시 첫 번째 결과로 자동 이동 (선택 없이 카메라만)
@@ -503,11 +524,14 @@ export default function Graph3D({ embedded = false }) {
   }, [sortedSearchResults, searchIndex, navigateToNode])
 
   const selectedLinks = useMemo(() => {
-    if (!selectedNode || !graphData) return []
-    return graphData.links.filter(l => {
+    if (!selectedNode) return []
+    // 현재 필터가 적용된 데이터에서만 연결 조회 (숨겨진 연결 제외)
+    const linkSource = filteredData || graphData
+    if (!linkSource) return []
+    return linkSource.links.filter(l => {
       return getLinkSourceId(l) === selectedNode.id || getLinkTargetId(l) === selectedNode.id
     })
-  }, [selectedNode, graphData])
+  }, [selectedNode, filteredData, graphData])
 
   // 선택된 노드의 직접 이웃 ID 셋 (3D 시각화에서 이웃 하이라이트용)
   const selectedNeighborIds = useMemo(() => {
@@ -648,15 +672,18 @@ export default function Graph3D({ embedded = false }) {
   }
 
   // AI 추천 링크 추가
+  const [linkAddError, setLinkAddError] = useState('')
   const handleAddLink = async (link) => {
     const key = `${link.source}-${link.target}`
     if (addedLinks.has(key)) return
+    setLinkAddError('')
     try {
       await apiPost('/api/standards/graph/add-links', { links: [link] })
       setAddedLinks(prev => new Set([...prev, key]))
       await refreshGraph()
     } catch (e) {
-      console.error('링크 추가 실패:', e)
+      const msg = e.status === 401 ? '로그인이 필요합니다' : '링크 추가에 실패했습니다'
+      setLinkAddError(msg)
     }
   }
 
@@ -664,6 +691,7 @@ export default function Graph3D({ embedded = false }) {
   const handleAddAllLinks = async () => {
     const toAdd = suggestedLinks.filter(l => !addedLinks.has(`${l.source}-${l.target}`))
     if (toAdd.length === 0) return
+    setLinkAddError('')
     try {
       await apiPost('/api/standards/graph/add-links', { links: toAdd })
       const newAdded = new Set(addedLinks)
@@ -671,7 +699,8 @@ export default function Graph3D({ embedded = false }) {
       setAddedLinks(newAdded)
       await refreshGraph()
     } catch (e) {
-      console.error('링크 일괄 추가 실패:', e)
+      const msg = e.status === 401 ? '로그인이 필요합니다' : '링크 추가에 실패했습니다'
+      setLinkAddError(msg)
     }
   }
 
@@ -943,8 +972,9 @@ export default function Graph3D({ embedded = false }) {
               nodeOpacity={0.9}
               linkColor={(link) => {
                 if (hasSearch && highlightLinks.size > 0) {
-                  const idx = filteredData.links.indexOf(link)
-                  return highlightLinks.has(idx) ? LINK_TYPE_COLORS[link.link_type] || '#6b7280' : '#1f2937'
+                  const srcId = getLinkSourceId(link), tgtId = getLinkTargetId(link)
+                  const isHighlighted = highlightLinks.has(srcId) || highlightLinks.has(tgtId)
+                  return isHighlighted ? LINK_TYPE_COLORS[link.link_type] || '#6b7280' : '#1f2937'
                 }
                 // 선택 노드와 연결된 링크 강조
                 if (selectedNode) {
@@ -956,8 +986,9 @@ export default function Graph3D({ embedded = false }) {
               }}
               linkWidth={(link) => {
                 if (hasSearch && highlightLinks.size > 0) {
-                  const idx = filteredData.links.indexOf(link)
-                  return highlightLinks.has(idx) ? 2.5 : 0.3
+                  const srcId = getLinkSourceId(link), tgtId = getLinkTargetId(link)
+                  const isHighlighted = highlightLinks.has(srcId) || highlightLinks.has(tgtId)
+                  return isHighlighted ? 2.5 : 0.3
                 }
                 // 선택 노드와 연결된 링크 굵게
                 if (selectedNode) {
@@ -1549,6 +1580,9 @@ export default function Graph3D({ embedded = false }) {
                       </button>
                     )}
                   </div>
+                  {linkAddError && (
+                    <p className="text-xs text-red-400 px-1">{linkAddError}</p>
+                  )}
                   {suggestedLinks.map((link, i) => {
                     const key = `${link.source}-${link.target}`
                     const isAdded = addedLinks.has(key)
