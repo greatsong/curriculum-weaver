@@ -344,13 +344,41 @@ export const Standards = {
     if (curriculum_category) results = results.filter((s) => s.curriculum_category === curriculum_category)
     if (q) {
       const query = q.toLowerCase()
-      results = results.filter((s) =>
-        s.content.toLowerCase().includes(query) ||
-        s.code.toLowerCase().includes(query) ||
-        (s.keywords || []).some((k) => k.toLowerCase().includes(query)) ||
-        s.area.toLowerCase().includes(query) ||
-        (s.explanation || '').toLowerCase().includes(query)
-      )
+      // 가중치 기반 검색 — 핵심 필드 매칭이 해설 매칭보다 상위에 노출
+      const scored = results.map((s) => {
+        let score = 0
+        const content = s.content.toLowerCase()
+        const code = s.code.toLowerCase()
+        const area = (s.area || '').toLowerCase()
+        const explanation = (s.explanation || '').toLowerCase()
+        const keywords = (s.keywords || []).map((k) => k.toLowerCase())
+
+        // 교과명에 검색어 포함 (예: "인공지능 기초" 교과) — 최고 가중치
+        const subjectName = (s.subject || '').toLowerCase()
+        const subjectGroup = (s.subject_group || '').toLowerCase()
+        if (subjectName.includes(query)) score += 200
+        if (subjectGroup.includes(query)) score += 150
+        // 코드 매칭
+        if (code.includes(query)) score += 100
+        // 키워드 매칭 (핵심 개념)
+        if (keywords.some((k) => k.includes(query))) score += 80
+        // 성취기준 내용 매칭 (핵심)
+        if (content.includes(query)) score += 60
+        // 영역 매칭
+        if (area.includes(query)) score += 40
+        // 해설 매칭 (간접 언급 가능성 높음 — 낮은 가중치)
+        if (explanation.includes(query)) score += 10
+
+        return { standard: s, score }
+      }).filter((item) => item.score > 0)
+
+      // 점수 내림차순 정렬
+      scored.sort((a, b) => b.score - a.score)
+      results = scored.map((item) => ({
+        ...item.standard,
+        _matchScore: item.score,
+        _matchField: item.score >= 40 ? 'primary' : 'secondary',
+      }))
     }
     return results.slice(0, 50)
   },

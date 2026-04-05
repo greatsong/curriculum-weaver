@@ -6,15 +6,13 @@ import { fileURLToPath } from 'url'
 /**
  * 교육과정 성취기준 임베딩 서비스
  *
- * 키워드 + 내용 기반 TF-IDF 벡터를 생성하고,
- * UMAP으로 3D 좌표로 차원 축소합니다.
- *
- * 임베딩은 데이터 변경 시에만 1회 계산 후 캐시됩니다.
- * 파일 캐시를 사용하여 서버 재시작 시에도 재계산하지 않습니다.
+ * OpenAI text-embedding-3-small 벡터가 있으면 우선 사용하고,
+ * 없으면 TF-IDF 폴백. UMAP으로 3D 좌표로 차원 축소합니다.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const CACHE_FILE = path.join(__dirname, '..', 'data', 'embeddings-cache.json')
+const OPENAI_CACHE_FILE = path.join(__dirname, '..', 'data', 'openai-embeddings-cache.json')
 
 // 메모리 캐시 (id 기반)
 let cachedCoords = null
@@ -22,6 +20,28 @@ let cachedHash = null
 
 // 파일 캐시 (code 기반 — ID는 서버 재시작마다 변경되므로)
 let fileCacheByCode = null
+
+// OpenAI 임베딩 캐시
+let openaiEmbeddings = null
+
+/**
+ * OpenAI 임베딩 캐시 로드
+ * @returns {{ embeddings: Object<string, number[]> } | null}
+ */
+function loadOpenAIEmbeddings() {
+  if (openaiEmbeddings) return openaiEmbeddings
+  try {
+    if (fs.existsSync(OPENAI_CACHE_FILE)) {
+      const data = JSON.parse(fs.readFileSync(OPENAI_CACHE_FILE, 'utf-8'))
+      console.log(`  🤖 OpenAI 임베딩 로드: ${data.count}개 (${data.model})`)
+      openaiEmbeddings = data
+      return data
+    }
+  } catch (e) {
+    console.warn('  OpenAI 임베딩 캐시 읽기 실패:', e.message)
+  }
+  return null
+}
 
 /**
  * 파일 캐시에서 임베딩 로드
@@ -166,24 +186,43 @@ export function computeEmbedding3D(standards) {
 
   console.time('임베딩 3D 계산')
 
-  // 1. 토큰화 (content + keywords + subject + area를 결합)
-  const documents = standards.map(s => {
-    const contentTokens = tokenize(s.content)
-    const keywordTokens = (s.keywords || []).flatMap(k => tokenize(k))
-    // 교과명과 영역에 가중치 (3배 반복)
-    const subjectTokens = Array(3).fill(s.subject).flatMap(tokenize)
-    const areaTokens = Array(2).fill(s.area).flatMap(tokenize)
-    return {
-      id: s.id,
-      code: s.code,
-      tokens: [...contentTokens, ...keywordTokens, ...subjectTokens, ...areaTokens],
-      subject: s.subject,
-      area: s.area,
-    }
-  })
+  // OpenAI 임베딩이 있으면 우선 사용
+  const openaiCache = loadOpenAIEmbeddings()
+  let vectors
 
-  // 2. TF-IDF 벡터 계산
-  const { vectors } = computeTFIDF(documents)
+  if (openaiCache) {
+    console.log('  🤖 OpenAI 시맨틱 임베딩으로 UMAP 계산')
+    vectors = standards.map(s => {
+      const emb = openaiCache.embeddings[s.code]
+      if (!emb) {
+        // 누락된 성취기준은 제로 벡터로 폴백
+        console.warn(`  ⚠️ OpenAI 임베딩 누락: ${s.code}`)
+        return new Array(1536).fill(0)
+      }
+      return emb
+    })
+  } else {
+    console.log('  📊 TF-IDF 폴백으로 UMAP 계산')
+
+    // 1. 토큰화 (content + keywords + subject + area를 결합)
+    const documents = standards.map(s => {
+      const contentTokens = tokenize(s.content)
+      const keywordTokens = (s.keywords || []).flatMap(k => tokenize(k))
+      // 교과명과 영역에 가중치 (3배 반복)
+      const subjectTokens = Array(3).fill(s.subject).flatMap(tokenize)
+      const areaTokens = Array(2).fill(s.area).flatMap(tokenize)
+      return {
+        id: s.id,
+        code: s.code,
+        tokens: [...contentTokens, ...keywordTokens, ...subjectTokens, ...areaTokens],
+        subject: s.subject,
+        area: s.area,
+      }
+    })
+
+    // 2. TF-IDF 벡터 계산
+    vectors = computeTFIDF(documents).vectors
+  }
 
   // 3. UMAP으로 3D 차원 축소
   const umap = new UMAP({
@@ -191,7 +230,7 @@ export function computeEmbedding3D(standards) {
     nNeighbors: Math.min(15, Math.floor(standards.length / 3)),
     minDist: 0.3,
     spread: 1.5,
-    distanceFn: cosineDistance,
+    ...(openaiCache ? {} : { distanceFn: cosineDistance }),
   })
 
   const coords3D = umap.fit(vectors)
@@ -265,6 +304,7 @@ export function invalidateEmbeddingCache() {
   cachedCoords = null
   cachedHash = null
   fileCacheByCode = null
+  openaiEmbeddings = null
   // 파일 캐시도 삭제
   try {
     if (fs.existsSync(CACHE_FILE)) fs.unlinkSync(CACHE_FILE)

@@ -29,6 +29,7 @@ import { Router } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
 import { Standards, StandardLinks } from '../lib/store.js'
 import { computeEmbedding3D, invalidateEmbeddingCache } from '../services/embeddings.js'
+import { semanticSearch, isSemanticSearchAvailable } from '../services/semanticSearch.js'
 import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js'
 import {
   searchStandards, getStandardsByProject,
@@ -79,6 +80,27 @@ standardsRouter.get('/search', async (req, res) => {
   } catch (err) {
     console.error('[standards] 검색 오류:', err.message)
     res.status(500).json({ error: '성취기준 검색에 실패했습니다.' })
+  }
+})
+
+/**
+ * GET /api/standards/semantic-search
+ * 시맨틱 검색 — OpenAI 임베딩 기반 의미적 유사도 검색
+ */
+standardsRouter.get('/semantic-search', async (req, res) => {
+  try {
+    const { q } = req.query
+    if (!q || !q.trim()) return res.json([])
+
+    if (!isSemanticSearchAvailable()) {
+      return res.status(503).json({ error: '시맨틱 검색을 사용할 수 없습니다 (임베딩 없음)' })
+    }
+
+    const results = await semanticSearch(q.trim(), Standards.list(), 50)
+    res.json(results)
+  } catch (err) {
+    console.error('[standards] 시맨틱 검색 오류:', err.message)
+    res.status(500).json({ error: '시맨틱 검색에 실패했습니다.' })
   }
 })
 

@@ -6,3 +6,7 @@ dist/
 *.log
 .vercel
 .env*.local
+
+# 대용량 임베딩 캐시 (Railway 빌드 시 자동 생성)
+server/data/openai-embeddings-cache.json
+server/data/embeddings-cache.json

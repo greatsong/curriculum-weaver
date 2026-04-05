@@ -12,6 +12,7 @@ import helmet from 'helmet'
 import cors from 'cors'
 import { initStore, Standards } from './lib/store.js'
 import { precomputeEmbeddings } from './services/embeddings.js'
+import { loadSemanticIndex, ensureEmbeddingsCache } from './services/semanticSearch.js'
 import { supabaseAdmin } from './lib/supabaseAdmin.js'
 
 // ── Rate Limiter 임포트 ──
@@ -41,6 +42,11 @@ console.log(`  기본 세션 ID: ${defaultSessionId}`)
 
 // 임베딩 사전 계산 (파일 캐시 있으면 즉시, 없으면 백그라운드)
 precomputeEmbeddings(Standards.list())
+
+// 시맨틱 검색 인덱스 로드 (캐시 없으면 백그라운드 자동 생성)
+if (!loadSemanticIndex()) {
+  setImmediate(() => ensureEmbeddingsCache(Standards.list()))
+}
 
 const app = express()
 const server = createServer(app)

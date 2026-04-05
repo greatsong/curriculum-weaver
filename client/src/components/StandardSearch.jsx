@@ -101,7 +101,7 @@ export default function StandardSearch({ sessionId, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 sm:flex sm:items-center sm:justify-center z-50" onClick={onClose}>
-      <div className="bg-white h-full sm:h-auto sm:rounded-xl sm:shadow-2xl w-full sm:max-w-3xl sm:max-h-[80vh] sm:mx-4 flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white h-full sm:h-auto sm:rounded-xl sm:shadow-2xl w-full sm:max-w-3xl sm:max-h-[90vh] sm:mx-4 flex flex-col" onClick={(e) => e.stopPropagation()}>
         {/* 헤더 */}
         <div className="flex items-center justify-between px-3 sm:px-5 py-3 sm:py-4 border-b border-gray-200">
           <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -207,11 +207,14 @@ export default function StandardSearch({ sessionId, onClose }) {
                 const added = isAdded(std.id)
                 const isExpanded = expandedStandard === std.id
                 const hasDetail = std.explanation || std.application_notes
+                const isSecondary = std._matchField === 'secondary'
                 return (
                   <div
                     key={std.id}
                     className={`p-3 rounded-lg border transition ${
-                      selectedStandard?.id === std.id ? 'border-blue-300 bg-blue-50/50' : 'border-gray-200 hover:border-gray-300'
+                      selectedStandard?.id === std.id ? 'border-blue-300 bg-blue-50/50'
+                        : isSecondary ? 'border-gray-100 bg-gray-50/50 hover:border-gray-200'
+                        : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
                     <div className="flex items-start gap-3 cursor-pointer" onClick={() => viewLinks(std)}>
@@ -227,8 +230,13 @@ export default function StandardSearch({ sessionId, onClose }) {
                             <span className={`px-1.5 py-0.5 rounded text-xs ${catColor}`}>{std.curriculum_category}</span>
                           )}
                         </div>
-                        <p className="text-sm text-gray-800 leading-relaxed">{std.content}</p>
+                        <p className={`text-sm leading-relaxed ${isSecondary ? 'text-gray-500' : 'text-gray-800'}`}>{std.content}</p>
                         <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                          {isSecondary && (
+                            <span className="px-1.5 py-0.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-600">
+                              해설에서 매칭
+                            </span>
+                          )}
                           {std.keywords?.length > 0 && std.keywords.map((k) => (
                             <span key={k} className="px-1.5 py-0.5 bg-gray-100 rounded text-xs text-gray-500">
                               {k}
@@ -270,9 +278,9 @@ export default function StandardSearch({ sessionId, onClose }) {
                         {std.explanation && (
                           <div className="flex items-start gap-2">
                             <FileText size={14} className="text-blue-400 mt-0.5 shrink-0" />
-                            <div>
+                            <div className="min-w-0 flex-1">
                               <span className="text-xs font-semibold text-blue-600">해설</span>
-                              <p className="text-xs text-gray-600 leading-relaxed mt-0.5">{std.explanation}</p>
+                              <p className="text-xs text-gray-600 leading-relaxed mt-0.5 max-h-40 overflow-y-auto pr-1">{std.explanation}</p>
                             </div>
                           </div>
                         )}

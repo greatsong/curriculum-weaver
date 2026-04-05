@@ -297,19 +297,44 @@ export default function Graph3D({ embedded = false }) {
   // 필터 변경 시 — 자동 줌 아웃 안 함 (사용자 카메라 유지)
   // 리셋 버튼으로만 줌 투 핏 가능
 
-  // 검색 결과 (원점에서 가까운 순 정렬)
-  const sortedSearchResults = useMemo(() => {
-    if (!graphData || !searchQuery.trim()) return []
-    const q = searchQuery.toLowerCase()
-    const matched = graphData.nodes.filter(n =>
-      n.code?.toLowerCase().includes(q) || n.subject?.toLowerCase().includes(q) ||
-      n.content?.toLowerCase().includes(q) || n.area?.toLowerCase().includes(q) ||
-      n.grade_group?.toLowerCase().includes(q)
-    )
-    return matched.sort((a, b) =>
-      Math.hypot(a.x || 0, a.y || 0, a.z || 0) - Math.hypot(b.x || 0, b.y || 0, b.z || 0)
-    )
+  // 시맨틱 검색 결과 (서버 API 호출, 디바운스)
+  const [semanticResults, setSemanticResults] = useState([])
+  const [semanticLoading, setSemanticLoading] = useState(false)
+  const semanticTimerRef = useRef(null)
+
+  useEffect(() => {
+    if (!graphData || !searchQuery.trim()) {
+      setSemanticResults([])
+      return
+    }
+    // 디바운스 600ms
+    clearTimeout(semanticTimerRef.current)
+    setSemanticLoading(true)
+    semanticTimerRef.current = setTimeout(async () => {
+      try {
+        const results = await apiGet('/api/standards/semantic-search', { q: searchQuery.trim() })
+        if (!Array.isArray(results)) throw new Error('invalid response')
+        // 서버 결과의 code를 그래프 노드와 매칭 (3D 좌표 포함)
+        const codeToNode = new Map(graphData.nodes.map(n => [n.code, n]))
+        const matched = results
+          .map(r => {
+            const node = codeToNode.get(r.code)
+            if (!node) return null
+            return { ...node, _similarity: r._similarity, _matchField: 'semantic' }
+          })
+          .filter(Boolean)
+        setSemanticResults(matched)
+      } catch {
+        setSemanticResults([])
+      } finally {
+        setSemanticLoading(false)
+      }
+    }, 600)
+    return () => clearTimeout(semanticTimerRef.current)
   }, [graphData, searchQuery])
+
+  // 최종 검색 결과 = 시맨틱 검색 결과
+  const sortedSearchResults = semanticResults
 
   // 검색 + 하이라이트
   useEffect(() => {
@@ -328,12 +353,14 @@ export default function Graph3D({ embedded = false }) {
     setHighlightLinks(linkSet)
   }, [sortedSearchResults, graphData])
 
-  // 검색 시 첫 번째 결과로 자동 이동 (디바운스)
+  // 검색 시 첫 번째 결과로 자동 이동 (선택 없이 카메라만)
   useEffect(() => {
     if (sortedSearchResults.length === 0) return
+    // 검색 중에는 선택 해제하여 리스트 뷰 유지
+    setSelectedNode(null)
     const timer = setTimeout(() => {
       setSearchIndex(0)
-      navigateToNode(sortedSearchResults[0])
+      navigateToNode(sortedSearchResults[0], { select: false })
     }, 400)
     return () => clearTimeout(timer)
   }, [sortedSearchResults])
@@ -364,23 +391,25 @@ export default function Graph3D({ embedded = false }) {
 
   const listItems = useMemo(() => {
     if (!graphData) return []
-    // 교과 필터가 활성화되었으면 그래프에 실제 표시된 노드만 사용
-    let items = (selectedSubjects.size > 0 && filteredData) ? filteredData.nodes : graphData.nodes
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      items = items.filter(n =>
-        n.code?.toLowerCase().includes(q) || n.subject?.toLowerCase().includes(q) ||
-        n.content?.toLowerCase().includes(q) || n.area?.toLowerCase().includes(q) ||
-        n.grade_group?.toLowerCase().includes(q)
-      )
+    // 검색 중이면 시맨틱 검색 결과 사용
+    if (searchQuery.trim() && semanticResults.length > 0) {
+      let items = semanticResults
+      // 교과 필터 적용
+      if (selectedSubjects.size > 0) items = items.filter(n => selectedSubjects.has(n.subject_group || n.subject))
+      if (selectedSchoolLevels.size > 0) items = items.filter(n => selectedSchoolLevels.has(n.school_level))
+      if (selectedGradeGroups.size > 0) items = items.filter(n => selectedGradeGroups.has(n.grade_group))
+      return items
     }
-    // 교과 필터 없을 때만 학교급/학년군 필터 적용 (있을 때는 filteredData에 이미 반영됨)
+    // 검색어 없을 때: 기존 필터 기반 목록
+    let items = (selectedSubjects.size > 0 && filteredData) ? filteredData.nodes : graphData.nodes
+    items = [...items]
     if (selectedSubjects.size === 0) {
       if (selectedSchoolLevels.size > 0) items = items.filter(n => selectedSchoolLevels.has(n.school_level))
       if (selectedGradeGroups.size > 0) items = items.filter(n => selectedGradeGroups.has(n.grade_group))
     }
-    return [...items].sort((a, b) => a.subject.localeCompare(b.subject) || a.code.localeCompare(b.code))
-  }, [graphData, filteredData, searchQuery, selectedSubjects, selectedSchoolLevels, selectedGradeGroups])
+    items.sort((a, b) => a.subject.localeCompare(b.subject) || a.code.localeCompare(b.code))
+    return items
+  }, [graphData, filteredData, searchQuery, semanticResults, selectedSubjects, selectedSchoolLevels, selectedGradeGroups])
 
   const linkCountMap = useMemo(() => {
     if (!graphData) return new Map()
@@ -442,9 +471,9 @@ export default function Graph3D({ embedded = false }) {
     )
   }, [filteredData])
 
-  // 노드로 카메라 이동 (항상 선택 — 리스트 클릭용)
-  const navigateToNode = useCallback((node) => {
-    setSelectedNode(node)
+  // 노드로 카메라 이동 (선택 옵션 — 검색 중에는 선택 안 함)
+  const navigateToNode = useCallback((node, { select = true } = {}) => {
+    if (select) setSelectedNode(node)
     zoomToNode(node)
   }, [zoomToNode])
 
@@ -458,19 +487,19 @@ export default function Graph3D({ embedded = false }) {
     zoomToNode(node)
   }, [zoomToNode])
 
-  // 검색 결과 이전/다음 이동
+  // 검색 결과 이전/다음 이동 (선택 없이 카메라만)
   const goSearchPrev = useCallback(() => {
     if (sortedSearchResults.length === 0) return
     const idx = Math.max(0, searchIndex - 1)
     setSearchIndex(idx)
-    navigateToNode(sortedSearchResults[idx])
+    navigateToNode(sortedSearchResults[idx], { select: false })
   }, [sortedSearchResults, searchIndex, navigateToNode])
 
   const goSearchNext = useCallback(() => {
     if (sortedSearchResults.length === 0) return
     const idx = Math.min(sortedSearchResults.length - 1, searchIndex + 1)
     setSearchIndex(idx)
-    navigateToNode(sortedSearchResults[idx])
+    navigateToNode(sortedSearchResults[idx], { select: false })
   }, [sortedSearchResults, searchIndex, navigateToNode])
 
   const selectedLinks = useMemo(() => {
@@ -1308,7 +1337,7 @@ export default function Graph3D({ embedded = false }) {
               <div className="relative">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="코드, 교과, 내용, 영역 검색..."
+                  placeholder="코드, 교과, 내용, 키워드, 해설 검색..."
                   className="w-full pl-8 pr-8 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 {searchQuery && (
                   <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
@@ -1397,6 +1426,10 @@ export default function Graph3D({ embedded = false }) {
                     </div>
                   )}
                 </div>
+              ) : semanticLoading && searchQuery ? (
+                <div className="text-center py-8 text-gray-500 text-sm">
+                  <div className="animate-pulse">의미 검색 중...</div>
+                </div>
               ) : listItems.length === 0 ? (
                 <div className="text-center py-8 text-gray-500 text-sm">
                   {searchQuery ? '검색 결과가 없습니다' : '데이터 없음'}
@@ -1409,13 +1442,23 @@ export default function Graph3D({ embedded = false }) {
                     return (
                       <button key={node.id} onClick={() => focusNode(node)}
                         className={`w-full text-left px-3 py-2.5 transition group ${
-                          isSelected ? 'bg-blue-900/40 border-l-2 border-blue-400' : 'hover:bg-gray-700/50 border-l-2 border-transparent'
+                          isSelected ? 'bg-blue-900/40 border-l-2 border-blue-400'
+                            : 'hover:bg-gray-700/50 border-l-2 border-transparent'
                         }`}>
                         <div className="flex items-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: SUBJECT_COLORS[node.subject_group] || '#9ca3af' }} />
                           <span className="font-mono text-xs font-bold text-blue-400">{node.code}</span>
                           <span className="text-[10px] text-gray-500">{node.subject}</span>
-                          {count > 0 && (
+                          {searchQuery && node._similarity != null && (
+                            <span className={`px-1 py-0.5 rounded text-[9px] ${
+                              node._similarity > 0.5 ? 'bg-green-900/40 text-green-400 border border-green-700/50'
+                                : node._similarity > 0.35 ? 'bg-blue-900/40 text-blue-400 border border-blue-700/50'
+                                : 'bg-gray-700/40 text-gray-400 border border-gray-600/50'
+                            }`}>
+                              {(node._similarity * 100).toFixed(0)}%
+                            </span>
+                          )}
+                          {count > 0 && !searchQuery && (
                             <span className="ml-auto flex items-center gap-0.5 text-[10px] text-gray-500">
                               <Link2 size={10} />{count}
                             </span>
