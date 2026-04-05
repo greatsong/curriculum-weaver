@@ -209,7 +209,7 @@ export default function DemoMode() {
         // 프로젝트 상태를 폴링하여 완료 여부 확인
         console.log('[demo] SSE 끊김 — 서버 완료 대기 폴링 시작')
         setError('')
-        setCurrentPhase('서버에서 생성 완료 대기 중...')
+        setCurrentPhase('서버에서 나머지 절차를 생성 중입니다 (약 5~10분 소요)')
         const pollInterval = setInterval(async () => {
           try {
             const proj = await apiGet(`/api/projects/${partialProject.projectId}`)
