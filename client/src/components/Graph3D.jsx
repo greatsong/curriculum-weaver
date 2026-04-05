@@ -413,7 +413,8 @@ export default function Graph3D({ embedded = false }) {
   const listItems = useMemo(() => {
     if (!graphData) return []
     // 검색 중이면 시맨틱 검색 결과 사용
-    if (searchQuery.trim() && semanticResults.length > 0) {
+    if (searchQuery.trim()) {
+      if (semanticResults.length === 0) return [] // 결과 없으면 빈 목록
       let items = semanticResults
       // 교과 필터 적용
       if (selectedSubjects.size > 0) items = items.filter(n => selectedSubjects.has(n.subject_group || n.subject))
@@ -1015,12 +1016,16 @@ export default function Graph3D({ embedded = false }) {
               }}
               onNodeClick={focusNode}
               onNodeHover={(node, prevNode) => {
-                // 이전 호버 노드 → 원래 투명도로 복원
+                // 이전 호버 노드 → nodeThreeObject 초기 opacity와 동일하게 복원
                 if (prevNode?.__threeObj) {
-                  const isNeighborOfSelected = selectedNeighborIds.has(prevNode.id)
-                  const restoreOpacity = isNeighborOfSelected ? 1.0
-                    : filteredData?.neighborNodeIds?.has(prevNode.id) ? 0.25
-                    : selectedNode ? 0.04 : 0.9
+                  const isSelected = selectedNode?.id === prevNode.id
+                  const isSelectedNeighbor = selectedNeighborIds.has(prevNode.id)
+                  const hasSelection = !!selectedNode
+                  const isSubjectNeighbor = filteredData?.neighborNodeIds?.has(prevNode.id)
+                  const restoreOpacity = (isSelected || isSelectedNeighbor) ? 1.0
+                    : hasSelection ? 0.15
+                    : isSubjectNeighbor ? 0.25
+                    : 0.9
                   prevNode.__threeObj.children.forEach(child => {
                     if (child.material) child.material.opacity = restoreOpacity
                   })

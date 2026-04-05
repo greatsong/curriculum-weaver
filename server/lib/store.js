@@ -498,6 +498,15 @@ export const StandardLinks = {
   },
 
   addBulk: (items) => {
+    // 기존 링크 인덱스 생성 (양방향 중복 방지)
+    const existingEdges = new Set()
+    for (const [, l] of standardLinks) {
+      const key1 = `${l.source_id}|${l.target_id}|${l.link_type}`
+      const key2 = `${l.target_id}|${l.source_id}|${l.link_type}`
+      existingEdges.add(key1)
+      existingEdges.add(key2)
+    }
+
     const added = []
     for (const item of items) {
       const sourceStd = item.source_id
@@ -507,6 +516,12 @@ export const StandardLinks = {
         ? standards.get(item.target_id)
         : [...standards.values()].find((s) => s.code === item.target)
       if (!sourceStd || !targetStd) continue
+
+      // 중복 검사 (양방향)
+      const edgeKey = `${sourceStd.id}|${targetStd.id}|${item.link_type}`
+      const reverseKey = `${targetStd.id}|${sourceStd.id}|${item.link_type}`
+      if (existingEdges.has(edgeKey) || existingEdges.has(reverseKey)) continue
+
       const id = uuid()
       const link = {
         id,
@@ -520,6 +535,8 @@ export const StandardLinks = {
         created_at: new Date().toISOString(),
       }
       standardLinks.set(id, link)
+      existingEdges.add(edgeKey)
+      existingEdges.add(reverseKey)
       added.push(link)
     }
     return added
