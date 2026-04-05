@@ -171,37 +171,49 @@ async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, lab
     headers: { 'anthropic-beta': 'output-128k-2025-02-19' },
   })
 
-  for await (const event of stream) {
-    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-      fullText += event.delta.text
-      tokenCount++
+  try {
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+        fullText += event.delta.text
+        tokenCount++
 
-      if (tokenCount - lastTokenEvent >= 300) {
-        lastTokenEvent = tokenCount
-        sendEvent({ type: 'heartbeat', tokens: tokenCount, phase: label })
-      }
+        if (tokenCount - lastTokenEvent >= 300) {
+          lastTokenEvent = tokenCount
+          sendEvent({ type: 'heartbeat', tokens: tokenCount, phase: label })
+        }
 
-      for (const code of codes) {
-        if (!detectedProcedures.has(code) && fullText.includes(`"${code}"`)) {
-          detectedProcedures.add(code)
-          const globalIndex = startIndex + detectedProcedures.size
-          const nextIdx = codes.indexOf(code) + 1
-          const nextCode = nextIdx < codes.length ? codes[nextIdx] : (label === '1차' ? PHASE2_CODES[0] : null)
-          sendEvent({
-            type: 'progress',
-            procedure: code,
-            name: procedureNameMap[code] || code,
-            index: globalIndex,
-            total: ALL_CODES.length,
-            nextProcedure: nextCode || null,
-            nextName: nextCode ? (procedureNameMap[nextCode] || nextCode) : null,
-          })
+        for (const code of codes) {
+          if (!detectedProcedures.has(code) && fullText.includes(`"${code}"`)) {
+            detectedProcedures.add(code)
+            const globalIndex = startIndex + detectedProcedures.size
+            const nextIdx = codes.indexOf(code) + 1
+            const nextCode = nextIdx < codes.length ? codes[nextIdx] : (label === '1차' ? PHASE2_CODES[0] : null)
+            sendEvent({
+              type: 'progress',
+              procedure: code,
+              name: procedureNameMap[code] || code,
+              index: globalIndex,
+              total: ALL_CODES.length,
+              nextProcedure: nextCode || null,
+              nextName: nextCode ? (procedureNameMap[nextCode] || nextCode) : null,
+            })
+          }
         }
       }
     }
+  } catch (streamErr) {
+    // 스트림 도중 에러 (disconnect 등) — 지금까지 수신한 데이터로 계속 진행
+    console.warn(`[demo][${label}] 스트림 에러 (수집된 ${tokenCount}토큰으로 계속):`, streamErr?.message)
   }
 
   console.log(`[demo][${label}] AI 스트리밍 완료 — ${tokenCount}토큰, ${detectedProcedures.size}/${codes.length}개 절차 감지`)
+
+  // 토큰이 충분하면 파싱 시도
+  if (fullText.length < 100) {
+    console.warn(`[demo][${label}] 응답이 너무 짧음 (${fullText.length}자) — 빈 결과 반환`)
+    return {}
+  }
+
   const result = parseAIResponse(fullText, label)
   console.log(`[demo][${label}] 파싱 결과: ${Object.keys(result).length}개 키 — [${Object.keys(result).join(', ')}]`)
   return result
@@ -267,18 +279,23 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders()
 
-  const sendEvent = (data) => {
-    if (!aborted) {
-      try { res.write(`data: ${JSON.stringify(data)}\n\n`) } catch {}
-    }
-  }
-
   let projectId = null
   let aborted = false
 
+  const sendEvent = (data) => {
+    if (aborted || res.writableEnded || res.destroyed) return
+    try { res.write(`data: ${JSON.stringify(data)}\n\n`) } catch { aborted = true }
+  }
+
+  const safeEnd = () => {
+    if (!res.writableEnded && !res.destroyed) {
+      try { res.end() } catch {}
+    }
+  }
+
   res.on('close', () => {
     aborted = true
-    console.log('[demo] 클라이언트 연결 끊김 (disconnect/취소)')
+    console.log('[demo] 클라이언트 연결 끊김 (disconnect/취소) — 서버는 계속 진행')
   })
 
   try {
@@ -546,14 +563,14 @@ JSON 형식:
         totalProcedures: ALL_CODES.length,
       })
     }
-    res.end()
+    safeEnd()
   } catch (error) {
-    console.error('[demo] 생성 오류:', error)
-    // P0 #2: 실패 시 failed 상태로 전환
-    if (projectId) {
+    console.error('[demo] 생성 오류:', error?.message || error)
+    // disconnect로 인한 에러는 failed로 마킹하지 않음 (서버 작업은 이미 완료됐을 수 있음)
+    if (projectId && !aborted) {
       await updateProject(projectId, { status: 'failed' }).catch(() => {})
     }
     sendEvent({ type: 'error', message: '데모 생성 중 오류가 발생했습니다.', projectId })
-    res.end()
+    safeEnd()
   }
 })
