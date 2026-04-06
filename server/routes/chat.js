@@ -20,6 +20,7 @@ import {
 } from '../lib/supabaseService.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES } from 'curriculum-weaver-shared/constants.js'
 import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
+import { validateCodesInText } from '../lib/standardsValidator.js'
 
 /**
  * 프로젝트 멤버십 검증 미들웨어
@@ -43,6 +44,13 @@ async function checkProjectAccess(req, res, next) {
     // Supabase 연결 실패 시 통과 (폴백 모드)
   }
   next()
+}
+
+function isReadOnlyProject(project) {
+  return project?.status === 'simulation' ||
+    project?.status === 'generating' ||
+    project?.status === 'failed' ||
+    project?.title?.startsWith('[시뮬레이션]')
 }
 
 // ──────────────────────────────────────────
@@ -194,6 +202,11 @@ chatRouter.post('/teacher', async (req, res) => {
     return res.status(400).json({ error: '세션 ID와 메시지 내용이 필요합니다.' })
   }
 
+  const project = req.project || await getProject(session_id).catch(() => null)
+  if (isReadOnlyProject(project)) {
+    return res.status(403).json({ error: '시뮬레이션 프로젝트는 읽기 전용입니다.' })
+  }
+
   try {
     const msg = await createMessage({
       project_id: session_id,
@@ -255,6 +268,11 @@ chatRouter.post('/procedure-intro', async (req, res) => {
     return res.status(400).json({ error: `유효하지 않은 절차 코드: ${procedure}` })
   }
 
+  const project = req.project || await getProject(session_id).catch(() => null)
+  if (isReadOnlyProject(project)) {
+    return res.status(403).json({ error: '시뮬레이션 프로젝트에서는 새 AI 안내를 생성하지 않습니다.' })
+  }
+
   // SSE 헤더
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
@@ -263,8 +281,34 @@ chatRouter.post('/procedure-intro', async (req, res) => {
   res.flushHeaders()
 
   try {
-    const project = req.project || await getProject(session_id).catch(() => null)
     const designs = await getDesignsByProject(session_id).catch(() => [])
+
+    // A-2-1 진입 시: 프로젝트에 성취기준이 없으면 자동 추천
+    if (procedure === 'A-2-1') {
+      const existingStandards = await getStandardsByProject(session_id).catch(() => [])
+      if (existingStandards.length === 0 && project?.subjects?.length >= 2) {
+        try {
+          const { getStandardsForSubjects } = await import('../lib/standardsValidator.js')
+          const { standards: recommended } = getStandardsForSubjects(project.subjects, project.grade || '')
+          if (recommended.length > 0) {
+            const perSubject = {}
+            const topPicks = []
+            for (const s of recommended) {
+              const sg = s.subject_group || s.subject
+              if (!perSubject[sg]) perSubject[sg] = 0
+              if (perSubject[sg] < 5) { topPicks.push(s); perSubject[sg]++ }
+            }
+            res.write(`data: ${JSON.stringify({
+              type: 'standards_recommendation',
+              recommendations: topPicks,
+              message: `${project.subjects.join('+')} 교과에서 ${topPicks.length}개의 성취기준을 추천합니다. 성취기준 탐색기에서 확인/수정해 주세요.`,
+            })}\n\n`)
+          }
+        } catch (e) {
+          console.warn('[procedure-intro] 성취기준 자동 추천 실패:', e.message)
+        }
+      }
+    }
 
     let fullResponse = ''
     await buildProcedureIntroResponse(
@@ -321,6 +365,11 @@ chatRouter.post('/stage-intro', async (req, res) => {
     return res.status(400).json({ error: `유효하지 않은 절차 코드: ${procedure}` })
   }
 
+  const project = req.project || await getProject(session_id).catch(() => null)
+  if (isReadOnlyProject(project)) {
+    return res.status(403).json({ error: '시뮬레이션 프로젝트에서는 새 AI 안내를 생성하지 않습니다.' })
+  }
+
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
@@ -328,7 +377,6 @@ chatRouter.post('/stage-intro', async (req, res) => {
   res.flushHeaders()
 
   try {
-    const project = req.project || await getProject(session_id).catch(() => null)
     const designs = await getDesignsByProject(session_id).catch(() => [])
 
     let fullResponse = ''
@@ -379,6 +427,11 @@ chatRouter.post('/message', async (req, res) => {
     return res.status(400).json({ error: '메시지가 너무 깁니다. (최대 5,000자)' })
   }
 
+  const project = req.project || await getProject(session_id).catch(() => null)
+  if (isReadOnlyProject(project)) {
+    return res.status(403).json({ error: '시뮬레이션 프로젝트는 읽기 전용입니다.' })
+  }
+
   // SSE 헤더
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
@@ -388,7 +441,6 @@ chatRouter.post('/message', async (req, res) => {
 
   try {
     // 컨텍스트 로드 (Supabase 영속 저장소)
-    const project = req.project || await getProject(session_id).catch(() => null)
     const designs = await getDesignsByProject(session_id).catch(() => [])
     const allMessages = await getMessages(session_id)
     const recentMessages = allMessages.slice(-20)
@@ -486,6 +538,17 @@ chatRouter.post('/message', async (req, res) => {
       })}\n\n`)
     }
 
+    // 채팅 본문의 성취기준 코드 검증 — 가짜 코드가 있으면 클라이언트에 경고 전송
+    const codeValidation = validateCodesInText(finalCleanText)
+    const invalidCodes = codeValidation.codes.filter(c => !c.valid)
+    if (invalidCodes.length > 0) {
+      res.write(`data: ${JSON.stringify({
+        type: 'standards_warning',
+        message: `AI 응답에 검증되지 않은 성취기준 코드가 포함되어 있습니다: ${invalidCodes.map(c => c.code).join(', ')}`,
+        invalidCodes,
+      })}\n\n`)
+    }
+
     // 클린 텍스트를 Supabase에 저장 (AI 제안은 별도 필드로 저장)
     if (finalCleanText) {
       const savedMsg = await createMessage({
@@ -549,10 +612,11 @@ chatRouter.post('/suggestion/:messageId/accept', async (req, res) => {
       return res.status(400).json({ error: `절차 ${procedure}에 대응하는 보드 타입이 없습니다.` })
     }
 
-    // Supabase에 설계 저장
+    // Supabase에 설계 저장 (성취기준 검증은 upsertDesign 게이트키퍼가 처리)
+    const contentToSave = suggestion.content
     let updatedDesign = null
     try {
-      updatedDesign = await upsertDesign(session_id, procedure, suggestion.content, req.user?.id)
+      updatedDesign = await upsertDesign(session_id, procedure, contentToSave, req.user?.id)
     } catch (err) {
       console.warn(`[제안 수락] Supabase 저장 실패, 계속 진행:`, err.message)
     }
@@ -565,7 +629,7 @@ chatRouter.post('/suggestion/:messageId/accept', async (req, res) => {
     res.json({
       success: true,
       boardType,
-      content: suggestion.content,
+      content: updatedDesign?.content || contentToSave,
       design: updatedDesign,
     })
   } catch (error) {
@@ -593,6 +657,7 @@ chatRouter.post('/suggestion/:messageId/edit-accept', async (req, res) => {
       return res.status(400).json({ error: `절차 ${procedure}에 대응하는 보드 타입이 없습니다.` })
     }
 
+    // Supabase에 설계 저장 (성취기준 검증은 upsertDesign 게이트키퍼가 처리)
     let updatedDesign = null
     try {
       updatedDesign = await upsertDesign(session_id, procedure, editedContent, req.user?.id)
@@ -605,7 +670,7 @@ chatRouter.post('/suggestion/:messageId/edit-accept', async (req, res) => {
     res.json({
       success: true,
       boardType,
-      content: editedContent,
+      content: updatedDesign?.content || editedContent,
       design: updatedDesign,
     })
   } catch (error) {

@@ -8,7 +8,7 @@ import { BOARD_SCHEMAS, getBoardSchemaForProcedure, createEmptyBoard } from 'cur
 import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
 
-export default function ProcedureCanvas({ projectId, procedureCode, readOnly = false }) {
+export default function ProcedureCanvas({ projectId, procedureCode, readOnly = false, loading = false }) {
   const { boards, currentStep, setStep, updateBoard } = useProcedureStore()
   const { pendingSuggestions, coherenceCheckResult, acceptSuggestion, editAcceptSuggestion, rejectSuggestion, sendMessage } = useChatStore()
   const [editing, setEditing] = useState(false)
@@ -218,6 +218,7 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
           boardType={boardType}
           schema={schema}
           board={board}
+          loading={loading}
           editing={editing}
           setEditing={setEditing}
           readOnly={readOnly}
@@ -376,7 +377,7 @@ function CoherenceCheckCard({ result }) {
 }
 
 // ── 보드 카드 ──
-function BoardCard({ boardType, schema, board, editing, setEditing, onUpdate, onRequestAI, readOnly = false }) {
+function BoardCard({ boardType, schema, board, loading = false, editing, setEditing, onUpdate, onRequestAI, readOnly = false }) {
   const label = BOARD_TYPE_LABELS[boardType] || boardType
   const hasContent = board?.content && Object.keys(board.content).length > 0 &&
     Object.values(board.content).some((v) => (Array.isArray(v) ? v.length > 0 : v !== '' && v !== null && v !== 0))
@@ -432,6 +433,12 @@ function BoardCard({ boardType, schema, board, editing, setEditing, onUpdate, on
           />
         ) : hasContent && schema ? (
           <BoardRenderer schema={schema} content={board.content} />
+        ) : loading ? (
+          <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-text-tertiary)' }}>
+            <div style={{ width: 22, height: 22, border: '2px solid #D1D5DB', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+            <p style={{ fontSize: 13, margin: '0 0 4px' }}>시뮬레이션 결과를 불러오는 중입니다</p>
+            <p style={{ fontSize: 12, margin: 0 }}>잠시만 기다려 주세요</p>
+          </div>
         ) : (
           <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-text-tertiary)' }}>
             <p style={{ fontSize: 13, margin: '0 0 4px' }}>아직 내용이 없습니다</p>
@@ -547,6 +554,21 @@ const CLUSTER_COLORS = [
   { bg: '#F0FDFA', border: '#99F6E4', text: '#115E59', tag: '#CCFBF1' },
 ]
 
+// 객체를 읽기 좋은 문자열로 변환
+function itemToText(item) {
+  if (item == null) return ''
+  if (typeof item === 'string') return item
+  if (typeof item === 'number' || typeof item === 'boolean') return String(item)
+  if (typeof item === 'object') {
+    // 객체의 값들을 추출하여 연결
+    const vals = Object.values(item).filter(v => v != null && typeof v !== 'object')
+    if (vals.length > 0) return vals.join(' — ')
+    // 중첩 객체이면 JSON 폴백
+    return JSON.stringify(item)
+  }
+  return String(item)
+}
+
 function ClusterMapRenderer({ value, label }) {
   // 객체 형태의 클러스터맵인지 확인
   const isClusterMap = value && typeof value === 'object' && !Array.isArray(value) &&
@@ -590,7 +612,7 @@ function ClusterMapRenderer({ value, label }) {
                   color: color.text,
                   lineHeight: 1.4,
                 }}>
-                  {String(item)}
+                  {itemToText(item)}
                 </span>
               ))}
             </div>

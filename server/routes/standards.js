@@ -28,6 +28,7 @@
 import { Router } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
 import { Standards, StandardLinks } from '../lib/store.js'
+import { validateCode, getStandardsForSubjects } from '../lib/standardsValidator.js'
 import { computeEmbedding3D, invalidateEmbeddingCache } from '../services/embeddings.js'
 import { semanticSearch, isSemanticSearchAvailable } from '../services/semanticSearch.js'
 import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js'
@@ -64,17 +65,12 @@ standardsRouter.get('/search', async (req, res) => {
   try {
     const { q, subject, grade, domain, school_level, curriculum_category } = req.query
 
-    // supabaseService로 검색 시도
-    try {
-      const dbResults = await searchStandards(q, { subject, grade_group: grade, school_level })
-      if (dbResults && dbResults.length > 0) {
-        return res.json(dbResults)
-      }
-    } catch {
-      // DB 검색 실패 → 로컬 폴백
-    }
+    // school_level 정규화 (한글→영어, DB 호환)
+    const schoolLevelMap = { '초등학교': 'elementary', '중학교': 'middle', '고등학교': 'high' }
+    const normalizedLevel = schoolLevelMap[school_level] || school_level || null
 
-    // 로컬 데이터 폴백
+    // 항상 로컬 데이터를 단일 소스로 사용 (DB/로컬 불일치 방지)
+    // DB가 있어도 domain, curriculum_category 필터가 누락되는 문제를 근본적으로 해결
     const results = Standards.search({ q, subject, grade, domain, school_level, curriculum_category })
     res.json(results)
   } catch (err) {
@@ -176,6 +172,97 @@ standardsRouter.get('/:id/links', async (req, res) => {
 // ============================================================
 // 프로젝트 기반 성취기준 연결 (기존 세션 기반 대체)
 // ============================================================
+
+/**
+ * GET /api/standards/recommend
+ * 교과+학년+주제 기반 성취기준 자동 추천
+ *
+ * @query {string} subjects - 교과 목록 (쉼표 구분, 예: "국어,수학")
+ * @query {string} grade - 학년 텍스트 (예: "중학교 2학년")
+ * @query {string} [topic] - 주제 키워드 (관련도 순 정렬에 사용)
+ */
+standardsRouter.get('/recommend', async (req, res) => {
+  try {
+    const { subjects: subjectsStr, grade, topic } = req.query
+    if (!subjectsStr) {
+      return res.status(400).json({ error: '교과(subjects)는 필수입니다.' })
+    }
+
+    const subjects = subjectsStr.split(',').map(s => s.trim()).filter(Boolean)
+    const { standards } = getStandardsForSubjects(subjects, grade || '')
+
+    // 주제 키워드가 있으면 관련도 점수 부여 후 정렬
+    let results = standards
+    if (topic && topic.trim()) {
+      const keywords = topic.trim().split(/\s+/)
+      const scored = results.map(s => {
+        let score = 0
+        const text = `${s.content} ${s.area || ''} ${(s.keywords || []).join(' ')} ${s.explanation || ''}`.toLowerCase()
+        for (const kw of keywords) {
+          if (text.includes(kw.toLowerCase())) score += 10
+        }
+        return { ...s, _relevance: score }
+      })
+      scored.sort((a, b) => b._relevance - a._relevance)
+      results = scored
+    }
+
+    res.json({
+      recommendations: results,
+      total: results.length,
+      subjects,
+      grade: grade || null,
+      topic: topic || null,
+    })
+  } catch (err) {
+    console.error('[standards] 추천 오류:', err.message)
+    res.status(500).json({ error: '성취기준 추천에 실패했습니다.' })
+  }
+})
+
+/**
+ * POST /api/standards/project/:projectId/bulk
+ * 프로젝트에 성취기준 일괄 추가
+ *
+ * @param {string} projectId
+ * @body {{ standard_ids: string[] }}
+ */
+standardsRouter.post('/project/:projectId/bulk', requireAuth, async (req, res) => {
+  try {
+    const { projectId } = req.params
+    const { standard_ids } = req.body
+
+    if (!Array.isArray(standard_ids) || standard_ids.length === 0) {
+      return res.status(400).json({ error: 'standard_ids 배열이 필요합니다.' })
+    }
+
+    const project = await getProject(projectId)
+    if (!project) {
+      return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+    }
+
+    const role = await getMemberRole(project.workspace_id, req.user.id)
+    if (!role || role === 'viewer') {
+      return res.status(403).json({ error: '성취기준 추가 권한이 없습니다.' })
+    }
+
+    let added = 0
+    for (const stdId of standard_ids) {
+      try {
+        await addStandardToProject(projectId, stdId, req.user.id, false)
+        added++
+      } catch (e) {
+        // 중복 등 무시
+      }
+    }
+
+    console.log(`[standards] 일괄 추가: ${added}/${standard_ids.length}개 → 프로젝트 ${projectId}`)
+    res.status(201).json({ ok: true, added, total: standard_ids.length })
+  } catch (err) {
+    console.error('[standards] 일괄 추가 오류:', err.message)
+    res.status(500).json({ error: '성취기준 일괄 추가에 실패했습니다.' })
+  }
+})
 
 /**
  * POST /api/standards/project/:projectId
@@ -368,6 +455,117 @@ standardsRouter.delete('/all', requireAuth, requireAdmin, async (req, res) => {
 })
 
 // ============================================================
+// ============================================================
+// AI 기반 성취기준 추천 (프로젝트 컨텍스트 기반)
+// ============================================================
+
+/**
+ * POST /api/standards/recommend-ai
+ * AI가 프로젝트 컨텍스트를 분석하여 적합한 성취기준을 추천
+ *
+ * 사용 시점: A-2-1 진입 시, 또는 교사가 "AI 추천" 버튼 클릭 시
+ */
+standardsRouter.post('/recommend-ai', requireAuth, async (req, res) => {
+  const { projectId, subjects, grade, topic, boardContext } = req.body
+
+  if (!subjects || !Array.isArray(subjects) || subjects.length < 1) {
+    return res.status(400).json({ error: '교과(subjects) 배열이 필요합니다.' })
+  }
+
+  try {
+    // 1. 교과+학년으로 후보군 필터링
+    const { standards: candidates } = getStandardsForSubjects(subjects, grade || '')
+    if (candidates.length === 0) {
+      return res.json({ recommendations: [], message: '해당 교과/학년의 성취기준이 없습니다.' })
+    }
+
+    // 2. 후보군을 AI에게 전달 — "이 프로젝트에 적합한 성취기준을 선택하라"
+    const candidateText = candidates.map(s =>
+      `${s.code} [${s.subject}] ${s.content}`
+    ).join('\n')
+
+    // 프로젝트 컨텍스트 구성
+    const contextParts = []
+    if (topic) contextParts.push(`주제: ${topic}`)
+    if (boardContext?.prep) contextParts.push(`학습자 맥락: ${JSON.stringify(boardContext.prep).slice(0, 500)}`)
+    if (boardContext?.vision) contextParts.push(`팀 비전: ${boardContext.vision}`)
+    if (boardContext?.selectedTopic) contextParts.push(`선정 주제: ${boardContext.selectedTopic}`)
+
+    const aiPrompt = `당신은 2022 개정 교육과정 기반 융합수업 설계 전문가입니다.
+아래 프로젝트에 가장 적합한 성취기준을 교과별 3~5개씩 선별하세요.
+
+## 프로젝트 정보
+교과: ${subjects.join(', ')}
+학년: ${grade || '미정'}
+${contextParts.join('\n')}
+
+## 선별 기준 (5가지 — 모두 고려할 것)
+1. **내용 연계성**: 주제의 핵심 개념·지식과 직접 관련되는가
+2. **과정·기능 융합 가능성**: 다른 교과와 공유 가능한 탐구 과정을 포함하는가
+3. **교과 간 시너지**: 교과 A의 산출이 교과 B의 입력이 되는 관계가 있는가
+4. **핵심 아이디어 연결**: 단원의 빅아이디어가 주제와 맞닿는가
+5. **학습 경험의 실제성**: 학생이 실제 프로젝트 활동으로 체험 가능한가
+
+## 사용 가능한 성취기준 (${candidates.length}개) — 이 목록에서만 선택!
+${candidateText}
+
+## 응답 형식
+각 성취기준을 선택한 이유를 기준 번호(1~5)와 함께 설명하세요.
+\`\`\`json
+{
+  "selected": [
+    { "code": "[코드]", "reason": "기준 1,3: 이유 설명" }
+  ]
+}
+\`\`\``
+
+    const aiClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const response = await aiClient.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: aiPrompt }],
+    })
+
+    const aiText = response.content[0]?.text || ''
+
+    // 3. AI 응답에서 코드 추출 → DB 검증 → 유효한 것만 반환
+    let selected = []
+    try {
+      const jsonMatch = aiText.match(/```(?:json)?\s*([\s\S]*?)```/)
+      const parsed = JSON.parse(jsonMatch ? jsonMatch[1].trim() : aiText.trim())
+      selected = parsed.selected || []
+    } catch {
+      // JSON 파싱 실패 시 코드만 추출
+      const codeMatches = aiText.match(/\[[\d\w가-힣 ]+-[\d]+-[\d]+\]/g) || []
+      selected = codeMatches.map(code => ({ code, reason: '' }))
+    }
+
+    // 4. DB 검증 — 존재하는 코드만 유지
+    const verified = []
+    for (const item of selected) {
+      const result = validateCode(item.code)
+      if (result.valid) {
+        verified.push({
+          ...result.matched,
+          _reason: item.reason,
+        })
+      }
+    }
+
+    console.log(`[standards] AI 추천: ${selected.length}개 선택 → ${verified.length}개 검증 통과`)
+
+    res.json({
+      recommendations: verified,
+      total: verified.length,
+      candidateCount: candidates.length,
+    })
+  } catch (err) {
+    console.error('[standards] AI 추천 오류:', err.message)
+    res.status(500).json({ error: 'AI 성취기준 추천에 실패했습니다.' })
+  }
+})
+
+// ============================================================
 // AI 그래프 채팅 (SSE 스트리밍, 기존 유지)
 // ============================================================
 
@@ -557,6 +755,22 @@ standardsRouter.post('/graph/add-links', requireAuth, async (req, res) => {
   if (!Array.isArray(links) || links.length === 0) {
     return res.status(400).json({ error: '추가할 링크 배열이 필요합니다.' })
   }
+
+  // 성취기준 코드 존재 여부 검증 (할루시네이션 방지)
+  const invalidCodes = []
+  for (const link of links) {
+    const srcResult = validateCode(link.source)
+    const tgtResult = validateCode(link.target)
+    if (!srcResult.valid) invalidCodes.push({ code: link.source, type: 'source', suggestion: srcResult.suggestion?.code })
+    if (!tgtResult.valid) invalidCodes.push({ code: link.target, type: 'target', suggestion: tgtResult.suggestion?.code })
+  }
+  if (invalidCodes.length > 0) {
+    return res.status(400).json({
+      error: '존재하지 않는 성취기준 코드가 포함되어 있습니다.',
+      invalidCodes,
+    })
+  }
+
   const added = StandardLinks.addBulk(links)
   res.status(201).json({ message: `${added.length}개 연결 추가됨`, count: added.length })
 })

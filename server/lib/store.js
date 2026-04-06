@@ -49,13 +49,29 @@ export function initStore() {
     principles.set(p.id, { ...p, is_active: true, version: 1, created_at: new Date().toISOString() })
   }
 
-  // 성취기준 로드
+  // 성취기준 로드 (오염 데이터 필터링 포함)
+  let filteredCount = 0
+  let flaggedCount = 0
   const seenCodes = new Set()
   for (const s of ALL_STANDARDS) {
     if (seenCodes.has(s.code)) continue
+    const c = (s.content || '').trim()
+    // 완전히 제거: placeholder / 더미 / 빈 content
+    if (!c || c.length < 5) { filteredCount++; continue }
+    if (/^[\w가-힣\[\]-]+의\s*성취기준\s*(내용|해설|코드)/.test(c)) { filteredCount++; continue }
+    if (/^적용\s*시\s*고려|^성취기준\s*(내용|해설)/.test(c)) { filteredCount++; continue }
+    // 마킹만: 해설문이 content에 섞인 경우, 잘린 본문 — 제거하면 성취기준이 사라지므로 _quality 플래그로 표시
+    let quality = 'ok'
+    if (/^이\s*성취기준은\s/.test(c)) quality = 'explanation_as_content'
+    else if (/[을를의에서와과는은이가로]\s*$/.test(c) && c.length > 15) quality = 'truncated'
+    else if (/\d+\s*(공통|선택)\s*교육과정/.test(c)) quality = 'page_tag_mixed'
+    if (quality !== 'ok') flaggedCount++
     seenCodes.add(s.code)
     const id = uuid()
-    standards.set(id, { id, ...s, created_at: new Date().toISOString() })
+    standards.set(id, { id, ...s, _quality: quality, created_at: new Date().toISOString() })
+  }
+  if (filteredCount > 0 || flaggedCount > 0) {
+    console.log(`[initStore] 성취기준: ${filteredCount}개 제거, ${flaggedCount}개 품질 경고 플래그`)
   }
 
   // 성취기준 간 연결 로드 (코드→ID 맵으로 O(1) 조회)
@@ -450,16 +466,52 @@ export const Standards = {
     // ��존 데이터 클리어
     standards.clear()
 
-    // 새 데이터 로드
+    // 오염 데이터 필터링: placeholder / 더미 제거
+    const beforeFilter = newData.length
+    newData = newData.filter(s => {
+      const c = (s.content || '').trim()
+      if (!c || c.length < 5) return false
+      if (/^[\w가-힣\[\]-]+의\s*성취기준\s*(내용|해설|코드)/.test(c)) return false
+      if (/^적용\s*시\s*고려|^성취기준\s*(내용|해설)/.test(c)) return false
+      return true
+    })
+    if (beforeFilter !== newData.length) {
+      console.log(`[reload] 오염 데이터 ${beforeFilter - newData.length}개 필터링됨 (${beforeFilter} → ${newData.length})`)
+    }
+
+    // 새 데이터 로드 (품질 플래그 포함)
     const seenCodes = new Set()
     for (const s of newData) {
       if (seenCodes.has(s.code)) continue
       seenCodes.add(s.code)
+      const c = (s.content || '').trim()
+      let quality = 'ok'
+      if (/^이\s*성취기준은\s/.test(c)) quality = 'explanation_as_content'
+      else if (/[을를의에서와과는은이가로]\s*$/.test(c) && c.length > 15) quality = 'truncated'
+      else if (/\d+\s*(공통|선택)\s*교육과정/.test(c)) quality = 'page_tag_mixed'
       const id = uuid()
-      standards.set(id, { id, ...s, created_at: new Date().toISOString() })
+      standards.set(id, { id, ...s, _quality: quality, created_at: new Date().toISOString() })
     }
 
-    console.log(`[reload] 성취기준 ${standards.size}개 로드 완료`)
+    // 링크 재바인딩 — 새 UUID로 만들어진 성취기준에 맞춰 링크도 갱신
+    const codeToNewStd = new Map()
+    for (const [, s] of standards) codeToNewStd.set(s.code, s)
+
+    const oldLinkCount = standardLinks.size
+    const reboundLinks = new Map()
+    for (const [linkId, link] of standardLinks) {
+      const newSrc = codeToNewStd.get(link.source_code)
+      const newTgt = codeToNewStd.get(link.target_code)
+      if (newSrc && newTgt) {
+        reboundLinks.set(linkId, { ...link, source_id: newSrc.id, target_id: newTgt.id })
+      }
+      // source_code가 없으면 orphan — 삭제됨
+    }
+    standardLinks.clear()
+    for (const [id, link] of reboundLinks) standardLinks.set(id, link)
+
+    const orphaned = oldLinkCount - standardLinks.size
+    console.log(`[reload] 성취기준 ${standards.size}개 로드, 링크 ${standardLinks.size}개 재바인딩 완료${orphaned > 0 ? ` (orphan ${orphaned}개 제거)` : ''}`)
     return standards.size
   },
 }

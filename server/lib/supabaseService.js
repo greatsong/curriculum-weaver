@@ -357,6 +357,36 @@ export async function getDesign(projectId, procedureCode) {
  * @returns {Promise<object>}
  */
 export async function upsertDesign(projectId, procedureCode, content, userId) {
+  // ── 게이트키퍼: A-2-1 성취기준 — DB에 존재하는 코드만 허용 ──
+  // AI가 생성한 가짜 코드를 원천 차단. 교정하지 않고 제거만 함.
+  if (procedureCode === 'A-2-1' && content?.standards && Array.isArray(content.standards)) {
+    try {
+      const { validateCode } = await import('./standardsValidator.js')
+      const before = content.standards.length
+      content = {
+        ...content,
+        standards: content.standards.filter(row => {
+          if (!row.code) return false
+          const result = validateCode(row.code)
+          if (result.valid) {
+            // code/content를 DB 원본으로 고정 — AI가 변형한 내용 방지
+            row.code = result.matched.code
+            row.content = result.matched.content
+            return true
+          }
+          console.log(`[게이트키퍼] 제거: ${row.code} — DB에 존재하지 않는 성취기준`)
+          return false
+        }),
+      }
+      const removed = before - content.standards.length
+      if (removed > 0) {
+        console.log(`[upsertDesign 게이트키퍼] A-2-1: ${removed}/${before}개 가짜 성취기준 제거됨`)
+      }
+    } catch (e) {
+      console.warn('[upsertDesign 게이트키퍼] 검증 모듈 로드 실패:', e.message)
+    }
+  }
+
   const sb = getSupabase()
   if (!sb) {
     const key = `${projectId}:${procedureCode}`

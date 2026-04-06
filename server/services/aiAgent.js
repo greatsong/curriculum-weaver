@@ -429,18 +429,33 @@ ${session.description ? `설명: ${session.description}` : ''}`)
     const stdText = standards
       .filter(Boolean)
       .map((s) => {
-        let entry = `  [${s.code}] ${s.content}`
-        if (s.explanation) entry += `\n    해설: ${s.explanation}`
-        if (s.domain) entry += `\n    영역: ${s.domain} > ${s.area || ''}`
+        // getStandardsByProject()는 { ...entry, curriculum_standards: {...} } 형태를 반환
+        const std = s.curriculum_standards || s
+        if (!std.code) return null
+        const codeStr = std.code.startsWith('[') ? std.code : `[${std.code}]`
+        let entry = `  ${codeStr} ${std.content}`
+        if (std.explanation) entry += `\n    해설: ${std.explanation}`
+        if (std.domain) entry += `\n    영역: ${std.domain} > ${std.area || ''}`
         return entry
       })
+      .filter(Boolean)
       .join('\n\n')
-    parts.push(`[선택된 교육과정 성취기준]
+    parts.push(`[프로젝트 성취기준 — 절대 규칙]
 ${stdText}
 
-이 성취기준들은 설계의 나침반입니다:
-- 활동 제안 시 "이 활동으로 어떤 성취기준을 달성할 수 있는가?"를 항상 확인하세요.
-- 해설이 있으면 교육적 의도를 반영하세요.`)
+★ 절대 규칙 (위반 시 시스템이 자동 차단합니다):
+1. 위 목록의 성취기준 코드와 내용만 사용하세요. 시스템이 DB에 없는 코드를 자동 삭제합니다.
+2. 성취기준 코드를 절대 임의로 만들지 마세요. 존재하지 않는 코드는 저장되지 않습니다.
+3. 성취기준 내용을 변형하지 마세요. 원문 그대로만 유효합니다.
+4. A-2-1 보드의 code/content 필드는 위 목록에서 복사하세요. AI가 분석할 부분은 knowledge/process/values 열뿐입니다.
+5. 추가 성취기준이 필요하면 "성취기준 탐색기에서 추가로 선택해 주세요"라고 안내하세요.`)
+  } else {
+    parts.push(`[성취기준 안내 — 절대 규칙]
+현재 이 프로젝트에 선택된 성취기준이 없습니다.
+★ 절대 규칙:
+1. 성취기준 코드(예: [9과05-01])를 절대 생성하지 마세요. 시스템이 DB에 없는 코드를 자동 삭제합니다.
+2. 성취기준이 필요한 절차에서는 반드시 "먼저 성취기준 탐색기에서 교과별 성취기준을 선택해 주세요"라고 안내하세요.
+3. 성취기준 없이도 진행 가능한 절차(prep, T-1-1 등)는 정상 진행하세요.`)
   }
 
   // ─── 14. 현재 절차 보드 내용 ───

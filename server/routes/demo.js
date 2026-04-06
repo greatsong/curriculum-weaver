@@ -12,9 +12,10 @@
 import { Router } from 'express'
 import Anthropic from '@anthropic-ai/sdk'
 import { requireAuth } from '../middleware/auth.js'
-import { createProject, updateProject, upsertDesign, createMessage, getMemberRole } from '../lib/supabaseService.js'
+import { createProject, updateProject, upsertDesign, createMessage, getMemberRole, addStandardToProject } from '../lib/supabaseService.js'
 import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
 import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
+import { getStandardsForSubjects } from '../lib/standardsValidator.js'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -25,6 +26,7 @@ const PHASE1_CODES = ['prep', 'T-1-1', 'T-1-2', 'T-2-1', 'T-2-2', 'T-2-3', 'A-1-
 const PHASE2_CODES = ['Ds-1-1', 'Ds-1-2', 'Ds-1-3', 'Ds-2-1', 'Ds-2-2', 'DI-1-1', 'DI-2-1', 'E-1-1', 'E-2-1']
 const ALL_CODES = [...PHASE1_CODES, ...PHASE2_CODES]
 const procedureNameMap = Object.fromEntries(PROCEDURE_LIST.map((p) => [p.code, p.name]))
+const MAX_DEMO_DESCRIPTION_LENGTH = 1500
 
 // ── 교사 이름 풀 (교과별 자연스러운 한국 이름) ──
 // 각 교과 첫 번째 이름은 "일반형", 두 번째는 "창의·모험형" 성향으로 우선 배치
@@ -241,6 +243,15 @@ function buildPhase1Summary(phase1Data) {
   return parts.length > 0 ? parts.join('\n\n') : '(1차 결과 없음)'
 }
 
+function formatTeacherIntentBlock(text) {
+  return text
+    .trim()
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => `| ${line}`)
+    .join('\n')
+}
+
 /**
  * POST /api/demo/generate
  * 시뮬레이션 생성 (SSE 스트리밍)
@@ -248,6 +259,7 @@ function buildPhase1Summary(phase1Data) {
 demoRouter.post('/generate', requireAuth, async (req, res) => {
   const { workspaceId, grade, subjects, topic, description } = req.body
   const userId = req.user.id
+  const normalizedDescription = typeof description === 'string' ? description.trim() : ''
 
   if (!workspaceId) {
     return res.status(400).json({ error: '워크스페이스 ID가 필요합니다.' })
@@ -268,8 +280,8 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
   if (topic.length > 100) {
     return res.status(400).json({ error: '주제 키워드는 100자 이내로 입력하세요.' })
   }
-  if (description && description.length > 500) {
-    return res.status(400).json({ error: '설명은 500자 이내로 입력하세요.' })
+  if (normalizedDescription.length > MAX_DEMO_DESCRIPTION_LENGTH) {
+    return res.status(400).json({ error: `설계 의도/참고사항은 ${MAX_DEMO_DESCRIPTION_LENGTH.toLocaleString()}자 이내로 입력하세요.` })
   }
 
   // SSE 헤더
@@ -306,7 +318,7 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
     // P0 #2: generating 상태로 생성 → 성공 시 simulation, 실패 시 failed
     const project = await createProject(workspaceId, {
       title: projectTitle,
-      description: description || `AI 시뮬레이션으로 자동 생성된 ${grade} ${subjects.join('+')} 융합수업 설계`,
+      description: normalizedDescription || `AI 시뮬레이션으로 자동 생성된 ${grade} ${subjects.join('+')} 융합수업 설계`,
       current_procedure: 'prep',
       status: 'generating',
     })
@@ -315,16 +327,126 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
 
     sendEvent({ type: 'started', projectId, workspaceId })
 
+    // ── 1.5. 성취기준 선별: 전체 후보 → AI가 주제 기반 핵심 선별 → project_standards 저장 ──
+    const { standards: allCandidates } = getStandardsForSubjects(subjects, grade)
+    console.log(`[demo] 성취기준 후보: ${allCandidates.length}개 (${subjects.join(', ')} / ${grade})`)
+
+    let selectedStandards = allCandidates
+    let standardsText = ''
+
+    // 후보가 20개 이상이면 AI로 주제 관련 핵심만 선별
+    if (allCandidates.length > 20 && topic) {
+      sendEvent({ type: 'heartbeat', phase: '성취기준 선별', tokens: 0 })
+      try {
+        const candidateList = allCandidates.map(s => {
+          let line = `${s.code} [${s.subject}] ${s.content}`
+          if (s.area) line += ` (영역: ${s.area})`
+          return line
+        }).join('\n')
+        const selectionResponse = await client.messages.create({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 2048,
+          messages: [{ role: 'user', content: `당신은 2022 개정 교육과정 기반 융합수업 설계 전문가입니다.
+아래 프로젝트에 가장 적합한 성취기준을 교과별 3~5개씩 선별하세요.
+
+## 프로젝트 정보
+대상: ${grade}
+교과: ${subjects.join(', ')}
+주제: ${topic}
+${description ? `설계 의도: ${description}` : ''}
+
+## 선별 기준 (5가지 — 모두 고려할 것)
+
+1. **내용 연계성**: 주제 "${topic}"의 핵심 개념·지식과 직접 관련되는 성취기준
+   - 표면적 키워드 일치가 아니라, 실질적으로 해당 주제를 다루는 데 필요한 지식인지 판단
+
+2. **과정·기능 융합 가능성**: 다른 교과와 공유할 수 있는 탐구 과정·기능을 포함하는 성취기준
+   - 예: "자료를 수집하고 분석하여"(과학) ↔ "통계적으로 해석하여"(수학) → 과정이 연결됨
+
+3. **교과 간 시너지**: 교과 A에서 산출된 결과가 교과 B의 입력이 되는 관계
+   - 예: 수학에서 데이터 분석 → 사회에서 해석 및 의사결정 → 국어에서 보고서 작성
+
+4. **핵심 아이디어 연결**: 해당 단원/영역의 빅아이디어가 주제와 맞닿는 성취기준
+   - 영역(area) 정보를 참고하여 단원의 큰 흐름과 주제의 연결점 확인
+
+5. **학습 경험의 실제성**: 학생이 실제 맥락에서 체험할 수 있는 활동으로 이어지는 성취기준
+   - 추상적 개념만이 아니라, 프로젝트 활동과 연결 가능한 것 우선
+
+## 후보 성취기준 (${allCandidates.length}개) — 이 목록에서만 선택할 것!
+${candidateList}
+
+## 응답 형식
+위 목록에 있는 코드만, 한 줄에 하나씩 나열하세요.
+새로운 코드를 절대 만들지 마세요.
+
+선택 코드:` }],
+        })
+
+        const aiText = selectionResponse.content[0]?.text || ''
+        const codeMatches = aiText.match(/\[[\d\w가-힣 ]+-[\d]+-[\d]+\]/g) || []
+        const selectedCodes = new Set(codeMatches)
+
+        if (selectedCodes.size >= 4) {
+          selectedStandards = allCandidates.filter(s => selectedCodes.has(s.code))
+          console.log(`[demo] AI 선별: ${allCandidates.length}개 → ${selectedStandards.length}개`)
+        } else {
+          // AI 선별 실패 시 키워드 매칭 폴백
+          const keywords = topic.split(/\s+/).map(k => k.toLowerCase())
+          const scored = allCandidates.map(s => {
+            const text = `${s.content} ${s.area || ''} ${(s.keywords || []).join(' ')}`.toLowerCase()
+            let score = keywords.filter(k => text.includes(k)).length
+            return { std: s, score }
+          }).sort((a, b) => b.score - a.score)
+          // 교과당 최대 5개
+          const perSubject = {}
+          selectedStandards = scored.filter(({ std }) => {
+            const sg = std.subject_group || std.subject
+            if (!perSubject[sg]) perSubject[sg] = 0
+            if (perSubject[sg] >= 5) return false
+            perSubject[sg]++
+            return true
+          }).map(({ std }) => std)
+          console.log(`[demo] 키워드 폴백 선별: ${selectedStandards.length}개`)
+        }
+      } catch (e) {
+        console.warn(`[demo] AI 선별 실패, 전체 사용:`, e.message)
+      }
+    }
+
+    // 선별된 성취기준을 project_standards에 저장
+    let linkedCount = 0
+    for (const std of selectedStandards) {
+      try { await addStandardToProject(projectId, std.id, userId, false); linkedCount++ } catch { /* 중복 무시 */ }
+    }
+    console.log(`[demo] 성취기준 ${linkedCount}개를 프로젝트에 연결`)
+
+    // 프롬프트용 텍스트 생성 (선별된 것만)
+    const bySubject = {}
+    for (const s of selectedStandards) {
+      const key = s.subject_group || s.subject
+      if (!bySubject[key]) bySubject[key] = []
+      bySubject[key].push(s)
+    }
+    standardsText = Object.entries(bySubject)
+      .map(([subj, stds]) => `### ${subj} (${stds.length}개)\n${stds.map(s => `  ${s.code} ${s.content}`).join('\n')}`)
+      .join('\n')
+
     // ── 2. 교사 페르소나 생성 ──
     const teachers = pickTeacherNames(subjects)
     const teacherListText = teachers.map((t) => `${t.name}(${t.subject})`).join(', ')
     console.log(`[demo] 교사 페르소나: ${teacherListText}`)
 
     // ── 3. 프롬프트 빌드 ──
-    const teacherContext = description
+    const teacherIntentBlock = normalizedDescription
+      ? formatTeacherIntentBlock(normalizedDescription)
+      : ''
+
+    const teacherContext = teacherIntentBlock
       ? `\n\n## 교사의 설계 의도 (최우선 반영 사항)
-교사가 아래와 같이 수업의 방향을 설정했습니다. 이 내용이 모든 절차의 설계를 관통해야 합니다:
-"${description}"
+교사가 아래 내용을 직접 남겼습니다. 아래 블록은 교사의 원문이므로, 요약 과정에서 빠뜨리지 말고 핵심 조건을 모든 절차에 반영하세요:
+[교사 입력 시작]
+${teacherIntentBlock}
+[교사 입력 끝]
 
 위 교사 의도를 반영하여:
 - prep(학습자 맥락)에서 이 의도와 연결되는 학습자 상황을 구체적으로 서술하세요
@@ -369,8 +491,14 @@ conversation은 4~7턴의 대화 배열이며, 각 턴은:
 - 각 교사가 최소 1번은 발언해야 합니다.
 - AI 공동설계자는 교사들 논의 중간이나 끝에서 정리·제안 역할로 1~2회 등장합니다.
 - 현실적이고 교육적으로 의미 있는 내용을 작성하세요.
-- 한국 2022 개정 교육과정의 성취기준을 참조하세요.
 - 응답은 반드시 유효한 JSON 객체여야 합니다. 마크다운 코드블록으로 감싸지 마세요.
+
+## 성취기준 사용 규칙 (절대 준수 — 시스템이 자동 차단합니다!)
+아래에 제공되는 "사용 가능한 성취기준 목록"에 있는 코드와 내용만 사용하세요.
+- 성취기준 코드를 절대 임의로 만들지 마세요. DB에 없는 코드는 시스템이 자동 삭제합니다.
+- 성취기준 내용을 변형하지 마세요. 원문 그대로 복사해야 합니다.
+- A-2-1 보드의 code, content 필드는 아래 목록에서 그대로 복사하세요. AI가 분석할 부분은 knowledge/process/values 열뿐입니다.
+- 대화에서 성취기준을 언급할 때도 아래 목록의 코드를 정확히 사용하세요.
 
 ## 보드 데이터 형식 주의 (매우 중요!)
 - table 타입 필드: 반드시 객체 배열로 생성. 예: [{"phase":"T","goal":"...","result":"...","improvement":"..."}]
@@ -378,12 +506,15 @@ conversation은 4~7턴의 대화 배열이며, 각 턴은:
 - list 타입 필드: 문자열 배열. 예: ["항목1", "항목2"]
 - itemSchema가 있는 필드: 해당 키를 포함하는 객체 배열
 - text/textarea 필드: 문자열
-${teacherContext}`
+${teacherContext}
+
+## 사용 가능한 성취기준 목록 (이 목록에서만 선택할 것!)
+${standardsText || '(해당 교과/학년의 성취기준 데이터가 없습니다. 성취기준 코드를 생성하지 마세요.)'}`
 
     const userPromptBase = `대상: ${grade}
 교과: ${subjects.join(', ')}
 주제: ${topic}
-${description ? `교사 의도: ${description}` : ''}`
+${teacherIntentBlock ? `교사 의도 원문:\n[교사 입력 시작]\n${teacherIntentBlock}\n[교사 입력 끝]` : ''}`
 
     // ── 4. 1차 호출: prep ~ A-2-2 ──
     console.log('[demo] === 1차 호출 시작 (prep ~ A-2-2) ===')
@@ -426,7 +557,7 @@ JSON 형식:
       sendEvent,
     })
 
-    // 1차 결과 저장 (보드 + 채팅)
+    // 1차 결과 저장 (보드 + 채팅) — 성취기준 검증은 upsertDesign 게이트키퍼가 처리
     let phase1Saved = 0
     for (const [code, data] of Object.entries(phase1Data)) {
       if (!BOARD_TYPES[code] || !data) continue
@@ -510,7 +641,7 @@ JSON 형식:
       sendEvent,
     })
 
-    // 2차 결과 저장
+    // 2차 결과 저장 — 성취기준 검증은 upsertDesign 게이트키퍼가 처리
     let phase2Saved = 0
     for (const [code, data] of Object.entries(phase2Data)) {
       if (!BOARD_TYPES[code] || !data) continue

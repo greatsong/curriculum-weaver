@@ -659,7 +659,7 @@ function renderSectionsHTML(sections) {
     } else if (sec.type === 'list') {
       html += `<div class="board-section"><div class="board-label">${esc(sec.label)}</div><ul class="n-list">`
       for (const item of sec.items) {
-        html += `<li>${esc(String(item))}</li>`
+        html += `<li>${esc(itemToText(item))}</li>`
       }
       html += `</ul></div>`
     } else if (sec.type === 'tags') {
@@ -682,12 +682,12 @@ function renderSectionsHTML(sections) {
       const entries = Object.entries(sec.clusters)
       entries.forEach(([name, items], idx) => {
         const c = clusterColors[idx % clusterColors.length]
-        const itemList = Array.isArray(items) ? items : [String(items)]
+        const itemList = Array.isArray(items) ? items : (typeof items === 'string' ? [items] : [itemToText(items)])
         html += `<div style="background:${c.bg};border:1px solid ${c.border};border-radius:8px;padding:14px;">`
         html += `<div style="font-size:13px;font-weight:700;color:${c.text};margin-bottom:8px;">${esc(name)}</div>`
         html += `<div style="display:flex;flex-wrap:wrap;gap:6px;">`
         for (const item of itemList) {
-          html += `<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:${c.tag};color:${c.text};">${esc(String(item))}</span>`
+          html += `<span style="font-size:12px;padding:3px 10px;border-radius:9999px;background:${c.tag};color:${c.text};">${esc(itemToText(item))}</span>`
         }
         html += `</div></div>`
       })
@@ -821,7 +821,7 @@ function renderSectionsMD(sections) {
     } else if (sec.type === 'list') {
       md += `**${sec.label}**\n\n`
       for (const item of sec.items) {
-        md += `- ${String(item)}\n`
+        md += `- ${itemToText(item)}\n`
       }
       md += `\n`
     } else if (sec.type === 'tags') {
@@ -829,7 +829,7 @@ function renderSectionsMD(sections) {
     } else if (sec.type === 'cluster') {
       md += `**${sec.label}**\n\n`
       for (const [name, items] of Object.entries(sec.clusters)) {
-        const itemList = Array.isArray(items) ? items : [String(items)]
+        const itemList = Array.isArray(items) ? items.map(itemToText) : [itemToText(items)]
         md += `- **${name}**: ${itemList.join(', ')}\n`
       }
       md += `\n`
@@ -843,6 +843,19 @@ function renderSectionsMD(sections) {
 // ════════════════════════════════════════════
 // 유틸리티
 // ════════════════════════════════════════════
+
+// 객체를 읽기 좋은 문자열로 변환 (클러스터맵/연결맵 항목용)
+function itemToText(item) {
+  if (item == null) return ''
+  if (typeof item === 'string') return item
+  if (typeof item === 'number' || typeof item === 'boolean') return String(item)
+  if (typeof item === 'object') {
+    const vals = Object.values(item).filter(v => v != null && typeof v !== 'object')
+    if (vals.length > 0) return vals.join(' — ')
+    return JSON.stringify(item)
+  }
+  return String(item)
+}
 
 function esc(str) {
   return String(str)
