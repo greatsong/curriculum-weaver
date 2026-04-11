@@ -34,7 +34,7 @@ const LINK_TYPE_COLORS = {
 const getLinkSourceId = (l) => typeof l.source === 'object' ? l.source?.id : l.source
 const getLinkTargetId = (l) => typeof l.target === 'object' ? l.target?.id : l.target
 
-export default function Graph3D({ embedded = false }) {
+export default function Graph3D({ embedded = false, initialSubjects = null }) {
   const navigate = !embedded ? useNavigate() : null
   const [graphData, setGraphData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -97,6 +97,14 @@ export default function Graph3D({ embedded = false }) {
   const [focusMode, setFocusMode] = useState(false)
   const [hoveredLink, setHoveredLink] = useState(null)
   const [searchIndex, setSearchIndex] = useState(-1)
+
+  // 외부에서 주입된 초기 교과 선택 동기화
+  const initialSubjectsKey = initialSubjects ? JSON.stringify([...initialSubjects].sort()) : null
+  useEffect(() => {
+    if (initialSubjectsKey) {
+      setSelectedSubjects(new Set(JSON.parse(initialSubjectsKey)))
+    }
+  }, [initialSubjectsKey])
 
   // 채팅 자동 스크롤
   useEffect(() => {

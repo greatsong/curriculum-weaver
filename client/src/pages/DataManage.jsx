@@ -1,6 +1,6 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, FileUp, Eye, Save, X, Edit3 } from 'lucide-react'
+import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, FileUp, Eye, Save, X, Edit3, GitBranch } from 'lucide-react'
 import { apiGet, apiPost, apiDelete, apiUploadFile } from '../lib/api'
 import Logo from '../components/Logo'
 
@@ -40,6 +40,17 @@ export default function DataManage() {
   const [result, setResult] = useState(null)
   const [tab, setTab] = useState('upload') // 'upload' | 'browse' | 'graph' | 'extract'
   const [allStandards, setAllStandards] = useState([])
+
+  // 교과 선택 상태 (인라인 그래프 탐색용)
+  const [pickedSubjects, setPickedSubjects] = useState(new Set())
+  const togglePickSubject = useCallback((subject) => {
+    setPickedSubjects(prev => {
+      const next = new Set(prev)
+      if (next.has(subject)) next.delete(subject)
+      else next.add(subject)
+      return next
+    })
+  }, [])
 
   // AI 추출 상태
   const [extractFile, setExtractFile] = useState(null)
@@ -214,12 +225,63 @@ export default function DataManage() {
               </div>
             </div>
             {stats.bySubject.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {stats.bySubject.map((s) => (
-                  <span key={s.subject} className="px-2.5 py-1 bg-gray-100 rounded-full text-xs text-gray-600">
-                    {s.subject} ({s.count})
+              <div className="mt-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-xs text-gray-400">교과를 클릭하면 연결 그래프를 탐색할 수 있습니다</p>
+                  {pickedSubjects.size > 0 && (
+                    <button
+                      onClick={() => setPickedSubjects(new Set())}
+                      className="text-xs text-blue-500 hover:text-blue-700 transition"
+                    >
+                      선택 초기화
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {stats.bySubject.map((s) => {
+                    const picked = pickedSubjects.has(s.subject)
+                    return (
+                      <button
+                        key={s.subject}
+                        onClick={() => togglePickSubject(s.subject)}
+                        className={`px-2.5 py-1 rounded-full text-xs transition-all cursor-pointer border ${
+                          picked
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : 'bg-gray-100 text-gray-600 border-transparent hover:bg-blue-50 hover:text-blue-600'
+                        }`}
+                      >
+                        {s.subject} ({s.count})
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 인라인 미니 그래프: 2개 이상 교과 선택 시 표시 */}
+            {pickedSubjects.size >= 2 && (
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <GitBranch size={16} className="text-blue-600" />
+                  <h3 className="text-sm font-semibold text-gray-700">
+                    선택 교과 간 연결 그래프
+                  </h3>
+                  <span className="text-xs text-gray-400">
+                    {[...pickedSubjects].join(' · ')}
                   </span>
-                ))}
+                </div>
+                <div className="rounded-lg border border-gray-200 overflow-hidden" style={{ height: '50vh' }}>
+                  <Suspense fallback={
+                    <div className="flex items-center justify-center h-full text-gray-400">
+                      <div className="text-center">
+                        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                        <p className="text-xs">그래프 로딩 중...</p>
+                      </div>
+                    </div>
+                  }>
+                    <Graph3D embedded initialSubjects={[...pickedSubjects]} />
+                  </Suspense>
+                </div>
               </div>
             )}
           </div>
