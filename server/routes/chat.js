@@ -18,9 +18,71 @@ import {
   getProject, getMemberRole, getDesignsByProject,
   getStandardsByProject, upsertDesign,
 } from '../lib/supabaseService.js'
-import { SSE_EVENTS, BOARD_TYPES, PROCEDURES } from 'curriculum-weaver-shared/constants.js'
+import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
+import { PROCEDURE_GUIDE } from '../data/procedureGuide.js'
+
+/**
+ * 정적 인트로 마크다운 생성 (AI 호출 없음)
+ * — 모든 사용자에게 동일한 내용이므로 AI 대신 PROCEDURE_GUIDE + PROCEDURE_STEPS로 구성
+ */
+function buildStaticIntro(procedureCode) {
+  const procInfo = PROCEDURES[procedureCode]
+  const guide = PROCEDURE_GUIDE[procedureCode]
+  const steps = PROCEDURE_STEPS[procedureCode] || []
+  const phaseInfo = Object.values(PHASES).find(p => p.id === procInfo?.phase)
+  const isFirst = procedureCode === 'T-1-1'
+
+  if (!procInfo || !guide) return null
+
+  const lines = []
+
+  if (isFirst) {
+    lines.push(`안녕하세요! 협력적 수업설계의 AI 공동설계자입니다. 함께 의미 있는 수업을 만들어 보겠습니다.`)
+    lines.push('')
+  }
+
+  lines.push(`**[${phaseInfo?.name || ''} > ${procedureCode}: ${procInfo.name}]** 절차에 진입했습니다.`)
+  lines.push('')
+
+  // 핵심 질문
+  if (guide.coreQuestion) {
+    lines.push(`> **핵심 질문**: ${guide.coreQuestion}`)
+    lines.push('')
+  }
+
+  // 개념/방법/유의사항/산출물 표
+  lines.push(`| 항목 | 내용 |`)
+  lines.push(`|------|------|`)
+  if (guide.concept) lines.push(`| **개념** | ${guide.concept} |`)
+  if (guide.methods?.length) lines.push(`| **방법/절차** | ${guide.methods.join(' → ')} |`)
+  if (guide.notes) lines.push(`| **유의사항** | ${guide.notes} |`)
+  if (guide.deliverable) lines.push(`| **산출물** | ${guide.deliverable} |`)
+  lines.push('')
+
+  // 스텝 개요
+  if (steps.length > 0) {
+    lines.push(`**이 절차의 스텝 (${steps.length}개):**`)
+    for (const s of steps) {
+      const actionName = ACTION_TYPES[s.actionType]?.name || s.actionType
+      const aiTag = s.aiCapability ? ' 🤖' : ''
+      lines.push(`${s.stepNumber}. [${actionName}] ${s.title}${aiTag}`)
+    }
+    lines.push('')
+
+    // 첫 번째 스텝 안내
+    const first = steps[0]
+    lines.push(`**첫 번째 스텝**: ${first.title}`)
+    lines.push(`- ${first.description}`)
+    lines.push('')
+  }
+
+  lines.push(`이 절차에서 궁금한 점이 있으시면 자유롭게 질문해 주세요!`)
+
+  return lines.join('\n')
+}
 
 /**
  * 프로젝트 멤버십 검증 미들웨어
@@ -310,26 +372,16 @@ chatRouter.post('/procedure-intro', async (req, res) => {
       }
     }
 
-    let fullResponse = ''
-    await buildProcedureIntroResponse(
-      { procedure, sessionTitle: project?.title || '', boards: designs, aiModel: aiModel || undefined },
-      {
-        onText: (text) => {
-          fullResponse += text
-          res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: text })}\n\n`)
-        },
-        onError: (error) => {
-          res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.ERROR, message: error })}\n\n`)
-        },
-      }
-    )
+    // 정적 인트로 (AI 호출 없음 — 모든 사용자에게 동일한 내용)
+    const introText = buildStaticIntro(procedure)
+    if (introText) {
+      res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: introText })}\n\n`)
 
-    // 인트로 메시지를 Supabase에 저장
-    if (fullResponse.trim()) {
+      // 인트로 메시지를 Supabase에 저장
       await createMessage({
         project_id: session_id,
         sender_type: 'ai',
-        content: fullResponse.trim(),
+        content: introText,
         procedure_context: procedure,
       })
     }
@@ -377,27 +429,15 @@ chatRouter.post('/stage-intro', async (req, res) => {
   res.flushHeaders()
 
   try {
-    const designs = await getDesignsByProject(session_id).catch(() => [])
+    // 정적 인트로 (AI 호출 없음)
+    const introText = buildStaticIntro(procedure)
+    if (introText) {
+      res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: introText })}\n\n`)
 
-    let fullResponse = ''
-    await buildProcedureIntroResponse(
-      { procedure, sessionTitle: project?.title || '', boards: designs, aiModel: aiModel || undefined },
-      {
-        onText: (text) => {
-          fullResponse += text
-          res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: text })}\n\n`)
-        },
-        onError: (error) => {
-          res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.ERROR, message: error })}\n\n`)
-        },
-      }
-    )
-
-    if (fullResponse.trim()) {
       await createMessage({
         project_id: session_id,
         sender_type: 'ai',
-        content: fullResponse.trim(),
+        content: introText,
         procedure_context: procedure,
       })
     }
@@ -443,7 +483,22 @@ chatRouter.post('/message', async (req, res) => {
     // 컨텍스트 로드 (Supabase 영속 저장소)
     const designs = await getDesignsByProject(session_id).catch(() => [])
     const allMessages = await getMessages(session_id)
-    const recentMessages = allMessages.slice(-20)
+
+    // 현재 절차의 이전 대화를 우선 포함 + 최근 대화도 포함
+    // (절차 1→2→3→4→5 진행 후 절차 2로 돌아오면, 절차 2의 대화가 최근 20개에서 밀려나 있으므로)
+    const currentProcMessages = allMessages.filter(
+      m => (m.procedure_context || m.stage_context) === activeProcedure
+    )
+    const recentGlobalMessages = allMessages.slice(-10)
+
+    // 현재 절차 대화(최대 10개) + 최근 전체 대화(최대 10개)를 시간순 병합, 중복 제거
+    const procSlice = currentProcMessages.slice(-10)
+    const mergedMap = new Map()
+    for (const m of procSlice) mergedMap.set(m.id, m)
+    for (const m of recentGlobalMessages) mergedMap.set(m.id, m)
+    const recentMessages = [...mergedMap.values()]
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+
     const standards = await getStandardsByProject(session_id).catch(() => [])
     const materials = [] // TODO: 자료 Supabase 전환 후 로드
 

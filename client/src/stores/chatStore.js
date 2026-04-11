@@ -2,8 +2,16 @@ import { create } from 'zustand'
 import { apiGet, apiPost, apiStreamPost } from '../lib/api'
 import { socket } from '../lib/socket'
 import { useProcedureStore } from './procedureStore'
+import { useProjectStore } from './projectStore'
 import { useWorkspaceStore } from './workspaceStore'
 import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
+
+function isReadOnlyProject(project) {
+  return project?.status === 'simulation' ||
+    project?.status === 'generating' ||
+    project?.status === 'failed' ||
+    project?.title?.startsWith('[시뮬레이션]')
+}
 
 // ── XML 파서 유틸 ────────────────────────────
 
@@ -93,14 +101,21 @@ function stripXmlMarkers(text) {
 
 export const useChatStore = create((set, get) => ({
   messages: [],
+  loadingMessages: false,
   streaming: false,
   streamingText: '',
 
   // AI 제안 관련 상태
   pendingSuggestions: [],        // 수락/편집/거부 대기 중인 AI 제안
-  coherenceCheckResult: null,   // 정합성 ��검 결과
+  coherenceCheckResult: null,   // 정합성 점검 결과
   procedureAdvanceSuggestion: null, // 절차 전환 제안
   _lastAiMessageId: null,       // 마지막 AI 메시지 ID (제안 수락 시 사용)
+
+  // 인트로 캐시 (절차별 인트로를 1회만 생성)
+  introCache: {},               // { [procedureCode]: introContent }
+  showIntroModal: false,
+  introModalContent: '',
+  introModalProcedure: '',
 
   // 레거시 호환
   boardSuggestions: [],
@@ -130,23 +145,43 @@ export const useChatStore = create((set, get) => ({
       coherenceCheckResult: null,
       procedureAdvanceSuggestion: null,
       _messageHandler: null,
+      introCache: {},
+      showIntroModal: false,
+      introModalContent: '',
+      introModalProcedure: '',
     })
   },
 
   // ── 메시지 로드 ────
 
   loadMessages: async (projectId) => {
+    set({ loadingMessages: true })
     try {
       const data = await apiGet(`/api/chat/${projectId}`)
-      set({ messages: Array.isArray(data) ? data : (data?.messages ?? []) })
+      const msgs = Array.isArray(data) ? data : (data?.messages ?? [])
+      // 메시지에서 절차별 첫 AI 인트로를 캐시에 복원
+      const introsByProcedure = {}
+      msgs.forEach(m => {
+        const proc = m.stage_context || m.procedure_context
+        if (m.sender_type === 'ai' && proc && !introsByProcedure[proc]) {
+          introsByProcedure[proc] = m.content
+        }
+      })
+      set({ messages: msgs, introCache: { ...get().introCache, ...introsByProcedure } })
+      return true
     } catch {
-      set({ messages: [] })
+      return false
+    } finally {
+      set({ loadingMessages: false })
     }
   },
 
   // ── 메시지 전송 + AI 응답 ────
 
   sendMessage: async (projectId, content, procedureCode) => {
+    const project = useProjectStore.getState().currentProject
+    if (isReadOnlyProject(project)) return
+
     // 로그인 사용자 정보 우선 사용
     let senderName = localStorage.getItem('cw_nickname') || '교사'
     let senderSubject = localStorage.getItem('cw_subject') || ''
@@ -311,6 +346,9 @@ export const useChatStore = create((set, get) => ({
 
   requestProcedureIntro: async (projectId, procedureCode) => {
     if (get().streaming) return
+    if (get().introCache[procedureCode]) return // 이미 인트로 완료 → 스킵
+    const project = useProjectStore.getState().currentProject
+    if (isReadOnlyProject(project)) return
 
     set({ streaming: true, streamingText: '' })
 
@@ -330,10 +368,11 @@ export const useChatStore = create((set, get) => ({
       onDone: () => {
         const streamedText = get().streamingText
         if (streamedText.trim()) {
+          const cleanContent = stripXmlMarkers(streamedText)
           const aiMsg = {
             id: `intro-${Date.now()}`,
             sender_type: 'ai',
-            content: stripXmlMarkers(streamedText),
+            content: cleanContent,
             stage_context: procedureCode,
             created_at: new Date().toISOString(),
           }
@@ -341,6 +380,7 @@ export const useChatStore = create((set, get) => ({
             messages: [...state.messages, aiMsg],
             streaming: false,
             streamingText: '',
+            introCache: { ...state.introCache, [procedureCode]: cleanContent },
           }))
           socket.emit('ai_response_done', { projectId, message: aiMsg })
         } else {
@@ -353,6 +393,14 @@ export const useChatStore = create((set, get) => ({
       },
     })
   },
+
+  // ── 인트로 모달 ────
+
+  openIntroModal: (procedureCode) => {
+    const content = get().introCache[procedureCode]
+    if (content) set({ showIntroModal: true, introModalContent: content, introModalProcedure: procedureCode })
+  },
+  closeIntroModal: () => set({ showIntroModal: false, introModalContent: '', introModalProcedure: '' }),
 
   // ── AI 제안 수락/편집/거부 ────
 

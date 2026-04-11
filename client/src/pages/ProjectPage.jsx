@@ -156,9 +156,10 @@ export default function ProjectPage() {
   const {
     currentProcedure, setProcedure, loadBoards, loadAllBoards, loadStandards, loadMaterials,
     loadPrinciples, loadGeneralPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset,
+    loading: procedureLoading,
   } = useProcedureStore()
   const {
-    loadMessages, subscribe, unsubscribe, boardSuggestions, requestProcedureIntro,
+    loadMessages, subscribe, unsubscribe, boardSuggestions, requestProcedureIntro, loadingMessages,
   } = useChatStore()
   const { setMembers } = useSessionStore()
 
@@ -168,6 +169,7 @@ export default function ProjectPage() {
   const [activePanel, setActivePanel] = useState('chat')
   const [boardUpdated, setBoardUpdated] = useState(false)
   const [showReport, setShowReport] = useState(false)
+  const [resumeRefreshing, setResumeRefreshing] = useState(false)
   // 로그인 사용자는 닉네임 모달 불필요
   const [needsNickname, setNeedsNickname] = useState(() => {
     if (user) return false // 로그인 상태면 건너뛰기
@@ -177,14 +179,14 @@ export default function ProjectPage() {
   const joinedRef = useRef(false)
   const introRequestedRef = useRef(false)
   const messagesLoadedRef = useRef(false)
+  const allBoardsLoadedRef = useRef(false)
+  const resumeRefreshRef = useRef(false)
 
   // 메시지 로드 함수 (인증 실패 시 1회 재시도)
   const loadMessagesWithRetry = useCallback(async (pid) => {
     messagesLoadedRef.current = false
     const tryLoad = async () => {
-      await loadMessages(pid)
-      const msgs = useChatStore.getState().messages
-      return msgs.length > 0
+      return loadMessages(pid)
     }
     let loaded = await tryLoad()
     // 첫 시도 실패 시 1.5초 후 재시도 (auth 초기화 대기)
@@ -193,20 +195,49 @@ export default function ProjectPage() {
       loaded = await tryLoad()
     }
     messagesLoadedRef.current = true
-    if (!introRequestedRef.current) {
+    if (!introRequestedRef.current && loaded) {
       introRequestedRef.current = true
-      const msgs = useChatStore.getState().messages
+      const { messages: msgs, introCache } = useChatStore.getState()
       const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
       const proj = useProjectStore.getState().currentProject
       const isReadOnly = proj?.status === 'simulation' || proj?.status === 'generating' || proj?.status === 'failed' || proj?.title?.startsWith('[시뮬레이션]')
-      if (!isReadOnly && !hasContent && localStorage.getItem('cw_tour_done')) {
-        const proc = useProcedureStore.getState().currentProcedure
+      const proc = useProcedureStore.getState().currentProcedure
+      // introCache에 이미 있으면 스킵 (이전에 인트로 생성된 절차)
+      if (!isReadOnly && !hasContent && !introCache[proc] && localStorage.getItem('cw_tour_done')) {
         if (proc) requestProcedureIntro(projectId, proc)
       }
     }
   }, [projectId])
 
+  const reloadProjectArtifacts = useCallback(async ({ forceReadonlyReload = false } = {}) => {
+    const project = useProjectStore.getState().currentProject
+    if (!project) return
+
+    const isReadOnlyProject =
+      project.status === 'simulation' ||
+      project.status === 'failed' ||
+      project.title?.startsWith('[시뮬레이션]')
+
+    if (isReadOnlyProject) {
+      const hasBoards = Object.keys(useProcedureStore.getState().boards).length > 0
+      if (forceReadonlyReload) {
+        allBoardsLoadedRef.current = false
+      }
+      if (!allBoardsLoadedRef.current || !hasBoards) {
+        const loaded = await loadAllBoards(projectId)
+        allBoardsLoadedRef.current = loaded
+      }
+    } else {
+      await loadBoards(projectId, currentProcedure)
+    }
+
+    loadStandards(projectId)
+    loadMaterials(projectId)
+    loadPrinciples(currentProcedure)
+  }, [currentProcedure, projectId])
+
   useEffect(() => {
+    allBoardsLoadedRef.current = false
     fetchProject(projectId)
     if (workspaceId) fetchWorkspace(workspaceId)
     loadMessagesWithRetry(projectId)
@@ -270,20 +301,47 @@ export default function ProjectPage() {
     if (activePanel === 'board') setBoardUpdated(false)
   }, [activePanel])
 
-  // 시뮬레이션: 최초 1회 모든 보드 프리로드
-  const allBoardsLoadedRef = useRef(false)
   useEffect(() => {
     if (!currentProject) return
-    const isReadOnlyProject = currentProject.status === 'simulation' || currentProject.status === 'failed' || currentProject.title?.startsWith('[시뮬레이션]')
-    if (isReadOnlyProject && !allBoardsLoadedRef.current) {
-      allBoardsLoadedRef.current = true
-      loadAllBoards(projectId)
-    } else if (!isReadOnlyProject) {
-      loadBoards(projectId, currentProcedure)
+
+    reloadProjectArtifacts()
+  }, [currentProcedure, projectId, currentProject])
+
+  useEffect(() => {
+    const handleResumeRefresh = async () => {
+      if (resumeRefreshRef.current) return
+      if (document.visibilityState && document.visibilityState !== 'visible') return
+
+      resumeRefreshRef.current = true
+      setResumeRefreshing(true)
+      try {
+        await fetchProject(projectId).catch(() => null)
+        await loadMessagesWithRetry(projectId)
+        loadGeneralPrinciples()
+        await reloadProjectArtifacts({ forceReadonlyReload: true })
+      } finally {
+        resumeRefreshRef.current = false
+        setResumeRefreshing(false)
+      }
     }
-    loadStandards(projectId)
-    loadMaterials(projectId)
-    loadPrinciples(currentProcedure)
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleResumeRefresh()
+      }
+    }
+
+    window.addEventListener('pageshow', handleResumeRefresh)
+    window.addEventListener('focus', handleResumeRefresh)
+    window.addEventListener('online', handleResumeRefresh)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('pageshow', handleResumeRefresh)
+      window.removeEventListener('focus', handleResumeRefresh)
+      window.removeEventListener('online', handleResumeRefresh)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [currentProcedure, projectId, currentProject])
 
   const handleProcedureChange = async (code) => {
@@ -291,8 +349,12 @@ export default function ProjectPage() {
     await updateProcedure(projectId, code)
     socket.emit('stage_changed', { sessionId: projectId, stage: code })
     // 시뮬레이션/generating/failed 프로젝트에서는 AI 인트로 요청하지 않음
+    // introCache에 이미 있으면 스킵 (requestProcedureIntro 내부에서도 체크하지만 명시적으로)
     if (!isSimulation && !isGenerating && !isFailed) {
-      requestProcedureIntro(projectId, code)
+      const { introCache } = useChatStore.getState()
+      if (!introCache[code]) {
+        requestProcedureIntro(projectId, code)
+      }
     }
   }
 
@@ -306,6 +368,8 @@ export default function ProjectPage() {
   const isSimulation = currentProject?.status === 'simulation' || currentProject?.title?.startsWith('[시뮬레이션]')
   const isGenerating = currentProject?.status === 'generating'
   const isFailed = currentProject?.status === 'failed'
+  const isReadOnlyProject = isSimulation || isGenerating || isFailed
+  const isReadOnlyLoading = isReadOnlyProject && (procedureLoading || loadingMessages || resumeRefreshing)
 
   if (!currentProject) {
     return (
@@ -531,7 +595,8 @@ export default function ProjectPage() {
               sessionId={projectId}
               stage={currentProcedure}
               onStageChange={handleProcedureChange}
-              readOnly={isSimulation || isGenerating || isFailed}
+              readOnly={isReadOnlyProject}
+              loading={isReadOnlyLoading}
             />
           </ErrorBoundary>
         </div>
@@ -548,7 +613,7 @@ export default function ProjectPage() {
           }}
         >
           <ErrorBoundary>
-            <ProcedureCanvas projectId={projectId} procedureCode={currentProcedure} readOnly={isSimulation || isGenerating || isFailed} />
+            <ProcedureCanvas projectId={projectId} procedureCode={currentProcedure} readOnly={isReadOnlyProject} loading={isReadOnlyLoading} />
           </ErrorBoundary>
         </div>
 

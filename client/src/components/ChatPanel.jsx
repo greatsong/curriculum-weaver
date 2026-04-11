@@ -21,13 +21,15 @@ function cleanStreamingText(text) {
     .trim() || '...'
 }
 
-export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = false }) {
+export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = false, loading = false }) {
   const {
     messages, streaming, streamingText, sendMessage,
     pendingSuggestions, coherenceCheckResult, procedureAdvanceSuggestion,
     acceptSuggestion, editAcceptSuggestion, rejectSuggestion,
     clearProcedureAdvance, clearCoherenceCheck,
     stageAdvanceSuggestion, clearStageAdvance,
+    introCache, showIntroModal, introModalContent, introModalProcedure,
+    openIntroModal, closeIntroModal,
   } = useChatStore()
   const { currentStep, getCurrentStep } = useProcedureStore()
   const [input, setInput] = useState('')
@@ -81,6 +83,26 @@ export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = 
         gap: 4,
         flexShrink: 0,
       }}>
+        {introCache[stage] && (
+          <button
+            onClick={() => openIntroModal(stage)}
+            style={{
+              padding: '3px 10px',
+              fontSize: 11,
+              fontWeight: 500,
+              color: 'var(--color-text-secondary)',
+              background: 'transparent',
+              border: '1px solid var(--color-border)',
+              borderRadius: 6,
+              cursor: 'pointer',
+              fontFamily: 'var(--font-sans)',
+              marginRight: 'auto',
+              transition: 'all 0.15s',
+            }}
+          >
+            절차 안내 보기
+          </button>
+        )}
         <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginRight: 4 }}>AI</span>
         {[
           { key: 'fast', label: 'Sonnet', desc: '빠른' },
@@ -170,7 +192,30 @@ export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = 
       {/* 메시지 영역 */}
       <div ref={scrollRef} className="flex-1 overflow-auto" style={{ padding: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {messages.length === 0 && !streaming && (
+          {messages.length === 0 && loading && !streaming && (
+            <div style={{ textAlign: 'center', padding: '48px 16px' }}>
+              <div style={{
+                width: 48,
+                height: 48,
+                borderRadius: 'var(--radius-lg)',
+                background: 'var(--color-bg-tertiary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 12px',
+              }}>
+                <div style={{ width: 20, height: 20, border: '2px solid #D1D5DB', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+              </div>
+              <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>
+                시뮬레이션 대화를 불러오는 중입니다
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: 0 }}>
+                잠시만 기다려 주세요
+              </p>
+            </div>
+          )}
+
+          {messages.length === 0 && !loading && !streaming && (
             <div style={{ textAlign: 'center', padding: '48px 16px' }}>
               <div style={{
                 width: 48,
@@ -441,6 +486,65 @@ export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = 
             </svg>
           </button>
         </form>
+      )}
+
+      {/* 인트로 모달 */}
+      {showIntroModal && (
+        <div
+          onClick={closeIntroModal}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--color-bg-primary)',
+              borderRadius: 16,
+              width: '90%',
+              maxWidth: 600,
+              maxHeight: '70vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+            }}
+          >
+            {/* 모달 헤더 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '14px 20px',
+              borderBottom: '1px solid var(--color-border-subtle)',
+              flexShrink: 0,
+            }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                {introModalProcedure}: {PROCEDURES[introModalProcedure]?.name || '절차 안내'}
+              </span>
+              <button
+                onClick={closeIntroModal}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                  color: 'var(--color-text-tertiary)', fontSize: 18, lineHeight: 1,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            {/* 모달 본문 */}
+            <div style={{ padding: '16px 20px', overflow: 'auto', flex: 1 }}>
+              <div className="prose-chat" style={{ fontSize: 14, lineHeight: 1.7 }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} children={introModalContent || ''} />
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
