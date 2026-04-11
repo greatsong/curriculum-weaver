@@ -37,8 +37,8 @@ const getLinkTargetId = (l) => typeof l.target === 'object' ? l.target?.id : l.t
 // 노드가 선택된 교과에 속하는지 (subject_group 또는 subject 이름으로 매칭)
 const isNodeInSubjects = (n, subjects) => subjects.has(n.subject_group || n.subject) || subjects.has(n.subject)
 
-export default function Graph3D({ embedded = false, initialSubjects = null }) {
-  const navigate = !embedded ? useNavigate() : null
+export default function Graph3D({ embedded = false, initialSubjects = null, showSidebar = false }) {
+  const navigate = useNavigate()
   const [graphData, setGraphData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selectedNode, setSelectedNode] = useState(null)
@@ -51,6 +51,8 @@ export default function Graph3D({ embedded = false, initialSubjects = null }) {
   const [highlightNodes, setHighlightNodes] = useState(new Set())
   const [highlightLinks, setHighlightLinks] = useState(new Set())
   const [sidebarOpen, setSidebarOpen] = useState(() => {
+    // showSidebar prop이 있으면 우선 적용
+    if (showSidebar) return true
     // 모바일에서는 사이드바 기본 닫힘
     if (typeof window !== 'undefined' && window.innerWidth < 640) return false
     return !embedded
@@ -1014,11 +1016,12 @@ export default function Graph3D({ embedded = false, initialSubjects = null }) {
                   const tgtIsNeighbor = filteredData.neighborNodeIds.has(getLinkTargetId(link))
                   if (srcIsNeighbor || tgtIsNeighbor) return 0.6
                 }
-                return 1.5
+                // 소수 노드일 때 링크를 더 굵게 표시
+                return (filteredData?.nodes.length || 0) < 50 ? 3 : 1.5
               }}
-              linkOpacity={0.6}
-              linkDirectionalParticles={2}
-              linkDirectionalParticleWidth={1.5}
+              linkOpacity={(filteredData?.nodes.length || 0) < 50 ? 0.85 : 0.6}
+              linkDirectionalParticles={(filteredData?.nodes.length || 0) < 50 ? 3 : 2}
+              linkDirectionalParticleWidth={(filteredData?.nodes.length || 0) < 50 ? 2.5 : 1.5}
               linkDirectionalParticleSpeed={0.005}
               linkLabel={(link) => {
                 const src = typeof link.source === 'object' ? link.source : filteredData.nodes.find(n => n.id === link.source)

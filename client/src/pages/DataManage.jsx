@@ -258,6 +258,13 @@ export default function DataManage() {
               </div>
             )}
 
+            {/* 교과 1개 선택 시 안내 */}
+            {pickedSubjects.size === 1 && (
+              <p className="mt-3 text-xs text-blue-500 bg-blue-50 px-3 py-2 rounded-lg">
+                교과를 1개 더 선택하면 두 교과 간 연결 그래프가 표시됩니다.
+              </p>
+            )}
+
             {/* 인라인 미니 그래프: 2개 이상 교과 선택 시 표시 */}
             {pickedSubjects.size >= 2 && (
               <div className="mt-4 border-t border-gray-100 pt-4">
@@ -269,8 +276,9 @@ export default function DataManage() {
                   <span className="text-xs text-gray-400">
                     {[...pickedSubjects].join(' · ')}
                   </span>
+                  <span className="text-xs text-gray-400 ml-auto">노드를 클릭하면 오른쪽에 연결 목록이 표시됩니다</span>
                 </div>
-                <div className="rounded-lg border border-gray-200 overflow-hidden" style={{ height: '50vh' }}>
+                <div className="rounded-lg border border-gray-200 overflow-hidden" style={{ height: '60vh' }}>
                   <Suspense fallback={
                     <div className="flex items-center justify-center h-full text-gray-400">
                       <div className="text-center">
@@ -279,7 +287,7 @@ export default function DataManage() {
                       </div>
                     </div>
                   }>
-                    <Graph3D embedded initialSubjects={[...pickedSubjects]} />
+                    <Graph3D embedded showSidebar initialSubjects={[...pickedSubjects]} />
                   </Suspense>
                 </div>
               </div>
