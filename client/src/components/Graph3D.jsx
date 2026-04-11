@@ -34,6 +34,9 @@ const LINK_TYPE_COLORS = {
 const getLinkSourceId = (l) => typeof l.source === 'object' ? l.source?.id : l.source
 const getLinkTargetId = (l) => typeof l.target === 'object' ? l.target?.id : l.target
 
+// 노드가 선택된 교과에 속하는지 (subject_group 또는 subject 이름으로 매칭)
+const isNodeInSubjects = (n, subjects) => subjects.has(n.subject_group || n.subject) || subjects.has(n.subject)
+
 export default function Graph3D({ embedded = false, initialSubjects = null }) {
   const navigate = !embedded ? useNavigate() : null
   const [graphData, setGraphData] = useState(null)
@@ -193,7 +196,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null }) {
 
     // 멀티 과목 필터
     if (selectedSubjects.size > 0) {
-      const selNodeIds = new Set(nodes.filter(n => selectedSubjects.has(n.subject_group || n.subject)).map(n => n.id))
+      const selNodeIds = new Set(nodes.filter(n => isNodeInSubjects(n, selectedSubjects)).map(n => n.id))
 
       let coreLinks, coreNodeIds
 
@@ -240,7 +243,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null }) {
       nodes = nodes.filter(n => connectedIds.has(n.id))
 
       // 이웃 노드 = 선택 과목에 속하지 않는 노드
-      nodes.forEach(n => { if (!selectedSubjects.has(n.subject_group || n.subject)) neighborNodeIds.add(n.id) })
+      nodes.forEach(n => { if (!isNodeInSubjects(n, selectedSubjects)) neighborNodeIds.add(n.id) })
     }
 
     if (filterLinkType) {
@@ -425,7 +428,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null }) {
       if (semanticResults.length === 0) return [] // 결과 없으면 빈 목록
       let items = semanticResults
       // 교과 필터 적용
-      if (selectedSubjects.size > 0) items = items.filter(n => selectedSubjects.has(n.subject_group || n.subject))
+      if (selectedSubjects.size > 0) items = items.filter(n => isNodeInSubjects(n, selectedSubjects))
       if (selectedSchoolLevels.size > 0) items = items.filter(n => selectedSchoolLevels.has(n.school_level))
       if (selectedGradeGroups.size > 0) items = items.filter(n => selectedGradeGroups.has(n.grade_group))
       return items
