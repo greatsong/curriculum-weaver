@@ -155,10 +155,10 @@ export default function InlineGraph2D({ subjects = [] }) {
     }).filter(p => p.src && p.tgt)
   }, [filteredData])
 
-  // 사이드바 — 노드 수가 적을수록 패널을 넓게 (정보 중심)
+  // 패널 비율 — 전체 너비의 절반까지 사용, 노드 적을수록 넓게
   const nodeCount = filteredData?.nodes.length || 0
-  const panelRatio = nodeCount <= 10 ? 0.45 : nodeCount <= 30 ? 0.38 : 0.33
-  const sidebarWidth = Math.min(420, Math.max(280, dims.width * panelRatio))
+  const panelRatio = nodeCount <= 10 ? 0.50 : nodeCount <= 30 ? 0.45 : 0.38
+  const sidebarWidth = Math.max(280, Math.round(dims.width * panelRatio))
   const graphWidth = dims.width - sidebarWidth
 
   if (loading) {
