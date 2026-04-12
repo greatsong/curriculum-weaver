@@ -11,6 +11,12 @@ const Graph3D = lazy(() =>
   })
 )
 
+const InlineGraph2D = lazy(() =>
+  import('../components/InlineGraph2D').catch(() => {
+    return { default: () => null }
+  })
+)
+
 const SAMPLE_JSON = `{
   "standards": [
     {
@@ -265,7 +271,7 @@ export default function DataManage() {
               </p>
             )}
 
-            {/* 인라인 미니 그래프: 2개 이상 교과 선택 시 표시 */}
+            {/* 인라인 2D 그래프: 2개 이상 교과 선택 시 표시 */}
             {pickedSubjects.size >= 2 && (
               <div className="mt-4 border-t border-gray-100 pt-4">
                 <div className="flex items-center gap-2 mb-2">
@@ -276,18 +282,17 @@ export default function DataManage() {
                   <span className="text-xs text-gray-400">
                     {[...pickedSubjects].join(' · ')}
                   </span>
-                  <span className="text-xs text-gray-400 ml-auto">노드를 클릭하면 오른쪽에 연결 목록이 표시됩니다</span>
                 </div>
-                <div className="rounded-lg border border-gray-200 overflow-hidden" style={{ height: '60vh' }}>
+                <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm" style={{ height: '55vh' }}>
                   <Suspense fallback={
-                    <div className="flex items-center justify-center h-full text-gray-400">
+                    <div className="flex items-center justify-center h-full bg-white text-gray-400">
                       <div className="text-center">
                         <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
                         <p className="text-xs">그래프 로딩 중...</p>
                       </div>
                     </div>
                   }>
-                    <Graph3D embedded showSidebar initialSubjects={[...pickedSubjects]} />
+                    <InlineGraph2D subjects={[...pickedSubjects]} />
                   </Suspense>
                 </div>
               </div>
