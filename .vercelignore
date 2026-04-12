@@ -1,0 +1,6 @@
+server/
+scripts/
+supabase/
+node_modules/
+*.md
+.claude/
