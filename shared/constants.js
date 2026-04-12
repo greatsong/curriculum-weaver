@@ -483,6 +483,20 @@ export const LINK_TYPES = {
   application: '적용/활용',
 }
 
+/** 링크 상태 (3계층 그래프) */
+export const LINK_STATUSES = {
+  CANDIDATE: 'candidate',   // AI 제안 후보
+  REVIEWED: 'reviewed',     // 검토 완료
+  PUBLISHED: 'published',   // 게시 (사용자 노출)
+}
+
+/** 링크 생성 방법 */
+export const LINK_GENERATION_METHODS = {
+  TFIDF: 'tfidf',
+  AI: 'ai',
+  MANUAL: 'manual',
+}
+
 /** 허용 파일 타입 */
 export const ACCEPTED_FILE_TYPES = {
   pdf: '.pdf',

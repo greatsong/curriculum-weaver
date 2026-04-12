@@ -97,6 +97,13 @@ export function initStore() {
         link_type: lt,
         rationale: rationale || '',
         similarity: lt === 'same_concept' ? 0.9 : lt === 'prerequisite' ? 0.85 : lt === 'cross_subject' ? 0.7 : 0.6,
+        // 3계층 링크 품질 시스템 필드
+        status: 'published',           // 기존 AI 생성 링크는 게시 상태
+        quality_score: null,
+        semantic_score: null,
+        integration_theme: null,
+        lesson_hook: null,
+        generation_method: 'ai',
         created_at: now,
       })
     }
@@ -545,6 +552,12 @@ export const StandardLinks = {
       target: l.target_id,
       link_type: l.link_type,
       rationale: l.rationale,
+      status: l.status || 'published',
+      quality_score: l.quality_score,
+      semantic_score: l.semantic_score,
+      integration_theme: l.integration_theme,
+      lesson_hook: l.lesson_hook,
+      generation_method: l.generation_method,
     }))
     return { nodes, links }
   },
@@ -584,6 +597,12 @@ export const StandardLinks = {
         link_type: item.link_type,
         rationale: item.rationale || '',
         similarity: item.similarity || 0.7,
+        status: item.status || 'candidate',
+        quality_score: item.quality_score || null,
+        semantic_score: item.semantic_score || null,
+        integration_theme: item.integration_theme || null,
+        lesson_hook: item.lesson_hook || null,
+        generation_method: item.generation_method || 'ai',
         created_at: new Date().toISOString(),
       }
       standardLinks.set(id, link)

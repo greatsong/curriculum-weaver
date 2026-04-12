@@ -26,10 +26,14 @@ const LINK_TYPE_COLORS = {
   application: '#22c55e', extension: '#a855f7',
 }
 
+const LINK_STATUS_LABELS = {
+  published: '추천', candidate: '탐색용', reviewed: '검토됨',
+}
+
 const getColor = (node) => SUBJECT_COLORS[node.subject_group] || SUBJECT_COLORS[node.subject] || '#6b7280'
 const getLinkId = (l, field) => typeof l[field] === 'object' ? l[field]?.id : l[field]
 
-export default function InlineGraph2D({ subjects = [] }) {
+export default function InlineGraph2D({ subjects = [], showAllLinks = false }) {
   const [graphData, setGraphData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selectedNode, setSelectedNode] = useState(null)
@@ -49,14 +53,15 @@ export default function InlineGraph2D({ subjects = [] }) {
     return () => obs.disconnect()
   }, [])
 
-  // 데이터 로드
+  // 데이터 로드 (showAllLinks 변경 시 재로드)
   useEffect(() => {
     let cancelled = false
-    apiGet('/api/standards/graph').then(data => {
+    const statusParam = showAllLinks ? 'all' : 'published'
+    apiGet(`/api/standards/graph?status=${statusParam}`).then(data => {
       if (!cancelled) { setGraphData(data); setLoading(false) }
     }).catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [])
+  }, [showAllLinks])
 
   // 교과 필터링
   const subjectsSet = useMemo(() => new Set(subjects), [subjects.join(',')])
@@ -251,16 +256,19 @@ export default function InlineGraph2D({ subjects = [] }) {
             const isHighlighted = highlightIds.size > 0 && highlightIds.has(srcId) && highlightIds.has(tgtId)
             const isDimmed = highlightIds.size > 0 && !isHighlighted
             const color = LINK_TYPE_COLORS[link.link_type] || '#9ca3af'
+            const isPublished = !link.status || link.status === 'published'
 
             ctx.beginPath()
             ctx.moveTo(src.x, src.y)
             ctx.lineTo(tgt.x, tgt.y)
-            ctx.strokeStyle = isDimmed ? '#e5e7eb' : color
-            ctx.lineWidth = (isHighlighted ? 3 : 1.5) / Math.max(globalScale * 0.7, 0.5)
-            if (link.link_type === 'prerequisite') ctx.setLineDash([4 / globalScale, 4 / globalScale])
+            ctx.globalAlpha = isPublished ? 1 : 0.4
+            ctx.strokeStyle = isDimmed ? '#e5e7eb' : (isPublished ? color : '#94a3b8')
+            ctx.lineWidth = (isHighlighted ? 3 : (isPublished ? 1.5 : 1)) / Math.max(globalScale * 0.7, 0.5)
+            if (!isPublished || link.link_type === 'prerequisite') ctx.setLineDash([4 / globalScale, 4 / globalScale])
             else ctx.setLineDash([])
             ctx.stroke()
             ctx.setLineDash([])
+            ctx.globalAlpha = 1
 
             // 연결 유형 라벨 (하이라이트 시 + 줌 충분할 때)
             if (isHighlighted && globalScale > 1) {
@@ -371,6 +379,13 @@ export default function InlineGraph2D({ subjects = [] }) {
                           style={{ backgroundColor: LINK_TYPE_COLORS[link.link_type] || '#6b7280' }}>
                           {LINK_TYPE_LABELS[link.link_type] || link.link_type}
                         </span>
+                        {link.status && link.status !== 'published' && (
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                            link.status === 'reviewed' ? 'bg-gray-100 text-gray-600' : 'bg-slate-100 text-slate-500'
+                          }`}>
+                            {LINK_STATUS_LABELS[link.status] || link.status}
+                          </span>
+                        )}
                         <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: getColor(other) }} />
                         <span className="font-mono text-[11px] font-bold text-blue-600">{other.code}</span>
                         <span className="text-[10px] text-gray-500">{other.subject}</span>
@@ -381,6 +396,16 @@ export default function InlineGraph2D({ subjects = [] }) {
                       {link.rationale && (
                         <p className="text-[10px] text-amber-700 mt-1.5 bg-amber-50 rounded px-2 py-1 leading-relaxed">
                           💡 {link.rationale}
+                        </p>
+                      )}
+                      {link.integration_theme && (
+                        <p className="text-[10px] text-blue-700 mt-1 bg-blue-50 rounded px-2 py-1">
+                          🔗 융합 주제: {link.integration_theme}
+                        </p>
+                      )}
+                      {link.lesson_hook && (
+                        <p className="text-[10px] text-green-700 mt-1 bg-green-50 rounded px-2 py-1">
+                          📝 수업 아이디어: {link.lesson_hook}
                         </p>
                       )}
                     </button>
