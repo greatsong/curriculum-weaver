@@ -182,8 +182,8 @@ standardsRouter.get('/graph', async (req, res) => {
   res.json(graph)
 })
 
-// 링크 상태 변경 (관리자용)
-standardsRouter.patch('/links/:linkId/status', async (req, res) => {
+// 링크 상태 변경 (관리자 전용 — 인증+권한 필수)
+standardsRouter.patch('/links/:linkId/status', requireAuth, requireAdmin, async (req, res) => {
   const { linkId } = req.params
   const { status } = req.body
   const validStatuses = ['candidate', 'reviewed', 'published']
@@ -614,7 +614,7 @@ ${candidateText}
  *
  * AI가 전체 성취기준과 연결 데이터를 읽고, 새로운 교과 간 연결을 추천.
  */
-standardsRouter.post('/graph/chat', async (req, res) => {
+standardsRouter.post('/graph/chat', requireAuth, async (req, res) => {
   const { message, history = [], context = {} } = req.body
   if (!message?.trim()) {
     return res.status(400).json({ error: '메시지가 필요합니다.' })
@@ -630,6 +630,12 @@ standardsRouter.post('/graph/chat', async (req, res) => {
   res.setHeader('Connection', 'keep-alive')
   res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders()
+
+  // 클라이언트 disconnect 감지 — AI 토큰 낭비 방지
+  let clientDisconnected = false
+  req.on('close', () => {
+    clientDisconnected = true
+  })
 
   try {
     const allStandards = Standards.list()
@@ -757,6 +763,10 @@ ${overviewSection}`
     })
 
     for await (const event of stream) {
+      if (clientDisconnected) {
+        stream.controller?.abort()
+        break
+      }
       if (event.type === 'content_block_delta' && event.delta?.text) {
         fullResponse += event.delta.text
         res.write(`data: ${JSON.stringify({ type: 'text', content: event.delta.text })}\n\n`)

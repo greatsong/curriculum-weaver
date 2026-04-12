@@ -19,10 +19,21 @@ import { getMemberRole } from '../lib/supabaseService.js'
  */
 export async function requireAuth(req, res, next) {
   // 개발 모드: Supabase 미설정 시 더미 사용자로 바이패스
-  // 프로덕션에서는 반드시 환경변수가 설정되어야 함
+  // 프로덕션/스테이징에서는 반드시 환경변수가 설정되어야 함
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT) {
-      console.error('[auth] CRITICAL: Supabase 환경변수 미설정 (프로덕션)')
+    const isDeployment = process.env.NODE_ENV === 'production'
+      || process.env.RAILWAY_ENVIRONMENT
+      || process.env.VERCEL
+      || process.env.RENDER
+      || process.env.FLY_APP_NAME
+      || process.env.HEROKU_APP_NAME
+    if (isDeployment) {
+      console.error('[auth] CRITICAL: Supabase 환경변수 미설정 (배포 환경)')
+      return res.status(500).json({ error: '서버 인증 설정 오류. 관리자에게 문의하세요.' })
+    }
+    // NODE_ENV가 명시적으로 development이거나 미설정인 로컬에서만 바이패스
+    if (process.env.NODE_ENV && process.env.NODE_ENV !== 'development') {
+      console.error('[auth] CRITICAL: Supabase 미설정 + NODE_ENV가 development가 아님')
       return res.status(500).json({ error: '서버 인증 설정 오류. 관리자에게 문의하세요.' })
     }
     req.user = {

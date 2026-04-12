@@ -375,6 +375,20 @@ server.listen(PORT, () => {
   console.log(`  라우트: auth, workspaces, invites, projects, designs, versions, logs, chat, standards, materials, principles, report, comments`)
 })
 
+// ── 미처리 예외/거부 핸들러 ──
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] uncaughtException:', err)
+  // 프로세스를 안전하게 종료 — uncaughtException 이후 상태가 불확정적
+  io.close()
+  server.close(() => process.exit(1))
+  setTimeout(() => process.exit(1), 5000)
+})
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[ERROR] unhandledRejection:', reason)
+  // unhandledRejection은 로그만 남기고 계속 실행 (Node 기본 동작 유지)
+})
+
 // ── Graceful Shutdown ──
 process.on('SIGTERM', () => {
   console.log('SIGTERM received. Graceful shutdown...')

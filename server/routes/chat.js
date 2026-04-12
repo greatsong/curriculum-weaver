@@ -479,6 +479,12 @@ chatRouter.post('/message', async (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders()
 
+  // 클라이언트 disconnect 감지 — AI 토큰 낭비 방지
+  let clientDisconnected = false
+  req.on('close', () => {
+    clientDisconnected = true
+  })
+
   try {
     // 컨텍스트 로드 (Supabase 영속 저장소)
     const designs = await getDesignsByProject(session_id).catch(() => [])
@@ -528,10 +534,12 @@ chatRouter.post('/message', async (req, res) => {
     let fullResponse = ''
     await buildAIResponse(context, {
       onText: (text) => {
+        if (clientDisconnected) return // 클라이언트 끊김 시 쓰기 중단
         fullResponse += text
         res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: text })}\n\n`)
       },
       onError: (error) => {
+        if (clientDisconnected) return
         res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.ERROR, message: error })}\n\n`)
       },
     })

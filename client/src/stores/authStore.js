@@ -16,8 +16,9 @@ export const useAuthStore = create((set, get) => ({
   initialize: async () => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 
-    // 개발 모드: Supabase 미설정 시 더미 사용자로 바이패스
-    if (!supabaseUrl || supabaseUrl === 'https://placeholder.supabase.co') {
+    // 개발 모드: Supabase 미설정 + Vite 개발 서버에서만 더미 사용자로 바이패스
+    // 프로덕션 빌드(import.meta.env.DEV === false)에서는 절대 바이패스하지 않음
+    if (import.meta.env.DEV && (!supabaseUrl || supabaseUrl === 'https://placeholder.supabase.co')) {
       console.info('[Auth] 개발 모드: Supabase 미설정 → 더미 사용자로 진입')
       const devUser = {
         id: 'dev-user-001',

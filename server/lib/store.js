@@ -37,6 +37,44 @@ const standards = new Map()         // standardId -> standard
 const standardLinks = new Map()     // linkId -> link
 const sessionStandards = new Map()  // sessionId -> [{ standard_id, is_primary }]
 
+// ─── 세션 리소스 제한 ───
+const MAX_USER_SESSIONS = 200      // 사용자 생성 세션 최대 수
+const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000  // 90일 TTL
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000       // 1시간마다 정리
+
+// 세션 마지막 접근 시간 추적
+const sessionLastAccess = new Map() // sessionId -> timestamp
+
+/** 만료된 세션 정리 (시드 세션 제외) */
+function cleanupExpiredSessions() {
+  const now = Date.now()
+  const seedIds = new Set() // initStore에서 생성된 세션은 보존
+  let cleaned = 0
+  for (const [id, session] of sessions) {
+    // 시드 세션은 건드리지 않음 (status가 active이고 생성 시점이 initStore와 동일)
+    if (session._isSeed) continue
+    const lastAccess = sessionLastAccess.get(id) || new Date(session.created_at).getTime()
+    if (now - lastAccess > SESSION_TTL_MS) {
+      sessions.delete(id)
+      messages.delete(id)
+      materials.delete(id)
+      sessionStandards.delete(id)
+      sessionLastAccess.delete(id)
+      for (const key of [...boards.keys()]) {
+        if (key.startsWith(`${id}:`)) boards.delete(key)
+      }
+      cleaned++
+    }
+  }
+  if (cleaned > 0) {
+    console.log(`[store] 만료 세션 ${cleaned}개 정리 (TTL: 90일)`)
+  }
+}
+
+// 주기적 정리 타이머 (서버 종료 시 자동 해제됨 — unref)
+const cleanupTimer = setInterval(cleanupExpiredSessions, CLEANUP_INTERVAL_MS)
+cleanupTimer.unref()
+
 // ─── 초기 데이터 로드 ───
 export function initStore() {
   // 총괄 원리 로드
@@ -119,6 +157,7 @@ export function initStore() {
       status: 'active',
       invite_code: inviteCode(),
       created_at: new Date().toISOString(),
+      _isSeed: true, // TTL 정리에서 보존
     }
     sessions.set(session.id, session)
     messages.set(session.id, [])
@@ -170,9 +209,18 @@ export function initStore() {
 export const Sessions = {
   list: () => [...sessions.values()].sort((a, b) => b.created_at.localeCompare(a.created_at)),
 
-  get: (id) => sessions.get(id) || null,
+  get: (id) => {
+    const session = sessions.get(id)
+    if (session) sessionLastAccess.set(id, Date.now())
+    return session || null
+  },
 
   create: ({ title, description }) => {
+    // 사용자 생성 세션 수 제한
+    const userSessionCount = [...sessions.values()].filter(s => !s._isSeed).length
+    if (userSessionCount >= MAX_USER_SESSIONS) {
+      throw new Error(`세션 최대 수(${MAX_USER_SESSIONS}개)를 초과했습니다. 기존 세션을 삭제해주세요.`)
+    }
     const session = {
       id: uuid(),
       title,
@@ -183,6 +231,7 @@ export const Sessions = {
       created_at: new Date().toISOString(),
     }
     sessions.set(session.id, session)
+    sessionLastAccess.set(session.id, Date.now())
     messages.set(session.id, [])
     materials.set(session.id, [])
     sessionStandards.set(session.id, [])
@@ -204,8 +253,9 @@ export const Sessions = {
     messages.delete(id)
     materials.delete(id)
     sessionStandards.delete(id)
+    sessionLastAccess.delete(id)
     // 보드 삭제
-    for (const key of boards.keys()) {
+    for (const key of [...boards.keys()]) {
       if (key.startsWith(`${id}:`)) boards.delete(key)
     }
     return true
