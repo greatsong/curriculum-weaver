@@ -155,10 +155,14 @@ export default function InlineGraph2D({ subjects = [] }) {
     }).filter(p => p.src && p.tgt)
   }, [filteredData])
 
-  // 패널/그래프 비율 — flex로 채우되, 비율만 계산
+  // 모바일 판정 (640px 미만)
+  const isMobile = dims.width < 640
+
+  // 패널/그래프 비율 — 모바일은 세로 배치
   const nodeCount = filteredData?.nodes.length || 0
-  const panelPercent = nodeCount <= 10 ? 50 : nodeCount <= 30 ? 45 : 38
-  const graphPercent = 100 - panelPercent
+  const panelPercent = isMobile ? 0 : (nodeCount <= 10 ? 50 : nodeCount <= 30 ? 45 : 38)
+  const graphPercent = isMobile ? 100 : (100 - panelPercent)
+  const graphHeight = isMobile ? Math.round(dims.height * 0.5) : dims.height
 
   if (loading) {
     return (
@@ -183,14 +187,14 @@ export default function InlineGraph2D({ subjects = [] }) {
   }
 
   return (
-    <div ref={containerRef} className="flex h-full w-full bg-white">
+    <div ref={containerRef} className={`${isMobile ? 'flex flex-col' : 'flex'} h-full w-full bg-white overflow-hidden`}>
       {/* 그래프 영역 */}
-      <div style={{ width: `${graphPercent}%`, height: dims.height }} className="relative shrink-0">
+      <div style={{ width: isMobile ? '100%' : `${graphPercent}%`, height: graphHeight }} className="relative shrink-0">
         <ForceGraph2D
           ref={fgRef}
           graphData={filteredData}
-          width={Math.round(dims.width * graphPercent / 100)}
-          height={dims.height}
+          width={isMobile ? dims.width : Math.round(dims.width * graphPercent / 100)}
+          height={graphHeight}
           backgroundColor="#fafbfc"
           nodeCanvasObject={(node, ctx, globalScale) => {
             const isActive = highlightIds.size === 0 || highlightIds.has(node.id)
@@ -302,15 +306,15 @@ export default function InlineGraph2D({ subjects = [] }) {
           maxZoom={8}
         />
 
-        {/* 범례 + 통계 */}
-        <div className="absolute top-2 left-2 flex flex-wrap items-center gap-x-3 gap-y-1 bg-white/95 backdrop-blur-sm rounded-lg px-3 py-2 shadow-sm border border-gray-200 text-[11px]">
-          {[...new Set(filteredData.nodes.map(n => n.subject))].sort().map(subj => (
+        {/* 범례 + 통계 — 모바일에서는 통계만 */}
+        <div className="absolute top-2 left-2 flex flex-wrap items-center gap-x-3 gap-y-1 bg-white/95 backdrop-blur-sm rounded-lg px-3 py-1.5 shadow-sm border border-gray-200 text-[11px] max-w-[calc(100%-50px)]">
+          {!isMobile && [...new Set(filteredData.nodes.map(n => n.subject))].sort().map(subj => (
             <span key={subj} className="flex items-center gap-1">
               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: SUBJECT_COLORS[subj] || SUBJECT_COLORS[graphData?.nodes.find(n => n.subject === subj)?.subject_group] || '#6b7280' }} />
               <span className="text-gray-700 font-medium">{subj}</span>
             </span>
           ))}
-          <span className="text-gray-400 border-l border-gray-200 pl-3 ml-1">
+          <span className={`text-gray-400 ${!isMobile ? 'border-l border-gray-200 pl-3 ml-1' : ''}`}>
             {filteredData.nodes.length}개 노드 · {filteredData.links.length}개 연결
           </span>
         </div>
@@ -323,8 +327,8 @@ export default function InlineGraph2D({ subjects = [] }) {
         </button>
       </div>
 
-      {/* 오른쪽 연결 정보 패널 — 항상 표시, 나머지 공간 전부 사용 */}
-      <div className="border-l border-gray-200 bg-gray-50 overflow-hidden flex-1 min-w-0">
+      {/* 연결 정보 패널 — 데스크톱: 오른쪽, 모바일: 아래 */}
+      <div className={`${isMobile ? 'border-t' : 'border-l'} border-gray-200 bg-gray-50 overflow-hidden flex-1 min-w-0`}>
         <div className="h-full flex flex-col overflow-hidden">
           {selectedNode ? (
             <>
