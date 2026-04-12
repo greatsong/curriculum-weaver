@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, FileUp, Eye, Save, X, Edit3, GitBranch } from 'lucide-react'
-import { apiGet, apiPost, apiDelete, apiUploadFile } from '../lib/api'
+import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, X, GitBranch } from 'lucide-react'
+import { apiGet, apiPost, apiDelete } from '../lib/api'
 import Logo from '../components/Logo'
 
 const Graph3D = lazy(() =>
@@ -44,7 +44,7 @@ export default function DataManage() {
   const [jsonInput, setJsonInput] = useState('')
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState(null)
-  const [tab, setTab] = useState('upload') // 'upload' | 'browse' | 'graph' | 'extract'
+  const [tab, setTab] = useState('browse') // 'browse' | 'graph' | 'upload'
   const [allStandards, setAllStandards] = useState([])
 
   // 교과 선택 상태 (인라인 그래프 탐색용)
@@ -57,15 +57,6 @@ export default function DataManage() {
       return next
     })
   }, [])
-
-  // AI 추출 상태
-  const [extractFile, setExtractFile] = useState(null)
-  const [extracting, setExtracting] = useState(false)
-  const [extractResult, setExtractResult] = useState(null)
-  const [extractError, setExtractError] = useState(null)
-  const [editingIdx, setEditingIdx] = useState(null)
-  const [editForm, setEditForm] = useState({})
-  const [confirming, setConfirming] = useState(false)
 
   useEffect(() => {
     loadStats()
@@ -124,64 +115,6 @@ export default function DataManage() {
     await apiDelete('/api/standards/all')
     setResult({ success: true, message: '모든 데이터가 초기화되었습니다.' })
     loadStats()
-  }
-
-  // ─── AI 추출 핸들러 ───
-  const handleExtractFile = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    e.target.value = ''
-    setExtractFile(file)
-    setExtracting(true)
-    setExtractResult(null)
-    setExtractError(null)
-    setEditingIdx(null)
-    try {
-      const data = await apiUploadFile('/api/standards/extract', file)
-      setExtractResult(data)
-    } catch (err) {
-      setExtractError(err.message)
-    }
-    setExtracting(false)
-  }
-
-  const handleRemoveExtracted = (idx) => {
-    if (!extractResult) return
-    const updated = [...extractResult.standards]
-    updated.splice(idx, 1)
-    setExtractResult({ ...extractResult, standards: updated, meta: { ...extractResult.meta, total_standards: updated.length } })
-  }
-
-  const handleStartEdit = (idx) => {
-    setEditingIdx(idx)
-    setEditForm({ ...extractResult.standards[idx] })
-  }
-
-  const handleSaveEdit = () => {
-    if (editingIdx === null || !extractResult) return
-    const updated = [...extractResult.standards]
-    updated[editingIdx] = { ...editForm }
-    setExtractResult({ ...extractResult, standards: updated })
-    setEditingIdx(null)
-  }
-
-  const handleConfirmExtract = async () => {
-    if (!extractResult?.standards?.length) return
-    setConfirming(true)
-    try {
-      const data = await apiPost('/api/standards/extract/confirm', {
-        standards: extractResult.standards,
-        links: extractResult.links || [],
-      })
-      setResult({ success: true, message: data.message })
-      setExtractResult(null)
-      setExtractFile(null)
-      loadStats()
-      setTab('browse')
-    } catch (err) {
-      setResult({ success: false, message: err.message })
-    }
-    setConfirming(false)
   }
 
   const handleExport = () => {
@@ -303,10 +236,9 @@ export default function DataManage() {
         {/* 탭 */}
         <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-full sm:w-fit overflow-x-auto">
           {[
-            { id: 'upload', label: '데이터 업로드' },
-            { id: 'extract', label: 'AI 추출 (준비 중)' },
             { id: 'browse', label: '성취기준 보기' },
             { id: 'graph', label: '연결 그래프' },
+            { id: 'upload', label: '데이터 업로드' },
           ].map((t) => (
             <button
               key={t.id}
@@ -413,166 +345,6 @@ export default function DataManage() {
                 </ul>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* AI 추출 탭 (서버 API 미구현 — 준비 중) */}
-        {tab === 'extract' && (
-          <div className="space-y-4">
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h3 className="font-semibold text-gray-800 mb-2">PDF/DOCX에서 성취기준 자동 추출</h3>
-              <div className="mb-4 p-3 bg-amber-50 text-amber-700 rounded-lg text-sm flex items-center gap-2">
-                <AlertCircle size={16} />
-                이 기능은 현재 준비 중입니다. 향후 업데이트에서 제공됩니다.
-              </div>
-              <p className="text-sm text-gray-500 mb-4">
-                교육과정 문서(PDF, DOCX)를 업로드하면 AI가 성취기준을 자동으로 인식하고 구조화합니다.
-                추출 결과를 검토·수정한 뒤 확정하세요.
-              </p>
-
-              <label className={`flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed rounded-xl cursor-pointer transition w-full min-h-[44px] ${
-                extracting ? 'border-blue-300 bg-blue-50 text-blue-600' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50 text-gray-500 hover:text-blue-600'
-              }`}>
-                {extracting ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                    <span className="text-sm font-medium">AI가 분석 중입니다... ({extractFile?.name})</span>
-                  </>
-                ) : (
-                  <>
-                    <FileUp size={20} />
-                    <span className="text-sm font-medium">PDF 또는 DOCX 파일 선택</span>
-                  </>
-                )}
-                <input type="file" accept=".pdf,.docx,.doc" onChange={handleExtractFile} disabled={extracting} className="hidden" />
-              </label>
-
-              {extractError && (
-                <div className="mt-3 p-3 rounded-lg flex items-center gap-2 text-sm bg-red-50 text-red-700">
-                  <AlertCircle size={16} />
-                  {extractError}
-                </div>
-              )}
-            </div>
-
-            {/* 추출 결과 미리보기 */}
-            {extractResult && extractResult.standards.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                    <Eye size={18} className="text-blue-600" />
-                    추출 결과 미리보기
-                    <span className="text-sm font-normal text-gray-500">
-                      ({extractResult.standards.length}개 성취기준, {extractResult.links?.length || 0}개 연결)
-                    </span>
-                  </h3>
-                  <div className="flex gap-2">
-                    <button onClick={() => { setExtractResult(null); setExtractFile(null) }}
-                      className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg transition min-h-[44px]">
-                      <X size={14} /> 취소
-                    </button>
-                    <button onClick={handleConfirmExtract} disabled={confirming}
-                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-sm disabled:opacity-50 min-h-[44px]">
-                      <Save size={16} /> {confirming ? '저장 중...' : '확정 저장'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-3 mb-4 text-xs text-gray-500">
-                  <span>원본: {extractFile?.name}</span>
-                  <span>텍스트: {extractResult.meta?.extracted_chars?.toLocaleString()}자</span>
-                  <span>청크: {extractResult.meta?.chunks_processed}개</span>
-                </div>
-
-                <div className="space-y-2 max-h-[50vh] overflow-auto">
-                  {extractResult.standards.map((std, idx) => (
-                    <div key={idx} className="border border-gray-200 rounded-lg p-3">
-                      {editingIdx === idx ? (
-                        <div className="space-y-2">
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            <input value={editForm.code || ''} onChange={(e) => setEditForm({ ...editForm, code: e.target.value })}
-                              placeholder="코드" className="px-2 py-1.5 border border-gray-300 rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                            <input value={editForm.subject || ''} onChange={(e) => setEditForm({ ...editForm, subject: e.target.value })}
-                              placeholder="교과" className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                            <input value={editForm.grade_group || ''} onChange={(e) => setEditForm({ ...editForm, grade_group: e.target.value })}
-                              placeholder="학년군" className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                            <input value={editForm.area || ''} onChange={(e) => setEditForm({ ...editForm, area: e.target.value })}
-                              placeholder="영역" className="px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                          </div>
-                          <textarea value={editForm.content || ''} onChange={(e) => setEditForm({ ...editForm, content: e.target.value })}
-                            placeholder="성취기준 내용" rows={2}
-                            className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y" />
-                          <div className="flex gap-2">
-                            <button onClick={handleSaveEdit}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition min-h-[44px]">
-                              <CheckCircle size={14} /> 저장
-                            </button>
-                            <button onClick={() => setEditingIdx(null)}
-                              className="px-3 py-1.5 text-gray-500 hover:bg-gray-100 rounded text-sm transition min-h-[44px]">
-                              취소
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-start gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap items-center gap-2 mb-1">
-                              <span className="font-mono text-xs text-blue-600 font-bold">{std.code}</span>
-                              <span className="px-2 py-0.5 bg-gray-100 rounded text-xs font-medium">{std.subject}</span>
-                              <span className="text-xs text-gray-400">{std.grade_group}</span>
-                              <span className="text-xs text-gray-400">{std.area}</span>
-                            </div>
-                            <p className="text-sm text-gray-700">{std.content}</p>
-                            {std.keywords?.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {std.keywords.map((kw, ki) => (
-                                  <span key={ki} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-xs">{kw}</span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex gap-1 shrink-0">
-                            <button onClick={() => handleStartEdit(idx)} title="수정"
-                              className="p-1.5 text-gray-400 hover:text-blue-600 rounded transition min-w-[44px] min-h-[44px] flex items-center justify-center">
-                              <Edit3 size={14} />
-                            </button>
-                            <button onClick={() => handleRemoveExtracted(idx)} title="제거"
-                              className="p-1.5 text-gray-400 hover:text-red-600 rounded transition min-w-[44px] min-h-[44px] flex items-center justify-center">
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {extractResult.links?.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">추출된 교과 간 연결 ({extractResult.links.length}개)</h4>
-                    <div className="space-y-1">
-                      {extractResult.links.map((link, li) => (
-                        <div key={li} className="flex items-center gap-2 text-xs text-gray-500">
-                          <span className="font-mono text-blue-600">{link.source}</span>
-                          <span>↔</span>
-                          <span className="font-mono text-blue-600">{link.target}</span>
-                          <span className="px-1.5 py-0.5 bg-gray-100 rounded">{link.link_type}</span>
-                          <span className="text-gray-400">{link.rationale}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {extractResult && extractResult.standards.length === 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 p-5 text-center text-gray-400">
-                <AlertCircle size={32} className="mx-auto mb-2 opacity-50" />
-                <p>문서에서 성취기준을 찾지 못했습니다.</p>
-                <p className="text-sm mt-1">교육과정 성취기준이 포함된 문서인지 확인해주세요.</p>
-              </div>
-            )}
           </div>
         )}
 

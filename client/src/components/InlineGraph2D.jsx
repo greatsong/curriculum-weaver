@@ -145,8 +145,18 @@ export default function InlineGraph2D({ subjects = [] }) {
     return ids
   }, [selectedNode, hoverNode, filteredData])
 
-  // 사이드바 폭
-  const sidebarWidth = selectedNode ? Math.min(300, dims.width * 0.33) : 0
+  // 전체 연결 쌍 목록 (노드 미선택 시 표시)
+  const allLinkPairs = useMemo(() => {
+    if (!filteredData) return []
+    return filteredData.links.map(link => {
+      const src = typeof link.source === 'object' ? link.source : filteredData.nodes.find(n => n.id === link.source)
+      const tgt = typeof link.target === 'object' ? link.target : filteredData.nodes.find(n => n.id === link.target)
+      return { link, src, tgt }
+    }).filter(p => p.src && p.tgt)
+  }, [filteredData])
+
+  // 사이드바 항상 표시
+  const sidebarWidth = Math.min(320, dims.width * 0.35)
   const graphWidth = dims.width - sidebarWidth
 
   if (loading) {
@@ -312,63 +322,95 @@ export default function InlineGraph2D({ subjects = [] }) {
         </button>
       </div>
 
-      {/* 오른쪽 연결 목록 패널 */}
-      <div className={`border-l border-gray-200 bg-gray-50 overflow-hidden transition-all duration-200 ${selectedNode ? 'opacity-100' : 'w-0 opacity-0'}`}
-        style={{ width: selectedNode ? sidebarWidth : 0 }}>
-        {selectedNode && (
-          <div className="h-full flex flex-col overflow-hidden" style={{ width: sidebarWidth }}>
-            {/* 선택 노드 헤더 */}
-            <div className="p-3 border-b border-gray-200 bg-white shrink-0">
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: getColor(selectedNode) }} />
-                  <span className="font-mono text-xs font-bold text-blue-600 truncate">{selectedNode.code}</span>
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-medium text-white shrink-0"
-                    style={{ backgroundColor: getColor(selectedNode) }}>
-                    {selectedNode.subject}
-                  </span>
+      {/* 오른쪽 연결 목록 패널 — 항상 표시 */}
+      <div className="border-l border-gray-200 bg-gray-50 overflow-hidden shrink-0"
+        style={{ width: sidebarWidth }}>
+        <div className="h-full flex flex-col overflow-hidden" style={{ width: sidebarWidth }}>
+          {selectedNode ? (
+            <>
+              {/* 선택 노드 헤더 */}
+              <div className="p-3 border-b border-gray-200 bg-white shrink-0">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: getColor(selectedNode) }} />
+                    <span className="font-mono text-xs font-bold text-blue-600 truncate">{selectedNode.code}</span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium text-white shrink-0"
+                      style={{ backgroundColor: getColor(selectedNode) }}>
+                      {selectedNode.subject}
+                    </span>
+                  </div>
+                  <button onClick={() => setSelectedNode(null)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded min-w-[32px] min-h-[32px] flex items-center justify-center" title="전체 목록으로">
+                    <X size={14} />
+                  </button>
                 </div>
-                <button onClick={() => setSelectedNode(null)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded min-w-[32px] min-h-[32px] flex items-center justify-center" title="닫기">
-                  <X size={14} />
-                </button>
+                <p className="text-[10px] text-gray-500 mb-1">{selectedNode.grade_group} · {selectedNode.area}</p>
+                <p className="text-[11px] text-gray-700 leading-relaxed">{selectedNode.content}</p>
               </div>
-              <p className="text-[10px] text-gray-500 mb-1">{selectedNode.grade_group} · {selectedNode.area}</p>
-              <p className="text-[11px] text-gray-700 leading-relaxed">{selectedNode.content}</p>
-            </div>
-
-            {/* 연결 목록 */}
-            <div className="flex-1 overflow-auto p-2 space-y-1.5">
-              <p className="text-[10px] font-medium text-gray-500 px-1 mb-1">
-                연결된 성취기준 <span className="text-blue-600 font-bold">{selectedLinks.length}개</span>
-              </p>
-              {selectedLinks.map((link, i) => {
-                const src = typeof link.source === 'object' ? link.source : filteredData.nodes.find(n => n.id === link.source)
-                const tgt = typeof link.target === 'object' ? link.target : filteredData.nodes.find(n => n.id === link.target)
-                const other = (src?.id || link.source) === selectedNode.id ? tgt : src
-                if (!other) return null
-                return (
-                  <button key={i} onClick={() => navigateToNode(other)}
-                    className="w-full text-left bg-white hover:bg-blue-50 rounded-lg p-2.5 transition border border-gray-200 hover:border-blue-300 group">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="px-1.5 py-0.5 rounded text-white text-[9px] font-medium shrink-0"
+              {/* 선택 노드의 연결 목록 */}
+              <div className="flex-1 overflow-auto p-2 space-y-1.5">
+                <p className="text-[10px] font-medium text-gray-500 px-1 mb-1">
+                  연결된 성취기준 <span className="text-blue-600 font-bold">{selectedLinks.length}개</span>
+                </p>
+                {selectedLinks.map((link, i) => {
+                  const src = typeof link.source === 'object' ? link.source : filteredData.nodes.find(n => n.id === link.source)
+                  const tgt = typeof link.target === 'object' ? link.target : filteredData.nodes.find(n => n.id === link.target)
+                  const other = (src?.id || link.source) === selectedNode.id ? tgt : src
+                  if (!other) return null
+                  return (
+                    <button key={i} onClick={() => navigateToNode(other)}
+                      className="w-full text-left bg-white hover:bg-blue-50 rounded-lg p-2.5 transition border border-gray-200 hover:border-blue-300 group">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="px-1.5 py-0.5 rounded text-white text-[9px] font-medium shrink-0"
+                          style={{ backgroundColor: LINK_TYPE_COLORS[link.link_type] || '#6b7280' }}>
+                          {LINK_TYPE_LABELS[link.link_type] || link.link_type}
+                        </span>
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getColor(other) }} />
+                        <span className="font-mono text-[10px] font-bold text-blue-600">{other.code}</span>
+                        <span className="text-[9px] text-gray-400">{other.subject}</span>
+                        <ChevronRight size={10} className="ml-auto text-gray-300 group-hover:text-blue-400" />
+                      </div>
+                      <p className="text-[10px] text-gray-600 leading-relaxed line-clamp-2">{other.content}</p>
+                      {link.rationale && (
+                        <p className="text-[9px] text-amber-600 mt-0.5 line-clamp-1">근거: {link.rationale}</p>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          ) : (
+            <>
+              {/* 전체 연결 목록 (노드 미선택 시) */}
+              <div className="p-3 border-b border-gray-200 bg-white shrink-0">
+                <p className="text-xs font-semibold text-gray-700">교과 간 연결 목록</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">노드를 클릭하면 상세 연결을 볼 수 있습니다</p>
+              </div>
+              <div className="flex-1 overflow-auto p-2 space-y-1">
+                {allLinkPairs.map(({ link, src, tgt }, i) => (
+                  <button key={i} onClick={() => handleNodeClick(src)}
+                    className="w-full text-left bg-white hover:bg-blue-50 rounded-lg p-2 transition border border-gray-100 hover:border-blue-200 group">
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <span className="px-1.5 py-0.5 rounded text-white text-[8px] font-medium shrink-0"
                         style={{ backgroundColor: LINK_TYPE_COLORS[link.link_type] || '#6b7280' }}>
                         {LINK_TYPE_LABELS[link.link_type] || link.link_type}
                       </span>
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getColor(other) }} />
-                      <span className="font-mono text-[10px] font-bold text-blue-600">{other.code}</span>
-                      <span className="text-[9px] text-gray-400">{other.subject}</span>
-                      <ChevronRight size={10} className="ml-auto text-gray-300 group-hover:text-blue-400" />
                     </div>
-                    <p className="text-[10px] text-gray-600 leading-relaxed line-clamp-2">{other.content}</p>
+                    <div className="flex items-center gap-1 text-[10px]">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getColor(src) }} />
+                      <span className="font-mono font-bold text-gray-700">{src.code}</span>
+                      <span className="text-gray-300 mx-0.5">↔</span>
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getColor(tgt) }} />
+                      <span className="font-mono font-bold text-gray-700">{tgt.code}</span>
+                    </div>
                     {link.rationale && (
-                      <p className="text-[9px] text-amber-600 mt-0.5 line-clamp-1">근거: {link.rationale}</p>
+                      <p className="text-[9px] text-gray-500 mt-0.5 line-clamp-1">{link.rationale}</p>
                     )}
                   </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
