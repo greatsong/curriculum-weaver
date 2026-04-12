@@ -99,42 +99,36 @@ export default function InlineGraph2D({ subjects = [] }) {
     )
   }, [selectedNode, filteredData])
 
-  // 노드 클릭
+  // 노드 클릭 — 줌은 적당히, 전체 맥락 유지
   const handleNodeClick = useCallback((node) => {
     setSelectedNode(prev => prev?.id === node.id ? null : node)
-    if (fgRef.current) {
-      fgRef.current.centerAt(node.x, node.y, 500)
-      fgRef.current.zoom(3, 500)
-    }
   }, [])
 
   // 초기화
   const handleReset = useCallback(() => {
     setSelectedNode(null)
     setHoverNode(null)
-    if (fgRef.current) fgRef.current.zoomToFit(400, 40)
+    if (fgRef.current) fgRef.current.zoomToFit(300, 20)
   }, [])
 
   // 연결 목록에서 노드 이동
   const navigateToNode = useCallback((node) => {
     setSelectedNode(node)
-    if (fgRef.current) {
-      fgRef.current.centerAt(node.x, node.y, 500)
-      fgRef.current.zoom(3, 500)
-    }
   }, [])
 
-  // 포스 설정 + 초기 줌 맞춤
+  // 포스 설정 + 초기 줌 맞춤 — 노드 수에 따라 밀도 조절
   useEffect(() => {
     if (filteredData && fgRef.current) {
       const fg = fgRef.current
+      const n = filteredData.nodes.length
       try {
+        // 소수 노드일수록 약한 반발 → 밀집 레이아웃
         const charge = fg.d3Force('charge')
-        if (charge) charge.strength(-200)
+        if (charge) charge.strength(n < 20 ? -60 : n < 50 ? -100 : -150)
         const link = fg.d3Force('link')
-        if (link) link.distance(80)
+        if (link) link.distance(n < 20 ? 40 : 60)
       } catch (e) { /* ignore */ }
-      setTimeout(() => fg.zoomToFit?.(400, 40), 500)
+      setTimeout(() => fg.zoomToFit?.(300, 20), 500)
     }
   }, [filteredData])
 
@@ -151,8 +145,8 @@ export default function InlineGraph2D({ subjects = [] }) {
     return ids
   }, [selectedNode, hoverNode, filteredData])
 
-  // 사이드바 폭 계산
-  const sidebarWidth = selectedNode ? Math.min(320, dims.width * 0.35) : 0
+  // 사이드바 폭
+  const sidebarWidth = selectedNode ? Math.min(300, dims.width * 0.33) : 0
   const graphWidth = dims.width - sidebarWidth
 
   if (loading) {
@@ -186,112 +180,155 @@ export default function InlineGraph2D({ subjects = [] }) {
           graphData={filteredData}
           width={graphWidth}
           height={dims.height}
-          backgroundColor="#ffffff"
-          nodeCanvasObject={(node, ctx) => {
+          backgroundColor="#fafbfc"
+          nodeCanvasObject={(node, ctx, globalScale) => {
             const isActive = highlightIds.size === 0 || highlightIds.has(node.id)
             const isSelected = selectedNode?.id === node.id
-            const r = isSelected ? 8 : 6
+            // 노드 크기: 줌 레벨에 관계없이 시각적으로 일정한 크기 유지
+            const baseR = isSelected ? 7 : 5
+            const r = baseR / Math.max(globalScale * 0.5, 0.5) // 줌 아웃해도 너무 작아지지 않게
             const color = getColor(node)
+
+            // 선택 노드 배경 강조
+            if (isSelected) {
+              ctx.beginPath()
+              ctx.arc(node.x, node.y, r + 3 / globalScale, 0, 2 * Math.PI)
+              ctx.fillStyle = color + '20'
+              ctx.fill()
+              ctx.strokeStyle = color
+              ctx.lineWidth = 2 / globalScale
+              ctx.stroke()
+            }
 
             // 노드 원
             ctx.beginPath()
             ctx.arc(node.x, node.y, r, 0, 2 * Math.PI)
-            ctx.fillStyle = isActive ? color : color + '30'
+            ctx.fillStyle = isActive ? color : color + '25'
             ctx.fill()
-            if (isSelected) {
-              ctx.strokeStyle = '#1d4ed8'
-              ctx.lineWidth = 2.5
-              ctx.stroke()
-            }
 
-            // 라벨
-            if (isActive) {
-              const label = node.code
-              ctx.font = `bold ${isSelected ? 11 : 9}px -apple-system, sans-serif`
-              ctx.textAlign = 'center'
-              ctx.textBaseline = 'top'
-              ctx.fillStyle = isActive ? '#1f2937' : '#9ca3af'
-              ctx.fillText(label, node.x, node.y + r + 2)
+            // 라벨 — 항상 표시 (줌 수준에 맞게 스케일)
+            const fontSize = Math.max(10 / globalScale, 3)
+            const label = node.code
+            ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'top'
+            ctx.fillStyle = isActive ? '#374151' : '#d1d5db'
+            ctx.fillText(label, node.x, node.y + r + 2 / globalScale)
+
+            // 교과명 (활성 노드만)
+            if (isActive && globalScale > 0.8) {
+              ctx.font = `${Math.max(8 / globalScale, 2.5)}px -apple-system, sans-serif`
+              ctx.fillStyle = '#9ca3af'
+              ctx.fillText(node.subject, node.x, node.y + r + 2 / globalScale + fontSize + 1 / globalScale)
             }
           }}
           nodePointerAreaPaint={(node, color, ctx) => {
             ctx.beginPath()
-            ctx.arc(node.x, node.y, 10, 0, 2 * Math.PI)
+            ctx.arc(node.x, node.y, 12, 0, 2 * Math.PI)
             ctx.fillStyle = color
             ctx.fill()
           }}
-          linkColor={(link) => {
+          linkCanvasObject={(link, ctx, globalScale) => {
             const srcId = getLinkId(link, 'source'), tgtId = getLinkId(link, 'target')
-            if (highlightIds.size > 0) {
-              if (highlightIds.has(srcId) && highlightIds.has(tgtId)) {
-                return LINK_TYPE_COLORS[link.link_type] || '#6b7280'
-              }
-              return '#e5e7eb'
+            const src = typeof link.source === 'object' ? link.source : null
+            const tgt = typeof link.target === 'object' ? link.target : null
+            if (!src || !tgt) return
+
+            const isHighlighted = highlightIds.size > 0 && highlightIds.has(srcId) && highlightIds.has(tgtId)
+            const isDimmed = highlightIds.size > 0 && !isHighlighted
+            const color = LINK_TYPE_COLORS[link.link_type] || '#9ca3af'
+
+            ctx.beginPath()
+            ctx.moveTo(src.x, src.y)
+            ctx.lineTo(tgt.x, tgt.y)
+            ctx.strokeStyle = isDimmed ? '#e5e7eb' : color
+            ctx.lineWidth = (isHighlighted ? 3 : 1.5) / Math.max(globalScale * 0.7, 0.5)
+            if (link.link_type === 'prerequisite') ctx.setLineDash([4 / globalScale, 4 / globalScale])
+            else ctx.setLineDash([])
+            ctx.stroke()
+            ctx.setLineDash([])
+
+            // 연결 유형 라벨 (하이라이트 시 + 줌 충분할 때)
+            if (isHighlighted && globalScale > 1) {
+              const midX = (src.x + tgt.x) / 2
+              const midY = (src.y + tgt.y) / 2
+              const label = LINK_TYPE_LABELS[link.link_type] || ''
+              const fontSize = Math.max(8 / globalScale, 3)
+              ctx.font = `bold ${fontSize}px -apple-system, sans-serif`
+              const pad = 2 / globalScale
+              const tw = ctx.measureText(label).width
+              ctx.fillStyle = color
+              ctx.globalAlpha = 0.9
+              ctx.beginPath()
+              ctx.roundRect(midX - tw / 2 - pad, midY - fontSize / 2 - pad, tw + pad * 2, fontSize + pad * 2, 2 / globalScale)
+              ctx.fill()
+              ctx.globalAlpha = 1
+              ctx.fillStyle = '#ffffff'
+              ctx.textAlign = 'center'
+              ctx.textBaseline = 'middle'
+              ctx.fillText(label, midX, midY)
             }
-            return LINK_TYPE_COLORS[link.link_type] || '#9ca3af'
           }}
-          linkWidth={(link) => {
-            const srcId = getLinkId(link, 'source'), tgtId = getLinkId(link, 'target')
-            if (highlightIds.size > 0 && highlightIds.has(srcId) && highlightIds.has(tgtId)) return 3
-            return 1.5
+          linkPointerAreaPaint={(link, color, ctx) => {
+            const src = typeof link.source === 'object' ? link.source : null
+            const tgt = typeof link.target === 'object' ? link.target : null
+            if (!src || !tgt) return
+            ctx.beginPath()
+            ctx.moveTo(src.x, src.y)
+            ctx.lineTo(tgt.x, tgt.y)
+            ctx.strokeStyle = color
+            ctx.lineWidth = 8
+            ctx.stroke()
           }}
-          linkDirectionalParticles={(link) => {
-            const srcId = getLinkId(link, 'source'), tgtId = getLinkId(link, 'target')
-            if (highlightIds.size > 0 && highlightIds.has(srcId) && highlightIds.has(tgtId)) return 3
-            return 0
-          }}
-          linkDirectionalParticleWidth={3}
-          linkDirectionalParticleSpeed={0.006}
-          linkLineDash={(link) => link.link_type === 'prerequisite' ? [4, 4] : null}
           onNodeClick={handleNodeClick}
           onNodeHover={setHoverNode}
           onBackgroundClick={() => setSelectedNode(null)}
-          cooldownTicks={80}
-          d3AlphaDecay={0.04}
-          d3VelocityDecay={0.3}
+          cooldownTicks={60}
+          d3AlphaDecay={0.05}
+          d3VelocityDecay={0.4}
+          warmupTicks={30}
+          minZoom={0.5}
+          maxZoom={8}
         />
 
         {/* 범례 + 통계 */}
-        <div className="absolute top-2 left-2 flex flex-wrap items-center gap-2 bg-white/90 backdrop-blur-sm rounded-lg px-2.5 py-1.5 shadow-sm border border-gray-200 text-[10px]">
+        <div className="absolute top-2 left-2 flex flex-wrap items-center gap-x-3 gap-y-1 bg-white/95 backdrop-blur-sm rounded-lg px-3 py-2 shadow-sm border border-gray-200 text-[11px]">
           {[...new Set(filteredData.nodes.map(n => n.subject))].sort().map(subj => (
             <span key={subj} className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: SUBJECT_COLORS[subj] || SUBJECT_COLORS[graphData?.nodes.find(n => n.subject === subj)?.subject_group] || '#6b7280' }} />
-              <span className="text-gray-600">{subj}</span>
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: SUBJECT_COLORS[subj] || SUBJECT_COLORS[graphData?.nodes.find(n => n.subject === subj)?.subject_group] || '#6b7280' }} />
+              <span className="text-gray-700 font-medium">{subj}</span>
             </span>
           ))}
-          <span className="text-gray-400 ml-1">{filteredData.nodes.length}개 노드 · {filteredData.links.length}개 연결</span>
+          <span className="text-gray-400 border-l border-gray-200 pl-3 ml-1">
+            {filteredData.nodes.length}개 노드 · {filteredData.links.length}개 연결
+          </span>
         </div>
 
         {/* 초기화 버튼 */}
         <button onClick={handleReset}
-          className="absolute top-2 right-2 p-1.5 bg-white/90 backdrop-blur-sm rounded-lg shadow-sm border border-gray-200 text-gray-500 hover:text-gray-800 transition"
-          title="초기화">
-          <RotateCcw size={14} />
+          className="absolute top-2 right-2 p-2 bg-white/95 backdrop-blur-sm rounded-lg shadow-sm border border-gray-200 text-gray-400 hover:text-gray-700 transition min-w-[36px] min-h-[36px] flex items-center justify-center"
+          title="전체 보기">
+          <RotateCcw size={15} />
         </button>
-
-        {/* 안내 */}
-        <div className="absolute bottom-2 left-2 text-[10px] text-gray-400 bg-white/80 px-2 py-1 rounded">
-          노드 클릭: 연결 상세 · 배경 클릭: 해제 · 스크롤: 확대/축소
-        </div>
       </div>
 
       {/* 오른쪽 연결 목록 패널 */}
-      <div className={`border-l border-gray-200 bg-gray-50 overflow-hidden transition-all duration-300 ${selectedNode ? 'opacity-100' : 'w-0 opacity-0'}`}
+      <div className={`border-l border-gray-200 bg-gray-50 overflow-hidden transition-all duration-200 ${selectedNode ? 'opacity-100' : 'w-0 opacity-0'}`}
         style={{ width: selectedNode ? sidebarWidth : 0 }}>
         {selectedNode && (
           <div className="h-full flex flex-col overflow-hidden" style={{ width: sidebarWidth }}>
             {/* 선택 노드 헤더 */}
             <div className="p-3 border-b border-gray-200 bg-white shrink-0">
               <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 min-w-0">
                   <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: getColor(selectedNode) }} />
-                  <span className="font-mono text-xs font-bold text-blue-600">{selectedNode.code}</span>
+                  <span className="font-mono text-xs font-bold text-blue-600 truncate">{selectedNode.code}</span>
                   <span className="px-1.5 py-0.5 rounded text-[10px] font-medium text-white shrink-0"
                     style={{ backgroundColor: getColor(selectedNode) }}>
                     {selectedNode.subject}
                   </span>
                 </div>
-                <button onClick={() => setSelectedNode(null)} className="p-1 text-gray-400 hover:text-gray-600 rounded" title="닫기">
+                <button onClick={() => setSelectedNode(null)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded min-w-[32px] min-h-[32px] flex items-center justify-center" title="닫기">
                   <X size={14} />
                 </button>
               </div>
@@ -311,7 +348,7 @@ export default function InlineGraph2D({ subjects = [] }) {
                 if (!other) return null
                 return (
                   <button key={i} onClick={() => navigateToNode(other)}
-                    className="w-full text-left bg-white hover:bg-blue-50 rounded-lg p-2 transition border border-gray-200 hover:border-blue-300 group">
+                    className="w-full text-left bg-white hover:bg-blue-50 rounded-lg p-2.5 transition border border-gray-200 hover:border-blue-300 group">
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <span className="px-1.5 py-0.5 rounded text-white text-[9px] font-medium shrink-0"
                         style={{ backgroundColor: LINK_TYPE_COLORS[link.link_type] || '#6b7280' }}>
