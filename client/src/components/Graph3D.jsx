@@ -38,8 +38,8 @@ const getLinkTargetId = (l) => typeof l.target === 'object' ? l.target?.id : l.t
 const isNodeInSubjects = (n, subjects) => subjects.has(n.subject_group || n.subject) || subjects.has(n.subject)
 
 export default function Graph3D({ embedded = false, initialSubjects = null, showSidebar = false }) {
-  // embedded 모드에서도 useNavigate를 호출하되, 사용 시 분기 처리
-  const navigate = !embedded ? useNavigate() : null // eslint-disable-line react-hooks/rules-of-hooks
+  // Hook 규칙 준수: 항상 호출, 사용 시 embedded 가드
+  const navigate = useNavigate()
   const [graphData, setGraphData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [selectedNode, setSelectedNode] = useState(null)

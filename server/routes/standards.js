@@ -160,6 +160,18 @@ standardsRouter.get('/graph', async (req, res) => {
     const pos = coords.get(node.id)
     return pos ? { ...node, x: pos.x, y: pos.y, z: pos.z } : node
   })
+  // 학교급 2단계 이상 차이 나는 연결 제거 (예: 초등↔고등)
+  const schoolLevelOrder = { '초등학교': 0, '중학교': 1, '고등학교': 2 }
+  const nodeMap = new Map(graph.nodes.map(n => [n.id, n]))
+  graph.links = graph.links.filter(l => {
+    const src = nodeMap.get(l.source)
+    const tgt = nodeMap.get(l.target)
+    if (!src || !tgt) return true // 안전: 노드 못 찾으면 유지
+    const srcLevel = schoolLevelOrder[src.school_level]
+    const tgtLevel = schoolLevelOrder[tgt.school_level]
+    if (srcLevel === undefined || tgtLevel === undefined) return true // 분류 불가 시 유지
+    return Math.abs(srcLevel - tgtLevel) <= 1 // 인접 학교급만 허용
+  })
   res.json(graph)
 })
 

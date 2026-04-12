@@ -64,16 +64,15 @@ export default function InlineGraph2D({ subjects = [] }) {
   const filteredData = useMemo(() => {
     if (!graphData || subjectsSet.size < 2) return null
 
+    // 개별 subject 기준 매칭 (subject_group 확장 X — 사용자가 선택한 교과명만 정확히 매칭)
     const nodeSubjectMap = new Map()
-    graphData.nodes.forEach(n => nodeSubjectMap.set(n.id, n.subject_group || n.subject))
+    graphData.nodes.forEach(n => nodeSubjectMap.set(n.id, n.subject))
 
-    // 선택 교과에 속하는 노드
-    const selNodes = graphData.nodes.filter(n =>
-      subjectsSet.has(n.subject_group || n.subject) || subjectsSet.has(n.subject)
-    )
+    // 선택 교과에 속하는 노드 — subject 이름으로만 매칭
+    const selNodes = graphData.nodes.filter(n => subjectsSet.has(n.subject))
     const selNodeIds = new Set(selNodes.map(n => n.id))
 
-    // 선택 교과 간 교차 연결만
+    // 선택 교과 간 교차 연결만 (다른 교과 간)
     const links = graphData.links.filter(l => {
       const srcId = getLinkId(l, 'source'), tgtId = getLinkId(l, 'target')
       if (!selNodeIds.has(srcId) || !selNodeIds.has(tgtId)) return false
@@ -275,7 +274,10 @@ export default function InlineGraph2D({ subjects = [] }) {
               ctx.fillStyle = color
               ctx.globalAlpha = 0.9
               ctx.beginPath()
-              ctx.roundRect(midX - tw / 2 - pad, midY - fontSize / 2 - pad, tw + pad * 2, fontSize + pad * 2, 2 / globalScale)
+              // roundRect 폴리필 (Safari 15 이하 호환)
+              const rx = midX - tw / 2 - pad, ry = midY - fontSize / 2 - pad, rw = tw + pad * 2, rh = fontSize + pad * 2, rr = 2 / globalScale
+              if (ctx.roundRect) { ctx.roundRect(rx, ry, rw, rh, rr) }
+              else { ctx.moveTo(rx + rr, ry); ctx.lineTo(rx + rw - rr, ry); ctx.arcTo(rx + rw, ry, rx + rw, ry + rr, rr); ctx.lineTo(rx + rw, ry + rh - rr); ctx.arcTo(rx + rw, ry + rh, rx + rw - rr, ry + rh, rr); ctx.lineTo(rx + rr, ry + rh); ctx.arcTo(rx, ry + rh, rx, ry + rh - rr, rr); ctx.lineTo(rx, ry + rr); ctx.arcTo(rx, ry, rx + rr, ry, rr); ctx.closePath() }
               ctx.fill()
               ctx.globalAlpha = 1
               ctx.fillStyle = '#ffffff'
