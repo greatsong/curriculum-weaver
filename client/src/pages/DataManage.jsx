@@ -217,7 +217,7 @@ export default function DataManage() {
                     {[...pickedSubjects].join(' · ')}
                   </span>
                 </div>
-                <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm" style={{ height: '55vh' }}>
+                <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm" style={{ height: '70vh' }}>
                   <Suspense fallback={
                     <div className="flex items-center justify-center h-full bg-white text-gray-400">
                       <div className="text-center">

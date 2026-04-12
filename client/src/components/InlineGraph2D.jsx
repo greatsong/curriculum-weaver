@@ -154,14 +154,14 @@ export default function InlineGraph2D({ subjects = [] }) {
     }).filter(p => p.src && p.tgt)
   }, [filteredData])
 
-  // 모바일 판정 (640px 미만)
-  const isMobile = dims.width < 640
+  // 모바일 판정 (480px 미만으로 엄격하게 — 태블릿/노트북은 가로 배치)
+  const isMobile = dims.width < 480
 
   // 패널/그래프 비율 — 모바일은 세로 배치
   const nodeCount = filteredData?.nodes.length || 0
   const panelPercent = isMobile ? 0 : (nodeCount <= 10 ? 50 : nodeCount <= 30 ? 45 : 38)
   const graphPercent = isMobile ? 100 : (100 - panelPercent)
-  const graphHeight = isMobile ? Math.round(dims.height * 0.5) : dims.height
+  const graphHeight = isMobile ? Math.round(dims.height * 0.45) : dims.height
 
   if (loading) {
     return (
