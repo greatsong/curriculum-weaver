@@ -27,8 +27,12 @@ curriculum-weaver/
 ## 핵심 파일
 - `server/services/aiAgent.js` — AI 공동설계자 (단계별 시스템 프롬프트 빌더)
 - `server/services/materialAnalyzer.js` — 파일 업로드 분석 파이프라인
-- `shared/constants.js` — 7단계 정의, 보드 타입, SSE 이벤트
-- `supabase/migrations/` — 14개 테이블 스키마 + RLS + Realtime
+- `shared/constants.js` — 7단계 정의, 보드 타입, SSE 이벤트, 링크 상태/생성방법 상수
+- `server/lib/store.js` — 인메모리 데이터 스토어 (성취기준, 링크, 세션 관리)
+- `server/routes/standards.js` — 성취기준/그래프/링크 API (status 필터, 상태 변경)
+- `client/src/components/InlineGraph2D.jsx` — 2D 교과 연결 그래프 (3계층 렌더링)
+- `scripts/migrateLinksToDB.js` — generatedLinks.js → curriculum_links 마이그레이션
+- `supabase/migrations/` — 15개 테이블 스키마 + RLS + Realtime
 
 ## 환경변수
 - 클라이언트: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`

@@ -78,6 +78,16 @@ ALTER TABLE session_standards DROP CONSTRAINT IF EXISTS session_standards_added_
 
 > Principles, Standards, StandardLinks의 export 인터페이스는 **그대로 유지** (동기 함수)
 
+### 하이브리드: curriculum_links (DB + 인메모리 캐시)
+| 엔티티 | 현재 상태 | DB 테이블 | 비고 |
+|--------|----------|-----------|------|
+| CurriculumLinks | 인메모리 (`generatedLinks.js`) | `curriculum_links` | 3계층 status 관리 |
+
+- **현재**: `generatedLinks.js` → store.js 인메모리 Map으로 로드
+- **마이그레이션 후**: `curriculum_links` 테이블이 원본, 서버 시작 시 캐시 로드
+- **마이그레이션 스크립트**: `scripts/migrateLinksToDB.js` (1,768개 AI 링크 이관)
+- **추가 필드**: `status`, `quality_score`, `semantic_score`, `integration_theme`, `lesson_hook`, `generation_method`
+
 ---
 
 ## Phase 2: `server/lib/store.js` 완전 변환 코드

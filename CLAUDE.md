@@ -27,8 +27,12 @@ curriculum-weaver/
 ## 핵심 파일
 - `server/services/aiAgent.js` — AI 공동설계자 (단계별 시스템 프롬프트 빌더)
 - `server/services/materialAnalyzer.js` — 파일 업로드 분석 파이프라인
-- `shared/constants.js` — 7단계 정의, 보드 타입, SSE 이벤트
-- `supabase/migrations/` — 14개 테이블 스키마 + RLS + Realtime
+- `shared/constants.js` — 7단계 정의, 보드 타입, SSE 이벤트, 링크 상태/생성방법 상수
+- `server/lib/store.js` — 인메모리 데이터 스토어 (성취기준, 링크, 세션 관리)
+- `server/routes/standards.js` — 성취기준/그래프/링크 API 엔드포인트
+- `client/src/components/InlineGraph2D.jsx` — 2D 교과 연결 그래프 시각화
+- `scripts/migrateLinksToDB.js` — generatedLinks.js → curriculum_links 테이블 마이그레이션
+- `supabase/migrations/` — 15개 테이블 스키마 + RLS + Realtime
 
 ## 환경변수
 - 클라이언트: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
@@ -59,6 +63,50 @@ curriculum-weaver/
    - `is_session_member()` 함수 활용
 
 관련 파일: `server/middleware/auth.js`, `server/lib/supabaseAdmin.js`, `supabase/migrations/00002_rls_policies.sql`
+
+## 3계층 링크 품질 시스템
+
+교과 간 성취기준 연결을 3단계로 관리하는 품질 파이프라인.
+
+### 상태 흐름
+```
+candidate (AI 제안 후보) → reviewed (검토 완료) → published (사용자 노출)
+```
+
+### 테이블: `curriculum_links` (`supabase/migrations/00015_curriculum_links.sql`)
+| 컬럼 | 설명 |
+|------|------|
+| `source_code`, `target_code` | 성취기준 코드 쌍 (source < target 정규화) |
+| `link_type` | cross_subject, same_concept, application, prerequisite, extension |
+| `rationale` | 연결 근거 설명 |
+| `integration_theme` | 융합 주제 (예: "에너지와 환경") |
+| `lesson_hook` | 수업 아이디어 한 줄 |
+| `semantic_score` | 벡터 코사인 유사도 (0~1) |
+| `quality_score` | LLM 판정 교육적 품질 (0~1) |
+| `status` | candidate / reviewed / published |
+| `generation_method` | tfidf / ai / manual |
+
+### API
+- `GET /api/standards/graph?status=published` — 기본값, published 링크만 반환
+- `GET /api/standards/graph?status=all` — 전체 링크 반환
+- `GET /api/standards/graph?status=candidate,reviewed` — 쉼표 구분 필터
+- `PATCH /api/standards/links/:linkId/status` — 링크 상태 변경 (body: `{ status }`)
+
+### 프론트엔드 렌더링
+- **published 링크**: 기존 link_type 색상, 실선, 100% 불투명도
+- **non-published 링크**: 회색(`#94a3b8`), 점선, 40% 불투명도
+- **"AI 제안 포함" 토글**: DataManage 페이지에서 candidate/reviewed 링크 표시 제어
+- **상세 패널**: integration_theme (🔗), lesson_hook (📝) 표시
+
+### 관련 상수 (`shared/constants.js`)
+- `LINK_STATUSES`: `{ CANDIDATE, REVIEWED, PUBLISHED }`
+- `LINK_GENERATION_METHODS`: `{ TFIDF, AI, MANUAL }`
+
+### 데이터 마이그레이션
+기존 1,768개 AI 생성 링크는 `scripts/migrateLinksToDB.js`로 Supabase에 이관 가능:
+```bash
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/migrateLinksToDB.js
+```
 
 ## 컨벤션
 - UI 텍스트/주석: 한국어
