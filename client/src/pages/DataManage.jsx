@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, X, GitBranch } from 'lucide-react'
+import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, X, GitBranch, HelpCircle } from 'lucide-react'
 import { apiGet, apiPost, apiDelete } from '../lib/api'
 import Logo from '../components/Logo'
+import LinkGuideOverlay, { resetLinkGuide } from '../components/LinkGuideOverlay'
 import { VOCATIONAL_SUBJECTS } from '../../../shared/constants'
 
 const Graph3D = lazy(() =>
@@ -48,6 +49,7 @@ export default function DataManage() {
   const [tab, setTab] = useState('browse') // 'browse' | 'graph' | 'upload'
   const [showAllLinks, setShowAllLinks] = useState(false) // AI 제안 링크 포함 여부
   const [allStandards, setAllStandards] = useState([])
+  const [showLinkGuide, setShowLinkGuide] = useState(false) // 가이드 강제 표시용
 
   // 교과 선택 상태 (인라인 그래프 탐색용)
   const [pickedSubjects, setPickedSubjects] = useState(new Set())
@@ -209,6 +211,10 @@ export default function DataManage() {
             {/* 인라인 2D 그래프: 2개 이상 교과 선택 시 표시 */}
             {pickedSubjects.size >= 2 && (
               <div className="mt-4 border-t border-gray-100 pt-4">
+                <LinkGuideOverlay
+                  forceShow={showLinkGuide}
+                  onComplete={() => setShowLinkGuide(false)}
+                />
                 <div className="flex items-center gap-2 mb-2">
                   <GitBranch size={16} className="text-blue-600" />
                   <h3 className="text-sm font-semibold text-gray-700">
@@ -217,15 +223,25 @@ export default function DataManage() {
                   <span className="text-xs text-gray-400">
                     {[...pickedSubjects].join(' · ')}
                   </span>
-                  <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={showAllLinks}
-                      onChange={(e) => setShowAllLinks(e.target.checked)}
-                      className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-[11px] text-gray-500">AI 제안 포함</span>
-                  </label>
+                  <div className="ml-auto flex items-center gap-3">
+                    <button
+                      onClick={() => { resetLinkGuide(); setShowLinkGuide(true) }}
+                      className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-blue-500 transition"
+                      title="그래프 사용법 보기"
+                    >
+                      <HelpCircle size={13} />
+                      <span className="hidden sm:inline">가이드</span>
+                    </button>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={showAllLinks}
+                        onChange={(e) => setShowAllLinks(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-[11px] text-gray-500">AI 제안 포함</span>
+                    </label>
+                  </div>
                 </div>
                 <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm" style={{ height: '70vh' }}>
                   <Suspense fallback={
