@@ -155,11 +155,10 @@ export default function InlineGraph2D({ subjects = [] }) {
     }).filter(p => p.src && p.tgt)
   }, [filteredData])
 
-  // 패널 비율 — 전체 너비의 절반까지 사용, 노드 적을수록 넓게
+  // 패널/그래프 비율 — flex로 채우되, 비율만 계산
   const nodeCount = filteredData?.nodes.length || 0
-  const panelRatio = nodeCount <= 10 ? 0.50 : nodeCount <= 30 ? 0.45 : 0.38
-  const sidebarWidth = Math.max(280, Math.round(dims.width * panelRatio))
-  const graphWidth = dims.width - sidebarWidth
+  const panelPercent = nodeCount <= 10 ? 50 : nodeCount <= 30 ? 45 : 38
+  const graphPercent = 100 - panelPercent
 
   if (loading) {
     return (
@@ -184,13 +183,13 @@ export default function InlineGraph2D({ subjects = [] }) {
   }
 
   return (
-    <div ref={containerRef} className="flex h-full bg-white relative">
+    <div ref={containerRef} className="flex h-full w-full bg-white">
       {/* 그래프 영역 */}
-      <div style={{ width: graphWidth, height: dims.height }} className="relative">
+      <div style={{ width: `${graphPercent}%`, height: dims.height }} className="relative shrink-0">
         <ForceGraph2D
           ref={fgRef}
           graphData={filteredData}
-          width={graphWidth}
+          width={Math.round(dims.width * graphPercent / 100)}
           height={dims.height}
           backgroundColor="#fafbfc"
           nodeCanvasObject={(node, ctx, globalScale) => {
@@ -324,10 +323,9 @@ export default function InlineGraph2D({ subjects = [] }) {
         </button>
       </div>
 
-      {/* 오른쪽 연결 정보 패널 — 항상 표시, 정보 밀도 최대화 */}
-      <div className="border-l border-gray-200 bg-gray-50 overflow-hidden shrink-0"
-        style={{ width: sidebarWidth }}>
-        <div className="h-full flex flex-col overflow-hidden" style={{ width: sidebarWidth }}>
+      {/* 오른쪽 연결 정보 패널 — 항상 표시, 나머지 공간 전부 사용 */}
+      <div className="border-l border-gray-200 bg-gray-50 overflow-hidden flex-1 min-w-0">
+        <div className="h-full flex flex-col overflow-hidden">
           {selectedNode ? (
             <>
               {/* 선택 노드 상세 */}
