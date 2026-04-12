@@ -155,8 +155,10 @@ export default function InlineGraph2D({ subjects = [] }) {
     }).filter(p => p.src && p.tgt)
   }, [filteredData])
 
-  // 사이드바 항상 표시
-  const sidebarWidth = Math.min(320, dims.width * 0.35)
+  // 사이드바 — 노드 수가 적을수록 패널을 넓게 (정보 중심)
+  const nodeCount = filteredData?.nodes.length || 0
+  const panelRatio = nodeCount <= 10 ? 0.45 : nodeCount <= 30 ? 0.38 : 0.33
+  const sidebarWidth = Math.min(420, Math.max(280, dims.width * panelRatio))
   const graphWidth = dims.width - sidebarWidth
 
   if (loading) {
@@ -322,34 +324,35 @@ export default function InlineGraph2D({ subjects = [] }) {
         </button>
       </div>
 
-      {/* 오른쪽 연결 목록 패널 — 항상 표시 */}
+      {/* 오른쪽 연결 정보 패널 — 항상 표시, 정보 밀도 최대화 */}
       <div className="border-l border-gray-200 bg-gray-50 overflow-hidden shrink-0"
         style={{ width: sidebarWidth }}>
         <div className="h-full flex flex-col overflow-hidden" style={{ width: sidebarWidth }}>
           {selectedNode ? (
             <>
-              {/* 선택 노드 헤더 */}
+              {/* 선택 노드 상세 */}
               <div className="p-3 border-b border-gray-200 bg-white shrink-0">
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: getColor(selectedNode) }} />
-                    <span className="font-mono text-xs font-bold text-blue-600 truncate">{selectedNode.code}</span>
+                    <span className="font-mono text-xs font-bold text-blue-600">{selectedNode.code}</span>
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-medium text-white shrink-0"
                       style={{ backgroundColor: getColor(selectedNode) }}>
                       {selectedNode.subject}
                     </span>
+                    <span className="text-[10px] text-gray-400">{selectedNode.grade_group}</span>
                   </div>
                   <button onClick={() => setSelectedNode(null)} className="p-1.5 text-gray-400 hover:text-gray-600 rounded min-w-[32px] min-h-[32px] flex items-center justify-center" title="전체 목록으로">
                     <X size={14} />
                   </button>
                 </div>
-                <p className="text-[10px] text-gray-500 mb-1">{selectedNode.grade_group} · {selectedNode.area}</p>
+                <p className="text-[10px] text-gray-500 mb-1">{selectedNode.area}</p>
                 <p className="text-[11px] text-gray-700 leading-relaxed">{selectedNode.content}</p>
               </div>
-              {/* 선택 노드의 연결 목록 */}
-              <div className="flex-1 overflow-auto p-2 space-y-1.5">
-                <p className="text-[10px] font-medium text-gray-500 px-1 mb-1">
-                  연결된 성취기준 <span className="text-blue-600 font-bold">{selectedLinks.length}개</span>
+              {/* 연결 성취기준 — 전문 표시 */}
+              <div className="flex-1 overflow-auto p-2.5 space-y-2">
+                <p className="text-[11px] font-semibold text-gray-600 px-0.5">
+                  연결된 성취기준 <span className="text-blue-600">{selectedLinks.length}개</span>
                 </p>
                 {selectedLinks.map((link, i) => {
                   const src = typeof link.source === 'object' ? link.source : filteredData.nodes.find(n => n.id === link.source)
@@ -358,20 +361,23 @@ export default function InlineGraph2D({ subjects = [] }) {
                   if (!other) return null
                   return (
                     <button key={i} onClick={() => navigateToNode(other)}
-                      className="w-full text-left bg-white hover:bg-blue-50 rounded-lg p-2.5 transition border border-gray-200 hover:border-blue-300 group">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="px-1.5 py-0.5 rounded text-white text-[9px] font-medium shrink-0"
+                      className="w-full text-left bg-white hover:bg-blue-50 rounded-lg p-3 transition border border-gray-200 hover:border-blue-300 group">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="px-2 py-0.5 rounded text-white text-[9px] font-bold shrink-0"
                           style={{ backgroundColor: LINK_TYPE_COLORS[link.link_type] || '#6b7280' }}>
                           {LINK_TYPE_LABELS[link.link_type] || link.link_type}
                         </span>
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getColor(other) }} />
-                        <span className="font-mono text-[10px] font-bold text-blue-600">{other.code}</span>
-                        <span className="text-[9px] text-gray-400">{other.subject}</span>
-                        <ChevronRight size={10} className="ml-auto text-gray-300 group-hover:text-blue-400" />
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: getColor(other) }} />
+                        <span className="font-mono text-[11px] font-bold text-blue-600">{other.code}</span>
+                        <span className="text-[10px] text-gray-500">{other.subject}</span>
+                        <ChevronRight size={12} className="ml-auto text-gray-300 group-hover:text-blue-400" />
                       </div>
-                      <p className="text-[10px] text-gray-600 leading-relaxed line-clamp-2">{other.content}</p>
+                      <p className="text-[10px] text-gray-400 mb-0.5">{other.grade_group} · {other.area}</p>
+                      <p className="text-[11px] text-gray-700 leading-relaxed">{other.content}</p>
                       {link.rationale && (
-                        <p className="text-[9px] text-amber-600 mt-0.5 line-clamp-1">근거: {link.rationale}</p>
+                        <p className="text-[10px] text-amber-700 mt-1.5 bg-amber-50 rounded px-2 py-1 leading-relaxed">
+                          💡 {link.rationale}
+                        </p>
                       )}
                     </button>
                   )
@@ -380,32 +386,57 @@ export default function InlineGraph2D({ subjects = [] }) {
             </>
           ) : (
             <>
-              {/* 전체 연결 목록 (노드 미선택 시) */}
+              {/* 전체 연결 목록 — 양쪽 성취기준 전문 표시 */}
               <div className="p-3 border-b border-gray-200 bg-white shrink-0">
-                <p className="text-xs font-semibold text-gray-700">교과 간 연결 목록</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">노드를 클릭하면 상세 연결을 볼 수 있습니다</p>
+                <p className="text-xs font-semibold text-gray-700">교과 간 연결 {allLinkPairs.length}개</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">그래프에서 노드를 클릭하면 해당 성취기준에 집중합니다</p>
               </div>
-              <div className="flex-1 overflow-auto p-2 space-y-1">
+              <div className="flex-1 overflow-auto p-2.5 space-y-2.5">
                 {allLinkPairs.map(({ link, src, tgt }, i) => (
-                  <button key={i} onClick={() => handleNodeClick(src)}
-                    className="w-full text-left bg-white hover:bg-blue-50 rounded-lg p-2 transition border border-gray-100 hover:border-blue-200 group">
-                    <div className="flex items-center gap-1 mb-0.5">
-                      <span className="px-1.5 py-0.5 rounded text-white text-[8px] font-medium shrink-0"
+                  <div key={i} className="bg-white rounded-lg border border-gray-200 overflow-hidden hover:border-blue-200 transition">
+                    {/* 연결 유형 헤더 */}
+                    <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded text-white text-[9px] font-bold shrink-0"
                         style={{ backgroundColor: LINK_TYPE_COLORS[link.link_type] || '#6b7280' }}>
                         {LINK_TYPE_LABELS[link.link_type] || link.link_type}
                       </span>
+                      <span className="text-[10px] text-gray-400">{i + 1} / {allLinkPairs.length}</span>
                     </div>
-                    <div className="flex items-center gap-1 text-[10px]">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getColor(src) }} />
-                      <span className="font-mono font-bold text-gray-700">{src.code}</span>
-                      <span className="text-gray-300 mx-0.5">↔</span>
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getColor(tgt) }} />
-                      <span className="font-mono font-bold text-gray-700">{tgt.code}</span>
+                    {/* 성취기준 A */}
+                    <button onClick={() => handleNodeClick(src)} className="w-full text-left px-3 py-2 hover:bg-blue-50 transition">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: getColor(src) }} />
+                        <span className="font-mono text-[11px] font-bold text-blue-600">{src.code}</span>
+                        <span className="text-[10px] text-gray-500">{src.subject}</span>
+                        <span className="text-[9px] text-gray-400 ml-auto">{src.grade_group}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-700 leading-relaxed">{src.content}</p>
+                    </button>
+                    {/* 연결 화살표 */}
+                    <div className="px-3 flex items-center gap-2">
+                      <div className="flex-1 border-t border-dashed border-gray-200" />
+                      <span className="text-[10px] text-gray-300">↕</span>
+                      <div className="flex-1 border-t border-dashed border-gray-200" />
                     </div>
+                    {/* 성취기준 B */}
+                    <button onClick={() => handleNodeClick(tgt)} className="w-full text-left px-3 py-2 hover:bg-blue-50 transition">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: getColor(tgt) }} />
+                        <span className="font-mono text-[11px] font-bold text-blue-600">{tgt.code}</span>
+                        <span className="text-[10px] text-gray-500">{tgt.subject}</span>
+                        <span className="text-[9px] text-gray-400 ml-auto">{tgt.grade_group}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-700 leading-relaxed">{tgt.content}</p>
+                    </button>
+                    {/* 연결 근거 */}
                     {link.rationale && (
-                      <p className="text-[9px] text-gray-500 mt-0.5 line-clamp-1">{link.rationale}</p>
+                      <div className="px-3 pb-2.5">
+                        <p className="text-[10px] text-amber-700 bg-amber-50 rounded px-2 py-1.5 leading-relaxed">
+                          💡 {link.rationale}
+                        </p>
+                      </div>
                     )}
-                  </button>
+                  </div>
                 ))}
               </div>
             </>
