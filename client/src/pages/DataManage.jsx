@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, X, GitBranch } from 'lucide-react'
 import { apiGet, apiPost, apiDelete } from '../lib/api'
 import Logo from '../components/Logo'
+import { VOCATIONAL_SUBJECTS } from '../../../shared/constants'
 
 const Graph3D = lazy(() =>
   import('../components/Graph3D').catch(() => {
@@ -177,7 +178,7 @@ export default function DataManage() {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {stats.bySubject.map((s) => {
+                  {stats.bySubject.filter((s) => !VOCATIONAL_SUBJECTS.has(s.subject)).map((s) => {
                     const picked = pickedSubjects.has(s.subject)
                     return (
                       <button
