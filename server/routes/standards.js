@@ -150,6 +150,7 @@ standardsRouter.get('/all', async (req, res) => {
 // ============================================================
 
 // 성취기준 간 그래프 데이터 (임베딩 3D 좌표 포함)
+// ?status=published (기본) | ?status=all | ?status=candidate,reviewed
 standardsRouter.get('/graph', async (req, res) => {
   const graph = StandardLinks.getGraph()
   // 임베딩 기반 3D 좌표 계산
@@ -172,7 +173,33 @@ standardsRouter.get('/graph', async (req, res) => {
     if (srcLevel === undefined || tgtLevel === undefined) return true // 분류 불가 시 유지
     return Math.abs(srcLevel - tgtLevel) <= 1 // 인접 학교급만 허용
   })
+  // 링크 상태 필터링 (기본: published만)
+  const statusParam = req.query.status || 'published'
+  if (statusParam !== 'all') {
+    const allowedStatuses = new Set(statusParam.split(','))
+    graph.links = graph.links.filter(l => allowedStatuses.has(l.status))
+  }
   res.json(graph)
+})
+
+// 링크 상태 변경 (관리자용)
+standardsRouter.patch('/links/:linkId/status', async (req, res) => {
+  const { linkId } = req.params
+  const { status } = req.body
+  const validStatuses = ['candidate', 'reviewed', 'published']
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ error: `유효하지 않은 상태: ${status}` })
+  }
+  const allLinks = StandardLinks.list()
+  const link = allLinks.find(l => l.id === linkId)
+  if (!link) {
+    return res.status(404).json({ error: '링크를 찾을 수 없습니다.' })
+  }
+  link.status = status
+  if (status === 'reviewed' || status === 'published') {
+    link.reviewed_at = new Date().toISOString()
+  }
+  res.json({ ok: true, link })
 })
 
 // 특정 성취기준의 연결 조회

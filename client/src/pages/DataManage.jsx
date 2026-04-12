@@ -46,6 +46,7 @@ export default function DataManage() {
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState(null)
   const [tab, setTab] = useState('browse') // 'browse' | 'graph' | 'upload'
+  const [showAllLinks, setShowAllLinks] = useState(false) // AI 제안 링크 포함 여부
   const [allStandards, setAllStandards] = useState([])
 
   // 교과 선택 상태 (인라인 그래프 탐색용)
@@ -216,6 +217,15 @@ export default function DataManage() {
                   <span className="text-xs text-gray-400">
                     {[...pickedSubjects].join(' · ')}
                   </span>
+                  <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={showAllLinks}
+                      onChange={(e) => setShowAllLinks(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-[11px] text-gray-500">AI 제안 포함</span>
+                  </label>
                 </div>
                 <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm" style={{ height: '70vh' }}>
                   <Suspense fallback={
@@ -226,7 +236,7 @@ export default function DataManage() {
                       </div>
                     </div>
                   }>
-                    <InlineGraph2D subjects={[...pickedSubjects]} />
+                    <InlineGraph2D subjects={[...pickedSubjects]} showAllLinks={showAllLinks} />
                   </Suspense>
                 </div>
               </div>
