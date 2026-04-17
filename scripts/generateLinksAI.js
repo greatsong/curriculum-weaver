@@ -22,7 +22,7 @@ import PQueue from 'p-queue'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // ─── 설정 ───
-const MODEL = 'claude-opus-4-20250514'
+const MODEL = 'claude-opus-4-7'
 const CONCURRENCY = 5          // 동시 API 호출 수
 const MAX_STANDARDS_PER_CALL = 120 // 한 호출에 넣을 최대 성취기준 수 (양쪽 합산)
 const OUTPUT_FILE = path.join(__dirname, '..', 'server', 'data', 'generatedLinksAI.js')

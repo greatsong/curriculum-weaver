@@ -29,7 +29,7 @@ const aiQueue = new PQueue({ concurrency: 5, timeout: 60000 })
 // AI 모델 매핑 (빠른 모드 / 정밀 모드)
 const MODEL_MAP = {
   fast: 'claude-sonnet-4-6',
-  precise: 'claude-opus-4-6',
+  precise: 'claude-opus-4-7',
 }
 
 /**

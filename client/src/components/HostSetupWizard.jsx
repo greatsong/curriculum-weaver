@@ -286,7 +286,7 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {[
                       { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', desc: '기본, 빠른 응답 속도', badge: '추천' },
-                      { value: 'claude-opus-4-6', label: 'Claude Opus 4', desc: '최고 품질, 응답이 느릴 수 있음', badge: null },
+                      { value: 'claude-opus-4-7', label: 'Claude Opus 4.7', desc: '최고 품질, 응답이 느릴 수 있음', badge: null },
                     ].map(({ value, label, desc, badge }) => (
                       <label
                         key={value}
