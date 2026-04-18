@@ -1,9 +1,29 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import {
+  Paperclip,
+  Upload,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  X,
+} from 'lucide-react'
 import { useChatStore } from '../stores/chatStore'
 import { useProcedureStore } from '../stores/procedureStore'
-import { PROCEDURES, ACTION_TYPES, ACTOR_COLUMNS } from 'curriculum-weaver-shared/constants.js'
+import {
+  PROCEDURES,
+  ACTION_TYPES,
+  ACTOR_COLUMNS,
+  MATERIAL_INTENTS,
+  MATERIAL_INTENT_LABELS,
+  MAX_INTENT_NOTE_LENGTH,
+  MAX_MATERIAL_SIZE_BYTES,
+  SUPPORTED_MATERIAL_EXTENSIONS,
+  MATERIAL_PROCESSING_STATUSES,
+} from 'curriculum-weaver-shared/constants.js'
+import { getDefaultIntent } from '../lib/defaultIntentForStep'
+import { validateMaterialFile } from '../lib/materialErrors'
 
 // 스트리밍 텍스트에서 XML 마커 제거
 function cleanStreamingText(text) {
@@ -21,7 +41,8 @@ function cleanStreamingText(text) {
     .trim() || '...'
 }
 
-export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = false, loading = false }) {
+export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, onStageChange, readOnly = false, loading = false }) {
+  const projectId = projectIdProp || sessionId
   const {
     messages, streaming, streamingText, sendMessage,
     pendingSuggestions, coherenceCheckResult, procedureAdvanceSuggestion,
@@ -31,13 +52,39 @@ export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = 
     introCache, showIntroModal, introModalContent, introModalProcedure,
     openIntroModal, closeIntroModal,
   } = useChatStore()
-  const { currentStep, getCurrentStep } = useProcedureStore()
+  const { currentStep, getCurrentStep, materials, uploadMaterial } = useProcedureStore()
   const [input, setInput] = useState('')
   const [aiModel, setAiModel] = useState(() => localStorage.getItem('cw_ai_model') || 'fast')
   const scrollRef = useRef(null)
+  const textareaRef = useRef(null)
+  const fileInputRef = useRef(null)
+
+  // 드래그&드롭 오버레이
+  const [dragActive, setDragActive] = useState(false)
+  const dragDepthRef = useRef(0)
+
+  // IntentPopover 상태 — 파일 선택/드롭 직후 표시
+  const [pendingIntent, setPendingIntent] = useState(null)
+  // { files: File[], intent: string, intentNote: string }
+
+  // @멘션 상태
+  const [mentionedIds, setMentionedIds] = useState(() => new Set())
+  const [mentionBox, setMentionBox] = useState(null)
+  // { query: string, startIdx: number, cursor: number }
+  const [mentionCursor, setMentionCursor] = useState(0)
+
+  // 업로드 에러 배너
+  const [uploadBanner, setUploadBanner] = useState(null) // { kind, message }
+
+  // 자료 상세 모달 (시스템 메시지 클릭)
+  const [detailMaterialId, setDetailMaterialId] = useState(null)
 
   const currentStepInfo = getCurrentStep()
   const procInfo = PROCEDURES[stage]
+  const completedMaterials = useMemo(
+    () => materials.filter((m) => m.processing_status === MATERIAL_PROCESSING_STATUSES.COMPLETED),
+    [materials],
+  )
 
   // 자동 스크롤
   useEffect(() => {
@@ -48,8 +95,220 @@ export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = 
     e.preventDefault()
     const text = input.trim()
     if (!text || streaming) return
+
+    // 전송 직전: 본문에 실제로 남아 있는 @파일명 토큰만 mentionedIds에 남김
+    // (교사가 @filename 텍스트를 지웠다면 자동 제거)
+    const nameById = new Map(materials.map((m) => [m.id, m.file_name]))
+    const survivingIds = Array.from(mentionedIds).filter((id) => {
+      const name = nameById.get(id)
+      if (!name) return false
+      // 파일명은 공백을 포함할 수 있으므로 단순 포함 매칭
+      return text.includes(`@${name}`)
+    })
+
     setInput('')
-    await sendMessage(sessionId, text, stage)
+    setMentionedIds(new Set())
+    setMentionBox(null)
+    await sendMessage(projectId, text, {
+      procedureCode: stage,
+      mentionedIds: survivingIds,
+      currentStep,
+    })
+  }
+
+  // ──────────────────────────────
+  // 파일 드래그&드롭 오버레이
+  // ──────────────────────────────
+  const onDragEnter = (e) => {
+    if (readOnly) return
+    const types = e.dataTransfer?.types
+    if (!types || !Array.from(types).includes('Files')) return
+    e.preventDefault()
+    dragDepthRef.current += 1
+    if (!dragActive) setDragActive(true)
+  }
+  const onDragOver = (e) => {
+    if (readOnly) return
+    const types = e.dataTransfer?.types
+    if (types && Array.from(types).includes('Files')) {
+      e.preventDefault()
+    }
+  }
+  const onDragLeave = (e) => {
+    if (readOnly) return
+    e.preventDefault()
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    if (dragDepthRef.current === 0) setDragActive(false)
+  }
+  const onDrop = (e) => {
+    if (readOnly) return
+    e.preventDefault()
+    dragDepthRef.current = 0
+    setDragActive(false)
+    const files = Array.from(e.dataTransfer?.files || [])
+    if (files.length > 0) queueFilesForUpload(files)
+  }
+
+  // ──────────────────────────────
+  // 파일 큐잉 → IntentPopover 표시
+  // ──────────────────────────────
+  const queueFilesForUpload = useCallback(
+    (files) => {
+      if (!projectId) {
+        setUploadBanner({ kind: 'error', message: '프로젝트 정보가 아직 준비되지 않았어요.' })
+        return
+      }
+      const valid = []
+      for (const f of files) {
+        const err = validateMaterialFile(f, {
+          maxBytes: MAX_MATERIAL_SIZE_BYTES,
+          allowedExts: SUPPORTED_MATERIAL_EXTENSIONS,
+        })
+        if (err) {
+          setUploadBanner({ kind: 'error', message: `${f.name}: ${err.message}` })
+        } else {
+          valid.push(f)
+        }
+      }
+      if (valid.length === 0) return
+      setPendingIntent({
+        files: valid,
+        intent: getDefaultIntent(stage),
+        intentNote: '',
+      })
+    },
+    [projectId, stage],
+  )
+
+  const handleAttachClick = () => {
+    if (readOnly || streaming) return
+    fileInputRef.current?.click()
+  }
+  const handleFileInputChange = (e) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length > 0) queueFilesForUpload(files)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const confirmIntentAndUpload = async () => {
+    if (!pendingIntent) return
+    const { files, intent, intentNote } = pendingIntent
+    if (intent === MATERIAL_INTENTS.CUSTOM && !intentNote.trim()) {
+      setUploadBanner({ kind: 'error', message: '기타(메모 입력) 선택 시 메모가 필요해요.' })
+      return
+    }
+    setPendingIntent(null)
+    for (const file of files) {
+      try {
+        await uploadMaterial(projectId, file, {
+          intent,
+          intentNote: intent === MATERIAL_INTENTS.CUSTOM ? intentNote.trim() : null,
+          source: 'chat',
+        })
+      } catch (err) {
+        setUploadBanner({
+          kind: 'error',
+          message: `${file.name} 첨부 실패 — ${err?.message || '알 수 없는 오류'}`,
+        })
+      }
+    }
+  }
+
+  // ──────────────────────────────
+  // @멘션 감지 & 선택
+  // ──────────────────────────────
+  const detectMention = (value, caret) => {
+    // caret 왼쪽으로 스캔하다가 공백/개행 만나면 중단, '@' 만나면 히트
+    let i = caret - 1
+    while (i >= 0) {
+      const ch = value[i]
+      if (ch === '@') {
+        // @ 앞이 문장 시작이거나 공백이어야 멘션으로 인정
+        const prev = i === 0 ? ' ' : value[i - 1]
+        if (/\s|\n/.test(prev) || i === 0) {
+          const query = value.slice(i + 1, caret)
+          // 공백 없는 토큰만
+          if (!/\s/.test(query)) {
+            return { query, startIdx: i, cursor: caret }
+          }
+        }
+        return null
+      }
+      if (/\s|\n/.test(ch)) return null
+      i -= 1
+    }
+    return null
+  }
+
+  const handleInputChange = (e) => {
+    const value = e.target.value
+    setInput(value)
+    const caret = e.target.selectionStart ?? value.length
+    const hit = detectMention(value, caret)
+    setMentionBox(hit)
+    setMentionCursor(0)
+  }
+
+  const filteredMentionItems = useMemo(() => {
+    if (!mentionBox) return []
+    const q = mentionBox.query.toLowerCase()
+    const pool = completedMaterials.length > 0 ? completedMaterials : materials
+    return pool
+      .filter((m) => (q ? m.file_name?.toLowerCase().includes(q) : true))
+      .slice(0, 10)
+  }, [mentionBox, completedMaterials, materials])
+
+  const pickMention = (material) => {
+    if (!material || !mentionBox) return
+    const before = input.slice(0, mentionBox.startIdx)
+    const after = input.slice(mentionBox.cursor)
+    const token = `@${material.file_name} `
+    const nextValue = `${before}${token}${after}`
+    setInput(nextValue)
+    setMentionedIds((prev) => {
+      const next = new Set(prev)
+      next.add(material.id)
+      return next
+    })
+    setMentionBox(null)
+    // 커서를 토큰 직후로 이동
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (el) {
+        const pos = (before + token).length
+        el.focus()
+        try { el.setSelectionRange(pos, pos) } catch { /* noop */ }
+      }
+    })
+  }
+
+  const handleInputKeyDown = (e) => {
+    if (mentionBox && filteredMentionItems.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionCursor((c) => Math.min(c + 1, filteredMentionItems.length - 1))
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionCursor((c) => Math.max(c - 1, 0))
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        pickMention(filteredMentionItems[mentionCursor])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setMentionBox(null)
+        return
+      }
+    }
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      handleSend(e)
+    }
   }
 
   const handleProcedureAdvance = () => {
@@ -71,7 +330,76 @@ export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = 
   const advance = procedureAdvanceSuggestion || stageAdvanceSuggestion
 
   return (
-    <div className="flex flex-col h-full" style={{ background: 'var(--color-bg-secondary)' }}>
+    <div
+      className="flex flex-col h-full"
+      style={{ background: 'var(--color-bg-secondary)', position: 'relative' }}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {/* 드래그&드롭 오버레이 */}
+      {dragActive && !readOnly && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 20,
+            background: 'rgba(59, 130, 246, 0.08)',
+            backdropFilter: 'blur(2px)',
+            border: '2px dashed #3B82F6',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 8,
+            padding: '16px 24px',
+            background: '#fff',
+            borderRadius: 12,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+          }}>
+            <Upload size={28} color="#3B82F6" />
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#1E40AF' }}>
+              파일을 드롭하여 첨부
+            </span>
+            <span style={{ fontSize: 11, color: '#6B7280' }}>
+              {SUPPORTED_MATERIAL_EXTENSIONS.join(', ').toUpperCase()} · 최대 {Math.round(MAX_MATERIAL_SIZE_BYTES / 1024 / 1024)}MB
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* IntentPopover */}
+      {pendingIntent && !readOnly && (
+        <IntentPopover
+          files={pendingIntent.files}
+          intent={pendingIntent.intent}
+          intentNote={pendingIntent.intentNote}
+          onChangeIntent={(v) => setPendingIntent((p) => ({ ...p, intent: v }))}
+          onChangeNote={(v) =>
+            setPendingIntent((p) => ({ ...p, intentNote: v.slice(0, MAX_INTENT_NOTE_LENGTH) }))
+          }
+          onCancel={() => setPendingIntent(null)}
+          onConfirm={confirmIntentAndUpload}
+        />
+      )}
+
+      {/* 자료 상세 모달 */}
+      {detailMaterialId && (
+        <MaterialDetailMini
+          material={materials.find((m) => m.id === detailMaterialId)}
+          onClose={() => setDetailMaterialId(null)}
+        />
+      )}
+
       {/* AI 모델 토글 */}
       <div style={{
         padding: '6px 16px',
@@ -247,18 +575,26 @@ export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = 
 
           {messages.map((msg) => (
             msg.sender_type === 'system' ? (
-              <div key={msg.id} style={{ display: 'flex', justifyContent: 'center' }}>
-                <p style={{
-                  fontSize: 11,
-                  color: 'var(--color-text-secondary)',
-                  background: 'var(--color-bg-tertiary)',
-                  borderRadius: 9999,
-                  padding: '4px 14px',
-                  margin: 0,
-                }}>
-                  {msg.content}
-                </p>
-              </div>
+              msg.attached_material_id ? (
+                <SystemAttachmentMessage
+                  key={msg.id}
+                  message={msg}
+                  onOpen={() => setDetailMaterialId(msg.attached_material_id)}
+                />
+              ) : (
+                <div key={msg.id} style={{ display: 'flex', justifyContent: 'center' }}>
+                  <p style={{
+                    fontSize: 11,
+                    color: 'var(--color-text-secondary)',
+                    background: 'var(--color-bg-tertiary)',
+                    borderRadius: 9999,
+                    padding: '4px 14px',
+                    margin: 0,
+                  }}>
+                    {msg.content}
+                  </p>
+                </div>
+              )
             ) : (
               <div
                 key={msg.id}
@@ -306,7 +642,7 @@ export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = 
                     {msg.sender_type === 'ai' ? (
                       <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} children={msg.content || ''} /></div>
                     ) : (
-                      msg.content
+                      renderWithMentions(msg.content || '')
                     )}
                   </div>
                 </div>
@@ -441,16 +777,86 @@ export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = 
         <form
           onSubmit={handleSend}
           style={{
+            position: 'relative',
             borderTop: '1px solid var(--color-border)',
             padding: '10px 12px',
             display: 'flex',
             gap: 8,
+            alignItems: 'flex-end',
           }}
         >
+          {/* 업로드 에러 배너 */}
+          {uploadBanner && (
+            <div
+              role="alert"
+              style={{
+                position: 'absolute',
+                left: 12,
+                right: 12,
+                bottom: 'calc(100% + 6px)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+                padding: '8px 10px',
+                fontSize: 12,
+                color: '#991B1B',
+                background: '#FEF2F2',
+                border: '1px solid #FECACA',
+                borderRadius: 8,
+              }}
+            >
+              <AlertTriangle size={14} style={{ marginTop: 1, flexShrink: 0 }} />
+              <span style={{ flex: 1, wordBreak: 'break-word' }}>{uploadBanner.message}</span>
+              <button
+                type="button"
+                onClick={() => setUploadBanner(null)}
+                aria-label="알림 닫기"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#991B1B' }}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
+          {/* 📎 첨부 버튼 */}
+          <button
+            type="button"
+            onClick={handleAttachClick}
+            disabled={streaming}
+            aria-label="파일 첨부"
+            title="파일 첨부"
+            style={{
+              width: 40,
+              height: 44,
+              borderRadius: 'var(--radius-lg)',
+              background: 'transparent',
+              color: streaming ? 'var(--color-text-tertiary)' : 'var(--color-text-secondary)',
+              border: '1px solid var(--color-border)',
+              cursor: streaming ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Paperclip size={16} />
+          </button>
           <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: 'none' }}
+            accept={SUPPORTED_MATERIAL_EXTENSIONS.map((e) => `.${e}`).join(',')}
+            onChange={handleFileInputChange}
+          />
+
+          <textarea
+            ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={streaming ? 'AI 응답 중...' : '메시지를 입력하세요...'}
+            onChange={handleInputChange}
+            onKeyDown={handleInputKeyDown}
+            rows={1}
+            placeholder={streaming ? 'AI 응답 중...' : '메시지를 입력하세요. @를 입력하면 첨부된 자료를 언급할 수 있어요.'}
             style={{
               flex: 1,
               padding: '10px 14px',
@@ -458,9 +864,40 @@ export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = 
               background: 'var(--color-bg-primary)',
               borderRadius: 'var(--radius-lg)',
               minHeight: 44,
+              maxHeight: 140,
               boxSizing: 'border-box',
+              resize: 'none',
+              fontFamily: 'inherit',
+              lineHeight: 1.5,
             }}
           />
+
+          {/* @멘션 드롭다운 */}
+          {mentionBox && filteredMentionItems.length > 0 && (
+            <MentionDropdown
+              items={filteredMentionItems}
+              cursor={mentionCursor}
+              onHover={setMentionCursor}
+              onPick={pickMention}
+            />
+          )}
+          {mentionBox && filteredMentionItems.length === 0 && materials.length === 0 && (
+            <div style={{
+              position: 'absolute',
+              left: 60,
+              right: 60,
+              bottom: 'calc(100% + 6px)',
+              padding: '6px 10px',
+              fontSize: 12,
+              color: 'var(--color-text-tertiary)',
+              background: 'var(--color-bg-primary)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 8,
+            }}>
+              아직 첨부된 자료가 없어요. 파일을 드롭하거나 📎로 첨부하세요.
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={streaming || !input.trim()}
@@ -546,6 +983,351 @@ export default function ChatPanel({ sessionId, stage, onStageChange, readOnly = 
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── 본문 @멘션 chip 렌더 ──
+// 정규식으로 `@토큰` 을 파란 chip 스타일 span으로 감싼다.
+// 파일명에 공백이 들어갈 수 있으나, 본 매칭은 `@` 뒤 공백 이전까지만 잡는다 (단순화).
+function renderWithMentions(text) {
+  if (!text) return text
+  const parts = []
+  const re = /(^|\s)(@[^\s@]+)/g
+  let lastIdx = 0
+  let m
+  let key = 0
+  while ((m = re.exec(text)) !== null) {
+    const start = m.index + m[1].length
+    if (start > lastIdx) parts.push(text.slice(lastIdx, start))
+    parts.push(
+      <span
+        key={`mention-${key++}`}
+        className="bg-blue-100 text-blue-800 px-1 rounded"
+        style={{ fontSize: 'inherit' }}
+      >
+        {m[2]}
+      </span>,
+    )
+    lastIdx = start + m[2].length
+  }
+  if (lastIdx < text.length) parts.push(text.slice(lastIdx))
+  return <>{parts}</>
+}
+
+// ── 시스템 첨부 메시지 ──
+function SystemAttachmentMessage({ message, onOpen }) {
+  const status = message.processing_status
+  const StatusIcon = () => {
+    if (status === 'parsing' || status === 'analyzing') {
+      return <Loader2 size={12} className="animate-spin" style={{ color: '#3B82F6' }} />
+    }
+    if (status === 'completed') return <CheckCircle2 size={12} style={{ color: '#16A34A' }} />
+    if (status === 'failed') return <AlertTriangle size={12} style={{ color: '#D97706' }} />
+    return null
+  }
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center' }}>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="group"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '6px 12px',
+          background: 'var(--color-bg-tertiary)',
+          borderLeft: '3px solid #3B82F6',
+          borderRadius: 'var(--radius-md)',
+          border: 'none',
+          borderLeftWidth: 3,
+          borderLeftColor: status === 'failed' ? '#D97706' : status === 'completed' ? '#16A34A' : '#3B82F6',
+          borderLeftStyle: 'solid',
+          cursor: 'pointer',
+          fontSize: 12,
+          color: 'var(--color-text-secondary)',
+          maxWidth: '85%',
+          textAlign: 'left',
+        }}
+        title="자료 상세 보기"
+      >
+        <span style={{ fontSize: 13 }} aria-hidden="true">📎</span>
+        <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {message.content}
+        </span>
+        <StatusIcon />
+      </button>
+    </div>
+  )
+}
+
+// ── @멘션 드롭다운 ──
+function MentionDropdown({ items, cursor, onHover, onPick }) {
+  return (
+    <div
+      role="listbox"
+      aria-label="첨부된 자료 멘션"
+      style={{
+        position: 'absolute',
+        left: 60,
+        bottom: 'calc(100% + 6px)',
+        width: 'min(320px, calc(100% - 120px))',
+        maxHeight: 220,
+        overflow: 'auto',
+        background: 'var(--color-bg-primary)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 8,
+        boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+        zIndex: 30,
+      }}
+    >
+      {items.map((m, i) => {
+        const active = i === cursor
+        const completed = m.processing_status === MATERIAL_PROCESSING_STATUSES.COMPLETED
+        return (
+          <button
+            key={m.id}
+            type="button"
+            role="option"
+            aria-selected={active}
+            onMouseEnter={() => onHover(i)}
+            onMouseDown={(e) => {
+              e.preventDefault()
+              onPick(m)
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              width: '100%',
+              padding: '8px 12px',
+              background: active ? '#EFF6FF' : 'transparent',
+              color: 'var(--color-text-primary)',
+              border: 'none',
+              borderBottom: '1px solid var(--color-border-subtle)',
+              cursor: 'pointer',
+              fontSize: 13,
+              textAlign: 'left',
+            }}
+          >
+            <Paperclip size={12} style={{ color: '#3B82F6', flexShrink: 0 }} />
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {m.file_name}
+            </span>
+            {!completed && (
+              <span style={{ fontSize: 10, color: '#D97706', flexShrink: 0 }}>분석중</span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Intent Popover ──
+function IntentPopover({ files, intent, intentNote, onChangeIntent, onChangeNote, onCancel, onConfirm }) {
+  const isCustom = intent === MATERIAL_INTENTS.CUSTOM
+  const noteInvalid = isCustom && !intentNote.trim()
+  return (
+    <div
+      role="dialog"
+      aria-label="첨부 자료 의도 선택"
+      style={{
+        position: 'absolute',
+        zIndex: 25,
+        left: 16,
+        right: 16,
+        bottom: 80,
+        background: 'var(--color-bg-primary)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 12,
+        boxShadow: '0 10px 30px rgba(0,0,0,0.12)',
+        padding: 14,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Paperclip size={14} style={{ color: '#3B82F6' }} />
+        <strong style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>
+          {files.length === 1 ? files[0].name : `${files.length}개 파일 첨부`}
+        </strong>
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+          {(files.reduce((a, f) => a + f.size, 0) / 1024).toFixed(0)}KB
+        </span>
+      </div>
+      {files.length > 1 && (
+        <ul style={{ margin: 0, padding: 0, listStyle: 'none', fontSize: 11, color: 'var(--color-text-secondary)' }}>
+          {files.map((f, i) => (
+            <li key={i} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              · {f.name}
+            </li>
+          ))}
+        </ul>
+      )}
+      <label style={{ fontSize: 12, color: 'var(--color-text-secondary)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span>AI가 이 자료를 어떻게 읽어야 할까요?</span>
+        <select
+          value={intent}
+          onChange={(e) => onChangeIntent(e.target.value)}
+          style={{
+            padding: '6px 8px',
+            fontSize: 13,
+            border: '1px solid var(--color-border)',
+            borderRadius: 6,
+            background: 'var(--color-bg-primary)',
+          }}
+        >
+          {Object.entries(MATERIAL_INTENT_LABELS).map(([id, meta]) => (
+            <option key={id} value={id}>
+              {meta.icon} {meta.label} — {meta.description}
+            </option>
+          ))}
+        </select>
+      </label>
+      {isCustom && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <textarea
+            value={intentNote}
+            onChange={(e) => onChangeNote(e.target.value)}
+            placeholder="이 자료에서 AI가 무엇을 읽어내야 하는지 적어주세요. (최대 120자)"
+            rows={2}
+            style={{
+              padding: '6px 8px',
+              fontSize: 12,
+              border: `1px solid ${noteInvalid ? '#FCA5A5' : 'var(--color-border)'}`,
+              borderRadius: 6,
+              resize: 'none',
+              fontFamily: 'inherit',
+            }}
+          />
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            fontSize: 10,
+            color: noteInvalid ? '#DC2626' : 'var(--color-text-tertiary)',
+          }}>
+            <span>{noteInvalid ? '메모를 입력해주세요.' : `최대 ${MAX_INTENT_NOTE_LENGTH}자`}</span>
+            <span>{intentNote.length} / {MAX_INTENT_NOTE_LENGTH}</span>
+          </div>
+        </div>
+      )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{
+            padding: '6px 12px',
+            fontSize: 12,
+            background: 'transparent',
+            color: 'var(--color-text-secondary)',
+            border: '1px solid var(--color-border)',
+            borderRadius: 6,
+            cursor: 'pointer',
+          }}
+        >
+          취소
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={noteInvalid}
+          style={{
+            padding: '6px 12px',
+            fontSize: 12,
+            fontWeight: 600,
+            background: noteInvalid ? 'var(--color-bg-tertiary)' : '#3B82F6',
+            color: noteInvalid ? 'var(--color-text-tertiary)' : '#fff',
+            border: 'none',
+            borderRadius: 6,
+            cursor: noteInvalid ? 'not-allowed' : 'pointer',
+          }}
+        >
+          첨부 및 분석
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── 자료 상세 미니 모달 (시스템 메시지 클릭) ──
+function MaterialDetailMini({ material, onClose }) {
+  if (!material) {
+    return null
+  }
+  const analysis = material.ai_analysis || {}
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.4)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        style={{
+          background: 'var(--color-bg-primary)',
+          borderRadius: 12,
+          width: '90%',
+          maxWidth: 480,
+          maxHeight: '70vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 16px',
+          borderBottom: '1px solid var(--color-border-subtle)',
+        }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: 'var(--color-text-primary)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}>
+              {material.file_name}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
+              {MATERIAL_INTENT_LABELS[material.intent]?.label || '자료'} ·{' '}
+              {material.processing_status === 'completed' ? '분석 완료' : material.processing_status}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="닫기"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div style={{ padding: 16, overflow: 'auto', fontSize: 13, color: 'var(--color-text-primary)', lineHeight: 1.6 }}>
+          {analysis.summary ? (
+            <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{analysis.summary}</p>
+          ) : (
+            <p style={{ margin: 0, color: 'var(--color-text-tertiary)' }}>
+              아직 분석 요약이 없습니다. 자료 관리 바에서 상세 정보를 확인하세요.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

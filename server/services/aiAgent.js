@@ -232,13 +232,19 @@ ${gpBlocks}`
  * 토큰 예산(budgetTokens) 초과 시 축약 → "외 N개 생략" 순으로 자른다.
  * learner_context 자료는 항상 최상단으로 끌어올린다.
  *
+ * 멘션된 자료(mentionedIds)는:
+ *   1) 별도의 "[교사가 명시적으로 언급한 자료]" 섹션을 최상단에 배치한다.
+ *   2) 예산 제약을 무시하고 모두 풍부 블록으로 포함(자료당 약 800자 상한).
+ *   3) 일반 "[업로드된 자료]" 섹션에서는 중복 제거된다.
+ *
  * @param {Array<Object>} materials - materials 레코드 (ai_analysis 포함)
- * @param {{budgetTokens?: number, maxRichItems?: number}} [opts]
+ * @param {{budgetTokens?: number, maxRichItems?: number, mentionedIds?: string[]}} [opts]
  * @returns {string|null} 섹션 문자열 또는 null (분석 완료 자료가 없을 때)
  */
 export function buildMaterialsContext(materials, opts = {}) {
   const budgetTokens = opts.budgetTokens ?? 2000
   const maxRichItems = opts.maxRichItems ?? 5
+  const mentionedIds = Array.isArray(opts.mentionedIds) ? opts.mentionedIds : []
 
   if (!Array.isArray(materials) || materials.length === 0) return null
 
@@ -248,10 +254,36 @@ export function buildMaterialsContext(materials, opts = {}) {
     const ax = m.ai_analysis || {}
     return !!(m.ai_summary || ax.summary || ax.intent_driven_summary)
   })
-  if (ready.length === 0) return null
+  if (ready.length === 0 && mentionedIds.length === 0) return null
+
+  // ── 1) 교사가 명시적으로 언급한 자료 섹션 ──
+  // 분석 완료 여부와 무관하게 포함한다. 예산 무시, 각 자료 800자 상한.
+  const mentionSet = new Set(mentionedIds)
+  const mentionedMaterials = materials.filter((m) => m && mentionSet.has(m.id))
+  const mentionedSections = []
+  if (mentionedMaterials.length > 0) {
+    mentionedSections.push(
+      `[교사가 명시적으로 언급한 자료 ${mentionedMaterials.length}개 — 최우선 반영]`
+    )
+    const hardCap = 5 // 하드 상한: 너무 많이 언급되면 상위 5개만
+    const picked = mentionedMaterials.slice(0, hardCap)
+    picked.forEach((m, i) => {
+      let block = formatMaterialBlock(m, { rich: true, index: i + 1 })
+      if (block.length > 800) block = block.slice(0, 800) + '…'
+      mentionedSections.push(block)
+    })
+    if (mentionedMaterials.length > hardCap) {
+      mentionedSections.push(
+        `… 외 ${mentionedMaterials.length - hardCap}개 멘션 자료는 상한(${hardCap}개)으로 생략.`
+      )
+    }
+  }
+
+  // ── 2) 일반 "[업로드된 자료]" 섹션 — 멘션된 자료는 중복 제거 ──
+  const remaining = ready.filter((m) => !mentionSet.has(m.id))
 
   // learner_context 최우선 정렬, 그 외는 원 순서 유지 (최근순이 보장되어 있다는 가정)
-  const sorted = [...ready].sort((a, b) => {
+  const sorted = [...remaining].sort((a, b) => {
     const aLearner = a.intent === MATERIAL_INTENTS.LEARNER_CONTEXT ? 0 : 1
     const bLearner = b.intent === MATERIAL_INTENTS.LEARNER_CONTEXT ? 0 : 1
     return aLearner - bLearner
@@ -260,26 +292,72 @@ export function buildMaterialsContext(materials, opts = {}) {
   // 하드 상한: 20개 이상이면 무조건 자른다
   const capped = sorted.slice(0, 20)
 
-  const header = `[업로드된 자료 ${capped.length}개]`
-  const lines = [header]
-  let used = header.length
+  const generalSections = []
+  if (capped.length > 0) {
+    const header = `[업로드된 자료 ${capped.length}개]`
+    generalSections.push(header)
+    let used = header.length
 
-  for (let i = 0; i < capped.length; i++) {
-    const m = capped[i]
-    const rich = i < maxRichItems
-    const block = formatMaterialBlock(m, { rich, index: i + 1 })
+    for (let i = 0; i < capped.length; i++) {
+      const m = capped[i]
+      const rich = i < maxRichItems
+      const block = formatMaterialBlock(m, { rich, index: i + 1 })
 
-    if (used + block.length > budgetTokens) {
-      const remaining = capped.length - i
-      if (remaining > 0) {
-        lines.push(`\n… 외 ${remaining}개 자료는 컨텍스트 예산으로 생략되었습니다.`)
+      if (used + block.length > budgetTokens) {
+        const left = capped.length - i
+        if (left > 0) {
+          generalSections.push(`\n… 외 ${left}개 자료는 컨텍스트 예산으로 생략되었습니다.`)
+        }
+        break
       }
-      break
+      generalSections.push(block)
+      used += block.length + 1
     }
-    lines.push(block)
-    used += block.length + 1
   }
 
+  const merged = []
+  if (mentionedSections.length > 0) merged.push(mentionedSections.join('\n'))
+  if (generalSections.length > 0) merged.push(generalSections.join('\n'))
+  if (merged.length === 0) return null
+  return merged.join('\n\n')
+}
+
+/**
+ * 최근 첨부 이력 요약 — system 메시지(sender_type='system', attached_material_id 포함) 기준.
+ * Claude messages 배열에 직접 넣지 않고 system prompt 상단에 주입한다.
+ *
+ * @param {Array<Object>} recentMessages
+ * @param {Array<Object>} materials - file_name 매핑용
+ * @param {number} [maxItems=5]
+ * @returns {string|null}
+ */
+function buildRecentAttachmentHistory(recentMessages, materials, maxItems = 5) {
+  if (!Array.isArray(recentMessages) || recentMessages.length === 0) return null
+  const systemMsgs = recentMessages.filter(
+    (m) => m && m.sender_type === 'system' && m.attached_material_id
+  )
+  if (systemMsgs.length === 0) return null
+
+  const recent = systemMsgs.slice(-maxItems)
+  const matById = new Map((materials || []).map((m) => [m.id, m]))
+
+  const lines = ['[최근 첨부 이력 — 교사가 업로드한 자료 흐름]']
+  for (const msg of recent) {
+    const mat = matById.get(msg.attached_material_id)
+    const fileName = mat?.file_name || '(이름 없음)'
+    const intentLabel =
+      (MATERIAL_INTENT_LABELS[mat?.intent]?.label) || '수업 참고자료'
+    const status = msg.processing_status || mat?.processing_status || 'parsing'
+    const statusIcon = status === 'completed' ? '✓완료'
+      : status === 'failed' ? '⚠실패' : '분석 중'
+    const time = (() => {
+      try {
+        const d = new Date(msg.created_at)
+        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      } catch { return '' }
+    })()
+    lines.push(`- ${time} 📎 ${fileName} (${intentLabel}) · ${statusIcon}`)
+  }
   return lines.join('\n')
 }
 
@@ -348,7 +426,7 @@ function formatMaterialBlock(m, { rich, index }) {
  * @param {number|null} params.currentStep - 현재 스텝 번호
  * @param {string} [params.aiRole] - AI 역할 프리셋 ID (recorder/advisor/facilitator/codesigner)
  */
-function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole }) {
+function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, mentionedMaterialIds, recentMessages }) {
   const procInfo = PROCEDURES[procedure]
   if (!procInfo) return '시스템 오류: 유효하지 않은 절차 코드입니다.'
 
@@ -581,10 +659,17 @@ ${boardStr}`)
     const matSection = buildMaterialsContext(materials, {
       budgetTokens: 2000,
       maxRichItems: 5,
+      mentionedIds: Array.isArray(mentionedMaterialIds) ? mentionedMaterialIds : [],
     })
     if (matSection) {
       parts.push(matSection)
     }
+  }
+
+  // ─── 16. 최근 첨부 이력 요약 (system 메시지는 messages 배열에 안 들어가므로 여기로) ───
+  const historySection = buildRecentAttachmentHistory(recentMessages, materials, 5)
+  if (historySection) {
+    parts.push(historySection)
   }
 
   return parts.join('\n\n')
@@ -715,6 +800,10 @@ function buildMessages(recentMessages, userMessage) {
   const messages = []
 
   for (const msg of recentMessages) {
+    // system 메시지(첨부 알림 등)는 Claude user/assistant 턴에 혼입하지 않는다.
+    // 대신 buildRecentAttachmentHistory로 system prompt 상단에 요약 주입.
+    if (!msg || msg.sender_type === 'system') continue
+
     messages.push({
       role: msg.sender_type === 'teacher' ? 'user' : 'assistant',
       content: msg.content,
@@ -744,8 +833,10 @@ function buildMessages(recentMessages, userMessage) {
  * @param {Object} callbacks - { onText, onError }
  */
 export async function buildAIResponse(context, { onText, onError }) {
+  // context.mentionedMaterialIds와 context.recentMessages가 buildSystemPrompt에 전달된다.
+  // buildMessages는 system 메시지를 필터링해 Claude role 오염을 방지한다.
   const systemPrompt = buildSystemPrompt(context)
-  const messages = buildMessages(context.recentMessages, context.userMessage)
+  const messages = buildMessages(context.recentMessages || [], context.userMessage)
 
   try {
     await aiQueue.add(async () => {

@@ -282,6 +282,8 @@ export const useProcedureStore = create((set, get) => ({
     const category = opts.category || 'reference'
     const intent = opts.intent || DEFAULT_MATERIAL_INTENT
     const intentNote = opts.intentNote || null
+    // source: 'chat' 이면 서버가 첨부 시스템 메시지를 자동 생성. 기본은 'bar'.
+    const source = opts.source || 'bar'
 
     const tempId = `temp-${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)}`
     const optimistic = {
@@ -314,6 +316,8 @@ export const useProcedureStore = create((set, get) => ({
           intent,
           // 서버는 intent_note(snake_case)로 받음
           ...(intentNote ? { intent_note: intentNote } : {}),
+          // 채팅 드롭 업로드 구분 — 서버가 시스템 메시지까지 원자적 삽입
+          source,
         },
         {
           onProgress: ({ percent }) => {
@@ -326,7 +330,7 @@ export const useProcedureStore = create((set, get) => ({
         },
       )
 
-      // 백엔드 응답 포맷: { material } 또는 레거시 (객체 자체)
+      // 백엔드 응답 포맷: { material, systemMessage? } 또는 레거시 (객체 자체)
       const material = data?.material ?? data
       if (!material || !material.id) {
         throw new Error('서버 응답이 올바르지 않습니다.')
@@ -335,6 +339,21 @@ export const useProcedureStore = create((set, get) => ({
       set((state) => ({
         materials: state.materials.map((m) => (m.id === tempId ? material : m)),
       }))
+
+      // 채팅 업로드 — 서버가 반환한 시스템 메시지를 chatStore에 삽입 (Realtime 누락 대비)
+      if (source === 'chat' && data?.systemMessage?.id) {
+        try {
+          const mod = await import('./chatStore')
+          const useChatStore = mod.useChatStore
+          const sys = data.systemMessage
+          useChatStore.setState((state) => {
+            if (state.messages.some((m) => m.id === sys.id)) return state
+            return { messages: [...state.messages, sys] }
+          })
+        } catch {
+          // chatStore 로드 실패 시 무시 (Realtime이 보충)
+        }
+      }
 
       // 완료/실패가 아니면 폴링 시작
       if (

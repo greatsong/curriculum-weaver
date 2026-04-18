@@ -577,6 +577,42 @@ export const MAX_INTENT_NOTE_LENGTH = 120
 /** 기본 intent */
 export const DEFAULT_MATERIAL_INTENT = MATERIAL_INTENTS.GENERAL
 
+// ──────────────────────────────────────────
+// 채팅 메시지 sender 타입
+// ──────────────────────────────────────────
+
+/**
+ * 메시지 sender_type 값 — DB CHECK 제약과 일치해야 함.
+ * @type {Record<string, string>}
+ */
+export const SENDER_TYPES = {
+  TEACHER: 'teacher',
+  AI: 'ai',
+  SYSTEM: 'system',
+}
+
+/**
+ * 시스템 메시지 템플릿
+ * — 채팅 인라인 업로드 Phase 1에서 첨부 알림 메시지에 사용.
+ */
+export const SYSTEM_MESSAGE_TEMPLATES = {
+  /**
+   * 자료 첨부 알림 메시지 본문 (파싱 시작 시점)
+   * @param {string} filename - 안전하게 정제된 파일명
+   * @param {string} intentLabel - 한국어 intent 레이블 (MATERIAL_INTENT_LABELS[intent].label)
+   */
+  ATTACHMENT: (filename, intentLabel) =>
+    `📎 ${filename} 첨부됨 (의도: ${intentLabel || '수업 참고자료'})`,
+
+  /** 분석 완료 후 업데이트 본문 */
+  ATTACHMENT_COMPLETED: (filename, intentLabel) =>
+    `📎 ${filename} 첨부됨 (의도: ${intentLabel || '수업 참고자료'}) · 분석 완료 ✓`,
+
+  /** 분석 실패 시 본문 */
+  ATTACHMENT_FAILED: (filename) =>
+    `📎 ${filename} 분석 실패 — 재시도 가능`,
+}
+
 /** 자료 업로드/분석 에러 코드 (클라이언트 메시지 매핑 용) */
 export const MATERIAL_ERROR_CODES = {
   FILE_REQUIRED: 'FILE_REQUIRED',

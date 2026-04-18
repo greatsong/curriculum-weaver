@@ -18,6 +18,8 @@ import {
   getProject, getMemberRole, getDesignsByProject,
   getStandardsByProject, upsertDesign,
 } from '../lib/supabaseService.js'
+import { supabaseAdmin } from '../lib/supabaseAdmin.js'
+import { Materials } from '../lib/store.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
@@ -260,6 +262,7 @@ chatRouter.get('/:sessionId', async (req, res) => {
 // ─── 교사 메시지 저장 ───
 chatRouter.post('/teacher', async (req, res) => {
   const { session_id, content, procedure, sender_name, sender_subject } = req.body
+  const mentionedRaw = req.body?.mentioned_material_ids
   if (!session_id || !content?.trim()) {
     return res.status(400).json({ error: '세션 ID와 메시지 내용이 필요합니다.' })
   }
@@ -270,6 +273,9 @@ chatRouter.post('/teacher', async (req, res) => {
   }
 
   try {
+    // @멘션 교차 검증 — 해당 프로젝트 자료만 유효
+    const { validIds } = await resolveMentionedMaterials(mentionedRaw, session_id)
+
     const msg = await createMessage({
       project_id: session_id,
       user_id: req.user?.id || null,
@@ -278,6 +284,7 @@ chatRouter.post('/teacher', async (req, res) => {
       procedure_context: procedure || req.body.stage || null,
       sender_name: sender_name || '교사',
       sender_subject: sender_subject || '',
+      mentioned_material_ids: validIds,
     })
     // 클라이언트 호환: stage_context 필드도 포함
     res.status(201).json({ ...msg, stage_context: msg.procedure_context, session_id })
@@ -452,9 +459,46 @@ chatRouter.post('/stage-intro', async (req, res) => {
   }
 })
 
+/**
+ * @멘션 자료 id 교차 검증.
+ * - project_id가 일치하는 materials만 유효한 것으로 간주한다.
+ * - Supabase 실패 또는 미연결이면 인메모리 Materials로 폴백.
+ * - 잘못된 id(삭제됨/타 프로젝트)는 조용히 drop한다.
+ *
+ * @param {string[]} rawIds
+ * @param {string} projectId
+ * @returns {Promise<{validIds: string[], materials: object[]}>}
+ */
+async function resolveMentionedMaterials(rawIds, projectId) {
+  if (!Array.isArray(rawIds) || rawIds.length === 0) {
+    return { validIds: [], materials: [] }
+  }
+  // 중복 제거 + 문자열 정규화
+  const unique = [...new Set(rawIds.filter((v) => typeof v === 'string' && v.length > 0))]
+  if (unique.length === 0) return { validIds: [], materials: [] }
+
+  // Supabase 우선
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('materials')
+      .select('*')
+      .in('id', unique)
+      .eq('project_id', projectId)
+    if (error) throw error
+    return { validIds: (data || []).map((m) => m.id), materials: data || [] }
+  } catch {
+    // 인메모리 폴백
+    const list = Materials.list(projectId) || []
+    const idSet = new Set(unique)
+    const valid = list.filter((m) => idSet.has(m.id))
+    return { validIds: valid.map((m) => m.id), materials: valid }
+  }
+}
+
 // ─── AI 채팅 메시지 전송 (SSE 스트리밍) ───
 chatRouter.post('/message', async (req, res) => {
   const { session_id, content, procedure, currentStep, aiRole, aiModel } = req.body
+  const mentionedRaw = req.body?.mentioned_material_ids
   // 하위 호환: stage → procedure
   const activeProcedure = procedure || req.body.stage
 
@@ -506,7 +550,25 @@ chatRouter.post('/message', async (req, res) => {
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
 
     const standards = await getStandardsByProject(session_id).catch(() => [])
-    const materials = [] // TODO: 자료 Supabase 전환 후 로드
+
+    // 프로젝트 소속 자료 로드 (분석 완료 + 진행 중 포함)
+    // 일반 컨텍스트 주입용 — 멘션된 자료는 mentionedMaterials로 별도 관리
+    let materials = []
+    try {
+      const { data: matsData, error: matsErr } = await supabaseAdmin
+        .from('materials')
+        .select('*')
+        .eq('project_id', session_id)
+        .order('created_at', { ascending: false })
+      if (matsErr) throw matsErr
+      materials = matsData || []
+    } catch {
+      materials = Materials.list(session_id) || []
+    }
+
+    // @멘션 교차 검증 (project_id 일치 항목만 통과)
+    const { validIds: mentionedIds, materials: mentionedMaterials } =
+      await resolveMentionedMaterials(mentionedRaw, session_id)
 
     const context = {
       session: project,
@@ -519,6 +581,8 @@ chatRouter.post('/message', async (req, res) => {
       currentStep: currentStep ? Number(currentStep) : null,
       aiRole: aiRole || undefined,
       aiModel: aiModel || undefined,
+      mentionedMaterialIds: mentionedIds,
+      mentionedMaterials,
     }
 
     // 사용된 원칙 ID 추적

@@ -124,19 +124,31 @@ export const useChatStore = create((set, get) => ({
   // ── Socket.IO 이벤트 리스너 ────
 
   subscribe: (sessionId) => {
-    const handler = (message) => {
+    // 메시지 upsert — 동일 id 있으면 덮어쓰기, 없으면 append
+    // 시스템 메시지의 processing_status가 parsing → completed로 바뀔 때 필요.
+    const upsertHandler = (message) => {
+      if (!message || !message.id) return
       set((state) => {
-        if (state.messages.some((m) => m.id === message.id)) return state
+        const idx = state.messages.findIndex((m) => m.id === message.id)
+        if (idx >= 0) {
+          const next = state.messages.slice()
+          next[idx] = { ...next[idx], ...message }
+          return { messages: next }
+        }
         return { messages: [...state.messages, message] }
       })
     }
-    socket.on('message_added', handler)
-    set({ _messageHandler: handler })
+    socket.on('message_added', upsertHandler)
+    socket.on('message_updated', upsertHandler)
+    set({ _messageHandler: upsertHandler })
   },
 
   unsubscribe: () => {
     const handler = get()._messageHandler
-    if (handler) socket.off('message_added', handler)
+    if (handler) {
+      socket.off('message_added', handler)
+      socket.off('message_updated', handler)
+    }
     set({
       messages: [],
       boardSuggestions: [],
@@ -178,9 +190,26 @@ export const useChatStore = create((set, get) => ({
 
   // ── 메시지 전송 + AI 응답 ────
 
-  sendMessage: async (projectId, content, procedureCode) => {
+  /**
+   * 교사 메시지 전송 + AI 응답 스트리밍.
+   *
+   * 하위 호환:
+   *   sendMessage(projectId, content, 'T-1-1')          // 레거시 — procedureCode 문자열
+   *   sendMessage(projectId, content, { procedureCode, mentionedIds, currentStep })
+   */
+  sendMessage: async (projectId, content, optsOrCode) => {
     const project = useProjectStore.getState().currentProject
     if (isReadOnlyProject(project)) return
+
+    // 옵션 정규화
+    const opts = typeof optsOrCode === 'string' || optsOrCode == null
+      ? { procedureCode: optsOrCode }
+      : optsOrCode
+    const procedureCode = opts.procedureCode
+    const mentionedIds = Array.isArray(opts.mentionedIds)
+      ? opts.mentionedIds
+      : (opts.mentionedIds instanceof Set ? Array.from(opts.mentionedIds) : [])
+    const currentStep = opts.currentStep
 
     // 로그인 사용자 정보 우선 사용
     let senderName = localStorage.getItem('cw_nickname') || '교사'
@@ -206,6 +235,8 @@ export const useChatStore = create((set, get) => ({
       stage: procedureCode,
       sender_name: senderName,
       sender_subject: senderSubject,
+      // 멘션된 자료 — 서버에서 기본값('{}')으로 처리하므로 하위 호환
+      mentioned_material_ids: mentionedIds,
     })
 
     set((state) => ({ messages: [...state.messages, teacherMsg] }))
@@ -233,6 +264,8 @@ export const useChatStore = create((set, get) => ({
       stage: procedureCode,
       aiRole: wsAiRole || undefined,
       aiModel,
+      mentioned_material_ids: mentionedIds,
+      current_step: currentStep,
     }, {
       onText: (text) => {
         set((state) => ({ streamingText: state.streamingText + text }))

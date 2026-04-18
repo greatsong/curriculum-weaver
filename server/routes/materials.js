@@ -18,17 +18,20 @@ import crypto from 'crypto'
 import path from 'path'
 
 import { requireAuth } from '../middleware/auth.js'
-import { Materials } from '../lib/store.js'
+import { Materials, Messages } from '../lib/store.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
-import { getProject, getMemberRole } from '../lib/supabaseService.js'
+import { getProject, getMemberRole, createMessage } from '../lib/supabaseService.js'
 import { analyzeMaterial } from '../services/materialAnalyzer.js'
 import {
   MAX_MATERIAL_SIZE_BYTES,
   SUPPORTED_MATERIAL_EXTENSIONS,
   MATERIAL_ERROR_CODES as E,
   MATERIAL_INTENTS,
+  MATERIAL_INTENT_LABELS,
   DEFAULT_MATERIAL_INTENT,
   MAX_INTENT_NOTE_LENGTH,
+  SENDER_TYPES,
+  SYSTEM_MESSAGE_TEMPLATES,
 } from '../../shared/constants.js'
 
 /**
@@ -315,12 +318,71 @@ materialsRouter.post(
     // eslint-disable-next-line no-param-reassign
     req.file.buffer = null
 
+    // ── 채팅 인라인 업로드(source='chat'): 원자적으로 system 메시지 INSERT ──
+    // 업로드 성공 이후에만 실행. 메시지 생성 실패해도 업로드 응답은 유지.
+    // procedure_context/step_context도 함께 기록해 절차별 필터링과 정합.
+    let systemMessage = null
+    const source = (req.body?.source || 'bar').toString().trim().toLowerCase()
+    if (source === 'chat') {
+      try {
+        const intentLabel =
+          (MATERIAL_INTENT_LABELS[intent]?.label) || '수업 참고자료'
+        const systemContent = SYSTEM_MESSAGE_TEMPLATES.ATTACHMENT(safeName, intentLabel)
+        const procedureCtx = req.body?.procedure || req.body?.procedure_context || null
+        const stepCtx = req.body?.current_step != null
+          ? Number(req.body.current_step)
+          : (req.body?.step_context != null ? Number(req.body.step_context) : null)
+
+        systemMessage = await createMessage({
+          project_id: projectId,
+          user_id: null,
+          sender_type: SENDER_TYPES.SYSTEM,
+          content: systemContent,
+          procedure_context: procedureCtx,
+          step_context: Number.isFinite(stepCtx) ? stepCtx : null,
+          attached_material_id: materialId,
+          processing_status: 'parsing',
+        })
+      } catch (err) {
+        // 시스템 메시지 생성 실패해도 업로드는 성공 — 경고 로그만 남김
+        console.warn(
+          '[materials/upload] chat system message 생성 실패(무시):',
+          err?.message || err
+        )
+        // 인메모리 폴백 한 번 더 시도 (Supabase 미연결/RLS 등 보정)
+        try {
+          const intentLabel =
+            (MATERIAL_INTENT_LABELS[intent]?.label) || '수업 참고자료'
+          systemMessage = Messages.add(projectId, {
+            sender_type: SENDER_TYPES.SYSTEM,
+            content: SYSTEM_MESSAGE_TEMPLATES.ATTACHMENT(safeName, intentLabel),
+            stage_context: req.body?.procedure || null,
+            attached_material_id: materialId,
+            processing_status: 'parsing',
+          })
+        } catch { /* ignore */ }
+      }
+    }
+
+    // ── 실시간 브로드캐스트: 다른 협업자도 첨부 알림을 즉시 수신 ──
+    // chat 경로로 생성된 system 메시지는 프로젝트 room에 message_added로 전파.
+    if (source === 'chat' && systemMessage) {
+      try {
+        const io = req.app.get('io') || globalThis.__cwIo
+        if (io) io.to(projectId).emit('message_added', systemMessage)
+      } catch (emitErr) {
+        console.warn('[materials/upload] message_added emit 실패(무시):', emitErr?.message || emitErr)
+      }
+    }
+
     // ── fire-and-forget 분석 ──
     // Storage 실패 여부와 무관하게 메모리 버퍼로 분석을 진행한다.
     analyzeMaterial(materialId, bufferForAnalysis, ext, { intent, intentNote })
       .catch((err) => console.error('[materials] analyzeMaterial 오류:', err?.message || err))
 
-    return res.status(201).json({ material })
+    const responseBody = { material }
+    if (systemMessage) responseBody.systemMessage = systemMessage
+    return res.status(201).json(responseBody)
   }
 )
 

@@ -604,21 +604,73 @@ export async function getMessage(messageId) {
 
 /**
  * 메시지 생성
- * @param {{ project_id: string, user_id?: string, sender_type: string, sender_scope?: string, content: string, procedure_context?: string, step_context?: number, ai_suggestions?: object }} data
+ * @param {{
+ *   project_id: string,
+ *   user_id?: string,
+ *   sender_type: string,
+ *   sender_scope?: string,
+ *   content: string,
+ *   procedure_context?: string,
+ *   step_context?: number,
+ *   ai_suggestions?: object,
+ *   mentioned_material_ids?: string[],
+ *   attached_material_id?: string,
+ *   processing_status?: 'parsing'|'completed'|'failed',
+ * }} data
  * @returns {Promise<object>}
  */
 export async function createMessage(data) {
+  // 00020 마이그레이션 적용 전 DB에서도 안전하게 돌 수 있도록 필드를 방어적으로 정규화.
+  const normalized = { ...data }
+  if (normalized.mentioned_material_ids !== undefined) {
+    normalized.mentioned_material_ids = Array.isArray(normalized.mentioned_material_ids)
+      ? normalized.mentioned_material_ids
+      : []
+    if (normalized.mentioned_material_ids.length === 0) {
+      // 빈 배열은 DB 기본값('{}')과 같으므로 명시적으로 제거해 페이로드를 줄인다.
+      delete normalized.mentioned_material_ids
+    }
+  }
+  if (normalized.attached_material_id === null || normalized.attached_material_id === undefined) {
+    delete normalized.attached_material_id
+  }
+  if (normalized.processing_status === null || normalized.processing_status === undefined) {
+    delete normalized.processing_status
+  }
+
   const sb = getSupabase()
   if (!sb) {
-    const msg = { id: uuid(), ...data, created_at: now() }
-    if (!mem.messages.has(data.project_id)) mem.messages.set(data.project_id, [])
-    mem.messages.get(data.project_id).push(msg)
+    const msg = { id: uuid(), ...normalized, created_at: now() }
+    if (!mem.messages.has(normalized.project_id)) mem.messages.set(normalized.project_id, [])
+    mem.messages.get(normalized.project_id).push(msg)
     return msg
   }
-  return handleResult(
-    await sb.from('messages').insert(data).select().single(),
-    '메시지 생성 실패'
-  )
+  try {
+    return handleResult(
+      await sb.from('messages').insert(normalized).select().single(),
+      '메시지 생성 실패'
+    )
+  } catch (err) {
+    // 00020 미적용 DB(컬럼 없음) → 새 필드를 제거한 뒤 재시도.
+    // "column ... does not exist" 류 에러를 넓게 감지.
+    const msgText = String(err?.message || '')
+    if (/does not exist|Could not find|schema cache/i.test(msgText) && (
+      normalized.attached_material_id !== undefined ||
+      normalized.mentioned_material_ids !== undefined ||
+      normalized.processing_status !== undefined
+    )) {
+      console.warn('[supabaseService] 메시지 새 필드 미지원 DB — 축소 재시도:', msgText)
+      const fallback = { ...normalized }
+      delete fallback.attached_material_id
+      delete fallback.mentioned_material_ids
+      delete fallback.processing_status
+      return handleResult(
+        await sb.from('messages').insert(fallback).select().single(),
+        '메시지 생성 실패(폴백)'
+      )
+    }
+    throw err
+  }
 }
 
 // ============================================================

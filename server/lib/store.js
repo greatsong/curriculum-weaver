@@ -277,7 +277,7 @@ export const Sessions = {
 export const Messages = {
   list: (sessionId) => messages.get(sessionId) || [],
 
-  add: (sessionId, { sender_type, content, stage_context, principles_used, sender_name, sender_subject, ai_suggestions, coherence_check }) => {
+  add: (sessionId, { sender_type, content, stage_context, principles_used, sender_name, sender_subject, ai_suggestions, coherence_check, mentioned_material_ids, attached_material_id, processing_status }) => {
     const msg = {
       id: uuid(),
       session_id: sessionId,
@@ -289,6 +289,10 @@ export const Messages = {
       sender_subject: sender_subject || null,
       ai_suggestions: ai_suggestions || null,
       coherence_check: coherence_check || null,
+      // 채팅 인라인 업로드 Phase 1 필드
+      mentioned_material_ids: Array.isArray(mentioned_material_ids) ? mentioned_material_ids : [],
+      attached_material_id: attached_material_id || null,
+      processing_status: processing_status || null,
       created_at: new Date().toISOString(),
     }
     if (!messages.has(sessionId)) messages.set(sessionId, [])
@@ -303,6 +307,44 @@ export const Messages = {
       if (found) return found
     }
     return null
+  },
+
+  /**
+   * messageId로 메시지를 찾아 patch 필드를 머지한다.
+   * @param {string} messageId
+   * @param {object} patch
+   * @returns {object|null} 업데이트된 메시지 또는 null
+   */
+  update: (messageId, patch) => {
+    for (const msgList of messages.values()) {
+      const found = msgList.find(m => m.id === messageId)
+      if (found) {
+        Object.assign(found, patch)
+        return found
+      }
+    }
+    return null
+  },
+
+  /**
+   * attached_material_id로 시스템 메시지를 찾아 patch 필드를 머지한다.
+   * — materialAnalyzer가 상태 전이할 때 동반 호출.
+   * 동일 자료에 여러 메시지가 있을 수 있으므로 모두 업데이트한다.
+   * @param {string} materialId
+   * @param {object} patch
+   * @returns {object[]} 업데이트된 메시지 배열
+   */
+  updateByAttachment: (materialId, patch) => {
+    const updated = []
+    for (const msgList of messages.values()) {
+      for (const msg of msgList) {
+        if (msg.sender_type === 'system' && msg.attached_material_id === materialId) {
+          Object.assign(msg, patch)
+          updated.push(msg)
+        }
+      }
+    }
+    return updated
   },
 }
 

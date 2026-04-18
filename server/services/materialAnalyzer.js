@@ -15,7 +15,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { validateCode } from '../lib/standardsValidator.js'
-import { Materials } from '../lib/store.js'
+import { Materials, Messages } from '../lib/store.js'
 import {
   MATERIAL_ERROR_CODES as E,
   MATERIAL_INTENTS,
@@ -141,6 +141,67 @@ const ANALYZE_TOOL = {
       extracted_keywords: { type: 'array', items: { type: 'string' }, maxItems: 15 },
     },
   },
+}
+
+/**
+ * attached_material_id로 system 메시지를 찾아 processing_status를 전이한다.
+ * — materialAnalyzer의 상태 전이(parsing → analyzing → completed/failed)에 맞춰
+ *   채팅 타임라인의 첨부 알림 메시지도 동반 업데이트.
+ * — Supabase 우선, 실패 시 인메모리 폴백.
+ * — 업로드 소스가 chat이 아닌 경우(대응 메시지 없음)에도 안전하게 no-op.
+ *
+ * @param {string} materialId
+ * @param {'parsing'|'analyzing'|'completed'|'failed'} status
+ */
+export async function updateSystemAttachmentMessage(materialId, status) {
+  if (!materialId || !status) return
+  // 채팅 시스템 메시지 CHECK 제약은 'parsing'|'completed'|'failed'만 허용.
+  // analyzing은 UX상 "분석 중"과 동일하므로 parsing으로 축약한다.
+  const dbStatus = status === 'analyzing' ? 'parsing' : status
+
+  let updatedMessages = []
+
+  // Supabase 먼저 시도 — .select()로 갱신된 행(들)을 돌려받아 Socket.IO 브로드캐스트에 사용
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('messages')
+      .update({ processing_status: dbStatus })
+      .eq('attached_material_id', materialId)
+      .eq('sender_type', 'system')
+      .select()
+    if (error) throw error
+    updatedMessages = Array.isArray(data) ? data : (data ? [data] : [])
+  } catch (err) {
+    // 인메모리 폴백 (테스트 / dev 모드) — updateByAttachment는 배열 반환
+    try {
+      const memResult = Messages.updateByAttachment(materialId, { processing_status: dbStatus })
+      updatedMessages = Array.isArray(memResult) ? memResult : (memResult ? [memResult] : [])
+    } catch (memErr) {
+      console.warn(
+        '[materialAnalyzer] 시스템 메시지 상태 갱신 실패(무시):',
+        err?.message || err,
+        memErr?.message || memErr
+      )
+    }
+  }
+
+  // Supabase 성공 케이스에서도 인메모리 store 동기화 (GET 폴백 경로 대비)
+  if (updatedMessages.length > 0) {
+    try { Messages.updateByAttachment(materialId, { processing_status: dbStatus }) } catch { /* ignore */ }
+  }
+
+  // 실시간 브로드캐스트 — 채팅 패널의 시스템 메시지 칩 상태 갱신
+  const io = globalThis.__cwIo
+  if (io) {
+    for (const msg of updatedMessages) {
+      try {
+        const room = msg?.project_id || msg?.session_id
+        if (room) io.to(room).emit('message_updated', msg)
+      } catch (emitErr) {
+        console.warn('[materialAnalyzer] message_updated emit 실패(무시):', emitErr?.message || emitErr)
+      }
+    }
+  }
 }
 
 /**
@@ -366,6 +427,8 @@ export async function analyzeMaterial(
     intent: safeIntent,
     intent_note: safeNote,
   })
+  // 시스템 첨부 알림 메시지도 parsing으로 전이 (채팅 업로드인 경우에만 대응 메시지 존재)
+  await updateSystemAttachmentMessage(materialId, 'parsing')
 
   try {
     const { text, unsupported, error } = await extractText(fileBuffer, fileExt)
@@ -376,6 +439,7 @@ export async function analyzeMaterial(
         processing_status: 'failed',
         processing_error: `${E.UNSUPPORTED_TYPE}: ${error || '지원하지 않는 형식'}`,
       })
+      await updateSystemAttachmentMessage(materialId, 'failed')
       return
     }
     if (error) {
@@ -383,6 +447,7 @@ export async function analyzeMaterial(
         processing_status: 'failed',
         processing_error: `${E.PARSE_FAILED}: ${error}`,
       })
+      await updateSystemAttachmentMessage(materialId, 'failed')
       return
     }
 
@@ -393,6 +458,7 @@ export async function analyzeMaterial(
         processing_error: `${E.PARSE_FAILED}: 추출된 텍스트가 비어 있습니다.`,
         extracted_text: '',
       })
+      await updateSystemAttachmentMessage(materialId, 'failed')
       return
     }
 
@@ -401,6 +467,8 @@ export async function analyzeMaterial(
       processing_status: 'analyzing',
       extracted_text: truncated,
     })
+    // messages.processing_status CHECK 제약상 analyzing은 없으므로 parsing로 유지
+    await updateSystemAttachmentMessage(materialId, 'analyzing')
 
     const aiRaw = await callClaudeAnalysis(truncated, { intent: safeIntent, intentNote: safeNote })
 
@@ -439,6 +507,7 @@ export async function analyzeMaterial(
       ai_analysis: analysis,
       analyzed_at: new Date().toISOString(),
     })
+    await updateSystemAttachmentMessage(materialId, 'completed')
   } catch (err) {
     // 구조화된 에러 코드 매핑 — processing_error 포맷: "CODE: message"
     // (materials.js GET /:id/analysis 핸들러가 접두 코드를 파싱해 error_code로 내려줌)
@@ -458,6 +527,7 @@ export async function analyzeMaterial(
       processing_status: 'failed',
       processing_error: structured,
     })
+    await updateSystemAttachmentMessage(materialId, 'failed')
   }
 }
 

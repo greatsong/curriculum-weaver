@@ -83,6 +83,8 @@ const io = new Server(server, {
 
 // Socket.IO 인스턴스를 Express app에 등록 (라우트에서 req.app.get('io')로 접근)
 app.set('io', io)
+// fire-and-forget 서비스(analyzer 등)에서 req 객체 없이도 접근 가능하도록 전역 참조 등록
+globalThis.__cwIo = io
 
 // ── Socket.IO JWT 인증 미들웨어 ──
 io.use(async (socket, next) => {
