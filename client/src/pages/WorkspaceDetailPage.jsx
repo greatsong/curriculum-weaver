@@ -26,6 +26,7 @@ export default function WorkspaceDetailPage() {
   const [recommendedStandards, setRecommendedStandards] = useState([])
   const [selectedStandardIds, setSelectedStandardIds] = useState(new Set())
   const [loadingRecommend, setLoadingRecommend] = useState(false)
+  const [standardSearchQuery, setStandardSearchQuery] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('member')
   const [creating, setCreating] = useState(false)
@@ -849,14 +850,22 @@ export default function WorkspaceDetailPage() {
               </div>
 
               {/* 추천 성취기준 목록 */}
-              {recommendedStandards.length > 0 && (
-                <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 12, maxHeight: 240, overflowY: 'auto', background: 'var(--color-bg-secondary)' }}>
+              {recommendedStandards.length > 0 && (() => {
+                const q = standardSearchQuery.trim().toLowerCase()
+                const filtered = q
+                  ? recommendedStandards.filter(s => {
+                      const haystack = `${s.code || ''} ${s.content || ''} ${s.area || ''} ${(s.keywords || []).join(' ')}`.toLowerCase()
+                      return haystack.includes(q)
+                    })
+                  : recommendedStandards
+                return (
+                <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 12, maxHeight: 280, overflowY: 'auto', background: 'var(--color-bg-secondary)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
-                      추천 성취기준 ({selectedStandardIds.size}/{recommendedStandards.length}개 선택)
+                      추천 성취기준 ({selectedStandardIds.size}/{filtered.length}{q ? ` · 전체 ${recommendedStandards.length}` : ''}개)
                     </span>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button type="button" onClick={() => setSelectedStandardIds(new Set(recommendedStandards.map(s => s.id)))}
+                      <button type="button" onClick={() => setSelectedStandardIds(new Set([...selectedStandardIds, ...filtered.map(s => s.id)]))}
                         style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer', color: 'var(--color-text-secondary)' }}>
                         전체 선택
                       </button>
@@ -866,10 +875,22 @@ export default function WorkspaceDetailPage() {
                       </button>
                     </div>
                   </div>
+                  {/* 키워드 검색 */}
+                  <input
+                    type="text"
+                    value={standardSearchQuery}
+                    onChange={(e) => setStandardSearchQuery(e.target.value)}
+                    placeholder="성취기준 키워드 검색 (예: 함수, 환경, 데이터)"
+                    style={{ width: '100%', padding: '6px 10px', fontSize: 12, marginBottom: 8, boxSizing: 'border-box' }}
+                  />
                   {/* 교과별 그룹 */}
-                  {(() => {
+                  {filtered.length === 0 ? (
+                    <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: 16 }}>
+                      "{standardSearchQuery}"에 해당하는 성취기준이 없습니다
+                    </div>
+                  ) : (() => {
                     const groups = {}
-                    for (const s of recommendedStandards) {
+                    for (const s of filtered) {
                       const key = s.subject_group || s.subject
                       if (!groups[key]) groups[key] = []
                       groups[key].push(s)
@@ -896,7 +917,8 @@ export default function WorkspaceDetailPage() {
                     ))
                   })()}
                 </div>
-              )}
+                )
+              })()}
               {loadingRecommend && (
                 <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: 8 }}>
                   성취기준 추천 로딩 중...

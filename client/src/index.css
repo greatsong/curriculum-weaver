@@ -14,6 +14,10 @@
   --color-border: #E5E7EB;
   --color-border-subtle: #F3F4F6;
 
+  /* Brand */
+  --color-primary: #3B82F6;
+  --color-primary-hover: #2563EB;
+
   /* Phase accent colors — muted pastels */
   --color-phase-prep: #F0F9FF;
   --color-phase-prep-accent: #0EA5E9;
