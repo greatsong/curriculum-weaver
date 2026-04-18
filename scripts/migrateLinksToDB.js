@@ -36,6 +36,7 @@ const ltMap = {
   sc: 'same_concept',
   ap: 'application',
   pr: 'prerequisite',
+  ex: 'extension',
 }
 
 async function migrate() {
