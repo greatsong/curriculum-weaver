@@ -38,31 +38,22 @@ curriculum-weaver/
 - 클라이언트: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 - 서버: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`
 
-## TODO: Auth 구현 계획
+## Auth 구현 상태 (2026-04-18 업데이트)
 
-현재 테스트 모드 (인증 없음). 아래 순서로 전환:
+**프로덕션에서 실제 동작 중.** 이메일/비밀번호 + Google OAuth 지원.
 
-1. **클라이언트 Supabase Auth 연결**
-   - `client/src/lib/supabase.js` 활성화
-   - Google OAuth 로그인 UI 추가 (Dashboard 헤더)
-   - `api.js`의 `getHeaders()`에 `Authorization: Bearer ${session.access_token}` 추가
+- 클라이언트: `client/src/lib/supabase.js` 활성, `api.js`가 세션 토큰 자동 첨부
+- 로그인 UI: `LoginPage.jsx` — 이메일/비번 + "Google로 계속하기" 버튼
+- OAuth 콜백: `/auth/callback` → `AuthCallback.jsx` → `/workspaces` 이동
+- 서버: 모든 라우트가 `requireAuth` 적용 (`server/routes/*.js`), JWT는 Supabase admin 클라이언트로 검증
+- 로컬 dev 모드: `VITE_SUPABASE_URL=placeholder`로 설정 시 더미 사용자로 바이패스 (개발 편의)
 
-2. **서버 JWT 미들웨어 활성화**
-   - `server/middleware/auth.js`의 `requireAuth` 주석 해제
-   - `server/routes/sessions.js`에서 `sessionsRouter.use(requireAuth)` 활성화
-   - `req.user.id`로 creator_id 설정
+**아직 손봐야 하는 부분**:
+- **레거시 `/api/sessions/*` 라우트**: 읽기는 `optionalAuth`, 쓰기는 `requireAuth`. 프로젝트 전환 완료 후 삭제 예정.
+- **RLS 정책 실제 활성화 여부**: 마이그레이션 파일(`supabase/migrations/00002_rls_policies.sql`)은 있으나 프로덕션 DB에 적용됐는지 Dashboard에서 재확인 필요.
+- **인메모리 store 잔존**: `server/lib/store.js`의 `Sessions`/`SessionStandards`가 레거시 세션용으로 남아 있음. 프로젝트 기반 전환 완료 후 제거 가능.
 
-3. **권한 적용**
-   - 세션 삭제/아카이브: creator_id === req.user.id 검증
-   - 세션 참여: session_members에 user_id 추가
-   - 인메모리 store → Supabase Admin 클라이언트로 전환
-
-4. **RLS 활성화** (이미 마이그레이션에 정의됨)
-   - `ds_creator_all`: 생성자만 수정/삭제
-   - `ds_member_select`: 멤버만 조회
-   - `is_session_member()` 함수 활용
-
-관련 파일: `server/middleware/auth.js`, `server/lib/supabaseAdmin.js`, `supabase/migrations/00002_rls_policies.sql`
+관련 파일: `server/middleware/auth.js`, `server/lib/supabaseAdmin.js`, `supabase/migrations/00002_rls_policies.sql`, `client/src/pages/LoginPage.jsx`, `client/src/pages/AuthCallback.jsx`
 
 ## 3계층 링크 품질 시스템
 
