@@ -17,6 +17,7 @@ const GraphPage = lazy(() => import('./pages/GraphPage'))
 const IntroPage = lazy(() => import('./pages/IntroPage'))
 const DemoMode = lazy(() => import('./components/DemoMode'))
 const GuidePage = lazy(() => import('./pages/GuidePage'))
+const AuthCallback = lazy(() => import('./pages/AuthCallback'))
 
 // 레거시 호환: /session/:id 로 들어오면 워크스페이스로 돌려보냄
 function LegacySessionRedirect() {
@@ -198,6 +199,9 @@ export default function App() {
             </AuthRoute>
           }
         />
+
+        {/* OAuth 콜백 (공개) */}
+        <Route path="/auth/callback" element={<AuthCallback />} />
 
         {/* 인트로 (공개) */}
         <Route path="/intro" element={<IntroPage />} />

@@ -104,6 +104,28 @@ export const useAuthStore = create((set, get) => ({
   },
 
   /**
+   * Google OAuth 로그인 — Supabase 리다이렉트 플로우
+   *
+   * 사용자를 Google 로그인 화면으로 보낸 뒤, 완료되면 /auth/callback으로 복귀.
+   * 복귀 URL은 현재 오리진 기반으로 동적 구성해서 로컬/스테이징/프로덕션 모두 대응.
+   */
+  signInWithGoogle: async () => {
+    set({ error: null })
+    try {
+      const redirectTo = `${window.location.origin}/auth/callback`
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo },
+      })
+      if (error) throw error
+      return data
+    } catch (err) {
+      set({ error: err.message })
+      throw err
+    }
+  },
+
+  /**
    * 로그아웃
    */
   logout: async () => {
