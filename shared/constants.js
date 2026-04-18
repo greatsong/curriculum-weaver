@@ -508,8 +508,19 @@ export const ACCEPTED_FILE_TYPES = {
   text: '.txt',
 }
 
-/** 파일 크기 제한 (10MB — 서버 multer 설정과 일치) */
+/** 파일 크기 제한 (10MB — 기존 호환용. 신규 코드는 MAX_MATERIAL_SIZE_BYTES 사용) */
 export const MAX_FILE_SIZE = 10 * 1024 * 1024
+
+/** 자료 파일 크기 상한 (20MB — file-upload-redesign.md §4.2) */
+export const MAX_MATERIAL_SIZE_BYTES = 20 * 1024 * 1024
+
+/**
+ * 파싱 가능한 자료 확장자 (실제 text 추출이 동작하는 것만)
+ * - hwp/hwpx: 파서 신뢰도가 낮아 현재 unsupported로 분류
+ * - doc/ppt/xls: OLE 레거시 형식 — 거부
+ * - 이미지: Vision 연동 전까지 플레이스홀더
+ */
+export const SUPPORTED_MATERIAL_EXTENSIONS = ['pdf', 'docx', 'txt', 'md', 'csv', 'pptx', 'xlsx']
 
 /** 세션 상태 */
 export const SESSION_STATUS = {
@@ -518,7 +529,82 @@ export const SESSION_STATUS = {
   ARCHIVED: 'archived',
 }
 
-/** 자료 처리 상태 */
+/** 자료 처리 상태 (재설계 — 5단계) */
+export const MATERIAL_PROCESSING_STATUSES = {
+  PENDING: 'pending',
+  PARSING: 'parsing',
+  ANALYZING: 'analyzing',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+}
+
+// ──────────────────────────────────────────
+// 자료 업로드 의도 (intent) — 6종
+// analyzer 프롬프트 분기 + 채팅 컨텍스트 주입 기준
+// 관련 문서: _workspace/design/material-context-enhancement.md §7
+// ──────────────────────────────────────────
+
+/**
+ * 교사 업로드 의도 코드 상수
+ * @type {Record<string, string>}
+ */
+export const MATERIAL_INTENTS = {
+  GENERAL: 'general',
+  LEARNER_CONTEXT: 'learner_context',
+  CURRICULUM_DOC: 'curriculum_doc',
+  RESEARCH: 'research',
+  ASSESSMENT: 'assessment',
+  CUSTOM: 'custom',
+}
+
+/**
+ * intent별 UI 레이블 (드롭다운/배지 렌더용)
+ * — 이모지는 상수에만 허용, UI 렌더는 lucide 아이콘을 우선
+ * @type {Record<string, {label: string, icon: string, description: string}>}
+ */
+export const MATERIAL_INTENT_LABELS = {
+  general:         { label: '수업 참고자료',     icon: '📘', description: '범용 요약' },
+  learner_context: { label: '학습자·맥락 정보',  icon: '📋', description: '학생 수준·사전지식 추출' },
+  curriculum_doc:  { label: '교육과정 문서',     icon: '📑', description: '성취기준 매칭 우선' },
+  research:        { label: '선행 연구·이론',    icon: '🔬', description: '핵심 개념 중심' },
+  assessment:      { label: '평가·활동지',       icon: '✏️', description: '문제 유형·수준 분석' },
+  custom:          { label: '기타 — 메모 입력',  icon: '💬', description: '자유 입력' },
+}
+
+/** custom intent 메모의 최대 길이 */
+export const MAX_INTENT_NOTE_LENGTH = 120
+
+/** 기본 intent */
+export const DEFAULT_MATERIAL_INTENT = MATERIAL_INTENTS.GENERAL
+
+/** 자료 업로드/분석 에러 코드 (클라이언트 메시지 매핑 용) */
+export const MATERIAL_ERROR_CODES = {
+  FILE_REQUIRED: 'FILE_REQUIRED',
+  FILE_TOO_LARGE: 'FILE_TOO_LARGE',
+  UNSUPPORTED_TYPE: 'UNSUPPORTED_TYPE',
+  MAGIC_BYTE_MISMATCH: 'MAGIC_BYTE_MISMATCH',
+  PROJECT_ID_REQUIRED: 'PROJECT_ID_REQUIRED',
+  PROJECT_NOT_FOUND: 'PROJECT_NOT_FOUND',
+  FORBIDDEN: 'FORBIDDEN',
+  UPLOAD_FAILED: 'UPLOAD_FAILED',
+  STORAGE_UPLOAD_FAILED: 'STORAGE_UPLOAD_FAILED',
+  STORAGE_UPLOAD_WARNING: 'STORAGE_UPLOAD_WARNING', // 경고 — Storage 실패했지만 메모리 분석 계속
+  STORAGE_NOT_AVAILABLE: 'STORAGE_NOT_AVAILABLE',   // 재분석 시 storage_path 부재
+  STORAGE_QUOTA_EXCEEDED: 'STORAGE_QUOTA_EXCEEDED',
+  NOT_FOUND: 'NOT_FOUND',
+  MATERIAL_NOT_FOUND: 'MATERIAL_NOT_FOUND',
+  AI_TIMEOUT: 'AI_TIMEOUT',
+  PARSE_FAILED: 'PARSE_FAILED',
+  AI_SCHEMA_INVALID: 'AI_SCHEMA_INVALID',
+  INVALID_INTENT: 'INVALID_INTENT',
+  INTENT_NOTE_REQUIRED: 'INTENT_NOTE_REQUIRED',
+  INTERNAL: 'INTERNAL',
+}
+
+/**
+ * @deprecated MATERIAL_PROCESSING_STATUSES 사용 권장. 기존 호출부 호환을 위해 유지.
+ * 새 값(parsing, analyzing)은 포함하지 않는다.
+ */
 export const PROCESSING_STATUS = {
   PENDING: 'pending',
   PROCESSING: 'processing',

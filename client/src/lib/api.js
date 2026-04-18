@@ -5,12 +5,29 @@ export const API_BASE = import.meta.env.VITE_API_URL || ''
 const DEFAULT_TIMEOUT_MS = 60_000
 
 export class ApiError extends Error {
-  constructor(message, status = 0, retryable = false) {
+  constructor(message, status = 0, retryable = false, code = null, field = null) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.retryable = retryable
+    this.code = code
+    this.field = field
   }
+}
+
+/**
+ * 서버 에러 응답 body({ error: { code, message, field } } 또는 레거시 { error: '...' })를
+ * ApiError로 변환한다.
+ */
+function parseApiErrorBody(body, status) {
+  if (body && typeof body.error === 'object' && body.error !== null) {
+    const { code = null, message = '요청에 실패했습니다.', field = null } = body.error
+    return new ApiError(message, status, false, code, field)
+  }
+  if (body && typeof body.error === 'string') {
+    return new ApiError(body.error, status)
+  }
+  return new ApiError(`API 오류: ${status}`, status)
 }
 
 /**
@@ -39,7 +56,7 @@ async function fetchWithTimeout(url, options = {}, timeout = DEFAULT_TIMEOUT_MS)
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
-      throw new ApiError(body.error || `API 오류: ${res.status}`, res.status)
+      throw parseApiErrorBody(body, res.status)
     }
 
     return res
@@ -92,52 +109,101 @@ export async function apiDelete(path) {
 }
 
 /**
- * 파일 업로드 POST 요청 (multipart/form-data)
+ * 파일 업로드 POST 요청 (multipart/form-data).
+ *
+ * XMLHttpRequest 기반으로 동작하여 업로드 진행률(progress)을 콜백으로 전달한다.
+ *
+ * @param {string} path
+ * @param {File} file
+ * @param {Record<string, string>} extraFields
+ * @param {{ onProgress?: (p: { loaded: number, total: number, percent: number }) => void, timeoutMs?: number }} [options]
  */
-export async function apiUploadFile(path, file, extraFields = {}) {
+export async function apiUploadFile(path, file, extraFields = {}, options = {}) {
+  const { onProgress, timeoutMs = 120_000 } = options
+
   const formData = new FormData()
   formData.append('file', file)
   for (const [key, value] of Object.entries(extraFields)) {
+    if (value === undefined || value === null) continue
     formData.append(key, value)
   }
 
-  // Authorization 헤더만 추가 (Content-Type은 브라우저가 설정)
-  const authHeaders = {}
+  // Supabase 세션 토큰 조회
+  let accessToken = null
   try {
     const { data: { session } } = await supabase.auth.getSession()
-    if (session?.access_token) {
-      authHeaders['Authorization'] = `Bearer ${session.access_token}`
-    }
+    if (session?.access_token) accessToken = session.access_token
   } catch {
-    // 인증 없이 계속 진행
+    // 인증 없이 계속 진행 (테스트 모드)
   }
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 120_000)
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API_BASE}${path}`)
+    if (accessToken) {
+      xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`)
+    }
+    xhr.timeout = timeoutMs
 
-  try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      method: 'POST',
-      headers: authHeaders,
-      body: formData,
-      signal: controller.signal,
-    })
-    clearTimeout(timer)
-
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      throw new ApiError(body.error || `API 오류: ${res.status}`, res.status)
+    xhr.upload.onprogress = (e) => {
+      if (!onProgress) return
+      if (e.lengthComputable) {
+        const percent = Math.round((e.loaded / e.total) * 100)
+        onProgress({ loaded: e.loaded, total: e.total, percent })
+      }
     }
 
-    return res.json()
-  } catch (err) {
-    clearTimeout(timer)
-    if (err instanceof ApiError) throw err
-    if (err.name === 'AbortError') {
-      throw new ApiError('파일 처리 시간이 초과되었습니다.', 0)
+    xhr.onload = () => {
+      const status = xhr.status
+      let body = null
+      try {
+        body = xhr.responseText ? JSON.parse(xhr.responseText) : null
+      } catch {
+        body = null
+      }
+      if (status >= 200 && status < 300) {
+        resolve(body)
+      } else {
+        reject(parseApiErrorBody(body, status))
+      }
     }
-    throw new ApiError('네트워크 연결을 확인해주세요.', 0)
-  }
+
+    xhr.onerror = () => {
+      reject(new ApiError('네트워크 연결을 확인해주세요.', 0))
+    }
+
+    xhr.ontimeout = () => {
+      reject(new ApiError('파일 처리 시간이 초과되었습니다.', 0))
+    }
+
+    xhr.onabort = () => {
+      reject(new ApiError('업로드가 취소되었습니다.', 0))
+    }
+
+    xhr.send(formData)
+  })
+}
+
+/**
+ * 자료 분석 결과 조회 (폴링용).
+ * processing_status !== 'completed'이면 analysis는 null로 반환됨.
+ */
+export async function apiGetMaterialAnalysis(materialId) {
+  return apiGet(`/api/materials/${materialId}/analysis`)
+}
+
+/**
+ * 자료 재분석 트리거.
+ */
+export async function apiReanalyzeMaterial(materialId) {
+  return apiPost(`/api/materials/${materialId}/reanalyze`, {})
+}
+
+/**
+ * 자료 삭제.
+ */
+export async function apiDeleteMaterial(materialId) {
+  return apiDelete(`/api/materials/${materialId}`)
 }
 
 /**

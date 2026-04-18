@@ -4,7 +4,10 @@
  * Express + Socket.IO 실시간 협업 서버.
  * Supabase 기반 인증/데이터 + 인메모리 폴백 모드 지원.
  */
-import 'dotenv/config'
+import { config as dotenvConfig } from 'dotenv'
+// 셸 환경에 빈 문자열(예: Claude Desktop의 ANTHROPIC_API_KEY="")이 미리 주입된 경우
+// .env 값을 우선 적용하기 위해 override: true 설정.
+dotenvConfig({ override: true })
 import express from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'

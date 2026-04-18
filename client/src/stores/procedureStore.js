@@ -1,9 +1,37 @@
 import { create } from 'zustand'
-import { apiGet, apiPost, apiPut, apiUploadFile } from '../lib/api'
+import {
+  apiGet,
+  apiPost,
+  apiPut,
+  apiUploadFile,
+  apiGetMaterialAnalysis,
+  apiReanalyzeMaterial,
+  apiDeleteMaterial,
+} from '../lib/api'
 import { socket } from '../lib/socket'
-import { PROCEDURES, BOARD_TYPES } from 'curriculum-weaver-shared/constants.js'
+import {
+  PROCEDURES,
+  BOARD_TYPES,
+  MATERIAL_PROCESSING_STATUSES,
+  DEFAULT_MATERIAL_INTENT,
+} from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
+
+// ── 자료 폴링 관리 (모듈 스코프) ────
+// 동일 materialId에 대한 중복 폴링을 막기 위한 Set + 타이머 맵.
+const _pollingMaterialIds = new Set()
+const _pollingTimers = new Map() // materialId → intervalId
+const MATERIAL_POLL_INTERVAL_MS = 3_000
+
+function _stopMaterialPolling(materialId) {
+  const timer = _pollingTimers.get(materialId)
+  if (timer) {
+    clearInterval(timer)
+    _pollingTimers.delete(materialId)
+  }
+  _pollingMaterialIds.delete(materialId)
+}
 
 export const useProcedureStore = create((set, get) => ({
   currentProcedure: 'T-1-1',
@@ -71,8 +99,10 @@ export const useProcedureStore = create((set, get) => ({
         }
       }
       set({ boards, loading: false })
+      return true
     } catch {
-      set({ boards: {}, loading: false })
+      set((state) => ({ boards: state.boards, loading: false }))
+      return false
     }
   },
 
@@ -93,7 +123,7 @@ export const useProcedureStore = create((set, get) => ({
           boards[board.board_type || board.procedure_code] = board
         }
         set({ boards, loading: false })
-        return
+        return true
       }
       // 새 API: 단일 design 객체 → boards에 BOARD_TYPES 키로 저장 (ProcedureCanvas 호환)
       const boards = {}
@@ -102,8 +132,10 @@ export const useProcedureStore = create((set, get) => ({
         boards[boardType] = { ...design, board_type: boardType, content: design.content }
       }
       set({ boards, loading: false })
+      return true
     } catch {
-      set({ boards: {}, loading: false })
+      set((state) => ({ boards: state.boards, loading: false }))
+      return false
     }
   },
 
@@ -193,39 +225,296 @@ export const useProcedureStore = create((set, get) => ({
       const data = await apiGet(`/api/standards/project/${projectId}`)
       set({ standards: Array.isArray(data) ? data : (data?.standards ?? []) })
     } catch {
-      set({ standards: [] })
+      set((state) => ({ standards: state.standards }))
     }
   },
 
   // ── 자료 ────
 
+  /**
+   * 프로젝트의 자료 목록 로드.
+   * 서버 응답: { materials: [...] } 또는 레거시 배열 형식 모두 허용.
+   */
   loadMaterials: async (projectId) => {
+    if (!projectId) return
     try {
-      const data = await apiGet(`/api/materials/${projectId}`)
-      set({ materials: Array.isArray(data) ? data : (data?.materials ?? []) })
+      // 신규 규약: GET /api/materials?project_id=... 응답은 { materials: [] }
+      // 레거시: GET /api/materials/:sessionId 가 배열이나 { materials } 를 반환
+      // 양쪽을 모두 시도한다 (신규 우선).
+      let data
+      try {
+        data = await apiGet('/api/materials', { project_id: projectId })
+      } catch {
+        data = await apiGet(`/api/materials/${projectId}`)
+      }
+      const list = Array.isArray(data) ? data : (data?.materials ?? [])
+      set({ materials: list })
+      // 미완료 상태 자료는 자동으로 폴링 재개
+      for (const m of list) {
+        if (
+          m?.id &&
+          m.processing_status &&
+          m.processing_status !== MATERIAL_PROCESSING_STATUSES.COMPLETED &&
+          m.processing_status !== MATERIAL_PROCESSING_STATUSES.FAILED
+        ) {
+          get().startMaterialPolling(m.id)
+        }
+      }
     } catch {
-      set({ materials: [] })
+      set((state) => ({ materials: state.materials }))
     }
   },
 
-  uploadMaterial: async (projectId, file, category) => {
-    const data = await apiUploadFile('/api/materials/upload', file, {
-      session_id: projectId,
-      category: category || 'reference',
+  /**
+   * 단일 파일 업로드 (낙관적 업데이트 + 진행률).
+   * 성공 시 서버 material 객체로 교체하고 폴링 시작.
+   * 실패 시 목록에서 tempId 항목 제거 후 에러를 throw.
+   *
+   * @param {string} projectId
+   * @param {File} file
+   * @param {string | {category?: string, intent?: string, intentNote?: string}} [options]
+   *        — 레거시 호환: 문자열이면 category로 해석
+   */
+  uploadMaterial: async (projectId, file, options) => {
+    if (!projectId) throw new Error('projectId가 필요합니다.')
+    // 레거시: uploadMaterial(projectId, file, 'reference') 형태 호환
+    const opts = typeof options === 'string' ? { category: options } : (options || {})
+    const category = opts.category || 'reference'
+    const intent = opts.intent || DEFAULT_MATERIAL_INTENT
+    const intentNote = opts.intentNote || null
+
+    const tempId = `temp-${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)}`
+    const optimistic = {
+      id: tempId,
+      project_id: projectId,
+      file_name: file.name,
+      file_size: file.size,
+      file_type: (file.name.split('.').pop() || '').toLowerCase(),
+      mime_type: file.type || null,
+      category,
+      intent,
+      intent_note: intentNote,
+      processing_status: MATERIAL_PROCESSING_STATUSES.PENDING,
+      created_at: new Date().toISOString(),
+      _uploading: true,
+      _progress: 0,
+      _tempId: tempId,
+    }
+    set((state) => ({ materials: [optimistic, ...state.materials] }))
+
+    try {
+      const data = await apiUploadFile(
+        '/api/materials/upload',
+        file,
+        {
+          project_id: projectId,
+          // 레거시 서버 호환 (곧 제거 예정)
+          session_id: projectId,
+          category,
+          intent,
+          // 서버는 intent_note(snake_case)로 받음
+          ...(intentNote ? { intent_note: intentNote } : {}),
+        },
+        {
+          onProgress: ({ percent }) => {
+            set((state) => ({
+              materials: state.materials.map((m) =>
+                m.id === tempId ? { ...m, _progress: percent } : m,
+              ),
+            }))
+          },
+        },
+      )
+
+      // 백엔드 응답 포맷: { material } 또는 레거시 (객체 자체)
+      const material = data?.material ?? data
+      if (!material || !material.id) {
+        throw new Error('서버 응답이 올바르지 않습니다.')
+      }
+
+      set((state) => ({
+        materials: state.materials.map((m) => (m.id === tempId ? material : m)),
+      }))
+
+      // 완료/실패가 아니면 폴링 시작
+      if (
+        material.processing_status !== MATERIAL_PROCESSING_STATUSES.COMPLETED &&
+        material.processing_status !== MATERIAL_PROCESSING_STATUSES.FAILED
+      ) {
+        get().startMaterialPolling(material.id)
+      }
+      return material
+    } catch (err) {
+      // 낙관적 항목 제거 후 에러 재throw (컴포넌트가 토스트로 처리)
+      set((state) => ({
+        materials: state.materials.filter((m) => m.id !== tempId),
+      }))
+      throw err
+    }
+  },
+
+  /**
+   * 다중 파일 업로드. 각 파일을 병렬(Promise.allSettled)로 업로드한다.
+   *
+   * @param {string} projectId
+   * @param {Array<File | {file: File, intent?: string, intentNote?: string, category?: string}>} files
+   * @param {string} [defaultCategory] — 레거시 호환용. 3번째 인자가 문자열이면 category로 해석.
+   *        신규 호출부는 files 배열 항목에 category를 직접 넣는 것을 권장.
+   * @returns {Promise<Array<{status:'fulfilled'|'rejected', value?:any, reason?:any, file:File}>>}
+   */
+  uploadMaterials: async (projectId, files, defaultCategory) => {
+    if (!projectId) throw new Error('projectId가 필요합니다.')
+    const list = Array.from(files || [])
+    if (list.length === 0) return []
+
+    // 각 항목을 { file, intent, intentNote, category } 형태로 정규화
+    const normalized = list.map((item) => {
+      if (item instanceof File) {
+        return { file: item, category: defaultCategory }
+      }
+      return {
+        file: item.file,
+        intent: item.intent,
+        intentNote: item.intentNote,
+        category: item.category || defaultCategory,
+      }
     })
-    set((state) => ({ materials: [...state.materials, data] }))
-    return data
+
+    const results = await Promise.allSettled(
+      normalized.map((n) =>
+        get().uploadMaterial(projectId, n.file, {
+          category: n.category,
+          intent: n.intent,
+          intentNote: n.intentNote,
+        }),
+      ),
+    )
+    return results.map((r, idx) => ({ ...r, file: normalized[idx].file }))
   },
 
   addUrlMaterial: async (projectId, url, category, title) => {
     const data = await apiPost('/api/materials/url', {
-      session_id: projectId,
+      project_id: projectId,
+      session_id: projectId, // 레거시 호환
       url,
       category: category || 'website',
       title: title || '',
     })
-    set((state) => ({ materials: [...state.materials, data] }))
-    return data
+    const material = data?.material ?? data
+    set((state) => ({ materials: [material, ...state.materials] }))
+    return material
+  },
+
+  /**
+   * 자료 재분석. 상태를 analyzing으로 낙관적 업데이트 후 서버 트리거.
+   */
+  reanalyzeMaterial: async (materialId) => {
+    if (!materialId) return
+    set((state) => ({
+      materials: state.materials.map((m) =>
+        m.id === materialId
+          ? { ...m, processing_status: MATERIAL_PROCESSING_STATUSES.PARSING, _error: null }
+          : m,
+      ),
+    }))
+    try {
+      const data = await apiReanalyzeMaterial(materialId)
+      const material = data?.material ?? data
+      if (material?.id) {
+        set((state) => ({
+          materials: state.materials.map((m) => (m.id === materialId ? { ...m, ...material } : m)),
+        }))
+      }
+      get().startMaterialPolling(materialId)
+    } catch (err) {
+      set((state) => ({
+        materials: state.materials.map((m) =>
+          m.id === materialId
+            ? { ...m, processing_status: MATERIAL_PROCESSING_STATUSES.FAILED, _error: err?.message || '재분석 실패' }
+            : m,
+        ),
+      }))
+      throw err
+    }
+  },
+
+  /**
+   * 자료 삭제 (낙관적).
+   */
+  deleteMaterial: async (materialId) => {
+    if (!materialId) return
+    const prev = get().materials
+    set((state) => ({ materials: state.materials.filter((m) => m.id !== materialId) }))
+    _stopMaterialPolling(materialId)
+    try {
+      await apiDeleteMaterial(materialId)
+    } catch (err) {
+      // 롤백
+      set({ materials: prev })
+      throw err
+    }
+  },
+
+  /**
+   * 자료 분석 상태 폴링 시작. 3초 간격으로 completed/failed까지 폴링.
+   * 동일 materialId에 대해 이미 폴링 중이면 무시.
+   */
+  startMaterialPolling: (materialId) => {
+    if (!materialId) return
+    if (_pollingMaterialIds.has(materialId)) return
+    _pollingMaterialIds.add(materialId)
+
+    const tick = async () => {
+      try {
+        const res = await apiGetMaterialAnalysis(materialId)
+        const material = res?.material
+        const analysis = res?.analysis ?? null
+        if (!material) {
+          _stopMaterialPolling(materialId)
+          return
+        }
+        set((state) => ({
+          materials: state.materials.map((m) =>
+            m.id === materialId
+              ? {
+                  ...m,
+                  ...material,
+                  ai_analysis: analysis ?? m.ai_analysis ?? null,
+                }
+              : m,
+          ),
+        }))
+        if (
+          material.processing_status === MATERIAL_PROCESSING_STATUSES.COMPLETED ||
+          material.processing_status === MATERIAL_PROCESSING_STATUSES.FAILED
+        ) {
+          _stopMaterialPolling(materialId)
+        }
+      } catch {
+        // 간헐적 실패는 무시하고 다음 주기까지 대기
+      }
+    }
+
+    // 즉시 1회 + 이후 인터벌
+    tick()
+    const timer = setInterval(tick, MATERIAL_POLL_INTERVAL_MS)
+    _pollingTimers.set(materialId, timer)
+  },
+
+  /**
+   * 특정 materialId 폴링 중단 (컴포넌트 unmount 등에서 호출).
+   */
+  stopMaterialPolling: (materialId) => {
+    _stopMaterialPolling(materialId)
+  },
+
+  /**
+   * 전체 폴링 중단 (페이지 전환 시 cleanup).
+   */
+  stopAllMaterialPolling: () => {
+    for (const id of Array.from(_pollingMaterialIds)) {
+      _stopMaterialPolling(id)
+    }
   },
 
   // ── 원칙 ────
@@ -235,7 +524,7 @@ export const useProcedureStore = create((set, get) => ({
       const data = await apiGet('/api/principles', { stage: procedureCode || get().currentProcedure })
       set({ principles: Array.isArray(data) ? data : (data?.principles ?? []) })
     } catch {
-      set({ principles: [] })
+      set((state) => ({ principles: state.principles }))
     }
   },
 
@@ -265,6 +554,10 @@ export const useProcedureStore = create((set, get) => ({
   reset: () => {
     const handler = get()._boardHandler
     if (handler) socket.off('board_changed', handler)
+    // 모든 폴링 타이머 정리
+    for (const id of Array.from(_pollingMaterialIds)) {
+      _stopMaterialPolling(id)
+    }
     set({
       boards: {},
       standards: [],

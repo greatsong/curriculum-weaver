@@ -565,7 +565,7 @@ export default function ProjectPage() {
       )}
 
       {/* 자료 관리 바 */}
-      <MaterialUploadBar sessionId={projectId} />
+      <MaterialUploadBar projectId={projectId} />
 
       {/* 절차 네비게이션 */}
       <div data-tour="procedure-nav">

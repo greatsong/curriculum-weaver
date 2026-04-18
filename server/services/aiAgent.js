@@ -15,6 +15,7 @@ import PQueue from 'p-queue'
 import {
   PROCEDURES, PHASES, ACTION_TYPES, ACTOR_COLUMNS, BOARD_TYPES, BOARD_TYPE_LABELS,
   PROMPT_TONE_INSTRUCTIONS, AI_ROLE_PRESETS, DEFAULT_AI_ROLE,
+  MATERIAL_INTENTS, MATERIAL_INTENT_LABELS,
 } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { getBoardSchemaForPrompt } from 'curriculum-weaver-shared/boardSchemas.js'
@@ -220,6 +221,115 @@ function buildGeneralPrinciplesText() {
 다음 5가지 총괄 원리와 지침은 모든 설계 절차에서 일관되게 적용되어야 합니다.
 
 ${gpBlocks}`
+}
+
+// ──────────────────────────────────────────
+// 업로드 자료 컨텍스트 빌더 (intent 기반)
+// ──────────────────────────────────────────
+
+/**
+ * 업로드 자료를 의도(intent) 기반으로 포맷팅해 시스템 프롬프트 섹션으로 변환.
+ * 토큰 예산(budgetTokens) 초과 시 축약 → "외 N개 생략" 순으로 자른다.
+ * learner_context 자료는 항상 최상단으로 끌어올린다.
+ *
+ * @param {Array<Object>} materials - materials 레코드 (ai_analysis 포함)
+ * @param {{budgetTokens?: number, maxRichItems?: number}} [opts]
+ * @returns {string|null} 섹션 문자열 또는 null (분석 완료 자료가 없을 때)
+ */
+export function buildMaterialsContext(materials, opts = {}) {
+  const budgetTokens = opts.budgetTokens ?? 2000
+  const maxRichItems = opts.maxRichItems ?? 5
+
+  if (!Array.isArray(materials) || materials.length === 0) return null
+
+  // 분석 완료된 자료만 사용
+  const ready = materials.filter((m) => {
+    if (!m) return false
+    const ax = m.ai_analysis || {}
+    return !!(m.ai_summary || ax.summary || ax.intent_driven_summary)
+  })
+  if (ready.length === 0) return null
+
+  // learner_context 최우선 정렬, 그 외는 원 순서 유지 (최근순이 보장되어 있다는 가정)
+  const sorted = [...ready].sort((a, b) => {
+    const aLearner = a.intent === MATERIAL_INTENTS.LEARNER_CONTEXT ? 0 : 1
+    const bLearner = b.intent === MATERIAL_INTENTS.LEARNER_CONTEXT ? 0 : 1
+    return aLearner - bLearner
+  })
+
+  // 하드 상한: 20개 이상이면 무조건 자른다
+  const capped = sorted.slice(0, 20)
+
+  const header = `[업로드된 자료 ${capped.length}개]`
+  const lines = [header]
+  let used = header.length
+
+  for (let i = 0; i < capped.length; i++) {
+    const m = capped[i]
+    const rich = i < maxRichItems
+    const block = formatMaterialBlock(m, { rich, index: i + 1 })
+
+    if (used + block.length > budgetTokens) {
+      const remaining = capped.length - i
+      if (remaining > 0) {
+        lines.push(`\n… 외 ${remaining}개 자료는 컨텍스트 예산으로 생략되었습니다.`)
+      }
+      break
+    }
+    lines.push(block)
+    used += block.length + 1
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * 개별 자료 블록 포맷 (풍부/축약)
+ */
+function formatMaterialBlock(m, { rich, index }) {
+  const ax = m.ai_analysis || {}
+  const intent = m.intent || MATERIAL_INTENTS.GENERAL
+  const intentLabel = (MATERIAL_INTENT_LABELS[intent]?.label) || '수업 참고자료'
+  const intentNote = intent === MATERIAL_INTENTS.CUSTOM && m.intent_note
+    ? ` — "${m.intent_note}"` : ''
+  const materialType = ax.material_type || '기타'
+
+  // 의도 맞춤 요약 우선 → 범용 요약 → ai_summary (3단 폴백)
+  const summary = ax.intent_driven_summary || ax.summary || m.ai_summary || ''
+
+  const fileName = m.file_name || '(파일명 없음)'
+
+  if (!rich) {
+    // 축약 포맷: 파일명 + intent + 요약 일부 + 코드 3개
+    const codes = (ax.validated_connections || [])
+      .slice(0, 3)
+      .map((c) => c.code)
+      .filter(Boolean)
+      .join(', ')
+    const summaryShort = summary.slice(0, 200)
+    let block = `${index}. ${fileName} (의도: ${intentLabel})\n   요약: ${summaryShort}`
+    if (codes) block += `\n   연결 성취기준: ${codes}`
+    return block
+  }
+
+  // 풍부 포맷
+  const insights = (ax.key_insights || []).slice(0, 3).filter(Boolean)
+  const connections = (ax.validated_connections || []).slice(0, 5).filter(Boolean)
+  const suggestions = (ax.design_suggestions || []).slice(0, 2).filter(Boolean)
+
+  const out = [`${index}. ${fileName} (${materialType}, 의도: ${intentLabel}${intentNote})`]
+  if (summary) out.push(`   요약: ${summary}`)
+  if (insights.length) {
+    out.push(`   핵심 인사이트: ${insights.join('; ')}`)
+  }
+  if (connections.length) {
+    const codeLine = connections.map((c) => c.code).filter(Boolean).join(', ')
+    if (codeLine) out.push(`   관련 성취기준: ${codeLine}`)
+  }
+  if (suggestions.length) {
+    out.push(`   수업 제안: ${suggestions.join('; ')}`)
+  }
+  return out.join('\n')
 }
 
 // ──────────────────────────────────────────
@@ -466,14 +576,14 @@ ${stdText}
 ${boardStr}`)
   }
 
-  // ─── 15. 업로드 자료 ───
+  // ─── 15. 업로드 자료 (intent 기반 풍부 컨텍스트) ───
   if (materials && materials.length > 0) {
-    const matText = materials
-      .filter((m) => m.ai_summary)
-      .map((m) => `  ${m.file_name}: ${m.ai_summary}`)
-      .join('\n')
-    if (matText) {
-      parts.push(`[업로드된 자료 분석 결과]\n${matText}`)
+    const matSection = buildMaterialsContext(materials, {
+      budgetTokens: 2000,
+      maxRichItems: 5,
+    })
+    if (matSection) {
+      parts.push(matSection)
     }
   }
 

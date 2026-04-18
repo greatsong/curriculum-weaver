@@ -30,7 +30,11 @@ function inviteCode() {
 const sessions = new Map()
 const messages = new Map()          // sessionId -> [message]
 const boards = new Map()            // `${sessionId}:${stage}:${boardType}` -> board
-const materials = new Map()         // sessionId -> [material]
+// 인메모리 자료 저장소.
+// 키는 project_id를 우선 사용하며, 과거 호환을 위해 session_id 조회도 지원한다.
+// 신규 스키마(00016) 필드를 모두 허용: storage_path, file_size, mime_type,
+// file_hash, processing_status, processing_error, extracted_text, ai_analysis, analyzed_at.
+const materials = new Map()         // projectId -> [material]
 const principles = new Map()        // principleId -> principle
 const generalPrinciples = new Map() // gpId -> generalPrinciple
 const standards = new Map()         // standardId -> standard
@@ -353,13 +357,40 @@ export const Boards = {
 }
 
 // ─── 자료 ───
+// NOTE: 인자는 projectId를 표준으로 사용. 레거시 호출부 호환을 위해 sessionId라는 이름으로
+// 들어와도 동일하게 처리한다. 최종적으로 Supabase materials 테이블로 전환될 예정
+// (backend-engineer가 호출부 수정 담당).
 export const Materials = {
-  list: (sessionId) => materials.get(sessionId) || [],
+  list: (projectId) => materials.get(projectId) || [],
 
-  add: (sessionId, data) => {
-    const material = { id: uuid(), session_id: sessionId, ...data, created_at: new Date().toISOString() }
-    if (!materials.has(sessionId)) materials.set(sessionId, [])
-    materials.get(sessionId).push(material)
+  add: (projectId, data) => {
+    // 호출자가 id를 넘겼으면 그대로 사용 (analyzer의 fire-and-forget과 동기화 유지)
+    const material = {
+      id: data.id || uuid(),
+      project_id: projectId,
+      session_id: data.session_id ?? null, // DEPRECATED 호환 필드
+      uploader_id: data.uploader_id ?? null,
+      file_name: data.file_name ?? null,
+      file_type: data.file_type ?? null,
+      mime_type: data.mime_type ?? null,
+      file_size: data.file_size ?? null,
+      file_hash: data.file_hash ?? null,
+      category: data.category ?? 'reference',
+      storage_path: data.storage_path ?? null,
+      processing_status: data.processing_status ?? 'pending',
+      processing_error: data.processing_error ?? null,
+      extracted_text: data.extracted_text ?? null,
+      ai_summary: data.ai_summary ?? null,
+      ai_analysis: data.ai_analysis ?? null,
+      // intent 필드 — 교사 업로드 의도 (migration 00019)
+      intent: data.intent ?? 'general',
+      intent_note: data.intent_note ?? null,
+      analyzed_at: data.analyzed_at ?? null,
+      created_at: data.created_at || new Date().toISOString(),
+    }
+
+    if (!materials.has(projectId)) materials.set(projectId, [])
+    materials.get(projectId).push(material)
     return material
   },
 
@@ -368,8 +399,37 @@ export const Materials = {
       const mat = list.find((m) => m.id === id)
       if (mat) {
         Object.assign(mat, data)
+        if (data.ai_analysis || data.processing_status === 'completed') {
+          mat.analyzed_at = mat.analyzed_at || new Date().toISOString()
+        }
         return mat
       }
+    }
+    return null
+  },
+
+  remove: (id) => {
+    for (const [key, list] of materials.entries()) {
+      const idx = list.findIndex((m) => m.id === id)
+      if (idx !== -1) {
+        const [removed] = list.splice(idx, 1)
+        return removed
+      }
+      void key
+    }
+    return null
+  },
+
+  /**
+   * 인메모리에서 material을 ID로 조회 (project_id 미지 상황에서 사용).
+   * Supabase 404 폴백 경로에서 호출됨.
+   * @param {string} id
+   * @returns {object|null}
+   */
+  findById: (id) => {
+    for (const list of materials.values()) {
+      const found = list.find((m) => m.id === id)
+      if (found) return found
     }
     return null
   },
