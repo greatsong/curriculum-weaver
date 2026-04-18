@@ -36,9 +36,13 @@ export default function WorkspacesPage() {
 
   const handleJoinByLink = async (e) => {
     e.preventDefault()
-    if (!inviteToken.trim()) return
+    const raw = inviteToken.trim()
+    if (!raw) return
+    // 사용자가 전체 URL을 붙여넣은 경우 토큰만 추출
+    const match = raw.match(/\/invite\/([^/?#\s]+)/)
+    const token = match ? match[1] : raw
     try {
-      const ws = await acceptInvite(inviteToken.trim())
+      const ws = await acceptInvite(token)
       setShowJoinByLink(false)
       setInviteToken('')
       navigate(`/workspaces/${ws.id}`)
@@ -356,20 +360,21 @@ export default function WorkspacesPage() {
       {showJoinByLink && (
         <Modal onClose={() => setShowJoinByLink(false)}>
           <form onSubmit={handleJoinByLink}>
-            <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 20px', color: 'var(--color-text-primary)' }}>
-              워크스페이스 참여
+            <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 12px', color: 'var(--color-text-primary)' }}>
+              초대 링크로 참여
             </h2>
+            <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', margin: '0 0 16px', lineHeight: 1.5 }}>
+              호스트가 공유한 초대 링크를 그대로 붙여넣거나, 링크 끝의 토큰만 입력하세요.
+            </p>
             <input
               value={inviteToken}
               onChange={(e) => setInviteToken(e.target.value)}
-              placeholder="초대 토큰 입력"
+              placeholder="https://.../invite/abc123 또는 abc123"
               autoFocus
               style={{
                 width: '100%',
                 padding: '10px 14px',
                 fontSize: 14,
-                textAlign: 'center',
-                letterSpacing: '0.1em',
                 boxSizing: 'border-box',
               }}
             />

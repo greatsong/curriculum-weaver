@@ -163,10 +163,10 @@ export default function StandardSearch({ sessionId, onClose }) {
 
         {/* 결과 */}
         <div className="flex-1 overflow-auto p-3 sm:p-5">
-          {/* 세션에 추가된 성취기준 */}
+          {/* 프로젝트에 추가된 성취기준 */}
           {sessionStandards.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">이 세션에 연결된 성취기준 ({sessionStandards.length})</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">이 프로젝트에 연결된 성취기준 ({sessionStandards.length})</h3>
               <div className="flex flex-wrap gap-2">
                 {sessionStandards.map((entry) => {
                   const std = entry.curriculum_standards

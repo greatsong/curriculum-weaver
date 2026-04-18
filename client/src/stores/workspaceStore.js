@@ -90,6 +90,10 @@ export const useWorkspaceStore = create((set, get) => ({
 
   /**
    * 워크스페이스에 멤버 초대 (이메일 기반)
+   *
+   * 서버 응답:
+   * - { kind: 'added', member } — 가입된 사용자가 즉시 멤버로 추가됨
+   * - { kind: 'link', token, invite_path, expires_at } — 미가입자, 토큰 링크 생성됨
    */
   inviteMember: async (workspaceId, email, role = 'member') => {
     try {
@@ -97,8 +101,8 @@ export const useWorkspaceStore = create((set, get) => ({
         email,
         role,
       })
-      // 현재 워크스페이스 새로고침
-      if (get().currentWorkspace?.id === workspaceId) {
+      // 즉시 추가된 경우만 워크스페이스 새로고침 (링크만 생성한 경우 멤버는 아직 없음)
+      if (result?.kind === 'added' && get().currentWorkspace?.id === workspaceId) {
         await get().fetchWorkspace(workspaceId)
       }
       return result
@@ -115,10 +119,20 @@ export const useWorkspaceStore = create((set, get) => ({
     try {
       const result = await apiPost(`/api/invites/${token}/accept`, {})
       // 서버 응답: { message, workspace_id, role }
-      // 워크스페이스 목록 새로고침
-      const { fetchWorkspaces } = get()
-      await fetchWorkspaces()
-      return result
+      await get().fetchWorkspaces()
+      // 방금 합류한 워크스페이스 상세 조회 (이름·멤버 포함)
+      let workspace = null
+      try {
+        workspace = await get().fetchWorkspace(result.workspace_id)
+      } catch {
+        // 상세 조회 실패해도 id는 확보되므로 무시
+      }
+      return {
+        id: result.workspace_id,
+        name: workspace?.name,
+        role: result.role,
+        message: result.message,
+      }
     } catch (err) {
       set({ error: err.message })
       throw err

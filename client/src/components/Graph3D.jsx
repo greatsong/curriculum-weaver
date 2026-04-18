@@ -1361,7 +1361,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
               </div>
             </section>
 
-            {/* 세션 만들기 CTA */}
+            {/* 프로젝트 만들기 CTA */}
             <section className="border-t border-gray-700 pt-4">
               <p className="text-xs text-gray-500 mb-2">탐색한 교과와 성취기준으로 바로 융합 수업 설계를 시작하세요.</p>
               <button
@@ -1374,7 +1374,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
                 }}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
                 <Sparkles size={16} />
-                새 설계 세션 만들기
+                새 프로젝트 만들기
               </button>
             </section>
           </div>

@@ -29,6 +29,7 @@ export default function WorkspaceDetailPage() {
   const [standardSearchQuery, setStandardSearchQuery] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('member')
+  const [inviteLinkInfo, setInviteLinkInfo] = useState(null) // 미가입자 토큰 초대 결과
   const [creating, setCreating] = useState(false)
 
   // Feature 1: 호스트 설정 상태
@@ -186,13 +187,43 @@ export default function WorkspaceDetailPage() {
     e.preventDefault()
     if (!inviteEmail.trim()) return
     try {
-      await inviteMember(workspaceId, inviteEmail.trim(), inviteRole)
-      setShowInvite(false)
-      setInviteEmail('')
-      alert('초대가 전송되었습니다.')
+      const result = await inviteMember(workspaceId, inviteEmail.trim(), inviteRole)
+      if (result?.kind === 'added') {
+        setShowInvite(false)
+        setInviteEmail('')
+        setInviteLinkInfo(null)
+        alert(`${result.member?.email || inviteEmail}님을 멤버로 추가했습니다.`)
+        return
+      }
+      if (result?.kind === 'link') {
+        // 가입되지 않은 이메일 — 호스트가 복사해서 공유할 초대 링크 표시
+        const origin = typeof window !== 'undefined' ? window.location.origin : ''
+        setInviteLinkInfo({
+          email: result.email,
+          url: `${origin}${result.invite_path}`,
+          expiresAt: result.expires_at,
+        })
+      }
     } catch (err) {
       alert(`초대 실패: ${err.message}`)
     }
+  }
+
+  const handleCopyInviteLink = async () => {
+    if (!inviteLinkInfo?.url) return
+    try {
+      await navigator.clipboard.writeText(inviteLinkInfo.url)
+      alert('초대 링크가 복사되었습니다. 동료에게 공유해 주세요.')
+    } catch {
+      // 복사 실패 시 prompt로 폴백
+      window.prompt('초대 링크 (Ctrl/Cmd+C로 복사)', inviteLinkInfo.url)
+    }
+  }
+
+  const closeInviteModal = () => {
+    setShowInvite(false)
+    setInviteEmail('')
+    setInviteLinkInfo(null)
   }
 
   const handleDeleteWorkspace = async () => {
@@ -937,39 +968,81 @@ export default function WorkspaceDetailPage() {
 
       {/* 멤버 초대 모달 */}
       {showInvite && (
-        <Modal onClose={() => setShowInvite(false)}>
-          <form onSubmit={handleInvite}>
-            <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 20px', color: 'var(--color-text-primary)' }}>멤버 초대</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>이메일</label>
+        <Modal onClose={closeInviteModal}>
+          {inviteLinkInfo ? (
+            <div>
+              <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 8px', color: 'var(--color-text-primary)' }}>초대 링크가 생성되었습니다</h2>
+              <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: '0 0 16px', lineHeight: 1.5 }}>
+                <strong>{inviteLinkInfo.email}</strong>님은 아직 가입하지 않아 자동 추가되지 않았습니다.<br />
+                아래 링크를 공유해 주세요. 동료가 로그인한 뒤 링크를 열면 워크스페이스에 합류합니다.
+              </p>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
                 <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="teacher@school.edu"
-                  autoFocus
-                  required
-                  style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
+                  value={inviteLinkInfo.url}
+                  readOnly
+                  onFocus={(e) => e.target.select()}
+                  style={{ flex: 1, padding: '10px 14px', fontSize: 13, boxSizing: 'border-box', fontFamily: 'monospace' }}
                 />
+                <button type="button" onClick={handleCopyInviteLink} className="btn btn-primary" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+                  복사
+                </button>
               </div>
-              <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>역할</label>
-                <select
-                  value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value)}
-                  style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
+              {inviteLinkInfo.expiresAt && (
+                <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: '0 0 16px' }}>
+                  만료: {new Date(inviteLinkInfo.expiresAt).toLocaleString('ko-KR')}
+                </p>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => { setInviteLinkInfo(null); setInviteEmail('') }}
+                  className="btn btn-ghost"
+                  style={{ fontSize: 13 }}
                 >
-                  <option value="member">멤버</option>
-                  <option value="admin">관리자</option>
-                </select>
+                  다른 사람 초대
+                </button>
+                <button type="button" onClick={closeInviteModal} className="btn btn-primary" style={{ fontSize: 13 }}>
+                  닫기
+                </button>
               </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
-              <button type="button" onClick={() => setShowInvite(false)} className="btn btn-ghost" style={{ fontSize: 13 }}>취소</button>
-              <button type="submit" className="btn btn-primary" style={{ fontSize: 13 }}>초대 보내기</button>
-            </div>
-          </form>
+          ) : (
+            <form onSubmit={handleInvite}>
+              <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 8px', color: 'var(--color-text-primary)' }}>멤버 초대</h2>
+              <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', margin: '0 0 16px', lineHeight: 1.5 }}>
+                가입된 동료는 즉시 멤버로 추가되고, 미가입자는 7일짜리 초대 링크가 생성됩니다.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>이메일</label>
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    placeholder="teacher@school.edu"
+                    autoFocus
+                    required
+                    style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>역할</label>
+                  <select
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value)}
+                    style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
+                  >
+                    <option value="member">멤버</option>
+                    <option value="admin">관리자</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+                <button type="button" onClick={closeInviteModal} className="btn btn-ghost" style={{ fontSize: 13 }}>취소</button>
+                <button type="submit" className="btn btn-primary" style={{ fontSize: 13 }}>초대 보내기</button>
+              </div>
+            </form>
+          )}
         </Modal>
       )}
 
