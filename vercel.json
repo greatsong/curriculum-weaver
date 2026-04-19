@@ -2,6 +2,11 @@
   "buildCommand": "npm run build --workspace=client",
   "outputDirectory": "client/dist",
   "installCommand": "npm install",
+  "build": {
+    "env": {
+      "VITE_API_URL": "https://curriculum-weaver-server-production.up.railway.app"
+    }
+  },
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],
