@@ -263,7 +263,8 @@ export function buildMaterialsContext(materials, opts = {}) {
   const mentionedSections = []
   if (mentionedMaterials.length > 0) {
     mentionedSections.push(
-      `[교사가 명시적으로 언급한 자료 ${mentionedMaterials.length}개 — 최우선 반영]`
+      `[교사가 방금 @로 명시적으로 언급한 자료 ${mentionedMaterials.length}개 — 최우선 반영]`,
+      `※ 아래 자료들은 이미 이 프로젝트에 업로드·분석 완료되어 당신이 이해할 수 있는 형태로 제공됩니다. "파일을 받지 못했다/첨부되지 않았다"고 절대 답하지 마세요. 제공된 요약과 인사이트를 근거로 교사의 질문에 구체적으로 답변하세요.`
     )
     const hardCap = 5 // 하드 상한: 너무 많이 언급되면 상위 5개만
     const picked = mentionedMaterials.slice(0, hardCap)
@@ -294,9 +295,10 @@ export function buildMaterialsContext(materials, opts = {}) {
 
   const generalSections = []
   if (capped.length > 0) {
-    const header = `[업로드된 자료 ${capped.length}개]`
-    generalSections.push(header)
-    let used = header.length
+    const header = `[이 프로젝트에 업로드·분석 완료된 자료 ${capped.length}개]`
+    const note = '※ 이미 분석 완료된 자료입니다. "첨부되지 않았다"고 답하지 말고 아래 요약·인사이트를 직접 활용해 답변하세요.'
+    generalSections.push(header, note)
+    let used = header.length + note.length
 
     for (let i = 0; i < capped.length; i++) {
       const m = capped[i]

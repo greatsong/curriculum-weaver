@@ -43,10 +43,10 @@ describe('buildMaterialsContext — mentionedIds 지원', () => {
     ]
     const out = buildMaterialsContext(materials, { mentionedIds: ['m2'] })
     expect(out).toBeTruthy()
-    expect(out).toMatch(/\[교사가 명시적으로 언급한 자료 1개/)
+    expect(out).toMatch(/\[교사가[^\]]*명시적으로 언급한 자료 1개/)
     // 멘션 섹션이 일반 섹션보다 앞에 있어야 한다
-    const mentionIdx = out.indexOf('[교사가 명시적으로 언급한 자료')
-    const generalIdx = out.indexOf('[업로드된 자료')
+    const mentionIdx = out.search(/\[교사가[^\]]*명시적으로 언급한 자료/)
+    const generalIdx = out.search(/\[(이 프로젝트에 )?업로드(·분석 완료)?된 자료/)
     expect(mentionIdx).toBeGreaterThanOrEqual(0)
     expect(generalIdx === -1 || mentionIdx < generalIdx).toBe(true)
     // b.pdf는 멘션 섹션에 포함
@@ -63,13 +63,13 @@ describe('buildMaterialsContext — mentionedIds 지원', () => {
     const occurrences = out.match(/mentioned\.pdf/g) || []
     expect(occurrences.length).toBe(1)
     // 일반 섹션의 개수 표시는 1개
-    expect(out).toMatch(/\[업로드된 자료 1개/)
+    expect(out).toMatch(/\[(이 프로젝트에 )?업로드(·분석 완료)?된 자료 1개/)
   })
 
   it('mentionedIds가 비어 있으면 기존 섹션 출력만 한다', () => {
     const materials = [baseMaterial({ id: 'm1', file_name: 'only.pdf' })]
     const out = buildMaterialsContext(materials, {})
-    expect(out).toMatch(/\[업로드된 자료 1개/)
+    expect(out).toMatch(/\[(이 프로젝트에 )?업로드(·분석 완료)?된 자료 1개/)
     expect(out).not.toMatch(/명시적으로 언급한 자료/)
   })
 
@@ -87,6 +87,6 @@ describe('buildMaterialsContext — mentionedIds 지원', () => {
     expect(out).toMatch(/명시적으로 언급한 자료 1개/)
     expect(out).toMatch(/wip\.pdf/)
     // 일반 섹션은 없음 (분석 미완료 자료만 존재하므로)
-    expect(out).not.toMatch(/\[업로드된 자료/)
+    expect(out).not.toMatch(/\[(이 프로젝트에 )?업로드(·분석 완료)?된 자료/)
   })
 })

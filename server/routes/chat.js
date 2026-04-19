@@ -567,8 +567,27 @@ chatRouter.post('/message', async (req, res) => {
     }
 
     // @멘션 교차 검증 (project_id 일치 항목만 통과)
-    const { validIds: mentionedIds, materials: mentionedMaterials } =
+    let { validIds: mentionedIds, materials: mentionedMaterials } =
       await resolveMentionedMaterials(mentionedRaw, session_id)
+
+    // ── 텍스트 스캔 폴백 ──
+    // 교사가 드롭다운 없이 "@파일명"을 직접 타이핑한 경우에도 멘션으로 인식.
+    // project의 실제 materials.file_name과 일치할 때만 자동 승격.
+    if (content && mentionedIds.length < (materials?.length || 0)) {
+      const already = new Set(mentionedIds)
+      const autoAdded = []
+      for (const m of materials) {
+        if (!m?.file_name || already.has(m.id)) continue
+        if (content.includes(`@${m.file_name}`)) {
+          already.add(m.id)
+          autoAdded.push(m)
+        }
+      }
+      if (autoAdded.length > 0) {
+        mentionedIds = [...mentionedIds, ...autoAdded.map(m => m.id)]
+        mentionedMaterials = [...(mentionedMaterials || []), ...autoAdded]
+      }
+    }
 
     const context = {
       session: project,
