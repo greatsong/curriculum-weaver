@@ -618,6 +618,30 @@ chatRouter.post('/message', async (req, res) => {
       selectedMaterialIds,
     }
 
+    // ── 진단 로그: 자료가 실제로 프롬프트에 흘러가는지 추적 (Railway 로그용) ──
+    try {
+      const readyList = (materials || []).filter((m) => {
+        const ax = m?.ai_analysis || {}
+        return !!(m?.ai_summary || ax.summary || ax.intent_driven_summary)
+      })
+      console.log('[chat/message] materials trace', {
+        project_id: session_id,
+        materials_total: materials?.length ?? 0,
+        materials_ready: readyList.length,
+        mentioned_ids: mentionedIds,
+        selected_ids_provided: Array.isArray(selectedMaterialIds),
+        selected_ids_count: selectedMaterialIds?.length,
+        ready_files: readyList.map((m) => ({
+          id: m.id,
+          name: m.file_name,
+          status: m.processing_status,
+          has_summary: !!(m.ai_summary || m.ai_analysis?.summary),
+        })),
+      })
+    } catch (logErr) {
+      console.warn('[chat/message] log fail (무시):', logErr?.message)
+    }
+
     // 사용된 원칙 ID 추적
     const generalPrinciples = GENERAL_PRINCIPLES || []
     const principlesUsed = generalPrinciples.map((gp) => gp.id)
