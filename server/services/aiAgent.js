@@ -725,9 +725,22 @@ ${boardStr}`)
       mentionedIds: Array.isArray(mentionedMaterialIds) ? mentionedMaterialIds : [],
       selectedIds: Array.isArray(selectedMaterialIds) ? selectedMaterialIds : undefined,
     })
+    console.log('[buildSystemPrompt] materials section', {
+      materials_total: materials.length,
+      mentioned_count: Array.isArray(mentionedMaterialIds) ? mentionedMaterialIds.length : 0,
+      selected_provided: Array.isArray(selectedMaterialIds),
+      selected_count: Array.isArray(selectedMaterialIds) ? selectedMaterialIds.length : null,
+      section_included: !!matSection,
+      section_length: matSection ? matSection.length : 0,
+      first_120: matSection ? matSection.slice(0, 120) : null,
+    })
     if (matSection) {
       parts.push(matSection)
     }
+  } else {
+    console.log('[buildSystemPrompt] materials EMPTY — fetch may have failed', {
+      materials_received: materials,
+    })
   }
 
   // ─── 16. 최근 첨부 이력 요약 (system 메시지는 messages 배열에 안 들어가므로 여기로) ───
