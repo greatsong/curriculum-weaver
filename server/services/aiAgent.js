@@ -237,14 +237,20 @@ ${gpBlocks}`
  *   2) 예산 제약을 무시하고 모두 풍부 블록으로 포함(자료당 약 800자 상한).
  *   3) 일반 "[업로드된 자료]" 섹션에서는 중복 제거된다.
  *
+ * 선택된 자료(selectedIds)는:
+ *   - 배열로 제공되면 일반 섹션은 해당 ID 자료만 포함한다.
+ *   - undefined/null이면 모든 분석 완료 자료를 포함(하위 호환).
+ *   - 멘션된 자료는 selectedIds와 무관하게 항상 포함된다(교사의 명시적 신호 우선).
+ *
  * @param {Array<Object>} materials - materials 레코드 (ai_analysis 포함)
- * @param {{budgetTokens?: number, maxRichItems?: number, mentionedIds?: string[]}} [opts]
+ * @param {{budgetTokens?: number, maxRichItems?: number, mentionedIds?: string[], selectedIds?: string[]|null}} [opts]
  * @returns {string|null} 섹션 문자열 또는 null (분석 완료 자료가 없을 때)
  */
 export function buildMaterialsContext(materials, opts = {}) {
-  const budgetTokens = opts.budgetTokens ?? 2000
-  const maxRichItems = opts.maxRichItems ?? 5
+  const budgetTokens = opts.budgetTokens ?? 8000
+  const maxRichItems = opts.maxRichItems ?? 8
   const mentionedIds = Array.isArray(opts.mentionedIds) ? opts.mentionedIds : []
+  const selectedIds = Array.isArray(opts.selectedIds) ? opts.selectedIds : null
 
   if (!Array.isArray(materials) || materials.length === 0) return null
 
@@ -281,7 +287,13 @@ export function buildMaterialsContext(materials, opts = {}) {
   }
 
   // ── 2) 일반 "[업로드된 자료]" 섹션 — 멘션된 자료는 중복 제거 ──
-  const remaining = ready.filter((m) => !mentionSet.has(m.id))
+  // selectedIds가 명시되면 해당 ID 자료만 포함(교사가 체크박스로 선택한 경우).
+  // selectedIds가 null이면 모든 분석 완료 자료를 포함(하위 호환).
+  const selectedSet = selectedIds ? new Set(selectedIds) : null
+  let remaining = ready.filter((m) => !mentionSet.has(m.id))
+  if (selectedSet) {
+    remaining = remaining.filter((m) => selectedSet.has(m.id))
+  }
 
   // learner_context 최우선 정렬, 그 외는 원 순서 유지 (최근순이 보장되어 있다는 가정)
   const sorted = [...remaining].sort((a, b) => {
@@ -290,8 +302,8 @@ export function buildMaterialsContext(materials, opts = {}) {
     return aLearner - bLearner
   })
 
-  // 하드 상한: 20개 이상이면 무조건 자른다
-  const capped = sorted.slice(0, 20)
+  // 하드 상한: 30개 이상이면 무조건 자른다
+  const capped = sorted.slice(0, 30)
 
   const generalSections = []
   if (capped.length > 0) {
@@ -428,7 +440,7 @@ function formatMaterialBlock(m, { rich, index }) {
  * @param {number|null} params.currentStep - 현재 스텝 번호
  * @param {string} [params.aiRole] - AI 역할 프리셋 ID (recorder/advisor/facilitator/codesigner)
  */
-function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, mentionedMaterialIds, recentMessages }) {
+function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, mentionedMaterialIds, selectedMaterialIds, recentMessages }) {
   const procInfo = PROCEDURES[procedure]
   if (!procInfo) return '시스템 오류: 유효하지 않은 절차 코드입니다.'
 
@@ -659,9 +671,10 @@ ${boardStr}`)
   // ─── 15. 업로드 자료 (intent 기반 풍부 컨텍스트) ───
   if (materials && materials.length > 0) {
     const matSection = buildMaterialsContext(materials, {
-      budgetTokens: 2000,
-      maxRichItems: 5,
+      budgetTokens: 8000,
+      maxRichItems: 8,
       mentionedIds: Array.isArray(mentionedMaterialIds) ? mentionedMaterialIds : [],
+      selectedIds: Array.isArray(selectedMaterialIds) ? selectedMaterialIds : undefined,
     })
     if (matSection) {
       parts.push(matSection)

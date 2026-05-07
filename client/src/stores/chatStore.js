@@ -209,6 +209,10 @@ export const useChatStore = create((set, get) => ({
     const mentionedIds = Array.isArray(opts.mentionedIds)
       ? opts.mentionedIds
       : (opts.mentionedIds instanceof Set ? Array.from(opts.mentionedIds) : [])
+    // selectedIds: 교사가 체크박스로 선택한 자료 ID. 미지정이면 undefined → 서버는 전체 포함(하위 호환).
+    const selectedIds = Array.isArray(opts.selectedIds)
+      ? opts.selectedIds
+      : (opts.selectedIds instanceof Set ? Array.from(opts.selectedIds) : undefined)
     const currentStep = opts.currentStep
 
     // 로그인 사용자 정보 우선 사용
@@ -265,6 +269,7 @@ export const useChatStore = create((set, get) => ({
       aiRole: wsAiRole || undefined,
       aiModel,
       mentioned_material_ids: mentionedIds,
+      selected_material_ids: selectedIds,
       current_step: currentStep,
     }, {
       onText: (text) => {

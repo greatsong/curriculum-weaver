@@ -39,6 +39,9 @@ export const useProcedureStore = create((set, get) => ({
   boards: {},         // boardType → board data
   standards: [],
   materials: [],
+  // 컨텍스트에서 제외할 자료 ID 집합. 기본은 빈 Set(모두 포함).
+  // 체크박스를 끈 자료만 여기에 들어간다 → 새 자료가 업로드되어도 자동으로 포함됨.
+  excludedMaterialIds: new Set(),
   principles: [],
   generalPrinciples: [],
   loading: false,
@@ -463,15 +466,63 @@ export const useProcedureStore = create((set, get) => ({
   deleteMaterial: async (materialId) => {
     if (!materialId) return
     const prev = get().materials
-    set((state) => ({ materials: state.materials.filter((m) => m.id !== materialId) }))
+    const prevExcluded = get().excludedMaterialIds
+    set((state) => {
+      const nextExcluded = new Set(state.excludedMaterialIds)
+      nextExcluded.delete(materialId)
+      return {
+        materials: state.materials.filter((m) => m.id !== materialId),
+        excludedMaterialIds: nextExcluded,
+      }
+    })
     _stopMaterialPolling(materialId)
     try {
       await apiDeleteMaterial(materialId)
     } catch (err) {
       // 롤백
-      set({ materials: prev })
+      set({ materials: prev, excludedMaterialIds: prevExcluded })
       throw err
     }
+  },
+
+  /**
+   * 자료의 컨텍스트 포함 여부 토글.
+   * included=true → 포함(excluded에서 제거), false → 제외(excluded에 추가).
+   */
+  setMaterialContextIncluded: (materialId, included) => {
+    if (!materialId) return
+    set((state) => {
+      const next = new Set(state.excludedMaterialIds)
+      if (included) next.delete(materialId)
+      else next.add(materialId)
+      return { excludedMaterialIds: next }
+    })
+  },
+
+  /**
+   * 모든 자료를 컨텍스트에 포함시킨다.
+   */
+  selectAllMaterials: () => {
+    set({ excludedMaterialIds: new Set() })
+  },
+
+  /**
+   * 모든 자료를 컨텍스트에서 제외한다.
+   */
+  deselectAllMaterials: () => {
+    const ids = get().materials.map((m) => m.id)
+    set({ excludedMaterialIds: new Set(ids) })
+  },
+
+  /**
+   * 컨텍스트에 포함된 자료 ID 목록을 반환.
+   * 채팅 전송 직전에 호출한다.
+   */
+  getSelectedMaterialIds: () => {
+    const { materials, excludedMaterialIds } = get()
+    return materials
+      .filter((m) => !excludedMaterialIds.has(m.id))
+      .map((m) => m.id)
   },
 
   /**
@@ -581,6 +632,7 @@ export const useProcedureStore = create((set, get) => ({
       boards: {},
       standards: [],
       materials: [],
+      excludedMaterialIds: new Set(),
       principles: [],
       generalPrinciples: [],
       currentProcedure: 'T-1-1',

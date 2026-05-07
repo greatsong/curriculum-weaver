@@ -43,10 +43,14 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId 
 
   const {
     materials,
+    excludedMaterialIds,
     uploadMaterials,
     addUrlMaterial,
     reanalyzeMaterial,
     deleteMaterial,
+    setMaterialContextIncluded,
+    selectAllMaterials,
+    deselectAllMaterials,
     stopAllMaterialPolling,
   } = useProcedureStore()
 
@@ -483,21 +487,52 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId 
 
           {/* 업로드된 자료 목록 */}
           {filteredMaterials.length > 0 && (
-            <ul
-              className="space-y-1.5 max-h-64 overflow-y-auto"
-              aria-live="polite"
-              aria-label="업로드된 자료 목록"
-            >
-              {filteredMaterials.map((m) => (
-                <MaterialRow
-                  key={m.id}
-                  material={m}
-                  onReanalyze={handleReanalyze}
-                  onDelete={handleDelete}
-                  onOpenDetail={setDetailMaterialId}
-                />
-              ))}
-            </ul>
+            <>
+              {/* 컨텍스트 포함 일괄 컨트롤 */}
+              <div className="flex items-center justify-between text-[11px] text-gray-600 px-1">
+                <span>
+                  AI 입력 컨텍스트에 포함된 자료
+                  <span className="ml-1 font-medium text-gray-800">
+                    {filteredMaterials.filter((m) => !excludedMaterialIds.has(m.id)).length}
+                  </span>
+                  <span className="text-gray-400"> / {filteredMaterials.length}</span>
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={selectAllMaterials}
+                    className="px-1.5 py-0.5 rounded text-blue-700 hover:bg-blue-50"
+                  >
+                    모두 포함
+                  </button>
+                  <span className="text-gray-300">|</span>
+                  <button
+                    type="button"
+                    onClick={deselectAllMaterials}
+                    className="px-1.5 py-0.5 rounded text-gray-600 hover:bg-gray-100"
+                  >
+                    모두 제외
+                  </button>
+                </div>
+              </div>
+              <ul
+                className="space-y-1.5 max-h-64 overflow-y-auto"
+                aria-live="polite"
+                aria-label="업로드된 자료 목록"
+              >
+                {filteredMaterials.map((m) => (
+                  <MaterialRow
+                    key={m.id}
+                    material={m}
+                    included={!excludedMaterialIds.has(m.id)}
+                    onToggleIncluded={setMaterialContextIncluded}
+                    onReanalyze={handleReanalyze}
+                    onDelete={handleDelete}
+                    onOpenDetail={setDetailMaterialId}
+                  />
+                ))}
+              </ul>
+            </>
           )}
         </div>
       )}
@@ -694,14 +729,35 @@ function PendingUploadRow({ item: p, disabled, onChangeIntent, onChangeNote, onR
 // ────────────────────────────────────────
 // Subcomponent: 자료 1행
 // ────────────────────────────────────────
-function MaterialRow({ material: m, onReanalyze, onDelete, onOpenDetail }) {
+function MaterialRow({ material: m, included = true, onToggleIncluded, onReanalyze, onDelete, onOpenDetail }) {
   const isUrl = m.file_type === 'url'
   const isUploading = m._uploading
   const status = m.processing_status
+  // 분석 완료 자료만 컨텍스트에 의미가 있다 → 그 외는 체크박스 비활성
+  const canToggle = status === COMPLETED && !isUploading
 
   return (
-    <li className="flex flex-col gap-1 px-2 py-1.5 bg-gray-50 rounded-lg text-xs text-gray-700">
+    <li
+      className={`flex flex-col gap-1 px-2 py-1.5 rounded-lg text-xs text-gray-700 ${
+        canToggle && !included ? 'bg-gray-100 opacity-60' : 'bg-gray-50'
+      }`}
+    >
       <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={canToggle ? included : false}
+          disabled={!canToggle || !onToggleIncluded}
+          onChange={(e) => onToggleIncluded?.(m.id, e.target.checked)}
+          className="shrink-0 h-3.5 w-3.5 accent-blue-600 cursor-pointer disabled:cursor-not-allowed"
+          aria-label={`${m.file_name}을(를) AI 입력 컨텍스트에 ${included ? '제외' : '포함'}`}
+          title={
+            !canToggle
+              ? '분석이 완료된 자료만 컨텍스트에 포함할 수 있어요.'
+              : included
+                ? 'AI 입력 컨텍스트에 포함됨 (해제하려면 클릭)'
+                : 'AI 입력 컨텍스트에서 제외됨 (포함하려면 클릭)'
+          }
+        />
         {isUrl ? (
           <Globe size={12} className="text-green-500 shrink-0" />
         ) : (

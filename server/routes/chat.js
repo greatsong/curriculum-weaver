@@ -499,6 +499,7 @@ async function resolveMentionedMaterials(rawIds, projectId) {
 chatRouter.post('/message', async (req, res) => {
   const { session_id, content, procedure, currentStep, aiRole, aiModel } = req.body
   const mentionedRaw = req.body?.mentioned_material_ids
+  const selectedRaw = req.body?.selected_material_ids
   // 하위 호환: stage → procedure
   const activeProcedure = procedure || req.body.stage
 
@@ -589,6 +590,18 @@ chatRouter.post('/message', async (req, res) => {
       }
     }
 
+    // 교사가 자료 패널 체크박스로 선택한 자료만 컨텍스트에 포함.
+    // 배열로 들어오면 검증 후 사용, 그 외(undefined/null/배열 아님)는 전체 포함(하위 호환).
+    let selectedMaterialIds
+    if (Array.isArray(selectedRaw)) {
+      const validSet = new Set((materials || []).map((m) => m.id))
+      selectedMaterialIds = [
+        ...new Set(
+          selectedRaw.filter((v) => typeof v === 'string' && validSet.has(v))
+        ),
+      ]
+    }
+
     const context = {
       session: project,
       standards,
@@ -602,6 +615,7 @@ chatRouter.post('/message', async (req, res) => {
       aiModel: aiModel || undefined,
       mentionedMaterialIds: mentionedIds,
       mentionedMaterials,
+      selectedMaterialIds,
     }
 
     // 사용된 원칙 ID 추적

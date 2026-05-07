@@ -52,7 +52,7 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
     introCache, showIntroModal, introModalContent, introModalProcedure,
     openIntroModal, closeIntroModal,
   } = useChatStore()
-  const { currentStep, getCurrentStep, materials, uploadMaterial } = useProcedureStore()
+  const { currentStep, getCurrentStep, materials, uploadMaterial, getSelectedMaterialIds } = useProcedureStore()
   const [input, setInput] = useState('')
   const [aiModel, setAiModel] = useState(() => localStorage.getItem('cw_ai_model') || 'fast')
   const scrollRef = useRef(null)
@@ -106,12 +106,17 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
       return text.includes(`@${name}`)
     })
 
+    // 교사가 자료 패널에서 체크한 자료만 컨텍스트로 전달.
+    // (멘션된 자료는 서버에서 selectedIds와 무관하게 항상 포함된다.)
+    const selectedIds = getSelectedMaterialIds?.() || []
+
     setInput('')
     setMentionedIds(new Set())
     setMentionBox(null)
     await sendMessage(projectId, text, {
       procedureCode: stage,
       mentionedIds: survivingIds,
+      selectedIds,
       currentStep,
     })
   }

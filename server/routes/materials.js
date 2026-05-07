@@ -76,12 +76,26 @@ function errorResponse(res, status, code, message, field) {
   return res.status(status).json(body)
 }
 
-/** originalname을 경로 탈출 방어 + 안전한 문자로 정제 */
+/** originalname을 경로 탈출 방어 + 안전한 문자로 정제.
+ *  macOS Finder/Safari는 한글 파일명을 NFD(자모 분리)로 전송하므로
+ *  Hangul 호환을 위해 NFC로 정규화한다. */
 function sanitizeFileName(original) {
-  const base = path.basename(String(original || '')).trim()
+  const base = path.basename(String(original || '')).normalize('NFC').trim()
   // 제어문자와 path 구분자 제거
   const cleaned = base.replace(/[\x00-\x1f/\\]/g, '').slice(0, 200)
   return cleaned || 'unnamed'
+}
+
+/** 응답 직전 파일명 NFC 정규화 — 이미 NFD로 저장된 레거시 행 보정용 */
+function normalizeMaterialFileName(row) {
+  if (!row || typeof row.file_name !== 'string') return row
+  const fixed = row.file_name.normalize('NFC')
+  return fixed === row.file_name ? row : { ...row, file_name: fixed }
+}
+
+function normalizeMaterialList(rows) {
+  if (!Array.isArray(rows)) return rows
+  return rows.map(normalizeMaterialFileName)
 }
 
 /** 확장자 추출 (소문자, 점 없음) */
@@ -380,7 +394,7 @@ materialsRouter.post(
     analyzeMaterial(materialId, bufferForAnalysis, ext, { intent, intentNote })
       .catch((err) => console.error('[materials] analyzeMaterial 오류:', err?.message || err))
 
-    const responseBody = { material }
+    const responseBody = { material: normalizeMaterialFileName(material) }
     if (systemMessage) responseBody.systemMessage = systemMessage
     return res.status(201).json(responseBody)
   }
@@ -451,9 +465,9 @@ materialsRouter.get('/', async (req, res) => {
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
     if (error) throw error
-    return res.json({ materials: data || [] })
+    return res.json({ materials: normalizeMaterialList(data || []) })
   } catch {
-    return res.json({ materials: Materials.list(projectId) })
+    return res.json({ materials: normalizeMaterialList(Materials.list(projectId)) })
   }
 })
 
@@ -472,9 +486,9 @@ materialsRouter.get('/:projectId', async (req, res, next) => {
       .eq('project_id', id)
       .order('created_at', { ascending: false })
     if (error) throw error
-    return res.json({ materials: data || [] })
+    return res.json({ materials: normalizeMaterialList(data || []) })
   } catch {
-    return res.json({ materials: Materials.list(id) })
+    return res.json({ materials: normalizeMaterialList(Materials.list(id)) })
   }
 })
 
@@ -522,7 +536,7 @@ materialsRouter.get('/:id/analysis', async (req, res) => {
     material: {
       id: row.id,
       project_id: row.project_id,
-      file_name: row.file_name,
+      file_name: typeof row.file_name === 'string' ? row.file_name.normalize('NFC') : row.file_name,
       processing_status: row.processing_status,
       processing_error: row.processing_error,
       error_code: errorCode,         // 프론트 materialErrors.js 매핑 키
