@@ -270,7 +270,12 @@ export function buildMaterialsContext(materials, opts = {}) {
   if (mentionedMaterials.length > 0) {
     mentionedSections.push(
       `[교사가 방금 @로 명시적으로 언급한 자료 ${mentionedMaterials.length}개 — 최우선 반영]`,
-      `※ 아래 자료들은 이미 이 프로젝트에 업로드·분석 완료되어 당신이 이해할 수 있는 형태로 제공됩니다. "파일을 받지 못했다/첨부되지 않았다"고 절대 답하지 마세요. 제공된 요약과 인사이트를 근거로 교사의 질문에 구체적으로 답변하세요.`
+      `※ 아래 자료들은 이미 이 프로젝트의 업로드 파이프라인을 통해 시스템이 수신·처리하고 있는 자료입니다.`,
+      `※ 다음 환각 표현은 절대 사용하지 마세요: "파일을 받지 못했다", "첨부되지 않았다", "내용을 읽을 수 없다", "현재 환경에서는 PDF를 직접 읽을 수 없다", "텍스트를 복사해서 붙여달라".`,
+      `※ 각 자료에는 처리 상태(분석 중/완료/실패)와 요약·인사이트가 함께 제공됩니다. 상태별 지시를 정확히 따르세요:`,
+      `   • 분석 진행 중(⏳): "잠시 후 요약을 함께 보며 이어가요"라고 자연스럽게 안내하고, 그 사이 교사의 활용 의도나 핵심 관심사를 먼저 묻는 질문을 던지세요.`,
+      `   • 분석 완료: 제공된 요약·인사이트·연결 성취기준을 근거로 구체적으로 답변하세요.`,
+      `   • 분석 실패(⚠️): 재분석 버튼 안내 또는 핵심 내용을 채팅에 붙여달라고 정중히 요청하세요.`
     )
     const hardCap = 5 // 하드 상한: 너무 많이 언급되면 상위 5개만
     const picked = mentionedMaterials.slice(0, hardCap)
@@ -390,6 +395,30 @@ function formatMaterialBlock(m, { rich, index }) {
   const summary = ax.intent_driven_summary || ax.summary || m.ai_summary || ''
 
   const fileName = m.file_name || '(파일명 없음)'
+  const status = m.processing_status
+
+  // ── 분석 미완료/실패: AI가 "내용을 읽을 수 없다"는 환각 응답을 못 하도록 명확히 안내 ──
+  if (!summary) {
+    if (status === 'pending' || status === 'parsing' || status === 'analyzing') {
+      return [
+        `${index}. ${fileName} (의도: ${intentLabel}) — ⏳ 분석 진행 중(${status})`,
+        `   ※ 시스템이 이미 파일을 수신·처리 중입니다. 곧 요약과 인사이트가 자동으로 제공됩니다.`,
+        `   ※ "파일을 받지 못했다"·"읽을 수 없다"·"환경에서 PDF를 처리할 수 없다"고 절대 답하지 마세요.`,
+        `   ※ 대신 "자료를 분석 중이에요. 잠시 후 요약 결과를 함께 보면서 이어가시죠"라고 자연스럽게 안내하고, 그동안 교사가 떠올린 핵심 키워드나 활용 의도를 먼저 묻는 질문을 던지세요.`,
+      ].join('\n')
+    }
+    if (status === 'failed') {
+      return [
+        `${index}. ${fileName} (의도: ${intentLabel}) — ⚠️ 분석 실패`,
+        `   ※ 자료 분석에 실패했습니다. 교사에게 "자료 패널의 재분석 버튼을 눌러주세요"라고 안내하거나, 핵심 내용을 채팅창에 직접 붙여주시도록 자연스럽게 요청하세요.`,
+      ].join('\n')
+    }
+    // 상태 정보가 없는 자료(레거시 등) — 파일명만 알 수 있으니 정중하게 추가 정보 요청
+    return [
+      `${index}. ${fileName} (의도: ${intentLabel})`,
+      `   ※ 요약 정보가 아직 준비되지 않았습니다. "자료의 핵심 내용을 한두 문장으로 알려주실 수 있을까요?"라고 정중히 물어보세요. "읽을 수 없다"는 표현은 사용하지 마세요.`,
+    ].join('\n')
+  }
 
   if (!rich) {
     // 축약 포맷: 파일명 + intent + 요약 일부 + 코드 3개
