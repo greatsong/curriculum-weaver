@@ -76,20 +76,42 @@ function errorResponse(res, status, code, message, field) {
   return res.status(status).json(body)
 }
 
-/** originalname을 경로 탈출 방어 + 안전한 문자로 정제.
- *  macOS Finder/Safari는 한글 파일명을 NFD(자모 분리)로 전송하므로
- *  Hangul 호환을 위해 NFC로 정규화한다. */
+/** 한글 파일명 인코딩 복구 + NFC 정규화.
+ *  - multer는 multipart originalname을 latin1로 디코딩하므로 UTF-8 바이트가 mojibake로 들어온다.
+ *    문자가 모두 0x00–0xFF 범위면 latin1→utf8 재디코딩을 시도한다.
+ *  - macOS Finder/Safari는 한글 파일명을 NFD(자모 분리)로 보내므로 마지막에 NFC로 정규화한다. */
+function fixHangulFileName(s) {
+  if (typeof s !== 'string' || s.length === 0) return s
+  let raw = s
+  // 모든 코드포인트가 latin1 범위 안이면 mojibake 가능성이 있다고 판단
+  let allLatin1 = true
+  for (let i = 0; i < raw.length; i++) {
+    if (raw.charCodeAt(i) > 0xff) { allLatin1 = false; break }
+  }
+  if (allLatin1) {
+    try {
+      const fixed = Buffer.from(raw, 'latin1').toString('utf8')
+      const replOrig = (raw.match(/�/g) || []).length
+      const replFixed = (fixed.match(/�/g) || []).length
+      // 재디코딩 후 대체문자가 늘지 않고 실제로 변화가 있으면 채택
+      if (replFixed <= replOrig && fixed !== raw) raw = fixed
+    } catch { /* ignore */ }
+  }
+  return raw.normalize('NFC')
+}
+
+/** originalname을 경로 탈출 방어 + 안전한 문자로 정제. */
 function sanitizeFileName(original) {
-  const base = path.basename(String(original || '')).normalize('NFC').trim()
+  const base = path.basename(fixHangulFileName(String(original || ''))).trim()
   // 제어문자와 path 구분자 제거
   const cleaned = base.replace(/[\x00-\x1f/\\]/g, '').slice(0, 200)
   return cleaned || 'unnamed'
 }
 
-/** 응답 직전 파일명 NFC 정규화 — 이미 NFD로 저장된 레거시 행 보정용 */
+/** 응답 직전 파일명 인코딩/NFC 보정 — 레거시(latin1 mojibake / NFD) 행도 안전하게 노출 */
 function normalizeMaterialFileName(row) {
   if (!row || typeof row.file_name !== 'string') return row
-  const fixed = row.file_name.normalize('NFC')
+  const fixed = fixHangulFileName(row.file_name)
   return fixed === row.file_name ? row : { ...row, file_name: fixed }
 }
 
@@ -536,7 +558,7 @@ materialsRouter.get('/:id/analysis', async (req, res) => {
     material: {
       id: row.id,
       project_id: row.project_id,
-      file_name: typeof row.file_name === 'string' ? row.file_name.normalize('NFC') : row.file_name,
+      file_name: typeof row.file_name === 'string' ? fixHangulFileName(row.file_name) : row.file_name,
       processing_status: row.processing_status,
       processing_error: row.processing_error,
       error_code: errorCode,         // 프론트 materialErrors.js 매핑 키
