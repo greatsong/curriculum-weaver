@@ -866,7 +866,7 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
             onChange={handleInputChange}
             onKeyDown={handleInputKeyDown}
             rows={1}
-            placeholder={streaming ? 'AI 응답 중...' : '메시지를 입력하세요. @를 입력하면 첨부된 자료를 언급할 수 있어요.'}
+            placeholder={streaming ? 'AI 응답 중...' : '메시지 입력(@로 자료 참고 가능)'}
             style={{
               flex: 1,
               padding: '10px 14px',
