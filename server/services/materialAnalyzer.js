@@ -211,12 +211,28 @@ export async function updateSystemAttachmentMessage(materialId, status) {
  */
 async function updateMaterialRow(materialId, patch) {
   let supabaseOk = false
+  const payload = { ...patch }
   try {
-    const { error } = await supabaseAdmin
-      .from('materials')
-      .update(patch)
-      .eq('id', materialId)
-    if (error) throw error
+    const stripped = []
+    for (let i = 0; i < 8; i += 1) {
+      const { error } = await supabaseAdmin
+        .from('materials')
+        .update(payload)
+        .eq('id', materialId)
+      if (!error) {
+        if (stripped.length > 0) {
+          console.warn('[materialAnalyzer] 운영 DB 누락 컬럼 제외 후 상태 갱신:', stripped.join(', '))
+        }
+        supabaseOk = true
+        break
+      }
+
+      const missing = String(error?.message || '').match(/Could not find the '([^']+)' column/)?.[1]
+      if (!missing || !(missing in payload)) throw error
+      delete payload[missing]
+      stripped.push(missing)
+    }
+    if (!supabaseOk) throw new Error('materials 상태 갱신 재시도 한도를 초과했습니다.')
     supabaseOk = true
   } catch (err) {
     // Supabase 미연결 / RLS 실패 등 — 인메모리 store 폴백

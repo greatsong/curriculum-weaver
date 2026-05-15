@@ -110,14 +110,52 @@ function sanitizeFileName(original) {
 
 /** 응답 직전 파일명 인코딩/NFC 보정 — 레거시(latin1 mojibake / NFD) 행도 안전하게 노출 */
 function normalizeMaterialFileName(row) {
-  if (!row || typeof row.file_name !== 'string') return row
-  const fixed = fixHangulFileName(row.file_name)
-  return fixed === row.file_name ? row : { ...row, file_name: fixed }
+  if (!row) return row
+  let next = row
+  if (typeof row.file_name === 'string') {
+    const fixed = fixHangulFileName(row.file_name)
+    if (fixed !== row.file_name) next = { ...next, file_name: fixed }
+  }
+  if (!next.category) next = { ...next, category: 'reference' }
+  if (!next.intent) next = { ...next, intent: DEFAULT_MATERIAL_INTENT }
+  return next
 }
 
 function normalizeMaterialList(rows) {
   if (!Array.isArray(rows)) return rows
   return rows.map(normalizeMaterialFileName)
+}
+
+function getMissingSchemaColumn(error) {
+  const message = String(error?.message || '')
+  const match = message.match(/Could not find the '([^']+)' column/)
+  return match?.[1] || null
+}
+
+async function insertMaterialRow(row) {
+  const payload = { ...row }
+  const stripped = []
+
+  for (let i = 0; i < 8; i += 1) {
+    const { data, error } = await supabaseAdmin
+      .from('materials')
+      .insert(payload)
+      .select()
+      .single()
+    if (!error) {
+      if (stripped.length > 0) {
+        console.warn('[materials] 운영 DB 누락 컬럼 제외 후 저장:', stripped.join(', '))
+      }
+      return data
+    }
+
+    const missing = getMissingSchemaColumn(error)
+    if (!missing || !(missing in payload)) throw error
+    delete payload[missing]
+    stripped.push(missing)
+  }
+
+  throw new Error('materials 스키마 보정 재시도 한도를 초과했습니다.')
 }
 
 /** 확장자 추출 (소문자, 점 없음) */
@@ -336,13 +374,7 @@ materialsRouter.post(
 
     let material = null
     try {
-      const { data, error } = await supabaseAdmin
-        .from('materials')
-        .insert(baseRow)
-        .select()
-        .single()
-      if (error) throw error
-      material = data
+      material = await insertMaterialRow(baseRow)
     } catch (err) {
       // 인메모리 fallback — storage 미연결/스키마 불일치 등
       console.warn('[materials/upload] DB insert 실패, 인메모리 저장:', err?.message || err)
@@ -456,13 +488,7 @@ materialsRouter.post('/url', async (req, res) => {
 
   let material = null
   try {
-    const { data, error } = await supabaseAdmin
-      .from('materials')
-      .insert(baseRow)
-      .select()
-      .single()
-    if (error) throw error
-    material = data
+    material = await insertMaterialRow(baseRow)
   } catch {
     material = Materials.add(projectId, baseRow)
   }
@@ -483,7 +509,7 @@ materialsRouter.get('/', async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('materials')
-      .select('id, project_id, file_name, file_type, mime_type, file_size, category, storage_path, processing_status, processing_error, ai_summary, created_at')
+      .select('*')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
     if (error) throw error
