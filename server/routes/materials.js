@@ -352,6 +352,8 @@ materialsRouter.post(
     const baseRow = {
       id: materialId,
       project_id: projectId,
+      // 운영 레거시 DB는 project_id 전환 후에도 session_id NOT NULL이 남아 있을 수 있다.
+      session_id: projectId,
       uploader_id: req.user.id,
       file_name: safeName,
       file_type: ext,
@@ -474,6 +476,8 @@ materialsRouter.post('/url', async (req, res) => {
   const baseRow = {
     id: materialId,
     project_id: projectId,
+    // 운영 레거시 DB는 project_id 전환 후에도 session_id NOT NULL이 남아 있을 수 있다.
+    session_id: projectId,
     uploader_id: req.user.id,
     file_name: title || url,
     file_type: 'url',

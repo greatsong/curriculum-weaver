@@ -125,6 +125,7 @@ describe('POST /api/materials/upload', () => {
     expect(res.body).toHaveProperty('material')
     expect(res.body.material).toMatchObject({
       project_id: 'proj-1',
+      session_id: 'proj-1',
       file_name: 'test.pdf',
       file_type: 'pdf',
       processing_status: 'pending',

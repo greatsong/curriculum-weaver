@@ -9,6 +9,7 @@
 -- ============================================================
 
 ALTER TABLE materials ADD COLUMN IF NOT EXISTS project_id UUID;
+ALTER TABLE materials ADD COLUMN IF NOT EXISTS session_id UUID;
 ALTER TABLE materials ADD COLUMN IF NOT EXISTS uploader_id UUID;
 ALTER TABLE materials ADD COLUMN IF NOT EXISTS file_type TEXT;
 ALTER TABLE materials ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'reference';
@@ -29,11 +30,14 @@ ALTER TABLE materials ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT no
 UPDATE materials SET category = 'reference' WHERE category IS NULL;
 UPDATE materials SET processing_status = 'pending' WHERE processing_status IS NULL;
 UPDATE materials SET intent = 'general' WHERE intent IS NULL;
+UPDATE materials SET project_id = session_id WHERE project_id IS NULL AND session_id IS NOT NULL;
+UPDATE materials SET session_id = project_id WHERE session_id IS NULL AND project_id IS NOT NULL;
 
 ALTER TABLE materials ALTER COLUMN category SET DEFAULT 'reference';
 ALTER TABLE materials ALTER COLUMN processing_status SET DEFAULT 'pending';
 ALTER TABLE materials ALTER COLUMN intent SET DEFAULT 'general';
 ALTER TABLE materials ALTER COLUMN intent SET NOT NULL;
+ALTER TABLE materials ALTER COLUMN session_id DROP NOT NULL;
 
 ALTER TABLE materials DROP CONSTRAINT IF EXISTS materials_processing_status_check;
 ALTER TABLE materials
@@ -46,10 +50,9 @@ ALTER TABLE materials
   CHECK (intent IN (
     'general',
     'learner_context',
-    'standards_alignment',
+    'curriculum_doc',
+    'research',
     'assessment',
-    'activity_design',
-    'reference',
     'custom'
   ));
 
