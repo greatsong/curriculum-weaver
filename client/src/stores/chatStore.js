@@ -213,6 +213,7 @@ export const useChatStore = create((set, get) => ({
     const selectedIds = Array.isArray(opts.selectedIds)
       ? opts.selectedIds
       : (opts.selectedIds instanceof Set ? Array.from(opts.selectedIds) : undefined)
+    const materialSelectionExplicit = opts.materialSelectionExplicit === true
     const currentStep = opts.currentStep
 
     // 로그인 사용자 정보 우선 사용
@@ -270,6 +271,7 @@ export const useChatStore = create((set, get) => ({
       aiModel,
       mentioned_material_ids: mentionedIds,
       selected_material_ids: selectedIds,
+      material_selection_explicit: materialSelectionExplicit,
       current_step: currentStep,
     }, {
       onText: (text) => {

@@ -107,8 +107,12 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
     })
 
     // 교사가 자료 패널에서 체크한 자료만 컨텍스트로 전달.
+    // 자료 목록이 아직 로드되지 않았으면 selectedIds를 보내지 않아 서버가 전체 자료를 포함하게 한다.
     // (멘션된 자료는 서버에서 selectedIds와 무관하게 항상 포함된다.)
-    const selectedIds = getSelectedMaterialIds?.() || []
+    const materialSelectionExplicit = materials.length > 0
+    const selectedIds = materialSelectionExplicit && getSelectedMaterialIds
+      ? getSelectedMaterialIds()
+      : undefined
 
     setInput('')
     setMentionedIds(new Set())
@@ -117,6 +121,7 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
       procedureCode: stage,
       mentionedIds: survivingIds,
       selectedIds,
+      materialSelectionExplicit,
       currentStep,
     })
   }

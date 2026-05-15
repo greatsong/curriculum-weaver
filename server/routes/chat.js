@@ -25,6 +25,7 @@ import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
 import { PROCEDURE_GUIDE } from '../data/procedureGuide.js'
+import { resolveSelectedMaterialIds } from '../lib/materialSelection.js'
 
 /**
  * 정적 인트로 마크다운 생성 (AI 호출 없음)
@@ -495,11 +496,27 @@ async function resolveMentionedMaterials(rawIds, projectId) {
   }
 }
 
+function normalizeMentionText(value) {
+  return String(value || '').normalize('NFC').toLowerCase()
+}
+
+function materialMentionedInText(content, material) {
+  if (!content || !material?.file_name) return false
+  const text = normalizeMentionText(content)
+  const fileName = normalizeMentionText(material.file_name)
+  if (!fileName) return false
+  if (text.includes(`@${fileName}`)) return true
+
+  const stem = fileName.replace(/\.[^./\\]+$/, '')
+  return stem.length >= 2 && text.includes(`@${stem}`)
+}
+
 // ─── AI 채팅 메시지 전송 (SSE 스트리밍) ───
 chatRouter.post('/message', async (req, res) => {
   const { session_id, content, procedure, currentStep, aiRole, aiModel } = req.body
   const mentionedRaw = req.body?.mentioned_material_ids
   const selectedRaw = req.body?.selected_material_ids
+  const selectionExplicit = req.body?.material_selection_explicit === true
   // 하위 호환: stage → procedure
   const activeProcedure = procedure || req.body.stage
 
@@ -579,9 +596,17 @@ chatRouter.post('/message', async (req, res) => {
       const autoAdded = []
       for (const m of materials) {
         if (!m?.file_name || already.has(m.id)) continue
-        if (content.includes(`@${m.file_name}`)) {
+        if (materialMentionedInText(content, m)) {
           already.add(m.id)
           autoAdded.push(m)
+        }
+      }
+      // 멘션 드롭다운 ID가 누락되어도, 자료가 하나뿐이고 교사가 @를 썼다면 그 자료로 복구한다.
+      if (autoAdded.length === 0 && already.size === 0 && content.includes('@') && materials?.length === 1) {
+        const only = materials[0]
+        if (only?.id && only?.file_name) {
+          already.add(only.id)
+          autoAdded.push(only)
         }
       }
       if (autoAdded.length > 0) {
@@ -591,16 +616,11 @@ chatRouter.post('/message', async (req, res) => {
     }
 
     // 교사가 자료 패널 체크박스로 선택한 자료만 컨텍스트에 포함.
-    // 배열로 들어오면 검증 후 사용, 그 외(undefined/null/배열 아님)는 전체 포함(하위 호환).
-    let selectedMaterialIds
-    if (Array.isArray(selectedRaw)) {
-      const validSet = new Set((materials || []).map((m) => m.id))
-      selectedMaterialIds = [
-        ...new Set(
-          selectedRaw.filter((v) => typeof v === 'string' && validSet.has(v))
-        ),
-      ]
-    }
+    // 단, 빈 배열은 클라이언트 자료 목록 미로드와 "모두 제외"가 모두 될 수 있으므로
+    // material_selection_explicit=true일 때만 실제 전체 제외로 해석한다.
+    const selectedMaterialIds = resolveSelectedMaterialIds(selectedRaw, materials, {
+      explicit: selectionExplicit,
+    })
 
     const context = {
       session: project,
@@ -629,6 +649,7 @@ chatRouter.post('/message', async (req, res) => {
         materials_total: materials?.length ?? 0,
         materials_ready: readyList.length,
         mentioned_ids: mentionedIds,
+        selection_explicit: selectionExplicit,
         selected_ids_provided: Array.isArray(selectedMaterialIds),
         selected_ids_count: selectedMaterialIds?.length,
         ready_files: readyList.map((m) => ({
