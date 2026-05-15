@@ -227,6 +227,76 @@ ${gpBlocks}`
 // 업로드 자료 컨텍스트 빌더 (intent 기반)
 // ──────────────────────────────────────────
 
+/** 멘션된 자료의 원문(extracted_text) 동봉 기본 한도 — 자료별 상한 */
+export const MENTION_RAW_PER_ITEM_CAP_DEFAULT = 8000
+/** 멘션된 자료 전체에 동봉 가능한 원문 합계 한도 */
+export const MENTION_RAW_TOTAL_BUDGET_DEFAULT = 24000
+
+/** 한국어 천 단위 콤마 포맷 */
+function fmtNumber(n) {
+  return Number(n).toLocaleString('ko-KR')
+}
+
+/**
+ * 멘션된 자료당 동봉 가능한 원문 문자 수를 계산.
+ *
+ * - count<=0 → 0
+ * - 균등 분배(totalBudget / count) 후 perItemCap으로 상한.
+ * - 결과가 정수가 아니면 floor.
+ *
+ * @param {number} count - 멘션 자료 수
+ * @param {number} totalBudget - 멘션 전체에 허용된 합계 문자 수
+ * @param {number} perItemCap - 자료 한 개에 허용된 상한
+ * @returns {number} 자료당 허용 문자 수 (0 이상)
+ */
+export function allocateMentionRawBudget(count, totalBudget, perItemCap) {
+  if (!Number.isFinite(count) || count <= 0) return 0
+  if (!Number.isFinite(totalBudget) || totalBudget <= 0) return 0
+  const cap = Number.isFinite(perItemCap) && perItemCap > 0 ? perItemCap : totalBudget
+  return Math.max(0, Math.min(cap, Math.floor(totalBudget / count)))
+}
+
+/**
+ * 멘션된 자료의 원문(extracted_text) 일부를 시스템 프롬프트 블록으로 포맷.
+ *
+ * - 원문이 비어 있거나 allowedChars<=0이면 null.
+ * - 원문 ≤ allowedChars: 전체 동봉, 잘림 안내 없음.
+ * - 원문 > allowedChars: 처음 allowedChars자만 동봉 + "잘림" 명시 + AI 안내 라인.
+ *
+ * 잘림 안내는 AI가 "전체 N자 중 앞부분 P%만 받았어요"라고 사용자에게 정직하게 답할 수 있도록
+ * 구체 수치(전체/포함/퍼센트)를 명시한다.
+ *
+ * @param {string|null|undefined} extractedText - materials.extracted_text
+ * @param {number} allowedChars - 이 자료에 허용된 원문 문자 수
+ * @returns {string|null}
+ */
+export function formatMentionRawTextSection(extractedText, allowedChars) {
+  const text = typeof extractedText === 'string' ? extractedText : ''
+  if (text.length === 0) return null
+  if (!Number.isFinite(allowedChars) || allowedChars <= 0) return null
+
+  const total = text.length
+  if (total <= allowedChars) {
+    return [
+      `   [원문 — 전체 ${fmtNumber(total)}자 동봉 (잘림 없음)]`,
+      `   ───────── 원문 시작 ─────────`,
+      text,
+      `   ───────── 원문 끝 ─────────`,
+    ].join('\n')
+  }
+
+  const included = Math.min(allowedChars, total)
+  const truncated = text.slice(0, included)
+  const pct = Math.max(1, Math.round((included / total) * 100))
+  return [
+    `   [원문 — 전체 ${fmtNumber(total)}자 중 처음 ${fmtNumber(included)}자 (약 ${pct}%) 동봉]`,
+    `   ───────── 원문 시작 ─────────`,
+    truncated,
+    `   ───────── 원문 끝 — 잘림 ⚠️ ─────────`,
+    `   ※ 위 원문은 용량 한도로 처음 ${fmtNumber(included)}자만 포함됨. 교사가 그 범위를 벗어난 특정 단락·페이지·표·뒷부분 인용을 요청한다면, 추측·창작하지 말고 "전체 ${fmtNumber(total)}자 중 앞부분 약 ${pct}%만 받아서 그 부분은 직접 못 봤어요. 보고 싶으신 단락을 채팅에 붙여주시면 바로 분석해드릴게요"라고 안내하세요.`,
+  ].join('\n')
+}
+
 /**
  * 업로드 자료를 의도(intent) 기반으로 포맷팅해 시스템 프롬프트 섹션으로 변환.
  * 토큰 예산(budgetTokens) 초과 시 축약 → "외 N개 생략" 순으로 자른다.
@@ -236,6 +306,7 @@ ${gpBlocks}`
  *   1) 별도의 "[교사가 명시적으로 언급한 자료]" 섹션을 최상단에 배치한다.
  *   2) 예산 제약을 무시하고 모두 풍부 블록으로 포함(자료당 약 800자 상한).
  *   3) 일반 "[업로드된 자료]" 섹션에서는 중복 제거된다.
+ *   4) 분석 완료 자료에 한해 extracted_text 일부를 [원문] 섹션으로 동봉(균등 분배 + 자료당 상한).
  *
  * 선택된 자료(selectedIds)는:
  *   - 배열로 제공되면 일반 섹션은 해당 ID 자료만 포함한다.
@@ -268,21 +339,45 @@ export function buildMaterialsContext(materials, opts = {}) {
   const mentionedMaterials = materials.filter((m) => m && mentionSet.has(m.id))
   const mentionedSections = []
   if (mentionedMaterials.length > 0) {
+    const hardCap = 5 // 하드 상한: 너무 많이 언급되면 상위 5개만
+    const picked = mentionedMaterials.slice(0, hardCap)
+
+    // 멘션 자료당 동봉할 원문 문자 수 — opts로 오버라이드 가능
+    const mentionRawTotalBudget = Number.isFinite(opts.mentionRawTotalBudget)
+      ? opts.mentionRawTotalBudget
+      : MENTION_RAW_TOTAL_BUDGET_DEFAULT
+    const mentionRawPerItemCap = Number.isFinite(opts.mentionRawPerItemCap)
+      ? opts.mentionRawPerItemCap
+      : MENTION_RAW_PER_ITEM_CAP_DEFAULT
+    const perItemRawChars = allocateMentionRawBudget(
+      picked.length,
+      mentionRawTotalBudget,
+      mentionRawPerItemCap,
+    )
+
     mentionedSections.push(
       `[교사가 방금 @로 명시적으로 언급한 자료 ${mentionedMaterials.length}개 — 최우선 반영]`,
       `※ 아래 자료들은 이미 이 프로젝트의 업로드 파이프라인을 통해 시스템이 수신·처리하고 있는 자료입니다.`,
       `※ 다음 환각 표현은 절대 사용하지 마세요: "파일을 받지 못했다", "첨부되지 않았다", "내용을 읽을 수 없다", "현재 환경에서는 PDF를 직접 읽을 수 없다", "텍스트를 복사해서 붙여달라".`,
       `※ 각 자료에는 처리 상태(분석 중/완료/실패)와 요약·인사이트가 함께 제공됩니다. 상태별 지시를 정확히 따르세요:`,
       `   • 분석 진행 중(⏳): "잠시 후 요약을 함께 보며 이어가요"라고 자연스럽게 안내하고, 그 사이 교사의 활용 의도나 핵심 관심사를 먼저 묻는 질문을 던지세요.`,
-      `   • 분석 완료: 제공된 요약·인사이트·연결 성취기준을 근거로 구체적으로 답변하세요.`,
+      `   • 분석 완료: 제공된 요약·인사이트·연결 성취기준을 근거로 구체적으로 답변하세요. 추가로 [원문] 섹션이 함께 제공되면 그것을 1차 근거로 사용하고, "잘림 ⚠️" 표시가 있으면 잘린 사실을 정직하게 안내하세요.`,
       `   • 분석 실패(⚠️): 재분석 버튼 안내 또는 핵심 내용을 채팅에 붙여달라고 정중히 요청하세요.`
     )
-    const hardCap = 5 // 하드 상한: 너무 많이 언급되면 상위 5개만
-    const picked = mentionedMaterials.slice(0, hardCap)
+
     picked.forEach((m, i) => {
       let block = formatMaterialBlock(m, { rich: true, index: i + 1 })
       if (block.length > 800) block = block.slice(0, 800) + '…'
       mentionedSections.push(block)
+
+      // 분석 완료된 자료에 한해 원문 일부 동봉
+      // (요약 없는 ⏳/⚠️ 분기에서는 추가하지 않음 — 기존 안내 의미가 유지되도록)
+      const ax = m?.ai_analysis || {}
+      const hasSummary = !!(m?.ai_summary || ax.summary || ax.intent_driven_summary)
+      if (hasSummary && perItemRawChars > 0) {
+        const rawSection = formatMentionRawTextSection(m.extracted_text, perItemRawChars)
+        if (rawSection) mentionedSections.push(rawSection)
+      }
     })
     if (mentionedMaterials.length > hardCap) {
       mentionedSections.push(
@@ -514,7 +609,8 @@ function buildSystemPrompt({ session, standards, materials, boards, procedure, c
 3. 자료 블록에 "⏳ 분석 진행 중" 표시가 있다면, "잠시 후 분석 결과를 함께 보며 이어가요"라고 자연스럽게 안내하고 활용 의도를 먼저 묻는다.
 4. 자료 블록에 "⚠️ 분석 실패" 표시가 있다면, 재분석 안내 또는 핵심 내용을 채팅에 붙여달라고 정중히 요청한다.
 5. 자료 섹션 자체가 시스템 프롬프트에 없을 때만(=업로드된 자료가 0개일 때만) "아직 자료가 업로드되지 않았네요. 자료 패널에서 추가해 주세요"라고 응답할 수 있다.
-6. 이전 AI 답변이나 대화 이력에 "파일을 받지 못했다", "분석 결과가 없다", "붙여넣어 달라"는 내용이 있더라도, 현재 시스템 프롬프트에 자료 섹션이 있으면 그 이전 답변을 오류로 간주하고 자료 섹션의 요약을 근거로 정정해 답하세요.`)
+6. 이전 AI 답변이나 대화 이력에 "파일을 받지 못했다", "분석 결과가 없다", "붙여넣어 달라"는 내용이 있더라도, 현재 시스템 프롬프트에 자료 섹션이 있으면 그 이전 답변을 오류로 간주하고 자료 섹션의 요약을 근거로 정정해 답하세요.
+7. 멘션 자료 블록에 "[원문 — ...]" 섹션이 함께 제공되면 그것을 1차 근거로 사용하세요. 원문이 있는데도 요약만 보고 답하거나, 원문에 없는 내용을 지어내면 시스템 위반입니다. "[원문 끝 — 잘림 ⚠️]" 표시가 있고 교사 질문이 동봉 범위(앞부분 N자) 밖일 때만 "전체 X자 중 앞부분 약 P%만 받아서 그 부분은 직접 못 봤어요. 보고 싶으신 단락을 채팅에 붙여주시면 바로 분석해드릴게요"라고 정직하게 안내하세요. 잘림 표시가 없거나 질문 답이 동봉된 원문 안에 있다면 "원본을 못 본다"고 답하지 마세요.`)
 
   // ─── 1. 역할 정의 + 대화 스타일 ───
   parts.push(`당신은 협력적 수업 설계를 지원하기 위해 개발된 AI 에이전트입니다.
