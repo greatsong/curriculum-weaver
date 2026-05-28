@@ -600,7 +600,7 @@ export default function WorkspaceDetailPage() {
                   style={inputStyle}
                 >
                   <option value="claude-sonnet-4-6">Claude Sonnet 4 (기본, 빠름)</option>
-                  <option value="claude-opus-4-7">Claude Opus 4.7 (최고 품질, 느림)</option>
+                  <option value="claude-opus-4-8">Claude Opus 4.8 (최고 품질, 느림)</option>
                 </select>
                 <p style={hintStyle}>모든 프로젝트에 동일하게 적용됩니다</p>
               </div>
