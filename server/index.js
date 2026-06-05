@@ -315,6 +315,21 @@ app.get('/api/health', (req, res) => {
   })
 })
 
+// Supabase 자동 일시정지 방지용 — 외부 cron이 주기적으로 호출하면 Supabase에 트래픽이 발생해 pause되지 않음
+app.get('/api/keepalive', async (req, res) => {
+  try {
+    const { supabaseAdmin } = await import('./lib/supabaseAdmin.js')
+    const { error } = await supabaseAdmin
+      .from('standards')
+      .select('code', { count: 'exact', head: true })
+      .limit(1)
+    if (error) throw error
+    res.json({ status: 'ok', supabase: 'reachable', ts: new Date().toISOString() })
+  } catch (err) {
+    res.status(503).json({ status: 'error', supabase: 'unreachable', message: err.message })
+  }
+})
+
 // ── 라우트 마운트 ──
 
 // ─ 인증 불필요 라우트 (먼저 배치) ─
