@@ -1,0 +1,31 @@
+name: Supabase Keepalive
+
+# Supabase Free 플랜은 7일 비활성 시 프로젝트를 자동 일시정지(pause)함.
+# /api/keepalive 가 standards 테이블에 카운트 쿼리를 보내 활동 카운터를 리셋한다.
+# 5일 간격으로 호출하여 7일 임계치 전에 깨운다.
+
+on:
+  schedule:
+    - cron: '0 3 */5 * *'  # UTC 03:00, 5일마다 (KST 12:00)
+  workflow_dispatch:        # 수동 트리거 허용
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit /api/keepalive
+        run: |
+          URL="https://curriculum-weaver-server-production.up.railway.app/api/keepalive"
+          for i in 1 2 3; do
+            echo "Attempt $i"
+            RESPONSE=$(curl -sS -w "\nHTTP_STATUS:%{http_code}\n" --max-time 30 "$URL") || true
+            echo "$RESPONSE"
+            STATUS=$(echo "$RESPONSE" | grep "^HTTP_STATUS:" | cut -d: -f2)
+            if [ "$STATUS" = "200" ]; then
+              echo "OK"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Keepalive failed after 3 attempts"
+          exit 1
