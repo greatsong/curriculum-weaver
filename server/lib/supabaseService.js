@@ -1126,9 +1126,13 @@ export async function searchStandards(query, filters = {}) {
 export async function getStandardsByProject(projectId) {
   const sb = getSupabase()
   if (!sb) {
+    // 검색 결과는 store.js의 Standards를 단일 소스로 사용하므로,
+    // 여기서도 store.js를 참조해 성취기준 상세를 채운다.
+    const { Standards } = await import('./store.js')
+    const byId = new Map(Standards.list().map(s => [s.id, s]))
     const linked = mem.projectStandards.get(projectId) || []
     return linked.map(entry => {
-      const std = mem.standards.get(entry.standard_id)
+      const std = mem.standards.get(entry.standard_id) || byId.get(entry.standard_id)
       return std ? { ...entry, curriculum_standards: std } : null
     }).filter(Boolean)
   }
@@ -1138,6 +1142,47 @@ export async function getStandardsByProject(projectId) {
       .eq('project_id', projectId),
     '프로젝트 성취기준 조회 실패'
   )
+}
+
+/**
+ * code 또는 id를 받아 실제 성취기준 id로 정규화한다.
+ *
+ * 성취기준 검색(/search)은 store.js의 인메모리 Standards를 쓰는데, 그 id는
+ * 서버 부팅마다 uuid()로 새로 생성되는 휘발성 값이라 Supabase
+ * curriculum_standards.id(영구 UUID)와 일치하지 않는다. 따라서 project_standards에
+ * 저장하기 전, 안정적 자연키인 code로 실제 id를 다시 해석해야 한다.
+ *
+ * @param {{ code?: string, id?: string }} ref
+ * @returns {Promise<string|null>} 실제 standard id (찾지 못하면 null)
+ */
+export async function resolveStandardId({ code, id } = {}) {
+  const sb = getSupabase()
+  if (!sb) {
+    // 인메모리: store.js Standards에서 code로 조회, 없으면 id 그대로
+    const { Standards } = await import('./store.js')
+    if (code) {
+      const found = Standards.list().find(s => s.code === code)
+      if (found) return found.id
+    }
+    return id || null
+  }
+  // Supabase: code(UNIQUE)로 실제 id 조회
+  if (code) {
+    const rows = handleResult(
+      await sb.from('curriculum_standards').select('id').eq('code', code).limit(1),
+      '성취기준 코드 조회 실패'
+    )
+    if (rows && rows.length > 0) return rows[0].id
+  }
+  // 레거시 호환: id가 실제 curriculum_standards에 존재하면 그대로 사용
+  if (id) {
+    const rows = handleResult(
+      await sb.from('curriculum_standards').select('id').eq('id', id).limit(1),
+      '성취기준 ID 조회 실패'
+    )
+    if (rows && rows.length > 0) return rows[0].id
+  }
+  return null
 }
 
 /**
@@ -1256,7 +1301,7 @@ const supabaseService = {
   // 초대
   createInvite, getInviteByToken, useInvite,
   // 성취기준
-  searchStandards, getStandardsByProject, addStandardToProject, removeStandardFromProject,
+  searchStandards, getStandardsByProject, addStandardToProject, removeStandardFromProject, resolveStandardId,
   // 사용자
   createUser, getUser, updateUser,
 }

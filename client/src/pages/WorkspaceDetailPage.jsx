@@ -133,7 +133,7 @@ export default function WorkspaceDetailPage() {
         const sg = s.subject_group || s.subject
         if (!perSubject[sg]) perSubject[sg] = 0
         if (perSubject[sg] < 5 && (s._relevance > 0 || recs.length <= 20)) {
-          autoSelected.add(s.id)
+          autoSelected.add(s.code)
           perSubject[sg]++
         }
       }
@@ -161,7 +161,7 @@ export default function WorkspaceDetailPage() {
       if (selectedStandardIds.size > 0) {
         try {
           await apiPost(`/api/standards/project/${project.id}/bulk`, {
-            standard_ids: [...selectedStandardIds],
+            standard_codes: [...selectedStandardIds],
           })
         } catch (e) {
           console.warn('성취기준 일괄 저장 실패:', e.message)
@@ -896,7 +896,7 @@ export default function WorkspaceDetailPage() {
                       추천 성취기준 ({selectedStandardIds.size}/{filtered.length}{q ? ` · 전체 ${recommendedStandards.length}` : ''}개)
                     </span>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button type="button" onClick={() => setSelectedStandardIds(new Set([...selectedStandardIds, ...filtered.map(s => s.id)]))}
+                      <button type="button" onClick={() => setSelectedStandardIds(new Set([...selectedStandardIds, ...filtered.map(s => s.code)]))}
                         style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer', color: 'var(--color-text-secondary)' }}>
                         전체 선택
                       </button>
@@ -933,10 +933,10 @@ export default function WorkspaceDetailPage() {
                           <label key={s.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '3px 0', cursor: 'pointer', fontSize: 12, color: 'var(--color-text-primary)' }}>
                             <input
                               type="checkbox"
-                              checked={selectedStandardIds.has(s.id)}
+                              checked={selectedStandardIds.has(s.code)}
                               onChange={() => {
                                 const next = new Set(selectedStandardIds)
-                                next.has(s.id) ? next.delete(s.id) : next.add(s.id)
+                                next.has(s.code) ? next.delete(s.code) : next.add(s.code)
                                 setSelectedStandardIds(next)
                               }}
                               style={{ marginTop: 2, flexShrink: 0 }}
