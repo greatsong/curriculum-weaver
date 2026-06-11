@@ -34,7 +34,7 @@ import { semanticSearch, isSemanticSearchAvailable } from '../services/semanticS
 import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js'
 import {
   searchStandards, getStandardsByProject,
-  addStandardToProject, removeStandardFromProject,
+  addStandardToProject, removeStandardFromProject, resolveStandardId,
   getProject, getMemberRole, logActivity,
 } from '../lib/supabaseService.js'
 
@@ -269,10 +269,15 @@ standardsRouter.get('/recommend', async (req, res) => {
 standardsRouter.post('/project/:projectId/bulk', requireAuth, async (req, res) => {
   try {
     const { projectId } = req.params
-    const { standard_ids } = req.body
+    const { standard_ids, standard_codes } = req.body
 
-    if (!Array.isArray(standard_ids) || standard_ids.length === 0) {
-      return res.status(400).json({ error: 'standard_ids 배열이 필요합니다.' })
+    // code 우선(권장), 레거시 standard_ids 호환
+    const refs = Array.isArray(standard_codes) && standard_codes.length > 0
+      ? standard_codes.map((c) => ({ code: c }))
+      : Array.isArray(standard_ids) ? standard_ids.map((id) => ({ id })) : []
+
+    if (refs.length === 0) {
+      return res.status(400).json({ error: 'standard_codes(또는 standard_ids) 배열이 필요합니다.' })
     }
 
     const project = await getProject(projectId)
@@ -286,17 +291,19 @@ standardsRouter.post('/project/:projectId/bulk', requireAuth, async (req, res) =
     }
 
     let added = 0
-    for (const stdId of standard_ids) {
+    for (const ref of refs) {
       try {
-        await addStandardToProject(projectId, stdId, req.user.id, false)
+        const resolvedId = await resolveStandardId(ref)
+        if (!resolvedId) continue
+        await addStandardToProject(projectId, resolvedId, req.user.id, false)
         added++
       } catch (e) {
         // 중복 등 무시
       }
     }
 
-    console.log(`[standards] 일괄 추가: ${added}/${standard_ids.length}개 → 프로젝트 ${projectId}`)
-    res.status(201).json({ ok: true, added, total: standard_ids.length })
+    console.log(`[standards] 일괄 추가: ${added}/${refs.length}개 → 프로젝트 ${projectId}`)
+    res.status(201).json({ ok: true, added, total: refs.length })
   } catch (err) {
     console.error('[standards] 일괄 추가 오류:', err.message)
     res.status(500).json({ error: '성취기준 일괄 추가에 실패했습니다.' })
@@ -315,10 +322,10 @@ standardsRouter.post('/project/:projectId/bulk', requireAuth, async (req, res) =
 standardsRouter.post('/project/:projectId', requireAuth, async (req, res) => {
   try {
     const { projectId } = req.params
-    const { standard_id, is_primary } = req.body
+    const { standard_id, standard_code, is_primary } = req.body
 
-    if (!standard_id) {
-      return res.status(400).json({ error: 'standard_id는 필수입니다.' })
+    if (!standard_id && !standard_code) {
+      return res.status(400).json({ error: 'standard_code(또는 standard_id)는 필수입니다.' })
     }
 
     // 프로젝트 존재 + 멤버십 확인
@@ -335,7 +342,13 @@ standardsRouter.post('/project/:projectId', requireAuth, async (req, res) => {
       return res.status(403).json({ error: '성취기준 추가 권한이 없습니다. (editor 이상 필요)' })
     }
 
-    await addStandardToProject(projectId, standard_id, req.user.id, is_primary || false)
+    // 검색 결과의 휘발성 로컬 id를 code로 실제 standard id로 정규화
+    const resolvedId = await resolveStandardId({ code: standard_code, id: standard_id })
+    if (!resolvedId) {
+      return res.status(404).json({ error: '해당 성취기준을 찾을 수 없습니다.' })
+    }
+
+    await addStandardToProject(projectId, resolvedId, req.user.id, is_primary || false)
 
     // 활동 로그 기록 (실패해도 본 작업에 영향 없음)
     try {
@@ -343,7 +356,7 @@ standardsRouter.post('/project/:projectId', requireAuth, async (req, res) => {
         project_id: projectId,
         user_id: req.user.id,
         action_type: 'standard_added',
-        after_data: { standard_id, is_primary: is_primary || false },
+        after_data: { standard_id: resolvedId, standard_code: standard_code || null, is_primary: is_primary || false },
       })
     } catch (logErr) {
       console.warn('[standards] 활동 로그 기록 실패 (본 작업은 성공):', logErr.message)
@@ -381,7 +394,9 @@ standardsRouter.delete('/project/:projectId/:standardId', requireAuth, async (re
       return res.status(403).json({ error: '성취기준 제거 권한이 없습니다. (editor 이상 필요)' })
     }
 
-    await removeStandardFromProject(projectId, standardId)
+    // 경로 파라미터는 code(권장) 또는 레거시 id일 수 있으므로 실제 id로 정규화
+    const resolvedId = await resolveStandardId({ code: standardId, id: standardId })
+    await removeStandardFromProject(projectId, resolvedId || standardId)
 
     // 활동 로그 기록 (실패해도 본 작업에 영향 없음)
     try {

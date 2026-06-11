@@ -47,6 +47,14 @@ export default function StandardSearch({ sessionId, onClose }) {
   const [expandedStandard, setExpandedStandard] = useState(null)
   const [links, setLinks] = useState([])
   const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
+
+  // 에러 메시지 자동 사라짐 (4초)
+  useEffect(() => {
+    if (!errorMsg) return
+    const t = setTimeout(() => setErrorMsg(''), 4000)
+    return () => clearTimeout(t)
+  }, [errorMsg])
 
   // 필터 옵션 로드
   useEffect(() => {
@@ -79,18 +87,27 @@ export default function StandardSearch({ sessionId, onClose }) {
     return () => clearTimeout(timer)
   }, [doSearch])
 
-  // 성취기준 추가/제거
-  const addStandard = async (standardId) => {
-    await apiPost(`/api/standards/project/${sessionId}`, { standard_id: standardId })
-    loadSessionStandards()
+  // 성취기준 추가/제거 — code(자연키) 기준. 검색 결과의 id는 휘발성이라 사용 불가.
+  const addStandard = async (standardCode) => {
+    try {
+      await apiPost(`/api/standards/project/${sessionId}`, { standard_code: standardCode })
+      await loadSessionStandards()
+    } catch (err) {
+      setErrorMsg(err?.message || '성취기준 추가에 실패했습니다.')
+    }
   }
 
-  const removeStandard = async (standardId) => {
-    await apiDelete(`/api/standards/project/${sessionId}/${standardId}`)
-    loadSessionStandards()
+  const removeStandard = async (standardCode) => {
+    try {
+      await apiDelete(`/api/standards/project/${sessionId}/${encodeURIComponent(standardCode)}`)
+      await loadSessionStandards()
+    } catch (err) {
+      setErrorMsg(err?.message || '성취기준 제거에 실패했습니다.')
+    }
   }
 
-  const isAdded = (standardId) => sessionStandards.some((s) => s.standard_id === standardId)
+  const isAdded = (standardCode) =>
+    sessionStandards.some((s) => (s.curriculum_standards?.code ?? s.code) === standardCode)
 
   // 연결 보기
   const viewLinks = async (standard) => {
@@ -110,6 +127,15 @@ export default function StandardSearch({ sessionId, onClose }) {
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 min-w-[44px] min-h-[44px] flex items-center justify-center -mr-2"><X size={20} /></button>
         </div>
+
+        {/* 에러 배너 */}
+        {errorMsg && (
+          <div className="flex items-center gap-2 px-3 sm:px-5 py-2 bg-red-50 border-b border-red-100 text-red-600 text-sm">
+            <AlertTriangle size={15} className="shrink-0" />
+            <span className="flex-1">{errorMsg}</span>
+            <button onClick={() => setErrorMsg('')} className="hover:opacity-70"><X size={15} /></button>
+          </div>
+        )}
 
         {/* 검색 필터 */}
         <div className="px-3 sm:px-5 py-3 border-b border-gray-100 space-y-2">
@@ -179,7 +205,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                     >
                       {std.code}
                       <button
-                        onClick={() => removeStandard(std.id)}
+                        onClick={() => removeStandard(std.code)}
                         className="ml-0.5 hover:opacity-70"
                       >
                         <X size={12} />
@@ -204,7 +230,7 @@ export default function StandardSearch({ sessionId, onClose }) {
               {results.map((std) => {
                 const colorClass = getSubjectColor(std)
                 const catColor = CATEGORY_COLORS[std.curriculum_category] || ''
-                const added = isAdded(std.id)
+                const added = isAdded(std.code)
                 const isExpanded = expandedStandard === std.id
                 const hasDetail = std.explanation || std.application_notes
                 const isSecondary = std._matchField === 'secondary'
@@ -259,7 +285,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          added ? removeStandard(std.id) : addStandard(std.id)
+                          added ? removeStandard(std.code) : addStandard(std.code)
                         }}
                         className={`shrink-0 p-2.5 sm:p-1.5 rounded-lg transition min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center ${
                           added
