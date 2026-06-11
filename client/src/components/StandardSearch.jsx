@@ -88,20 +88,32 @@ export default function StandardSearch({ sessionId, onClose }) {
   }, [doSearch])
 
   // 성취기준 추가/제거 — code(자연키) 기준. 검색 결과의 id는 휘발성이라 사용 불가.
-  const addStandard = async (standardCode) => {
+  // 낙관적 업데이트: 클릭 즉시 UI에 반영하고 서버 저장은 백그라운드로 처리(실패 시 롤백).
+  const codeOf = (entry) => entry?.curriculum_standards?.code ?? entry?.code
+  const addStandard = async (std) => {
+    const code = std.code
+    if (sessionStandards.some((s) => codeOf(s) === code)) return
+    // 낙관적: 검색 결과 객체로 즉시 칩 추가
+    const optimistic = { id: `temp-${code}`, standard_id: std.id, curriculum_standards: std, _optimistic: true }
+    setSessionStandards((prev) => [...prev, optimistic])
     try {
-      await apiPost(`/api/standards/project/${sessionId}`, { standard_code: standardCode })
-      await loadSessionStandards()
+      await apiPost(`/api/standards/project/${sessionId}`, { standard_code: code })
+      loadSessionStandards() // 백그라운드 동기화(실제 id 등)
     } catch (err) {
+      setSessionStandards((prev) => prev.filter((s) => codeOf(s) !== code)) // 롤백
       setErrorMsg(err?.message || '성취기준 추가에 실패했습니다.')
     }
   }
 
-  const removeStandard = async (standardCode) => {
+  const removeStandard = async (stdOrCode) => {
+    const code = typeof stdOrCode === 'string' ? stdOrCode : stdOrCode.code
+    const backup = sessionStandards
+    setSessionStandards((prev) => prev.filter((s) => codeOf(s) !== code)) // 낙관적 제거
     try {
-      await apiDelete(`/api/standards/project/${sessionId}/${encodeURIComponent(standardCode)}`)
-      await loadSessionStandards()
+      await apiDelete(`/api/standards/project/${sessionId}/${encodeURIComponent(code)}`)
+      loadSessionStandards()
     } catch (err) {
+      setSessionStandards(backup) // 롤백
       setErrorMsg(err?.message || '성취기준 제거에 실패했습니다.')
     }
   }
@@ -285,7 +297,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          added ? removeStandard(std.code) : addStandard(std.code)
+                          added ? removeStandard(std) : addStandard(std)
                         }}
                         className={`shrink-0 p-2.5 sm:p-1.5 rounded-lg transition min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center ${
                           added
