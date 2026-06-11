@@ -65,6 +65,24 @@ function parseCoherenceCheck(text) {
  * AI 응답에서 <procedure_advance> XML을 파싱한다
  */
 function parseProcedureAdvance(text) {
+  // 속성 형식 (AI가 실제로 생성하는 형식, aiAgent.js 시스템 프롬프트 기준):
+  // <procedure_advance current="A-1-1" suggested="A-2-1" reason="..."/>
+  const selfClosing = text.match(/<procedure_advance\b([^>]*?)\/?>/)
+  if (selfClosing && /suggested=/.test(selfClosing[1])) {
+    const attrs = selfClosing[1]
+    const suggested = attrs.match(/suggested="([^"]*)"/)?.[1] || null
+    const current = attrs.match(/current="([^"]*)"/)?.[1] || null
+    const reason = attrs.match(/reason="([^"]*)"/)?.[1] || ''
+    if (suggested) {
+      return {
+        next_procedure: suggested,
+        next_name: PROCEDURES[suggested]?.name || '',
+        summary: reason,
+        current,
+      }
+    }
+  }
+  // 레거시 자식 태그 형식: <procedure_advance><next_procedure>...</next_procedure></procedure_advance>
   const match = text.match(/<procedure_advance>([\s\S]*?)<\/procedure_advance>/)
   if (!match) return null
   const inner = match[1]
@@ -86,6 +104,7 @@ function stripXmlMarkers(text) {
     .replace(/<ai_suggestion[\s\S]*?<\/ai_suggestion>/g, '')
     .replace(/<coherence_check>[\s\S]*?<\/coherence_check>/g, '')
     .replace(/<procedure_advance>[\s\S]*?<\/procedure_advance>/g, '')
+    .replace(/<procedure_advance\b[^>]*\/?>/g, '') // 속성/self-closing 형식
     .replace(/<board_update\s+type="[^"]*">[\s\S]*?<\/board_update>/g, '')
     .replace(/<stage_advance>[\s\S]*?<\/stage_advance>/g, '')
     // 미완성 태그도 제거
