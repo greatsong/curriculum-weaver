@@ -286,7 +286,11 @@ export default function ProjectPage() {
       if (savedName) connectSocket({ name: savedName, subject: savedSubject })
     }
     return () => joinedRef.cleanup?.()
-  }, [projectId, connectSocket, user])
+    // user 객체 전체가 아니라 user.id에만 의존한다. 탭 복귀 시 Supabase가
+    // 토큰을 갱신하며 user 객체를 새 참조로 교체해도, 같은 사용자라면 이 effect가
+    // 재실행되지 않아 cleanup의 reset()으로 절차/단계가 초기화되지 않는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, connectSocket, user?.id])
 
   const handleNicknameConfirm = (info) => {
     setNeedsNickname(false)

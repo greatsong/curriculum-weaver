@@ -43,7 +43,17 @@ export const useAuthStore = create((set, get) => ({
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
           if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-            set({ user: session?.user ?? null, session: session ?? null })
+            const prevUser = get().user
+            const nextUser = session?.user ?? null
+            // 동일 사용자면 user 객체 참조를 그대로 유지한다.
+            // (탭 복귀 시 Supabase가 SIGNED_IN/TOKEN_REFRESHED를 다시 발화하는데,
+            //  매번 새 user 객체를 set하면 user를 의존하는 effect들이 재실행되어
+            //  진행 중이던 워크플로우 절차/단계가 초기화되는 버그가 발생한다.)
+            if (prevUser && nextUser && prevUser.id === nextUser.id) {
+              set({ session: session ?? null })
+            } else {
+              set({ user: nextUser, session: session ?? null })
+            }
           } else if (event === 'SIGNED_OUT') {
             set({ user: null, session: null })
           }
