@@ -356,6 +356,21 @@ export default function StandardSearch({ sessionId, onClose }) {
             </div>
           )}
         </div>
+
+        {/* 푸터 — + 버튼은 즉시 저장되며, 완료 버튼으로 탐색을 마칩니다 */}
+        <div className="border-t border-gray-200 px-3 sm:px-5 py-3 flex items-center justify-between gap-3 shrink-0">
+          <span className="text-sm text-gray-500">
+            {sessionStandards.length > 0
+              ? `${sessionStandards.length}개 성취기준 연결됨`
+              : '성취기준을 추가하세요'}
+          </span>
+          <button
+            onClick={onClose}
+            className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition min-h-[44px]"
+          >
+            완료
+          </button>
+        </div>
       </div>
     </div>
   )
