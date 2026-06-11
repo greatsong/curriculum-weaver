@@ -628,6 +628,11 @@ export const useProcedureStore = create((set, get) => ({
     for (const id of Array.from(_pollingMaterialIds)) {
       _stopMaterialPolling(id)
     }
+    // currentProcedure/currentStep은 리셋하지 않는다.
+    // 탭 복귀 시 reset()이 불려 절차가 'T-1-1'로 돌아가면, 복원 effect는
+    // currentProject.current_procedure 값이 안 바뀌어 재실행되지 않아 복원에 실패한다
+    // (상단 메뉴는 분석인데 하단은 팀준비로 어긋나는 버그). 절차는 프로젝트 진입/전환 시
+    // 복원 effect가 DB 값으로 세팅하므로 여기서 건드리지 않는다.
     set({
       boards: {},
       standards: [],
@@ -635,8 +640,6 @@ export const useProcedureStore = create((set, get) => ({
       excludedMaterialIds: new Set(),
       principles: [],
       generalPrinciples: [],
-      currentProcedure: 'T-1-1',
-      currentStep: 1,
       _boardHandler: null,
     })
   },
