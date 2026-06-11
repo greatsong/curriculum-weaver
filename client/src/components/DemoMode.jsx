@@ -43,6 +43,8 @@ const SUBJECT_OPTIONS = [
   '정보', '음악', '미술', '체육', '기술가정', '한문',
 ]
 
+const MAX_DESCRIPTION_LENGTH = 1500
+
 export default function DemoMode() {
   const navigate = useNavigate()
   const { user, initialized } = useAuthStore()
@@ -64,6 +66,8 @@ export default function DemoMode() {
   const [elapsed, setElapsed] = useState(0)
   const [error, setError] = useState('')
   const [partialProject, setPartialProject] = useState(null) // { projectId, workspaceId, savedBoards }
+  const [generationStartedAt, setGenerationStartedAt] = useState(null)
+  const [recoveryPolling, setRecoveryPolling] = useState(false)
 
   // SSE 진행률
   const [progressList, setProgressList] = useState([])
@@ -71,6 +75,99 @@ export default function DemoMode() {
   const [tokenCount, setTokenCount] = useState(0)
   const [currentPhase, setCurrentPhase] = useState('')
   const abortRef = useRef(null)
+  const partialProjectRef = useRef(null)
+  const generatingRef = useRef(false)
+  const pollIntervalRef = useRef(null)
+  const pollTimeoutRef = useRef(null)
+  const pollVisibilityCleanupRef = useRef(null)
+
+  const clearRecoveryPolling = () => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current)
+      pollIntervalRef.current = null
+    }
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current)
+      pollTimeoutRef.current = null
+    }
+    if (pollVisibilityCleanupRef.current) {
+      pollVisibilityCleanupRef.current()
+      pollVisibilityCleanupRef.current = null
+    }
+    setRecoveryPolling(false)
+  }
+
+  const updatePartialProjectState = (updater) => {
+    setPartialProject((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      partialProjectRef.current = next
+      return next
+    })
+  }
+
+  const startRecoveryPolling = (project) => {
+    if (!project?.projectId) return false
+
+    clearRecoveryPolling()
+    setRecoveryPolling(true)
+    setError('')
+    setCurrentPhase('서버에서 나머지 절차를 생성 중입니다 (약 5~10분 소요)')
+
+    const pollOnce = async () => {
+      try {
+        const proj = await apiGet(`/api/projects/${project.projectId}`)
+        if (proj?.status === 'simulation') {
+          clearRecoveryPolling()
+          generatingRef.current = false
+          navigate(`/workspaces/${project.workspaceId}/projects/${project.projectId}`)
+        } else if (proj?.status === 'failed') {
+          clearRecoveryPolling()
+          generatingRef.current = false
+          setGenerating(false)
+          setError('서버에서 생성이 실패했습니다.')
+        }
+      } catch {
+        // 폴링 실패는 무시 (다음 시도에서 재시도)
+      }
+    }
+
+    pollIntervalRef.current = setInterval(pollOnce, 5000)
+
+    // 탭 복귀(다른 창에서 돌아옴) 시 즉시 1회 확인.
+    // 백그라운드 탭에서는 브라우저가 setInterval을 throttle하므로, 다른 창을
+    // 보다 돌아오면 곧바로 완료 여부를 확인해 바로 프로젝트로 이동시킨다.
+    const onVisible = () => { if (document.visibilityState === 'visible') pollOnce() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', pollOnce)
+    pollVisibilityCleanupRef.current = () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', pollOnce)
+    }
+
+    pollTimeoutRef.current = setTimeout(() => {
+      clearRecoveryPolling()
+      if (generatingRef.current) {
+        generatingRef.current = false
+        setGenerating(false)
+        setError('생성 시간이 초과되었습니다. 워크스페이스에서 프로젝트를 확인해주세요.')
+      }
+    }, 12 * 60 * 1000)
+
+    return true
+  }
+
+  const normalizeGenerateError = (err) => {
+    const message = err?.message || ''
+    const normalized = message.toLowerCase()
+    if (
+      normalized === 'load failed' ||
+      normalized === 'failed to fetch' ||
+      normalized === 'networkerror when attempting to fetch resource.'
+    ) {
+      return '네트워크 연결이 잠시 끊어졌습니다. 이미 생성이 시작되었다면 서버에서 계속 진행 중일 수 있습니다.'
+    }
+    return message || '데모 생성 중 오류가 발생했습니다.'
+  }
 
   // 미로그인 → 로그인 페이지로
   useEffect(() => {
@@ -117,21 +214,57 @@ export default function DemoMode() {
 
   // 경과 시간 카운터
   useEffect(() => {
-    if (!generating) return
-    setElapsed(0)
-    const interval = setInterval(() => setElapsed((e) => e + 1), 1000)
-    return () => clearInterval(interval)
+    if (!generating || !generationStartedAt) return
+
+    const syncElapsed = () => {
+      setElapsed(Math.max(0, Math.floor((Date.now() - generationStartedAt) / 1000)))
+    }
+
+    syncElapsed()
+    const interval = setInterval(syncElapsed, 1000)
+    const handleFocus = () => syncElapsed()
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') syncElapsed()
+    }
+
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [generating, generationStartedAt])
+
+  useEffect(() => {
+    generatingRef.current = generating
   }, [generating])
 
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
+      clearRecoveryPolling()
+    }
+  }, [])
+
   const handleGenerate = async () => {
+    clearRecoveryPolling()
+    partialProjectRef.current = null
+    generatingRef.current = true
     setGenerating(true)
     setElapsed(0)
+    setGenerationStartedAt(Date.now())
     setError('')
+    setPartialProject(null)
     setProgressList([])
+    setTokenCount(0)
+    setProgressTotal(19)
     setCurrentPhase('')
 
     const controller = new AbortController()
     abortRef.current = controller
+    let reachedTerminalState = false
 
     try {
       const headers = await getHeaders()
@@ -172,7 +305,7 @@ export default function DemoMode() {
             const parsed = JSON.parse(line.slice(6))
 
             if (parsed.type === 'started') {
-              setPartialProject({ projectId: parsed.projectId, workspaceId: parsed.workspaceId, savedBoards: 0 })
+              updatePartialProjectState({ projectId: parsed.projectId, workspaceId: parsed.workspaceId, savedBoards: 0 })
             } else if (parsed.type === 'progress') {
               setProgressList((prev) => [...prev, parsed])
               setProgressTotal(parsed.total)
@@ -180,15 +313,20 @@ export default function DemoMode() {
               setTokenCount(parsed.tokens)
               if (parsed.phase) setCurrentPhase(parsed.phase)
             } else if (parsed.type === 'phase_complete') {
-              setPartialProject((prev) => prev ? { ...prev, savedBoards: (prev.savedBoards || 0) + parsed.saved } : prev)
+              updatePartialProjectState((prev) => prev ? { ...prev, savedBoards: (prev.savedBoards || 0) + parsed.saved } : prev)
             } else if (parsed.type === 'complete') {
+              reachedTerminalState = true
+              clearRecoveryPolling()
               setTimeout(() => {
+                generatingRef.current = false
                 navigate(`/workspaces/${parsed.workspaceId}/projects/${parsed.projectId}`)
               }, 800)
               return
             } else if (parsed.type === 'partial_failure') {
-              setPartialProject({ projectId: parsed.projectId, workspaceId: parsed.workspaceId, savedBoards: parsed.savedBoards })
+              reachedTerminalState = true
+              updatePartialProjectState({ projectId: parsed.projectId, workspaceId: parsed.workspaceId, savedBoards: parsed.savedBoards })
               setError(parsed.message || `${parsed.savedBoards}개만 저장되어 생성에 실패했습니다.`)
+              generatingRef.current = false
               setGenerating(false)
               return
             } else if (parsed.type === 'error') {
@@ -201,50 +339,49 @@ export default function DemoMode() {
           }
         }
       }
+
+      if (!reachedTerminalState && startRecoveryPolling(partialProjectRef.current)) {
+        return
+      }
     } catch (err) {
       if (err.name === 'AbortError') {
         setError('생성이 취소되었습니다.')
-      } else if (partialProject?.projectId) {
-        // SSE 연결 끊김 (모바일 백그라운드 등) — 서버는 계속 생성 중일 수 있음
-        // 프로젝트 상태를 폴링하여 완료 여부 확인
+      } else if (startRecoveryPolling(partialProjectRef.current)) {
         console.log('[demo] SSE 끊김 — 서버 완료 대기 폴링 시작')
-        setError('')
-        setCurrentPhase('서버에서 나머지 절차를 생성 중입니다 (약 5~10분 소요)')
-        const pollInterval = setInterval(async () => {
-          try {
-            const proj = await apiGet(`/api/projects/${partialProject.projectId}`)
-            if (proj?.status === 'simulation') {
-              clearInterval(pollInterval)
-              navigate(`/workspaces/${partialProject.workspaceId}/projects/${partialProject.projectId}`)
-            } else if (proj?.status === 'failed') {
-              clearInterval(pollInterval)
-              setError('서버에서 생성이 실패했습니다.')
-              setGenerating(false)
-            }
-          } catch {
-            // 폴링 실패는 무시 (다음 시도에서 재시도)
-          }
-        }, 5000) // 5초마다 확인
-        // 5분 후 타임아웃
-        setTimeout(() => {
-          clearInterval(pollInterval)
-          if (generating) {
-            setError('생성 시간이 초과되었습니다. 워크스페이스에서 프로젝트를 확인해주세요.')
-            setGenerating(false)
-          }
-        }, 5 * 60 * 1000)
         return
       } else {
-        setError(err.message || '데모 생성 중 오류가 발생했습니다.')
+        setError(normalizeGenerateError(err))
       }
+      generatingRef.current = false
       setGenerating(false)
     }
   }
 
-  const progressPercent = progressList.length > 0
-    ? Math.round((progressList.length / progressTotal) * 100)
-    : 0
+  const detectedProcedures = progressList.length
+  const savedBoards = partialProject?.savedBoards || 0
+  const allProceduresDetected = progressTotal > 0 && detectedProcedures >= progressTotal
+  const progressPercent = allProceduresDetected
+    ? 95
+    : detectedProcedures > 0
+      ? Math.min(94, Math.max(5, Math.round((detectedProcedures / progressTotal) * 90)))
+      : 0
   const lastProgress = progressList[progressList.length - 1]
+  const progressSummary = recoveryPolling
+    ? '서버 상태를 다시 확인하고 있습니다...'
+    : allProceduresDetected
+      ? '생성된 내용을 저장하고 마무리하는 중입니다...'
+      : savedBoards > 0
+        ? `${savedBoards}/${progressTotal}개 절차 저장 완료, 다음 절차 생성 중`
+        : detectedProcedures === 0
+          ? 'AI에게 수업 설계를 요청했습니다...'
+          : `${detectedProcedures}/${progressTotal}개 절차 생성 중`
+  const currentPhaseLabel = !currentPhase
+    ? ''
+    : currentPhase === '1차'
+      ? '준비~분석 단계 생성 중'
+      : currentPhase === '2차'
+        ? '설계~평가 단계 생성 중'
+        : currentPhase
 
   // 미로그인 시 로딩 표시
   if (!initialized || !user) {
@@ -509,15 +646,23 @@ export default function DemoMode() {
 
               {/* 설명 (선택) */}
               <div style={{ marginBottom: 24 }}>
-                <label style={labelStyle}>간략한 설명 (선택)</label>
+                <label style={labelStyle}>설계 의도 / 참고사항 (선택)</label>
+                <p style={{ fontSize: 12, color: '#6B7280', margin: '0 0 8px', lineHeight: 1.5 }}>
+                  수업 목표, 학생 특성, 꼭 반영할 조건 등을 조금 길게 적어도 됩니다.
+                </p>
                 <textarea
                   value={description}
-                  onChange={(e) => setDescription(e.target.value.slice(0, 500))}
-                  placeholder="수업의 목표나 특별히 고려할 사항이 있다면 입력하세요"
-                  rows={2}
-                  maxLength={500}
+                  onChange={(e) => setDescription(e.target.value.slice(0, MAX_DESCRIPTION_LENGTH))}
+                  placeholder="예: 학생들이 자기 언어 경험을 존중받는 느낌을 받았으면 좋겠습니다. 다문화 배경 학생도 자연스럽게 참여할 수 있게 하고, 결과물은 교내 전시까지 연결되면 좋겠습니다."
+                  rows={4}
+                  maxLength={MAX_DESCRIPTION_LENGTH}
                   style={{ ...inputStyle, resize: 'none' }}
                 />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+                  <span style={{ fontSize: 11, color: '#9CA3AF', fontVariantNumeric: 'tabular-nums' }}>
+                    {description.length.toLocaleString()} / {MAX_DESCRIPTION_LENGTH.toLocaleString()}
+                  </span>
+                </div>
               </div>
 
               {/* 제출 */}
@@ -577,14 +722,11 @@ export default function DemoMode() {
                 AI가 수업을 설계하고 있습니다
               </h2>
               <p style={{ fontSize: 13, color: '#6B7280', margin: 0 }}>
-                {progressList.length === 0
-                  ? 'AI에게 수업 설계를 요청했습니다...'
-                  : `${progressList.length}/${progressTotal}개 절차 완료`
-                }
+                {progressSummary}
               </p>
-              {currentPhase && (
+              {currentPhaseLabel && (
                 <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
-                  {currentPhase === '1차' ? '준비~분석 단계 생성 중' : '설계~평가 단계 생성 중'}
+                  {currentPhaseLabel}
                 </p>
               )}
             </div>

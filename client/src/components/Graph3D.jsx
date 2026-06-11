@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
 import { Search, X, RotateCcw, ChevronLeft, ChevronRight, Link2, Send, MessageCircle, List, Plus, Check, Crosshair, HelpCircle, Sparkles } from 'lucide-react'
-import { apiGet, apiPost, API_BASE } from '../lib/api'
+import { apiGet, apiPost, API_BASE, getHeaders } from '../lib/api'
 import Logo from './Logo'
 
 // 교과군(subject_group) 기준 색상 매핑
@@ -586,7 +586,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
     try {
       const res = await fetch(`${API_BASE}/api/standards/graph/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getHeaders(),
         body: JSON.stringify({
           message: text,
           history: chatMessages,
