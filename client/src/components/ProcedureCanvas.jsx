@@ -7,6 +7,7 @@ import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { BOARD_SCHEMAS, getBoardSchemaForProcedure, createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
 import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
+import ReadableValue from './ReadableValue'
 
 export default function ProcedureCanvas({ projectId, procedureCode, readOnly = false, loading = false }) {
   const { boards, currentStep, setStep, updateBoard } = useProcedureStore()
@@ -278,7 +279,7 @@ function SuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
         {typeof suggestion.value === 'string' ? (
           <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{suggestion.value}</p>
         ) : (
-          <pre style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{JSON.stringify(suggestion.value, null, 2)}</pre>
+          <ReadableValue value={suggestion.value} />
         )}
       </div>
 

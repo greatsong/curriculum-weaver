@@ -24,6 +24,7 @@ import {
 } from 'curriculum-weaver-shared/constants.js'
 import { getDefaultIntent } from '../lib/defaultIntentForStep'
 import { validateMaterialFile } from '../lib/materialErrors'
+import ReadableValue from './ReadableValue'
 
 // 스트리밍 텍스트에서 XML 마커 제거
 function cleanStreamingText(text) {
@@ -1391,7 +1392,7 @@ function InlineSuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) 
           {typeof suggestion.value === 'string' ? (
             <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{suggestion.value}</p>
           ) : (
-            <pre style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 11 }}>{JSON.stringify(suggestion.value, null, 2)}</pre>
+            <ReadableValue value={suggestion.value} />
           )}
         </div>
 
