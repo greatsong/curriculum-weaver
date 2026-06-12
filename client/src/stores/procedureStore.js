@@ -221,6 +221,31 @@ export const useProcedureStore = create((set, get) => ({
     })
   },
 
+  /**
+   * board_update 제안을 보드에 반영 (전체 보드 content 병합).
+   * AI는 ai_suggestion type="board_update"로 보드 전체 데이터를 제안하므로,
+   * field 단위가 아니라 content 객체 전체를 기존 내용에 병합해야 한다.
+   */
+  applyBoardContent: (procedureCode, content) => {
+    const boardType = BOARD_TYPES[procedureCode]
+    if (!boardType || !content || typeof content !== 'object') return
+
+    set((state) => {
+      const existing = state.boards[boardType]
+      const currentContent = existing?.content || createEmptyBoard(procedureCode)
+      return {
+        boards: {
+          ...state.boards,
+          [boardType]: {
+            ...(existing || {}),
+            board_type: boardType,
+            content: { ...currentContent, ...content },
+          },
+        },
+      }
+    })
+  },
+
   // ── 성취기준 ────
 
   loadStandards: async (projectId) => {
