@@ -305,7 +305,10 @@ export const useChatStore = create((set, get) => ({
             pendingSuggestions: suggestions.map((s, i) => ({
               id: `suggestion-${Date.now()}-${i}`,
               procedureCode: s.procedure || procedureCode,
-              field: s.step || s.action || 'content',
+              // board_update는 보드 전체 content 제안(field 단위 아님). step/action을
+              // field로 쓰면 content["1"]처럼 잘못 중첩되어 보드에 안 뜬다.
+              type: s.type || 'board_update',
+              field: s.field || null,
               value: s.content,
               rationale: '',
               status: 'pending',
@@ -470,11 +473,17 @@ export const useChatStore = create((set, get) => ({
 
     // 1) procedureStore에 보드 반영 (로컬)
     const procStore = useProcedureStore.getState()
-    if (suggestion.procedureCode && suggestion.field) {
-      procStore.applyAISuggestion(suggestion.procedureCode, {
-        field: suggestion.field,
-        value: suggestion.value,
-      })
+    if (suggestion.procedureCode) {
+      if (suggestion.field) {
+        // 레거시 field 단위 부분 업데이트
+        procStore.applyAISuggestion(suggestion.procedureCode, {
+          field: suggestion.field,
+          value: suggestion.value,
+        })
+      } else if (suggestion.value && typeof suggestion.value === 'object') {
+        // board_update: 보드 전체 content 병합
+        procStore.applyBoardContent(suggestion.procedureCode, suggestion.value)
+      }
     }
 
     // 2) 서버에 수락 저장
@@ -506,12 +515,21 @@ export const useChatStore = create((set, get) => ({
     if (!suggestion) return
 
     // 1) 편집된 값으로 보드 반영
+    // board_update 편집은 editedValue가 JSON 문자열일 수 있으므로 파싱한다.
     const procStore = useProcedureStore.getState()
-    if (suggestion.procedureCode && suggestion.field) {
-      procStore.applyAISuggestion(suggestion.procedureCode, {
-        field: suggestion.field,
-        value: editedValue,
-      })
+    let parsedEdited = editedValue
+    if (typeof editedValue === 'string') {
+      try { parsedEdited = JSON.parse(editedValue) } catch { /* 문자열 그대로 사용 */ }
+    }
+    if (suggestion.procedureCode) {
+      if (suggestion.field) {
+        procStore.applyAISuggestion(suggestion.procedureCode, {
+          field: suggestion.field,
+          value: parsedEdited,
+        })
+      } else if (parsedEdited && typeof parsedEdited === 'object') {
+        procStore.applyBoardContent(suggestion.procedureCode, parsedEdited)
+      }
     }
 
     // 2) 서버에 편집 수락 저장
@@ -523,7 +541,7 @@ export const useChatStore = create((set, get) => ({
           session_id: projectId,
           procedure: suggestion.procedureCode,
           suggestionIndex: idx >= 0 ? idx : 0,
-          editedContent: editedValue,
+          editedContent: parsedEdited,
         })
       } catch (err) {
         console.error('제안 편집 수락 서버 저장 실패:', err)
