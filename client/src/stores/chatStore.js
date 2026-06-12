@@ -21,43 +21,46 @@ function isReadOnlyProject(project) {
  */
 function parseAISuggestions(text) {
   const suggestions = []
-  const regex = /<ai_suggestion\s+procedure="([^"]*?)"\s+field="([^"]*?)">([\s\S]*?)<\/ai_suggestion>/g
+  // 서버 extractAiSuggestions(chat.js) 및 AI 생성 형식과 동일하게 파싱한다.
+  // <ai_suggestion type="board_update" procedure=".." step=".." action="..">{JSON}</ai_suggestion>
+  // (SSE board_suggestions 경로가 주력이며, 이 텍스트 파싱은 SSE 누락 시의 백업이다.)
+  const regex = /<ai_suggestion\s+type="([^"]+)"\s+procedure="([^"]+)"\s+step="([^"]*?)"\s*(?:action="([^"]*?)")?\s*>\s*([\s\S]*?)\s*<\/ai_suggestion>/g
   let match
   while ((match = regex.exec(text)) !== null) {
-    const [, procedureCode, field, inner] = match
-    // rationale 추출
-    const rationaleMatch = inner.match(/<rationale>([\s\S]*?)<\/rationale>/)
-    const rationale = rationaleMatch ? rationaleMatch[1].trim() : ''
-    // value 추출: rationale 이외의 부분
-    const value = inner
-      .replace(/<rationale>[\s\S]*?<\/rationale>/, '')
-      .trim()
-    // JSON 파싱 시도
-    let parsedValue = value
+    const [, type, procedureCode, , , inner] = match
+    let value = inner.trim()
     try {
-      parsedValue = JSON.parse(value)
+      value = JSON.parse(value)
     } catch {
       // 문자열 그대로 사용
     }
-    suggestions.push({ procedureCode, field, value: parsedValue, rationale })
+    // onBoardSuggestions(SSE) 콜백과 동일한 형태로 맞춘다(field 없는 board_update).
+    suggestions.push({ procedureCode, type: type || 'board_update', field: null, value, rationale: '' })
   }
   return suggestions
 }
 
 /**
- * AI 응답에서 <coherence_check> XML을 파싱한다
+ * AI 응답에서 <coherence_check> XML을 파싱한다.
+ * 서버 extractCoherenceCheck 및 AI 생성 형식과 동일:
+ * <coherence_check procedure=".." against="..">{"aligned":..,"feedback":..,"details":[..]}</coherence_check>
+ * 반환 형태는 onCoherenceCheck(SSE) 콜백과 동일(status/issues/suggestions).
  */
 function parseCoherenceCheck(text) {
-  const match = text.match(/<coherence_check>([\s\S]*?)<\/coherence_check>/)
+  const match = text.match(/<coherence_check\b[^>]*>([\s\S]*?)<\/coherence_check>/)
   if (!match) return null
-  const inner = match[1]
-  const statusMatch = inner.match(/<status>([\s\S]*?)<\/status>/)
-  const issuesMatch = inner.match(/<issues>([\s\S]*?)<\/issues>/)
-  const suggestionsMatch = inner.match(/<suggestions>([\s\S]*?)<\/suggestions>/)
+  let data
+  try {
+    data = JSON.parse(match[1].trim())
+  } catch {
+    return null
+  }
   return {
-    status: statusMatch ? statusMatch[1].trim() : 'unknown',
-    issues: issuesMatch ? issuesMatch[1].trim() : '',
-    suggestions: suggestionsMatch ? suggestionsMatch[1].trim() : '',
+    status: data.aligned ? 'pass' : 'warning',
+    issues: data.feedback || '',
+    suggestions: Array.isArray(data.details)
+      ? data.details.map((d) => d.suggestion || d.item || '').filter(Boolean).join(', ')
+      : (data.details || ''),
   }
 }
 
