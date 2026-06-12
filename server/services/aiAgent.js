@@ -772,6 +772,32 @@ ${session.description ? `설명: ${session.description}` : ''}`)
     }
   }
 
+  // ─── 12-B. 지금까지 확정된 이전 절차 진행 요약 ───
+  // 이전 절차 보드를 절차 순서대로 요약해 AI가 전체 진행 맥락을 알도록 한다.
+  // (learner_context·team_vision은 위에서 이미 다루므로 제외. 이 섹션이 없으면
+  //  후반 절차에서 "앞 절차에서 무엇을 했는지 모른다"고 답하는 버그가 생긴다.)
+  {
+    const currentOrder = PROCEDURES[procedure]?.order ?? 999
+    const priorBoards = boards
+      .filter(b => b.content && Object.keys(b.content).length > 0 && b.procedure_code)
+      .filter(b => b.board_type !== 'learner_context' && b.board_type !== 'team_vision')
+      .map(b => ({ b, order: PROCEDURES[b.procedure_code]?.order ?? 999 }))
+      .filter(x => x.order < currentOrder)
+      .sort((a, c) => a.order - c.order)
+    if (priorBoards.length > 0) {
+      const summary = priorBoards.map(({ b }) => {
+        const proc = PROCEDURES[b.procedure_code]
+        const label = BOARD_TYPE_LABELS[b.board_type] || b.board_type
+        const dataStr = JSON.stringify(b.content).slice(0, 1000)
+        return `[${b.procedure_code} ${proc?.name || ''}] ${label}:\n${dataStr}`
+      }).join('\n\n')
+      parts.push(`[지금까지의 설계 진행 — 교사와 함께 확정한 이전 절차 내용]
+이 프로젝트는 아래 이전 절차들을 이미 진행해 보드를 확정했습니다. 이 내용을 토대로 현재 절차를 이어서 진행하세요. 절대 "이전에 무엇을 했는지 모른다"거나 "다른 세션에서 진행했느냐"고 되묻지 마세요.
+
+${summary}`)
+    }
+  }
+
   // ─── 13. 선택된 성취기준 ───
   if (standards && standards.length > 0) {
     const stdText = standards

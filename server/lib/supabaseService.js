@@ -7,6 +7,7 @@
 import crypto from 'crypto'
 
 import { supabaseAdmin } from './supabaseAdmin.js'
+import { BOARD_TYPES } from 'curriculum-weaver-shared/constants.js'
 
 // ── Supabase 클라이언트 (lazy) ──
 let _fallbackMode = false
@@ -424,20 +425,26 @@ export async function upsertDesign(projectId, procedureCode, content, userId) {
  */
 export async function getDesignsByProject(projectId) {
   const sb = getSupabase()
+  // designs 테이블은 procedure_code만 갖는다. aiAgent 등 소비처는 board_type으로
+  // 보드를 찾으므로(boards.find(b => b.board_type === ...)), 여기서 board_type을
+  // 부착해 둔다. 부착하지 않으면 AI가 이전·현재 절차 보드를 전혀 못 읽어
+  // "앞 절차에서 무엇을 했는지 모른다"고 답하는 버그가 발생한다.
+  const withBoardType = (d) => ({ ...d, board_type: d.board_type || BOARD_TYPES[d.procedure_code] || null })
   if (!sb) {
     const result = []
     for (const [key, d] of mem.designs) {
       if (key.startsWith(`${projectId}:`)) result.push(d)
     }
-    return result
+    return result.map(withBoardType)
   }
-  return handleResult(
+  const rows = handleResult(
     await sb.from('designs')
       .select('*')
       .eq('project_id', projectId)
       .order('procedure_code'),
     '설계 캔버스 목록 조회 실패'
   )
+  return rows.map(withBoardType)
 }
 
 // ============================================================
