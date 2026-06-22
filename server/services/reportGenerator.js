@@ -649,6 +649,12 @@ function renderSectionsHTML(sections) {
       }
       html += `</tr></thead><tbody>`
       for (const row of sec.rows) {
+        // 방어: AI가 배열에 null/스칼라를 끼워 넣어도 보고서 전체가 죽지 않게 한다.
+        if (row == null) continue
+        if (typeof row !== 'object') {
+          html += `<tr><td colspan="${sec.columns.length}">${esc(String(row))}</td></tr>`
+          continue
+        }
         html += `<tr>`
         for (const col of sec.columns) {
           html += `<td>${esc(String(row[col.name] || row[col.label] || row[col.key] || ''))}</td>`
@@ -811,10 +817,15 @@ function renderSectionsMD(sections) {
       md += `| ${sec.columns.map(c => c.label).join(' | ')} |\n`
       md += `| ${sec.columns.map(() => '---').join(' | ')} |\n`
       for (const row of sec.rows) {
-        const cells = sec.columns.map(c => {
-          const val = String(row[c.name] || row[c.label] || row[c.key] || '')
-          return val.replace(/\|/g, '\\|').replace(/\n/g, ' ')
-        })
+        // 방어: null/스칼라 행도 안전하게 렌더 (보고서 전면 실패 방지)
+        if (row == null) continue
+        const safeCell = (v) => String(v).replace(/\|/g, '\\|').replace(/\n/g, ' ')
+        if (typeof row !== 'object') {
+          const cells = sec.columns.map((c, i) => (i === 0 ? safeCell(row) : ''))
+          md += `| ${cells.join(' | ')} |\n`
+          continue
+        }
+        const cells = sec.columns.map(c => safeCell(row[c.name] || row[c.label] || row[c.key] || ''))
         md += `| ${cells.join(' | ')} |\n`
       }
       md += `\n`

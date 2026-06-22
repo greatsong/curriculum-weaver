@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   PROCEDURES, PHASES, PHASE_LIST, ACTION_TYPES, ACTOR_COLUMNS,
   BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_ACTIVITIES,
@@ -709,6 +709,16 @@ function TagsRenderer({ tags }) {
 function BoardEditor({ schema, content, onSave, onCancel }) {
   const [draft, setDraft] = useState(JSON.parse(JSON.stringify(content || schema.empty)))
 
+  // 편집 중 다른 참여자가 같은 보드를 바꾸면(외부 design 변경으로 content prop이 바뀜)
+  // 비차단 경고만 띄운다. 저장 동작은 그대로 두되 교사가 모르고 덮어쓰는 일을 막는다.
+  const initialSnapshotRef = useRef(JSON.stringify(content || schema.empty))
+  const [externalChanged, setExternalChanged] = useState(false)
+  useEffect(() => {
+    if (JSON.stringify(content || schema.empty) !== initialSnapshotRef.current) {
+      setExternalChanged(true)
+    }
+  }, [content, schema.empty])
+
   const updateField = (name, value) => setDraft((prev) => ({ ...prev, [name]: value }))
 
   const updateTableRow = (fieldName, rowIdx, colName, value) => {
@@ -747,6 +757,27 @@ function BoardEditor({ schema, content, onSave, onCancel }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {externalChanged && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8,
+          padding: '8px 12px', fontSize: 12.5, color: '#92400E',
+        }}>
+          <span style={{ flex: 1, minWidth: 180 }}>다른 참여자가 이 보드를 수정했어요. 지금 저장하면 그 내용을 덮어쓸 수 있습니다.</span>
+          <button
+            onClick={() => { setDraft(JSON.parse(JSON.stringify(content || schema.empty))); initialSnapshotRef.current = JSON.stringify(content || schema.empty); setExternalChanged(false) }}
+            style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1px solid #F59E0B', background: '#fff', color: '#92400E', cursor: 'pointer' }}
+          >
+            최신 내용으로 교체
+          </button>
+          <button
+            onClick={() => setExternalChanged(false)}
+            style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: 'none', background: 'transparent', color: '#92400E', cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            내 편집 유지
+          </button>
+        </div>
+      )}
       {schema.fields.map((field) => (
         <div key={field.name}>
           <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>

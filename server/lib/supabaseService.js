@@ -388,6 +388,18 @@ export async function upsertDesign(projectId, procedureCode, content, userId) {
     }
   }
 
+  // ── 비차단 품질 점검(A-2-1): 융합 알맹이(지식·이해/과정·기능/가치·태도) 분석이
+  //    비어 있으면 서버 로그로만 경고한다. 흐름을 막거나 내용을 바꾸지 않는다(관찰용). ──
+  if (procedureCode === 'A-2-1' && Array.isArray(content?.standards) && content.standards.length > 0) {
+    const isEmpty = (v) => !v || (typeof v === 'string' && v.trim().length < 3)
+    const weak = content.standards.filter(
+      (r) => isEmpty(r.knowledge) && isEmpty(r.process) && isEmpty(r.values)
+    ).length
+    if (weak > 0) {
+      console.warn(`[upsertDesign 품질] A-2-1: ${weak}/${content.standards.length}개 성취기준의 3차원 분석(knowledge/process/values)이 비어 있음 (비차단 경고)`)
+    }
+  }
+
   const sb = getSupabase()
   if (!sb) {
     const key = `${projectId}:${procedureCode}`
