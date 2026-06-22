@@ -233,6 +233,16 @@ export const useProcedureStore = create((set, get) => ({
             ...state.boards,
             [boardType]: { ...design, board_type: boardType, content: design.content },
           },
+          // 협업자(B)의 진행률/네비게이션도 함께 갱신 — design_updated만 받고
+          // boardSummaries를 안 고치면 B의 완료 표시가 stale해진다.
+          boardSummaries: {
+            ...state.boardSummaries,
+            [procedureCode]: {
+              hasContent: !!(design.content && Object.keys(design.content).length > 0),
+              updatedAt: design.updated_at || new Date().toISOString(),
+              saveStatus: design.save_status || state.boardSummaries[procedureCode]?.saveStatus || null,
+            },
+          },
         }))
       }
     }

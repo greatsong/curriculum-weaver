@@ -521,6 +521,17 @@ export const useChatStore = create((set, get) => ({
         }
       }
     }
+    // 다른 참여자에게 보드 변경 실시간 전파.
+    // accept 라우트는 updateBoard와 달리 socket 브로드캐스트를 하지 않으므로,
+    // 정상 수락 경로(persisted=true)에서는 여기서 명시적으로 emit해야 협업자 보드가 갱신된다.
+    // 폴백 경로는 updateBoard가 이미 design_updated를 emit하므로 중복 방지를 위해 제외.
+    if (persisted && suggestion.procedureCode) {
+      const boardType = BOARD_TYPES[suggestion.procedureCode]
+      const localBoard = boardType ? useProcedureStore.getState().boards[boardType] : null
+      if (localBoard) {
+        socket.emit('design_updated', { projectId, procedureCode: suggestion.procedureCode, design: localBoard })
+      }
+    }
 
     // 3) 상태 업데이트
     set({
@@ -584,6 +595,14 @@ export const useChatStore = create((set, get) => ({
         } catch (err) {
           console.error('보드 직접 영속 실패:', err)
         }
+      }
+    }
+    // 다른 참여자에게 보드 변경 실시간 전파 (정상 경로는 accept 라우트가 브로드캐스트 안 함)
+    if (persisted && suggestion.procedureCode) {
+      const boardType = BOARD_TYPES[suggestion.procedureCode]
+      const localBoard = boardType ? useProcedureStore.getState().boards[boardType] : null
+      if (localBoard) {
+        socket.emit('design_updated', { projectId, procedureCode: suggestion.procedureCode, design: localBoard })
       }
     }
 
