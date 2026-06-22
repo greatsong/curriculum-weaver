@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, Component } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo, Component } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useProcedureStore } from '../stores/procedureStore'
@@ -7,7 +7,7 @@ import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useAuthStore } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { socket, joinSession, leaveSession } from '../lib/socket'
-import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
 import Logo from '../components/Logo'
 import ProcedureNav from '../components/ProcedureNav'
 import ChatPanel from '../components/ChatPanel'
@@ -156,6 +156,7 @@ export default function ProjectPage() {
   const {
     currentProcedure, setProcedure, loadBoards, loadAllBoards, loadStandards, loadMaterials,
     loadPrinciples, loadGeneralPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset,
+    loadStepMemory, loadBoardSummaries, boardSummaries,
     loading: procedureLoading,
   } = useProcedureStore()
   const {
@@ -164,7 +165,12 @@ export default function ProjectPage() {
   const { setMembers } = useSessionStore()
 
   const [showStandardSearch, setShowStandardSearch] = useState(false)
-  const [showTutorial, setShowTutorial] = useState(() => !localStorage.getItem('cw_tutorial_done'))
+  // 신규 사용자는 InteractiveTour(6스텝)만 본다. 레거시 Tutorial(9스텝)은
+  // 투어를 이미 끝낸 적이 있는데 튜토리얼은 못 본 과거 사용자에게만 1회 노출 →
+  // 신규 사용자가 투어+튜토리얼 15스텝을 연달아 보던 중복 온보딩을 제거.
+  const [showTutorial, setShowTutorial] = useState(
+    () => !localStorage.getItem('cw_tutorial_done') && !!localStorage.getItem('cw_tour_done')
+  )
   const [showTour, setShowTour] = useState(() => !localStorage.getItem('cw_tour_done'))
   const [activePanel, setActivePanel] = useState('chat')
   const [boardUpdated, setBoardUpdated] = useState(false)
@@ -234,14 +240,17 @@ export default function ProjectPage() {
     loadStandards(projectId)
     loadMaterials(projectId)
     loadPrinciples(currentProcedure)
+    loadBoardSummaries(projectId)
   }, [currentProcedure, projectId])
 
   useEffect(() => {
     allBoardsLoadedRef.current = false
+    loadStepMemory(projectId)
     fetchProject(projectId)
     if (workspaceId) fetchWorkspace(workspaceId)
     loadMessagesWithRetry(projectId)
     loadGeneralPrinciples()
+    loadBoardSummaries(projectId)
   }, [projectId, workspaceId])
 
   useEffect(() => {
@@ -368,6 +377,31 @@ export default function ProjectPage() {
       .then(() => alert('프로젝트 링크가 복사되었습니다. 같은 워크스페이스 멤버에게 공유하세요.'))
       .catch(() => alert(`링크를 복사하세요: ${url}`))
   }
+
+  // 진행률(완료 절차) + 후행 절차 stale 감지.
+  // stale = 내용 있는 절차인데, 그보다 앞 순서의 절차가 더 나중에 수정됨
+  // → 앞 단계를 고친 뒤 이 절차를 아직 재검토하지 않았다는 신호.
+  const { completedProcedures, boardStatuses } = useMemo(() => {
+    const completed = []
+    const statuses = {}
+    const summaries = boardSummaries || {}
+    let maxUpstreamUpdated = 0
+    for (const proc of PROCEDURE_LIST) {
+      const s = summaries[proc.code]
+      if (!s?.hasContent) continue
+      completed.push(proc.code)
+      const ts = s.updatedAt ? new Date(s.updatedAt).getTime() : 0
+      if (ts && maxUpstreamUpdated && ts < maxUpstreamUpdated) {
+        statuses[proc.code] = 'stale'
+      } else if (s.saveStatus === 'confirmed') {
+        statuses[proc.code] = 'confirmed'
+      }
+      if (ts > maxUpstreamUpdated) maxUpstreamUpdated = ts
+    }
+    return { completedProcedures: completed, boardStatuses: statuses }
+  }, [boardSummaries])
+
+  const currentIsStale = boardStatuses[currentProcedure] === 'stale'
 
   const isSimulation = currentProject?.status === 'simulation' || currentProject?.title?.startsWith('[시뮬레이션]')
   const isGenerating = currentProject?.status === 'generating'
@@ -576,8 +610,29 @@ export default function ProjectPage() {
         <ProcedureNav
           currentProcedure={currentProcedure}
           onProcedureChange={handleProcedureChange}
+          completedProcedures={completedProcedures}
+          boardStatuses={boardStatuses}
         />
       </div>
+
+      {/* 후행 절차 재검토 안내 — 앞 절차가 이 절차보다 나중에 수정된 경우 */}
+      {currentIsStale && !isReadOnlyProject && (
+        <div style={{
+          background: '#FFFBEB',
+          borderBottom: '1px solid #FDE68A',
+          color: '#92400E',
+          padding: '7px 16px',
+          fontSize: 12.5,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          flexShrink: 0,
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          앞 단계 내용이 이 절차보다 나중에 수정되었습니다. 이 절차 내용을 다시 확인해 주세요.
+        </div>
+      )}
 
       {/* 메인 콘텐츠 — 3-panel layout */}
       <div className="flex-1 flex overflow-hidden">
@@ -708,6 +763,9 @@ export default function ProjectPage() {
       {showTutorial && !showTour && <Tutorial onComplete={() => setShowTutorial(false)} />}
       {showTour && <InteractiveTour onComplete={() => {
         setShowTour(false)
+        // 투어를 끝낸 신규 사용자에게 레거시 Tutorial이 곧바로 겹쳐 뜨지 않도록 함께 완료 처리
+        localStorage.setItem('cw_tutorial_done', '1')
+        setShowTutorial(false)
         // 투어 완료 후 AI 환영 메시지 요청
         const msgs = useChatStore.getState().messages
         const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')

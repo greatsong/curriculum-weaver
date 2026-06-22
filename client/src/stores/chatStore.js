@@ -4,7 +4,7 @@ import { socket } from '../lib/socket'
 import { useProcedureStore } from './procedureStore'
 import { useProjectStore } from './projectStore'
 import { useWorkspaceStore } from './workspaceStore'
-import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, BOARD_TYPES } from 'curriculum-weaver-shared/constants.js'
 
 function isReadOnlyProject(project) {
   return project?.status === 'simulation' ||
@@ -491,6 +491,7 @@ export const useChatStore = create((set, get) => ({
 
     // 2) 서버에 수락 저장
     const messageId = state._lastAiMessageId
+    let persisted = false
     if (messageId) {
       const idx = state.pendingSuggestions.findIndex((s) => s.id === suggestionId)
       try {
@@ -499,8 +500,25 @@ export const useChatStore = create((set, get) => ({
           procedure: suggestion.procedureCode,
           suggestionIndex: idx >= 0 ? idx : 0,
         })
+        persisted = true
       } catch (err) {
         console.error('제안 수락 서버 저장 실패:', err)
+      }
+    }
+    // 메시지 ID가 없거나(SSE 누락·백업 파서 경로) accept 저장이 실패하면,
+    // 병합된 보드 content를 직접 영속한다. 로컬에는 반영됐는데 DB에는 안 들어가
+    // 새로고침 시 "수락했는데 사라지는" 유실을 막는다.
+    if (!persisted && suggestion.procedureCode) {
+      const boardType = BOARD_TYPES[suggestion.procedureCode]
+      const mergedContent = boardType
+        ? useProcedureStore.getState().boards[boardType]?.content
+        : null
+      if (mergedContent) {
+        try {
+          await useProcedureStore.getState().updateBoard(projectId, suggestion.procedureCode, mergedContent)
+        } catch (err) {
+          console.error('보드 직접 영속 실패:', err)
+        }
       }
     }
 
@@ -510,6 +528,8 @@ export const useChatStore = create((set, get) => ({
         s.id === suggestionId ? { ...s, status: 'accepted' } : s
       ),
     })
+    // 진행률/네비게이션 갱신
+    useProcedureStore.getState().loadBoardSummaries(projectId)
   },
 
   editAcceptSuggestion: async (suggestionId, editedValue, projectId) => {
@@ -537,6 +557,7 @@ export const useChatStore = create((set, get) => ({
 
     // 2) 서버에 편집 수락 저장
     const messageId = state._lastAiMessageId
+    let persisted = false
     if (messageId) {
       const idx = state.pendingSuggestions.findIndex((s) => s.id === suggestionId)
       try {
@@ -546,8 +567,23 @@ export const useChatStore = create((set, get) => ({
           suggestionIndex: idx >= 0 ? idx : 0,
           editedContent: parsedEdited,
         })
+        persisted = true
       } catch (err) {
         console.error('제안 편집 수락 서버 저장 실패:', err)
+      }
+    }
+    // 메시지 ID 부재/저장 실패 시 병합된 보드 content를 직접 영속 (유실 방지)
+    if (!persisted && suggestion.procedureCode) {
+      const boardType = BOARD_TYPES[suggestion.procedureCode]
+      const mergedContent = boardType
+        ? useProcedureStore.getState().boards[boardType]?.content
+        : null
+      if (mergedContent) {
+        try {
+          await useProcedureStore.getState().updateBoard(projectId, suggestion.procedureCode, mergedContent)
+        } catch (err) {
+          console.error('보드 직접 영속 실패:', err)
+        }
       }
     }
 
@@ -557,6 +593,8 @@ export const useChatStore = create((set, get) => ({
         s.id === suggestionId ? { ...s, status: 'accepted', value: editedValue } : s
       ),
     })
+    // 진행률/네비게이션 갱신
+    useProcedureStore.getState().loadBoardSummaries(projectId)
   },
 
   rejectSuggestion: async (suggestionId, projectId) => {

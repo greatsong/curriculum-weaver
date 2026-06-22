@@ -192,6 +192,9 @@ export default function ProcedureNav({
                 {status === 'confirmed' && (
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#22C55E' }} />
                 )}
+                {status === 'stale' && (
+                  <span title="앞 단계 수정 후 재검토 필요" style={{ width: 5, height: 5, borderRadius: '50%', background: '#F59E0B' }} />
+                )}
                 {status === 'locked' && (
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#9CA3AF' }} />
                 )}

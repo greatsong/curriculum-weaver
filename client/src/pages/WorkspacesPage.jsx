@@ -7,7 +7,7 @@ import Logo from '../components/Logo'
 export default function WorkspacesPage() {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
-  const { workspaces, loading, fetchWorkspaces, createWorkspace, acceptInvite } = useWorkspaceStore()
+  const { workspaces, loading, error, errorStatus, fetchWorkspaces, createWorkspace, acceptInvite } = useWorkspaceStore()
   const [showCreate, setShowCreate] = useState(false)
   const [showJoinByLink, setShowJoinByLink] = useState(false)
   const [name, setName] = useState('')
@@ -210,6 +210,38 @@ export default function WorkspacesPage() {
               margin: '0 auto 12px',
             }} />
             <span style={{ fontSize: 13 }}>로딩 중...</span>
+          </div>
+        ) : error ? (
+          <div
+            className="animate-fade-in"
+            style={{
+              textAlign: 'center',
+              padding: '64px 24px',
+              background: 'var(--color-bg-secondary)',
+              borderRadius: 'var(--radius-xl)',
+              border: '1px solid #FCA5A5',
+            }}
+          >
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ margin: '0 auto 16px', display: 'block', opacity: 0.8 }}>
+              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 4px' }}>
+              {errorStatus === 401 ? '로그인이 만료되었습니다' : '워크스페이스를 불러오지 못했습니다'}
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', margin: '0 0 16px' }}>
+              {errorStatus === 401
+                ? '다시 로그인하면 기존 워크스페이스가 그대로 표시됩니다.'
+                : '네트워크 상태를 확인하고 다시 시도해 주세요.'}
+            </p>
+            {errorStatus === 401 ? (
+              <button onClick={handleLogout} className="btn btn-primary" style={{ fontSize: 13, padding: '8px 16px' }}>
+                다시 로그인
+              </button>
+            ) : (
+              <button onClick={() => fetchWorkspaces()} className="btn btn-secondary" style={{ fontSize: 13, padding: '8px 16px' }}>
+                다시 시도
+              </button>
+            )}
           </div>
         ) : workspaces.length === 0 ? (
           <div
