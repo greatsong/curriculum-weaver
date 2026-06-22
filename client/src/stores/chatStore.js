@@ -489,9 +489,18 @@ export const useChatStore = create((set, get) => ({
       }
     }
 
-    // 2) 서버에 수락 저장
+    // 2) 서버 영속 — 병합된 '전체' 보드 content를 권위본으로 저장
+    // 서버 accept 라우트는 제안 원본(suggestion.content)만 replace 저장해, AI가 일부
+    // 필드만 담은 제안을 수락하면 기존 필드가 DB에서 유실되던 문제가 있었다. 클라가
+    // deep-merge한 전체 content를 updateBoard로 저장(권위본)해 유실을 막고, updateBoard가
+    // design_updated를 emit하므로 협업자 보드도 함께 갱신된다.
+    const boardType = BOARD_TYPES[suggestion.procedureCode]
+    const mergedContent = boardType
+      ? useProcedureStore.getState().boards[boardType]?.content
+      : null
+
+    // (a) 제안 상태 추적용 accept 라우트 (best-effort). 보드 본문 저장은 아래 updateBoard가 권위.
     const messageId = state._lastAiMessageId
-    let persisted = false
     if (messageId) {
       const idx = state.pendingSuggestions.findIndex((s) => s.id === suggestionId)
       try {
@@ -500,36 +509,16 @@ export const useChatStore = create((set, get) => ({
           procedure: suggestion.procedureCode,
           suggestionIndex: idx >= 0 ? idx : 0,
         })
-        persisted = true
       } catch (err) {
-        console.error('제안 수락 서버 저장 실패:', err)
+        console.error('제안 수락 상태 저장 실패:', err)
       }
     }
-    // 메시지 ID가 없거나(SSE 누락·백업 파서 경로) accept 저장이 실패하면,
-    // 병합된 보드 content를 직접 영속한다. 로컬에는 반영됐는데 DB에는 안 들어가
-    // 새로고침 시 "수락했는데 사라지는" 유실을 막는다.
-    if (!persisted && suggestion.procedureCode) {
-      const boardType = BOARD_TYPES[suggestion.procedureCode]
-      const mergedContent = boardType
-        ? useProcedureStore.getState().boards[boardType]?.content
-        : null
-      if (mergedContent) {
-        try {
-          await useProcedureStore.getState().updateBoard(projectId, suggestion.procedureCode, mergedContent)
-        } catch (err) {
-          console.error('보드 직접 영속 실패:', err)
-        }
-      }
-    }
-    // 다른 참여자에게 보드 변경 실시간 전파.
-    // accept 라우트는 updateBoard와 달리 socket 브로드캐스트를 하지 않으므로,
-    // 정상 수락 경로(persisted=true)에서는 여기서 명시적으로 emit해야 협업자 보드가 갱신된다.
-    // 폴백 경로는 updateBoard가 이미 design_updated를 emit하므로 중복 방지를 위해 제외.
-    if (persisted && suggestion.procedureCode) {
-      const boardType = BOARD_TYPES[suggestion.procedureCode]
-      const localBoard = boardType ? useProcedureStore.getState().boards[boardType] : null
-      if (localBoard) {
-        socket.emit('design_updated', { projectId, procedureCode: suggestion.procedureCode, design: localBoard })
+    // (b) 병합 전체 content 영속 + 브로드캐스트 (유실 방지 핵심)
+    if (mergedContent && suggestion.procedureCode) {
+      try {
+        await useProcedureStore.getState().updateBoard(projectId, suggestion.procedureCode, mergedContent)
+      } catch (err) {
+        console.error('보드 영속 실패:', err)
       }
     }
 
@@ -566,9 +555,14 @@ export const useChatStore = create((set, get) => ({
       }
     }
 
-    // 2) 서버에 편집 수락 저장
+    // 2) 서버 영속 — 병합된 '전체' 보드 content를 권위본으로 저장 (acceptSuggestion과 동일 원칙)
+    const boardType = BOARD_TYPES[suggestion.procedureCode]
+    const mergedContent = boardType
+      ? useProcedureStore.getState().boards[boardType]?.content
+      : null
+
+    // (a) 편집 수락 상태 추적용 라우트 (best-effort)
     const messageId = state._lastAiMessageId
-    let persisted = false
     if (messageId) {
       const idx = state.pendingSuggestions.findIndex((s) => s.id === suggestionId)
       try {
@@ -578,31 +572,16 @@ export const useChatStore = create((set, get) => ({
           suggestionIndex: idx >= 0 ? idx : 0,
           editedContent: parsedEdited,
         })
-        persisted = true
       } catch (err) {
-        console.error('제안 편집 수락 서버 저장 실패:', err)
+        console.error('제안 편집 수락 상태 저장 실패:', err)
       }
     }
-    // 메시지 ID 부재/저장 실패 시 병합된 보드 content를 직접 영속 (유실 방지)
-    if (!persisted && suggestion.procedureCode) {
-      const boardType = BOARD_TYPES[suggestion.procedureCode]
-      const mergedContent = boardType
-        ? useProcedureStore.getState().boards[boardType]?.content
-        : null
-      if (mergedContent) {
-        try {
-          await useProcedureStore.getState().updateBoard(projectId, suggestion.procedureCode, mergedContent)
-        } catch (err) {
-          console.error('보드 직접 영속 실패:', err)
-        }
-      }
-    }
-    // 다른 참여자에게 보드 변경 실시간 전파 (정상 경로는 accept 라우트가 브로드캐스트 안 함)
-    if (persisted && suggestion.procedureCode) {
-      const boardType = BOARD_TYPES[suggestion.procedureCode]
-      const localBoard = boardType ? useProcedureStore.getState().boards[boardType] : null
-      if (localBoard) {
-        socket.emit('design_updated', { projectId, procedureCode: suggestion.procedureCode, design: localBoard })
+    // (b) 병합 전체 content 영속 + 브로드캐스트 (유실 방지 핵심)
+    if (mergedContent && suggestion.procedureCode) {
+      try {
+        await useProcedureStore.getState().updateBoard(projectId, suggestion.procedureCode, mergedContent)
+      } catch (err) {
+        console.error('보드 영속 실패:', err)
       }
     }
 

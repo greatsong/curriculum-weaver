@@ -367,7 +367,7 @@ export async function upsertDesign(projectId, procedureCode, content, userId) {
       content = {
         ...content,
         standards: content.standards.filter(row => {
-          if (!row.code) return false
+          if (!row || typeof row !== 'object' || !row.code) return false
           const result = validateCode(row.code)
           if (result.valid) {
             // code/content를 DB 원본으로 고정 — AI가 변형한 내용 방지
@@ -393,7 +393,7 @@ export async function upsertDesign(projectId, procedureCode, content, userId) {
   if (procedureCode === 'A-2-1' && Array.isArray(content?.standards) && content.standards.length > 0) {
     const isEmpty = (v) => !v || (typeof v === 'string' && v.trim().length < 3)
     const weak = content.standards.filter(
-      (r) => isEmpty(r.knowledge) && isEmpty(r.process) && isEmpty(r.values)
+      (r) => r && typeof r === 'object' && isEmpty(r.knowledge) && isEmpty(r.process) && isEmpty(r.values)
     ).length
     if (weak > 0) {
       console.warn(`[upsertDesign 품질] A-2-1: ${weak}/${content.standards.length}개 성취기준의 3차원 분석(knowledge/process/values)이 비어 있음 (비차단 경고)`)

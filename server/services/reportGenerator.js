@@ -82,10 +82,12 @@ export async function collectReportData(projectId) {
   } catch { /* 메시지 없으면 무시 */ }
 
   // 참여자 추출: role_assignment 보드에서 추출 (영문/한글 키 모두 대응)
+  // 방어: roles가 배열이 아니거나 원소에 null/스칼라가 섞여도 보고서가 죽지 않게 한다.
   const participants = []
   const roleDesign = designMap['T-2-1']
-  if (roleDesign?.content?.roles) {
+  if (Array.isArray(roleDesign?.content?.roles)) {
     for (const r of roleDesign.content.roles) {
+      if (!r || typeof r !== 'object') continue
       const name = r.memberName || r['교사명'] || r.name || ''
       if (name) {
         participants.push({
