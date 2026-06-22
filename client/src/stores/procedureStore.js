@@ -33,9 +33,34 @@ function _stopMaterialPolling(materialId) {
   _pollingMaterialIds.delete(materialId)
 }
 
+/**
+ * 보드 content 병합 유틸. 중첩 plain object는 깊은 병합으로 기존 하위 키를 보존하고,
+ * 배열·스칼라는 incoming 값으로 교체한다(applyBoardContent 주석 참고).
+ */
+function deepMergeBoardContent(base, incoming) {
+  const isPlainObject = (v) => v != null && typeof v === 'object' && !Array.isArray(v)
+  if (!isPlainObject(base)) return incoming
+  const out = { ...base }
+  for (const [key, value] of Object.entries(incoming)) {
+    const current = out[key]
+    if (isPlainObject(value) && isPlainObject(current)) {
+      out[key] = deepMergeBoardContent(current, value)
+    } else {
+      out[key] = value
+    }
+  }
+  return out
+}
+
 export const useProcedureStore = create((set, get) => ({
   currentProcedure: 'T-1-1',
   currentStep: 1,
+  // 절차별 마지막 진행 단계 기억 (절차를 오갈 때 1단계로 리셋되는 문제 방지).
+  // projectId별로 localStorage에도 미러링하여 새로고침/탭 복귀에도 단계가 유지된다.
+  stepMemory: {},     // { [procedureCode]: stepNumber }
+  _stepProjectId: null,
+  // 전 절차의 보드 진행 요약 (진행률 표시 + 후행 절차 stale 감지용).
+  boardSummaries: {}, // { [procedureCode]: { hasContent, updatedAt, saveStatus } }
   boards: {},         // boardType → board data
   standards: [],
   materials: [],
@@ -51,19 +76,69 @@ export const useProcedureStore = create((set, get) => ({
   setProcedure: (code) => {
     if (PROCEDURES[code]) {
       const steps = PROCEDURE_STEPS[code]
+      const maxStep = steps && steps.length > 0 ? steps.length : 0
+      // 절차를 떠났다 돌아오면 마지막으로 보던 단계를 복원한다(없으면 1단계).
+      const remembered = get().stepMemory[code]
+      const restoredStep =
+        remembered && remembered >= 1 && remembered <= maxStep
+          ? remembered
+          : (maxStep > 0 ? 1 : 0)
       set({
         currentProcedure: code,
-        currentStep: steps && steps.length > 0 ? 1 : 0,
+        currentStep: restoredStep,
       })
     }
   },
 
   setStep: (num) => {
-    const { currentProcedure } = get()
+    const { currentProcedure, _stepProjectId } = get()
     const steps = PROCEDURE_STEPS[currentProcedure]
     if (steps && num >= 1 && num <= steps.length) {
-      set({ currentStep: num })
+      const stepMemory = { ...get().stepMemory, [currentProcedure]: num }
+      set({ currentStep: num, stepMemory })
+      // 새로고침/탭 복귀에도 단계 유지 — projectId별 localStorage 미러
+      if (_stepProjectId) {
+        try {
+          localStorage.setItem(`cw_steps_${_stepProjectId}`, JSON.stringify(stepMemory))
+        } catch { /* localStorage 불가 시 무시 */ }
+      }
     }
+  },
+
+  /**
+   * 프로젝트 진입 시 저장된 단계 기억을 localStorage에서 복원한다.
+   */
+  loadStepMemory: (projectId) => {
+    if (!projectId) return
+    let stepMemory = {}
+    try {
+      const raw = localStorage.getItem(`cw_steps_${projectId}`)
+      if (raw) stepMemory = JSON.parse(raw) || {}
+    } catch { /* 파싱 실패 시 빈 객체 */ }
+    set({ stepMemory, _stepProjectId: projectId })
+  },
+
+  /**
+   * 전 절차의 보드 진행 요약을 로드한다(진행률 표시 + stale 감지용).
+   * 보드 본문 전체가 아니라 hasContent/updatedAt/saveStatus만 추린다.
+   */
+  loadBoardSummaries: async (projectId) => {
+    if (!projectId) return
+    try {
+      const data = await apiGet(`/api/projects/${projectId}/designs`)
+      const designs = Array.isArray(data) ? data : (data?.designs ?? [])
+      const summaries = {}
+      for (const d of designs) {
+        const code = d.procedure_code
+        if (!code) continue
+        summaries[code] = {
+          hasContent: !!(d.content && Object.keys(d.content).length > 0),
+          updatedAt: d.updated_at || d.created_at || null,
+          saveStatus: d.save_status || null,
+        }
+      }
+      set({ boardSummaries: summaries })
+    } catch { /* 진행 표시는 부가 기능 — 실패해도 무시 */ }
   },
 
   /**
@@ -225,6 +300,13 @@ export const useProcedureStore = create((set, get) => ({
    * board_update 제안을 보드에 반영 (전체 보드 content 병합).
    * AI는 ai_suggestion type="board_update"로 보드 전체 데이터를 제안하므로,
    * field 단위가 아니라 content 객체 전체를 기존 내용에 병합해야 한다.
+   *
+   * 병합 규칙(데이터 유실 방지):
+   * - 중첩 객체 필드: 깊은 병합(기존 하위 키 보존). 얕은 병합 시 제안에 빠진
+   *   하위 키가 통째로 날아가던 문제를 막는다.
+   * - 배열/스칼라 필드: 제안값으로 교체. board_update는 보통 해당 절차 보드
+   *   '전체'를 의도하므로 배열 교체가 정상 동작이다(append 시 중복 행 발생).
+   * - 제안에 없는 최상위 필드: 기존값 그대로 보존.
    */
   applyBoardContent: (procedureCode, content) => {
     const boardType = BOARD_TYPES[procedureCode]
@@ -239,7 +321,7 @@ export const useProcedureStore = create((set, get) => ({
           [boardType]: {
             ...(existing || {}),
             board_type: boardType,
-            content: { ...currentContent, ...content },
+            content: deepMergeBoardContent(currentContent, content),
           },
         },
       }

@@ -6,17 +6,20 @@ export const useWorkspaceStore = create((set, get) => ({
   currentWorkspace: null,
   loading: false,
   error: null,
+  errorStatus: 0,   // 마지막 목록 조회 실패의 HTTP 상태 (401 구분용)
+  loaded: false,    // 목록 조회를 1회 이상 성공했는지
 
   /**
    * 사용자의 워크스페이스 목록 조회
    */
   fetchWorkspaces: async () => {
-    set({ loading: true, error: null })
+    set({ loading: true, error: null, errorStatus: 0 })
     try {
       const data = await apiGet('/api/workspaces')
-      set({ workspaces: data?.workspaces ?? data ?? [], loading: false })
+      set({ workspaces: data?.workspaces ?? data ?? [], loading: false, loaded: true })
     } catch (err) {
-      set({ error: err.message, loading: false })
+      // 실패 시 빈 목록을 "없음"으로 오인하지 않도록 error 상태를 노출한다.
+      set({ error: err.message, errorStatus: err.status ?? 0, loading: false })
     }
   },
 
