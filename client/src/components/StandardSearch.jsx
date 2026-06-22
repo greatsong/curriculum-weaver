@@ -79,7 +79,16 @@ export default function StandardSearch({ sessionId, onClose }) {
     try {
       let data
       if (searchMode === 'semantic') {
-        data = query ? await apiGet('/api/standards/semantic-search', { q: query }) : []
+        if (!query) { setResults([]); return }
+        try {
+          data = await apiGet('/api/standards/semantic-search', { q: query })
+        } catch {
+          // 의미 검색이 비활성(서버에 임베딩/키 미설정)일 때 graceful degradation:
+          // 키워드 모드로 자동 전환하고 안내. 화면이 깨지거나 빈 채로 멈추지 않게 한다.
+          setSearchMode('keyword')
+          setErrorMsg('의미 검색은 현재 사용할 수 없어 키워드 검색으로 전환했어요.')
+          return
+        }
       } else {
         const params = {}
         if (query) params.q = query
