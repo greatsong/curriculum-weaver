@@ -814,8 +814,25 @@ ${summary}`)
       })
       .filter(Boolean)
       .join('\n\n')
+
+    // 융합 가드: 선택된 성취기준이 단일 교과(군)에만 속하면 억지 융합을 막고 교과 추가를 안내
+    const subjectGroups = new Set(
+      standards
+        .filter(Boolean)
+        .map((s) => { const std = s.curriculum_standards || s; return std.subject_group || std.subject })
+        .filter(Boolean)
+    )
+    const fusionGuard = subjectGroups.size < 2
+      ? `
+
+[융합 가드 — 중요]
+현재 선택된 성취기준이 ${subjectGroups.size === 1 ? `'${[...subjectGroups][0]}'` : '단일'} 교과(군)에만 속합니다. 융합 수업 설계에는 2개 이상 교과의 성취기준이 필요합니다.
+- 교과 간 융합을 억지로 만들어내지 마세요(표면적 키워드 연결 금지).
+- 융합이 필요한 절차에서는 "융합 설계를 위해 다른 교과의 성취기준을 성취기준 탐색기에서 1개 이상 추가해 주세요"라고 먼저 안내하세요.`
+      : ''
+
     parts.push(`[프로젝트 성취기준 — 절대 규칙]
-${stdText}
+${stdText}${fusionGuard}
 
 ★ 절대 규칙 (위반 시 시스템이 자동 차단합니다):
 1. 위 목록의 성취기준 코드와 내용만 사용하세요. 시스템이 DB에 없는 코드를 자동 삭제합니다.

@@ -739,8 +739,12 @@ ${summary}`
 
 새로운 연결을 제안할 때는 다음 JSON 형식을 사용하세요:
 <new_links>
-[{"source":"[코드]","target":"[코드]","link_type":"cross_subject","rationale":"연결 근거"}]
+[{"source":"[코드]","target":"[코드]","link_type":"cross_subject","rationale":"연결 근거","integration_theme":"두 성취기준을 묶는 융합 주제(예: 에너지와 환경)","lesson_hook":"이 연결로 만들 수 있는 수업 아이디어 한 줄"}]
 </new_links>
+
+- integration_theme: 두 성취기준을 관통하는 융합 주제(명사구, 10자 내외).
+- lesson_hook: 학생이 두 교과를 함께 다루며 수행할 구체적 활동 한 줄.
+  표면적 키워드 일치가 아니라, 과정·기능을 공유하거나 한 교과 산출물이 다른 교과 입력이 되는 실제 융합만 제안하세요.
 
 link_type 종류: cross_subject(교과연계), same_concept(동일개념), prerequisite(선수학습), application(적용), extension(확장)
 같은 교과군 내 연결은 제안하지 마세요. 교과군 간 융합만 다룹니다.

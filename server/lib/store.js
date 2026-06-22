@@ -518,32 +518,31 @@ export const Standards = {
     if (school_level) results = results.filter((s) => s.school_level === school_level)
     if (curriculum_category) results = results.filter((s) => s.curriculum_category === curriculum_category)
     if (q) {
-      const query = q.toLowerCase()
-      // 가중치 기반 검색 — 핵심 필드 매칭이 해설 매칭보다 상위에 노출
-      const scored = results.map((s) => {
-        let score = 0
-        const content = s.content.toLowerCase()
-        const code = s.code.toLowerCase()
-        const area = (s.area || '').toLowerCase()
-        const explanation = (s.explanation || '').toLowerCase()
-        const keywords = (s.keywords || []).map((k) => k.toLowerCase())
+      const raw = q.toLowerCase().trim()
+      // 공백 기준 토큰화 — "기후 변화"처럼 띄어 쓴 다중어도 각 토큰으로 매칭(누락 방지)
+      const tokens = raw.split(/\s+/).filter(Boolean)
 
-        // 교과명에 검색어 포함 (예: "인공지능 기초" 교과) — 최고 가중치
+      // 단일 검색어(term)에 대한 가중치 점수 — 핵심 필드 매칭이 해설 매칭보다 상위
+      const scoreTerm = (s, term) => {
+        let sc = 0
         const subjectName = (s.subject || '').toLowerCase()
         const subjectGroup = (s.subject_group || '').toLowerCase()
-        if (subjectName.includes(query)) score += 200
-        if (subjectGroup.includes(query)) score += 150
-        // 코드 매칭
-        if (code.includes(query)) score += 100
-        // 키워드 매칭 (핵심 개념)
-        if (keywords.some((k) => k.includes(query))) score += 80
-        // 성취기준 내용 매칭 (핵심)
-        if (content.includes(query)) score += 60
-        // 영역 매칭
-        if (area.includes(query)) score += 40
-        // 해설 매칭 (간접 언급 가능성 높음 — 낮은 가중치)
-        if (explanation.includes(query)) score += 10
+        if (subjectName.includes(term)) sc += 200          // 교과명 (예: "인공지능 기초")
+        if (subjectGroup.includes(term)) sc += 150          // 교과군
+        if (s.code.toLowerCase().includes(term)) sc += 100  // 코드
+        if ((s.keywords || []).some((k) => k.toLowerCase().includes(term))) sc += 80 // 키워드
+        if (s.content.toLowerCase().includes(term)) sc += 60 // 내용(핵심)
+        if ((s.area || '').toLowerCase().includes(term)) sc += 40 // 영역
+        if ((s.explanation || '').toLowerCase().includes(term)) sc += 10 // 해설(간접)
+        return sc
+      }
 
+      const scored = results.map((s) => {
+        // 전체 구절 일치를 최상위로 유지(정확 일치 우선), 다중어는 토큰별 부분 점수(×0.5)로 recall 보강
+        let score = scoreTerm(s, raw)
+        if (tokens.length > 1) {
+          for (const t of tokens) score += Math.round(scoreTerm(s, t) * 0.5)
+        }
         return { standard: s, score }
       }).filter((item) => item.score > 0)
 
@@ -592,29 +591,31 @@ export const Standards = {
 
   /**
    * 디스크에서 성취기준 데이터를 다시 로드 (서버 재시작 없이 갱신)
-   * standards_full.js 우선, 없으면 standards.js 폴백
+   *
+   * 반드시 store.js가 import하는 정본(standards.js)과 동일한 파일을 읽는다.
+   * 과거에는 standards_full.js(4,484개 레거시 ETL)를 우선 로드해, reload 호출
+   * 시 검색 소스가 standards.js(4,856개 정본)에서 줄어들며 Supabase와 다시
+   * 불일치하던 버그가 있었다. 정본 일원화를 위해 standards.js만 로드한다.
    * @returns {number} 로드된 성취기준 수
    */
   reload: () => {
     const dataDir = join(__storeDir, '..', 'data')
 
     // JSON 파싱 방식으로 JS 파일에서 데이터 추출 (ESM 캐시 우회)
+    // 정본은 standards.js 단일 파일 (상단 import { ALL_STANDARDS } from '../data/standards.js'와 동일 소스)
     let newData = null
-    const fullPath = join(dataDir, 'standards_full.js')
-    const fallbackPath = join(dataDir, 'standards.js')
+    const canonicalPath = join(dataDir, 'standards.js')
 
-    for (const p of [fullPath, fallbackPath]) {
-      if (!existsSync(p)) continue
+    if (existsSync(canonicalPath)) {
       try {
-        const raw = readFileSync(p, 'utf-8')
+        const raw = readFileSync(canonicalPath, 'utf-8')
         const match = raw.match(/export const ALL_STANDARDS = (\[[\s\S]*\]);/)
         if (match) {
           newData = JSON.parse(match[1])
-          console.log(`[reload] 파일 로드: ${p} (${newData.length}개)`)
-          break
+          console.log(`[reload] 정본 로드: ${canonicalPath} (${newData.length}개)`)
         }
       } catch (e) {
-        console.warn(`[reload] 파일 파싱 실패 (${p}):`, e.message)
+        console.warn(`[reload] 정본 파싱 실패 (${canonicalPath}):`, e.message)
       }
     }
 

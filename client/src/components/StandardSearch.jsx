@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, Plus, Check, X, BookMarked, Link2, ChevronDown, ChevronUp, FileText, AlertTriangle } from 'lucide-react'
+import { Search, Plus, Check, X, BookMarked, Link2, ChevronDown, ChevronUp, FileText, AlertTriangle, Sparkles } from 'lucide-react'
 import { apiGet, apiPost, apiDelete } from '../lib/api'
 
 // 교과군(subject_group) 기준 색상 매핑
@@ -48,6 +48,9 @@ export default function StandardSearch({ sessionId, onClose }) {
   const [links, setLinks] = useState([])
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const [searchMode, setSearchMode] = useState('keyword') // 'keyword' | 'semantic'
+  const [aiActive, setAiActive] = useState(false)          // AI 융합 추천 결과 표시 중
+  const [aiLoading, setAiLoading] = useState(false)
 
   // 에러 메시지 자동 사라짐 (4초)
   useEffect(() => {
@@ -69,23 +72,70 @@ export default function StandardSearch({ sessionId, onClose }) {
     setSessionStandards(Array.isArray(data) ? data : (data?.standards ?? []))
   }
 
-  // 검색 (디바운스)
+  // 검색 (디바운스) — 키워드 또는 의미(시맨틱) 모드
   const doSearch = useCallback(async () => {
+    if (aiActive) return // AI 융합 추천 결과 표시 중에는 자동 검색하지 않음
     setLoading(true)
-    const params = {}
-    if (query) params.q = query
-    if (subject) params.subject = subject
-    if (schoolLevel) params.school_level = schoolLevel
-    if (domain) params.domain = domain
-    const data = await apiGet('/api/standards/search', params)
-    setResults(data || [])
-    setLoading(false)
-  }, [query, subject, schoolLevel, domain])
+    try {
+      let data
+      if (searchMode === 'semantic') {
+        data = query ? await apiGet('/api/standards/semantic-search', { q: query }) : []
+      } else {
+        const params = {}
+        if (query) params.q = query
+        if (subject) params.subject = subject
+        if (schoolLevel) params.school_level = schoolLevel
+        if (domain) params.domain = domain
+        data = await apiGet('/api/standards/search', params)
+      }
+      setResults(Array.isArray(data) ? data : [])
+    } catch {
+      setResults([])
+    } finally {
+      setLoading(false)
+    }
+  }, [query, subject, schoolLevel, domain, searchMode, aiActive])
 
   useEffect(() => {
     const timer = setTimeout(doSearch, 300)
     return () => clearTimeout(timer)
   }, [doSearch])
+
+  // AI 융합 추천 — 연결된 성취기준의 교과/학년을 바탕으로 융합 가능한 성취기준을 AI가 선별
+  const runAiRecommend = async () => {
+    const groups = [...new Set(
+      sessionStandards
+        .map((s) => { const std = s.curriculum_standards || s; return std.subject_group || std.subject })
+        .filter(Boolean)
+    )]
+    if (groups.length < 1) {
+      setErrorMsg('먼저 교과 성취기준을 1개 이상 추가하면, 그와 융합 가능한 성취기준을 AI가 추천합니다.')
+      return
+    }
+    // 가장 많이 쓰인 학년군을 대표 학년으로 사용
+    const grades = sessionStandards.map((s) => (s.curriculum_standards || s).grade_group).filter(Boolean)
+    const grade = grades.length
+      ? [...grades].sort((a, b) => grades.filter((g) => g === b).length - grades.filter((g) => g === a).length)[0]
+      : ''
+    setAiLoading(true)
+    setErrorMsg('')
+    try {
+      const data = await apiPost('/api/standards/recommend-ai', {
+        projectId: sessionId, subjects: groups, grade, topic: query || '',
+      })
+      const recs = data?.recommendations || []
+      setResults(recs)
+      setAiActive(true)
+      if (recs.length === 0) setErrorMsg('AI가 추천할 추가 성취기준을 찾지 못했습니다.')
+    } catch (err) {
+      setErrorMsg(err?.message || 'AI 추천에 실패했습니다.')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  // 검색 입력/모드 변경 시 AI 추천 결과 종료
+  const exitAiMode = () => { if (aiActive) setAiActive(false) }
 
   // 성취기준 추가/제거 — code(자연키) 기준. 검색 결과의 id는 휘발성이라 사용 불가.
   // 낙관적 업데이트: 클릭 즉시 UI에 반영하고 서버 저장은 백그라운드로 처리(실패 시 롤백).
@@ -156,8 +206,8 @@ export default function StandardSearch({ sessionId, onClose }) {
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               <input
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="성취기준 검색 (내용, 코드, 키워드, 해설)..."
+                onChange={(e) => { setQuery(e.target.value); exitAiMode() }}
+                placeholder={searchMode === 'semantic' ? '의미로 검색 (예: 환경을 지키는 시민)...' : '성취기준 검색 (내용, 코드, 키워드, 해설)...'}
                 className="w-full pl-10! pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 autoFocus
               />
@@ -170,6 +220,38 @@ export default function StandardSearch({ sessionId, onClose }) {
               <option value="">전체 교과</option>
               {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
+          </div>
+          {/* 검색 모드 토글 + AI 융합 추천 */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+              <button
+                onClick={() => { setSearchMode('keyword'); exitAiMode() }}
+                className={`px-3 py-1.5 text-xs font-medium transition ${searchMode === 'keyword' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+              >
+                키워드
+              </button>
+              <button
+                onClick={() => { setSearchMode('semantic'); exitAiMode() }}
+                className={`px-3 py-1.5 text-xs font-medium transition border-l border-gray-200 ${searchMode === 'semantic' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                title="뜻이 비슷한 성취기준을 교과를 넘나들며 찾습니다"
+              >
+                의미 검색
+              </button>
+            </div>
+            <button
+              onClick={runAiRecommend}
+              disabled={aiLoading}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-violet-500 to-blue-500 text-white hover:opacity-90 disabled:opacity-50 transition"
+              title="연결된 성취기준과 융합 가능한 성취기준을 AI가 선별해 이유와 함께 추천합니다"
+            >
+              <Sparkles size={13} />
+              {aiLoading ? '추천 중…' : 'AI 융합 추천'}
+            </button>
+            {aiActive && (
+              <button onClick={() => setAiActive(false)} className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 underline">
+                검색으로 돌아가기
+              </button>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <select
@@ -238,7 +320,14 @@ export default function StandardSearch({ sessionId, onClose }) {
             </div>
           ) : (
             <div className="space-y-2">
-              <p className="text-xs text-gray-400 mb-3">{results.length}개 결과</p>
+              {aiActive ? (
+                <div className="flex items-center gap-1.5 mb-3 text-xs text-violet-600 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
+                  <Sparkles size={13} className="shrink-0" />
+                  <span>AI 융합 추천 {results.length}개 — 연결된 교과와 융합 가능한 성취기준입니다. 카드의 추천 이유를 확인하세요.</span>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 mb-3">{results.length}개 결과{searchMode === 'semantic' ? ' · 의미 검색' : ''}</p>
+              )}
               {results.map((std) => {
                 const colorClass = getSubjectColor(std)
                 const catColor = CATEGORY_COLORS[std.curriculum_category] || ''
@@ -269,6 +358,12 @@ export default function StandardSearch({ sessionId, onClose }) {
                           )}
                         </div>
                         <p className={`text-sm leading-relaxed ${isSecondary ? 'text-gray-500' : 'text-gray-800'}`}>{std.content}</p>
+                        {std._reason && (
+                          <p className="mt-1 text-xs text-violet-600 flex items-start gap-1">
+                            <Sparkles size={11} className="mt-0.5 shrink-0" />
+                            <span>{std._reason}</span>
+                          </p>
+                        )}
                         <div className="flex items-center gap-1 mt-1.5 flex-wrap">
                           {isSecondary && (
                             <span className="px-1.5 py-0.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-600">
