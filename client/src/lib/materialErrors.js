@@ -27,6 +27,8 @@ const MATERIAL_ERROR_MESSAGES = {
     "AI 분석이 지연되고 있어요. 잠시 뒤 '재분석'을 눌러주세요.",
   [MATERIAL_ERROR_CODES.PARSE_FAILED]:
     '파일 내용을 읽지 못했어요. 손상되었거나 보호된 파일일 수 있어요.',
+  [MATERIAL_ERROR_CODES.URL_FETCH_FAILED]:
+    '웹페이지를 가져오지 못했어요. 주소가 정확한지, 외부에서 접근 가능한 페이지인지 확인해주세요.',
   [MATERIAL_ERROR_CODES.AI_SCHEMA_INVALID]:
     'AI 분석 결과가 올바르지 않아요. 재분석을 시도해주세요.',
   [MATERIAL_ERROR_CODES.INVALID_INTENT]:

@@ -252,6 +252,229 @@ async function updateMaterialRow(materialId, patch) {
   }
 }
 
+/** URL fetch 타임아웃 (ms) */
+const URL_FETCH_TIMEOUT_MS = 15_000
+/** URL 응답 본문 최대 크기 (바이트) — 과도한 페이지/파일 방어 */
+const MAX_URL_FETCH_BYTES = 8 * 1024 * 1024 // 8MB
+
+/**
+ * SSRF 방어 — 내부망/메타데이터 엔드포인트로의 요청을 차단.
+ * best-effort(문자열 기반)이며 DNS rebinding까지는 막지 못한다.
+ * @returns {{ok: true} | {ok: false, message: string}}
+ */
+function assertPublicUrl(rawUrl) {
+  let u
+  try {
+    u = new URL(rawUrl)
+  } catch {
+    return { ok: false, message: 'URL 형식이 올바르지 않습니다.' }
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    return { ok: false, message: 'http/https URL만 지원합니다.' }
+  }
+  const host = u.hostname.toLowerCase()
+  // 로컬/내부 도메인
+  if (
+    host === 'localhost' ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal') ||
+    host.endsWith('.localhost')
+  ) {
+    return { ok: false, message: '내부 주소는 가져올 수 없습니다.' }
+  }
+  // IPv6 루프백/링크로컬/ULA
+  if (host === '::1' || host.startsWith('fe80') || host.startsWith('fc') || host.startsWith('fd')) {
+    return { ok: false, message: '내부 주소는 가져올 수 없습니다.' }
+  }
+  // IPv4 사설/루프백/링크로컬 대역
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])]
+    const isPrivate =
+      a === 0 ||
+      a === 127 ||
+      a === 10 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254) ||
+      a >= 224 // 멀티캐스트/예약
+    if (isPrivate) return { ok: false, message: '내부 주소는 가져올 수 없습니다.' }
+  }
+  return { ok: true }
+}
+
+/** 자주 쓰는 HTML 엔티티 디코드 (경량) */
+function decodeEntities(s) {
+  return String(s || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, n) => {
+      try { return String.fromCodePoint(Number(n)) } catch { return '' }
+    })
+}
+
+/**
+ * HTML → 평문 변환 (경량, 의존성 없음).
+ * script/style/noscript/template 블록 제거 후 블록 태그를 개행으로 치환하고 나머지 태그를 제거한다.
+ */
+function htmlToText(html) {
+  let s = String(html || '')
+  // 제목/메타 설명을 우선 확보 (본문 추출 실패 대비 컨텍스트)
+  const titleMatch = s.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+  const title = titleMatch ? decodeEntities(titleMatch[1]).replace(/\s+/g, ' ').trim() : ''
+
+  s = s
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(script|style|noscript|template|svg)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<head[\s\S]*?<\/head>/gi, ' ')
+    // 블록 경계를 개행으로
+    .replace(/<\/?(p|div|section|article|header|footer|li|ul|ol|tr|h[1-6]|br|blockquote|pre)[^>]*>/gi, '\n')
+    // 나머지 태그 제거
+    .replace(/<[^>]+>/g, ' ')
+
+  s = decodeEntities(s)
+    .replace(/[ \t ]+/g, ' ')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  return { title, text: s }
+}
+
+/** 최대 리다이렉트 추적 횟수 */
+const MAX_URL_REDIRECTS = 5
+
+/** 일부 사이트가 빈 UA를 차단 → 일반 브라우저 UA 모사 */
+const URL_FETCH_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (compatible; CurriculumWeaverBot/1.0; +https://curriculum-weaver)',
+  Accept: 'text/html,application/xhtml+xml,application/pdf,text/plain;q=0.9,*/*;q=0.8',
+}
+
+/**
+ * 응답 본문을 스트리밍으로 읽되 maxBytes를 초과하면 즉시 중단한다.
+ * arrayBuffer()는 전체를 메모리에 적재한 뒤에야 크기를 알 수 있어 메모리 고갈 위험이 있다.
+ * @returns {Promise<{buffer?: Buffer, tooLarge?: boolean}>}
+ */
+async function readBodyCapped(res, maxBytes) {
+  const reader = res.body?.getReader?.()
+  if (!reader) {
+    // 스트림 미지원 환경 폴백 — arrayBuffer 후 크기 검사
+    const ab = await res.arrayBuffer()
+    if (ab.byteLength > maxBytes) return { tooLarge: true }
+    return { buffer: Buffer.from(ab) }
+  }
+  const chunks = []
+  let total = 0
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > maxBytes) {
+      try { await reader.cancel() } catch { /* ignore */ }
+      return { tooLarge: true }
+    }
+    chunks.push(Buffer.from(value))
+  }
+  return { buffer: Buffer.concat(chunks) }
+}
+
+/**
+ * 참고사이트 URL을 가져와 분석용 평문을 추출한다.
+ * - 입력한 단일 페이지만 가져온다(페이지 내부 링크 크롤링 없음).
+ * - 리다이렉트를 수동으로 따라가며 매 홉마다 SSRF 가드를 재검증한다.
+ * - 본문은 스트리밍으로 읽으며 크기 상한을 강제한다.
+ * HTML은 본문 텍스트로, PDF는 pdf-parse로 처리한다.
+ * @returns {Promise<{text?: string, unsupported?: boolean, error?: string}>}
+ */
+async function fetchUrlContent(rawUrl) {
+  // 전체 작업(리다이렉트 + 본문 읽기)에 단일 타임아웃 예산 부여
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS)
+  try {
+    let currentUrl = rawUrl
+    let res = null
+
+    for (let hop = 0; hop <= MAX_URL_REDIRECTS; hop += 1) {
+      // 매 홉마다 SSRF 재검증 — 공개 URL이 내부망으로 리다이렉트하는 우회를 차단
+      const guard = assertPublicUrl(currentUrl)
+      if (!guard.ok) return { error: guard.message }
+
+      let r
+      try {
+        r = await fetch(currentUrl, {
+          redirect: 'manual',
+          signal: controller.signal,
+          headers: URL_FETCH_HEADERS,
+        })
+      } catch (err) {
+        const aborted = err?.name === 'AbortError'
+        return {
+          error: aborted
+            ? `페이지 응답 시간 초과 (${URL_FETCH_TIMEOUT_MS / 1000}s)`
+            : `페이지를 가져오지 못했습니다: ${err?.message || err}`,
+        }
+      }
+
+      // 3xx + Location → 다음 홉으로 (본문은 버림)
+      if (r.status >= 300 && r.status < 400 && r.headers.get('location')) {
+        try { await r.body?.cancel?.() } catch { /* ignore */ }
+        let next
+        try {
+          next = new URL(r.headers.get('location'), currentUrl).toString()
+        } catch {
+          return { error: '리다이렉트 주소가 올바르지 않습니다.' }
+        }
+        currentUrl = next
+        continue
+      }
+
+      res = r
+      break
+    }
+
+    if (!res) return { error: '리다이렉트가 너무 많습니다.' }
+    if (!res.ok) return { error: `페이지 응답 오류 (HTTP ${res.status})` }
+
+    // content-length 힌트가 상한을 넘으면 바로 거절(다운로드 회피)
+    const contentLength = Number(res.headers.get('content-length') || 0)
+    if (contentLength && contentLength > MAX_URL_FETCH_BYTES) {
+      try { await res.body?.cancel?.() } catch { /* ignore */ }
+      return { error: `페이지가 너무 큽니다 (${Math.round(contentLength / 1024 / 1024)}MB).` }
+    }
+
+    const contentType = (res.headers.get('content-type') || '').toLowerCase()
+    const { buffer, tooLarge } = await readBodyCapped(res, MAX_URL_FETCH_BYTES)
+    if (tooLarge) {
+      return { error: `페이지가 너무 큽니다 (${Math.round(MAX_URL_FETCH_BYTES / 1024 / 1024)}MB 초과).` }
+    }
+
+    // PDF (content-type 또는 최종 URL 확장자 기준)
+    if (contentType.includes('application/pdf') || /\.pdf(\?|#|$)/i.test(currentUrl)) {
+      return await extractText(buffer, 'pdf')
+    }
+    // HTML/XML (content-type 미상이면 HTML로 간주)
+    if (contentType.includes('html') || contentType.includes('xml') || contentType === '') {
+      const { title, text } = htmlToText(buffer.toString('utf-8'))
+      const header = title
+        ? `[페이지 제목] ${title}\n[URL] ${rawUrl}\n\n`
+        : `[URL] ${rawUrl}\n\n`
+      return { text: header + text }
+    }
+    // 일반 텍스트/JSON
+    if (contentType.includes('text/') || contentType.includes('json')) {
+      return { text: `[URL] ${rawUrl}\n\n${buffer.toString('utf-8')}` }
+    }
+    return { unsupported: true, error: `지원하지 않는 콘텐츠 유형입니다: ${contentType || '알 수 없음'}` }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
  * 확장자별 파서 — {text, unsupported, error} 반환
  */
@@ -446,28 +669,83 @@ export async function analyzeMaterial(
   // 시스템 첨부 알림 메시지도 parsing으로 전이 (채팅 업로드인 경우에만 대응 메시지 존재)
   await updateSystemAttachmentMessage(materialId, 'parsing')
 
+  const { text, unsupported, error } = await extractText(fileBuffer, fileExt)
+
+  if (unsupported) {
+    // 파일은 보관하되 분석 불가 — failed로 전이하고 사유 기록
+    await updateMaterialRow(materialId, {
+      processing_status: 'failed',
+      processing_error: `${E.UNSUPPORTED_TYPE}: ${error || '지원하지 않는 형식'}`,
+    })
+    await updateSystemAttachmentMessage(materialId, 'failed')
+    return
+  }
+  if (error) {
+    await updateMaterialRow(materialId, {
+      processing_status: 'failed',
+      processing_error: `${E.PARSE_FAILED}: ${error}`,
+    })
+    await updateSystemAttachmentMessage(materialId, 'failed')
+    return
+  }
+
+  await analyzeExtractedText(materialId, text, { intent: safeIntent, intentNote: safeNote })
+}
+
+/**
+ * 참고사이트 URL 자료 분석 (fire-and-forget 호출 대상).
+ * URL을 fetch → 평문 추출 → 파일과 동일한 Claude 분석 파이프라인을 태운다.
+ *
+ * @param {string} materialId
+ * @param {string} url — 분석 대상 URL (materials.storage_path)
+ * @param {{intent?: string, intentNote?: string|null}} [options]
+ */
+export async function analyzeUrlMaterial(
+  materialId,
+  url,
+  { intent = DEFAULT_MATERIAL_INTENT, intentNote = null } = {}
+) {
+  const safeIntent = Object.values(MATERIAL_INTENTS).includes(intent)
+    ? intent
+    : DEFAULT_MATERIAL_INTENT
+  const safeNote = safeIntent === MATERIAL_INTENTS.CUSTOM && intentNote
+    ? String(intentNote).slice(0, 200)
+    : null
+
+  // ── 1. parsing 단계 ──
+  await updateMaterialRow(materialId, {
+    processing_status: 'parsing',
+    processing_error: null,
+    intent: safeIntent,
+    intent_note: safeNote,
+  })
+  await updateSystemAttachmentMessage(materialId, 'parsing')
+
+  const { text, unsupported, error } = await fetchUrlContent(url)
+  if (unsupported || error) {
+    await updateMaterialRow(materialId, {
+      processing_status: 'failed',
+      processing_error: `${E.URL_FETCH_FAILED}: ${error || '페이지 내용을 가져오지 못했습니다.'}`,
+    })
+    await updateSystemAttachmentMessage(materialId, 'failed')
+    return
+  }
+
+  await analyzeExtractedText(materialId, text, { intent: safeIntent, intentNote: safeNote })
+}
+
+/**
+ * 추출된 평문을 분석하는 공통 단계 (analyzing → AI → 필터 → completed/failed).
+ * analyzeMaterial(파일)·analyzeUrlMaterial(URL)이 공유한다.
+ * 호출 전에 parsing 단계가 이미 설정되어 있다고 가정한다.
+ *
+ * @param {string} materialId
+ * @param {string} rawText — 추출된 평문 (truncate 이전)
+ * @param {{intent: string, intentNote: string|null}} param2
+ */
+async function analyzeExtractedText(materialId, rawText, { intent, intentNote }) {
   try {
-    const { text, unsupported, error } = await extractText(fileBuffer, fileExt)
-
-    if (unsupported) {
-      // 파일은 보관하되 분석 불가 — failed로 전이하고 사유 기록
-      await updateMaterialRow(materialId, {
-        processing_status: 'failed',
-        processing_error: `${E.UNSUPPORTED_TYPE}: ${error || '지원하지 않는 형식'}`,
-      })
-      await updateSystemAttachmentMessage(materialId, 'failed')
-      return
-    }
-    if (error) {
-      await updateMaterialRow(materialId, {
-        processing_status: 'failed',
-        processing_error: `${E.PARSE_FAILED}: ${error}`,
-      })
-      await updateSystemAttachmentMessage(materialId, 'failed')
-      return
-    }
-
-    const truncated = (text || '').slice(0, TEXT_TRUNCATE)
+    const truncated = (rawText || '').slice(0, TEXT_TRUNCATE)
     if (truncated.trim().length === 0) {
       await updateMaterialRow(materialId, {
         processing_status: 'failed',
@@ -486,7 +764,7 @@ export async function analyzeMaterial(
     // messages.processing_status CHECK 제약상 analyzing은 없으므로 parsing로 유지
     await updateSystemAttachmentMessage(materialId, 'analyzing')
 
-    const aiRaw = await callClaudeAnalysis(truncated, { intent: safeIntent, intentNote: safeNote })
+    const aiRaw = await callClaudeAnalysis(truncated, { intent, intentNote })
 
     // ── 3. 할루시네이션 필터 ──
     const { validated, rejected } = filterHallucinations(aiRaw.suggested_standard_codes || [])
@@ -509,8 +787,8 @@ export async function analyzeMaterial(
         rejected_ratio: rejected.length
           ? rejected.length / ((rejected.length + validated.length) || 1)
           : 0,
-        intent: safeIntent,
-        intent_note: safeNote,
+        intent,
+        intent_note: intentNote,
         prompt_version: '2025-04-a',
       },
     }
@@ -553,4 +831,7 @@ export const _internal = {
   extractText,
   buildSystemPrompt,
   INTENT_PROMPT_FRAGMENTS,
+  assertPublicUrl,
+  htmlToText,
+  fetchUrlContent,
 }

@@ -541,6 +541,14 @@ export const useProcedureStore = create((set, get) => ({
     })
     const material = data?.material ?? data
     set((state) => ({ materials: [material, ...state.materials] }))
+    // URL도 파일과 동일하게 fetch→AI 분석을 거치므로 완료/실패가 아니면 폴링 시작
+    if (
+      material?.id &&
+      material.processing_status !== MATERIAL_PROCESSING_STATUSES.COMPLETED &&
+      material.processing_status !== MATERIAL_PROCESSING_STATUSES.FAILED
+    ) {
+      get().startMaterialPolling(material.id)
+    }
     return material
   },
 

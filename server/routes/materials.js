@@ -21,7 +21,7 @@ import { requireAuth } from '../middleware/auth.js'
 import { Materials, Messages } from '../lib/store.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { getProject, getMemberRole, createMessage } from '../lib/supabaseService.js'
-import { analyzeMaterial } from '../services/materialAnalyzer.js'
+import { analyzeMaterial, analyzeUrlMaterial } from '../services/materialAnalyzer.js'
 import {
   MAX_MATERIAL_SIZE_BYTES,
   SUPPORTED_MATERIAL_EXTENSIONS,
@@ -457,20 +457,35 @@ materialsRouter.post(
 )
 
 // ============================================================
-// POST /api/materials/url  (간단 URL 저장 — 기존 호환)
+// POST /api/materials/url  (URL fetch → AI 분석 파이프라인)
 // ============================================================
 materialsRouter.post('/url', async (req, res) => {
   const projectId = extractProjectId(req)
-  const { url, title, category } = req.body || {}
+  const { url, title, category, intent, intent_note } = req.body || {}
   if (!projectId) {
     return errorResponse(res, 400, E.PROJECT_ID_REQUIRED, 'project_id가 필요합니다.', 'project_id')
   }
   if (!url) {
     return errorResponse(res, 400, E.FILE_REQUIRED, 'URL이 필요합니다.', 'url')
   }
+  // 서버 측 URL 형식 가드 (프론트 가드 보완)
+  let normalizedUrl
+  try {
+    const u = new URL(String(url).trim())
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('protocol')
+    normalizedUrl = u.toString()
+  } catch {
+    return errorResponse(res, 400, E.URL_FETCH_FAILED, 'http/https 형식의 URL을 입력해주세요.', 'url')
+  }
 
   const access = await assertProjectAccess(projectId, req.user.id)
   if (!access.ok) return errorResponse(res, access.status, access.code, access.message)
+
+  // intent 파싱 (URL 폼은 intent 미선택 → 기본 general)
+  const intentResult = parseIntent({ intent, intent_note })
+  const { intent: safeIntent, intentNote } = intentResult.ok
+    ? intentResult
+    : { intent: DEFAULT_MATERIAL_INTENT, intentNote: null }
 
   const materialId = crypto.randomUUID()
   const baseRow = {
@@ -479,24 +494,35 @@ materialsRouter.post('/url', async (req, res) => {
     // 운영 레거시 DB는 project_id 전환 후에도 session_id NOT NULL이 남아 있을 수 있다.
     session_id: projectId,
     uploader_id: req.user.id,
-    file_name: title || url,
+    file_name: title?.trim() || normalizedUrl,
     file_type: 'url',
     mime_type: 'text/uri-list',
     file_size: 0,
     category: category || 'website',
-    storage_path: url,
-    processing_status: 'completed',
-    ai_summary: `참고 링크: ${title || url}`,
+    storage_path: normalizedUrl,
+    // 파일과 동일하게 pending에서 시작 → analyzeUrlMaterial이 상태를 전이
+    processing_status: 'pending',
+    processing_error: null,
+    ai_summary: null,
+    ai_analysis: null,
+    intent: safeIntent,
+    intent_note: intentNote,
     created_at: new Date().toISOString(),
   }
 
   let material = null
   try {
     material = await insertMaterialRow(baseRow)
-  } catch {
+  } catch (err) {
+    console.warn('[materials/url] DB insert 실패, 인메모리 저장:', err?.message || err)
     material = Materials.add(projectId, baseRow)
   }
-  return res.status(201).json({ material })
+
+  // ── fire-and-forget 분석 ── (파일 업로드와 동일한 패턴)
+  analyzeUrlMaterial(materialId, normalizedUrl, { intent: safeIntent, intentNote })
+    .catch((err) => console.error('[materials/url] analyzeUrlMaterial 오류:', err?.message || err))
+
+  return res.status(201).json({ material: normalizeMaterialFileName(material) })
 })
 
 // ============================================================
@@ -623,6 +649,32 @@ materialsRouter.post('/:id/reanalyze', async (req, res) => {
   if (!row?.project_id || !row?.file_type) {
     return errorResponse(res, 400, E.UPLOAD_FAILED, '재분석에 필요한 자료 정보가 없습니다.')
   }
+
+  // ── URL 자료: Storage 다운로드 대신 원본 URL을 재fetch ──
+  if (row.file_type === 'url') {
+    if (!row.storage_path) {
+      return errorResponse(res, 400, E.URL_FETCH_FAILED, '원본 URL이 없어 재분석할 수 없습니다.')
+    }
+    const accessUrl = await assertProjectAccess(row.project_id, req.user.id)
+    if (!accessUrl.ok) return errorResponse(res, accessUrl.status, accessUrl.code, accessUrl.message)
+
+    try {
+      await supabaseAdmin.from('materials').update({
+        processing_status: 'parsing',
+        processing_error: null,
+      }).eq('id', id)
+    } catch {
+      try { Materials.update(id, { processing_status: 'parsing', processing_error: null }) } catch { /* ignore */ }
+    }
+
+    analyzeUrlMaterial(id, row.storage_path, {
+      intent: row.intent || DEFAULT_MATERIAL_INTENT,
+      intentNote: row.intent_note || null,
+    }).catch((err) => console.error('[materials/reanalyze:url] 오류:', err?.message || err))
+
+    return res.status(202).json({ material: { id, processing_status: 'parsing' } })
+  }
+
   if (!row.storage_path) {
     // 최초 업로드 시 Storage 실패 → 메모리 분석 완료된 자료는 원본 파일이 없음
     return errorResponse(

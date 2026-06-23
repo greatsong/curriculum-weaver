@@ -100,6 +100,9 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId 
     [],
   )
 
+  // "참고사이트"(website) 카테고리는 URL 입력이 주(主) — 파일 드롭존 대신 URL 폼을 전면 배치
+  const urlIsPrimary = selectedCategory === 'website'
+
   /** 파일 선택 → 검증 후 pending 큐에 추가 (의도 선택을 위해 업로드는 지연). */
   const handleFiles = useCallback(
     (fileList) => {
@@ -393,45 +396,47 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId 
             ))}
           </div>
 
-          {/* 드래그&드롭 존 + 업로드 버튼 */}
-          <div
-            ref={dropRef}
-            role="button"
-            tabIndex={0}
-            aria-label="파일을 드롭하거나 Enter를 눌러 선택하세요"
-            onDragOver={onDragOver}
-            onDragEnter={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-            onKeyDown={onDropZoneKeyDown}
-            onClick={() => fileInputRef.current?.click()}
-            className={`relative rounded-lg border-2 border-dashed p-3 sm:p-4 text-center cursor-pointer transition ${
-              dragOver
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
-            }`}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              accept={acceptAttr}
-              onChange={handleFileInputChange}
-              aria-label="수업 자료 파일 업로드"
-            />
-            <div className="flex flex-col items-center gap-1.5">
-              <Upload size={18} className="text-gray-400" />
-              <div className="text-xs text-gray-600">
-                <span className="font-medium text-blue-600">파일 선택</span>
-                <span className="text-gray-500"> 또는 여기에 끌어다 놓기</span>
-              </div>
-              <div className="text-[11px] text-gray-400">
-                {SUPPORTED_MATERIAL_EXTENSIONS.join(', ').toUpperCase()} · 최대{' '}
-                {Math.round(MAX_MATERIAL_SIZE_BYTES / 1024 / 1024)}MB
+          {/* 드래그&드롭 존 — 참고사이트(website) 카테고리에서는 숨김 (URL 입력이 주) */}
+          {!urlIsPrimary && (
+            <div
+              ref={dropRef}
+              role="button"
+              tabIndex={0}
+              aria-label="파일을 드롭하거나 Enter를 눌러 선택하세요"
+              onDragOver={onDragOver}
+              onDragEnter={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={onDrop}
+              onKeyDown={onDropZoneKeyDown}
+              onClick={() => fileInputRef.current?.click()}
+              className={`relative rounded-lg border-2 border-dashed p-3 sm:p-4 text-center cursor-pointer transition ${
+                dragOver
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                accept={acceptAttr}
+                onChange={handleFileInputChange}
+                aria-label="수업 자료 파일 업로드"
+              />
+              <div className="flex flex-col items-center gap-1.5">
+                <Upload size={18} className="text-gray-400" />
+                <div className="text-xs text-gray-600">
+                  <span className="font-medium text-blue-600">파일 선택</span>
+                  <span className="text-gray-500"> 또는 여기에 끌어다 놓기</span>
+                </div>
+                <div className="text-[11px] text-gray-400">
+                  {SUPPORTED_MATERIAL_EXTENSIONS.join(', ').toUpperCase()} · 최대{' '}
+                  {Math.round(MAX_MATERIAL_SIZE_BYTES / 1024 / 1024)}MB
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* 업로드 대기 (pending) — intent 선택 UI */}
           {pendingUploads.length > 0 && (
@@ -449,19 +454,32 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId 
             />
           )}
 
-          {/* URL 버튼 */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowUrlForm(!showUrlForm)}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm bg-green-50 text-green-700 hover:bg-green-100 rounded-lg transition"
-            >
-              <LinkIcon size={14} />
-              URL 추가
-            </button>
-          </div>
+          {/* 참고사이트 카테고리: URL 입력 안내 */}
+          {urlIsPrimary && (
+            <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50/60 px-3 py-2 text-[11px] text-green-800">
+              <Globe size={14} className="mt-0.5 shrink-0" />
+              <span>
+                수업에서 참고할 웹페이지 주소를 입력하세요. AI가 페이지 내용을 직접 읽어
+                요약·성취기준 매칭에 활용합니다.
+              </span>
+            </div>
+          )}
 
-          {showUrlForm && (
+          {/* URL 추가 버튼 — 참고사이트 카테고리에서는 폼이 항상 보이므로 숨김 */}
+          {!urlIsPrimary && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowUrlForm(!showUrlForm)}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm bg-green-50 text-green-700 hover:bg-green-100 rounded-lg transition"
+              >
+                <LinkIcon size={14} />
+                URL 추가
+              </button>
+            </div>
+          )}
+
+          {(showUrlForm || urlIsPrimary) && (
             <form onSubmit={handleUrlSubmit} className="flex flex-col sm:flex-row gap-2">
               <input
                 value={urlTitle}
@@ -763,9 +781,22 @@ function MaterialRow({ material: m, included = true, onToggleIncluded, onReanaly
         ) : (
           <FileText size={12} className="text-blue-500 shrink-0" />
         )}
-        <span className="truncate flex-1" title={m.file_name}>
-          {m.file_name}
-        </span>
+        {isUrl && m.storage_path ? (
+          <a
+            href={m.storage_path}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="truncate flex-1 text-green-700 hover:underline"
+            title={m.storage_path}
+          >
+            {m.file_name}
+          </a>
+        ) : (
+          <span className="truncate flex-1" title={m.file_name}>
+            {m.file_name}
+          </span>
+        )}
         {m.file_size > 0 && (
           <span className="text-gray-400 shrink-0 text-[11px]">
             {(m.file_size / 1024).toFixed(0)}KB
