@@ -255,8 +255,11 @@ chatRouter.get('/:sessionId', async (req, res) => {
     }))
     res.json(mapped)
   } catch (err) {
+    // ★ 빈 배열(200)로 위장하면 클라이언트가 "메시지 0개 정상 로드"로 오인해
+    //   재시도 안전망(loadMessagesWithRetry)이 무력화되고, 채팅이 통째로 사라진 것처럼 보인다.
+    //   (실제 메시지는 DB에 그대로 있음 — 조회만 일시 실패). 명시적 500으로 내려 재시도가 동작하게 한다.
     console.error('메시지 목록 조회 오류:', err.message)
-    res.json([])
+    res.status(500).json({ error: '메시지 목록을 불러오지 못했습니다. 잠시 후 다시 시도됩니다.' })
   }
 })
 

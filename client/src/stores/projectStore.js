@@ -30,7 +30,13 @@ export const useProjectStore = create((set, get) => ({
       set({ currentProject: data, loading: false })
       return data
     } catch (err) {
-      set({ error: err.message, loading: false, currentProject: null })
+      // ★ 일시 실패(탭 복귀·배포 재시작 등)로 같은 프로젝트의 기존 상태를 날리면
+      //   절차 복원 effect가 동작 못 해 1단계로 리셋된다. 마지막으로 알던 값을 보존한다.
+      set((state) => ({
+        error: err.message,
+        loading: false,
+        currentProject: state.currentProject?.id === id ? state.currentProject : null,
+      }))
       throw err
     }
   },

@@ -215,6 +215,16 @@ export default function ProjectPage() {
     }
   }, [projectId])
 
+  // 새로고침 직후 auth 토큰 초기화/배포 재시작 등으로 첫 호출이 실패하면 currentProject가
+  // null로 남아 절차 복원이 안 되고 1단계로 리셋된다. 메시지 로드처럼 1회 재시도한다.
+  const fetchProjectWithRetry = useCallback(async (pid) => {
+    const ok = await fetchProject(pid).then(() => true).catch(() => false)
+    if (!ok) {
+      await new Promise((r) => setTimeout(r, 1500))
+      await fetchProject(pid).catch(() => null)
+    }
+  }, [fetchProject])
+
   const reloadProjectArtifacts = useCallback(async ({ forceReadonlyReload = false } = {}) => {
     const project = useProjectStore.getState().currentProject
     if (!project) return
@@ -246,7 +256,7 @@ export default function ProjectPage() {
   useEffect(() => {
     allBoardsLoadedRef.current = false
     loadStepMemory(projectId)
-    fetchProject(projectId)
+    fetchProjectWithRetry(projectId)
     if (workspaceId) fetchWorkspace(workspaceId)
     loadMessagesWithRetry(projectId)
     loadGeneralPrinciples()
