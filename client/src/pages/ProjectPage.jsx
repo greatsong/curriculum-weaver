@@ -188,6 +188,59 @@ export default function ProjectPage() {
   const allBoardsLoadedRef = useRef(false)
   const resumeRefreshRef = useRef(false)
 
+  // 레이아웃: 보드(좌) ↔ 채팅(우) 비율, 원리 드로어, 반응형
+  const [boardRatio, setBoardRatio] = useState(() => {
+    const saved = Number(localStorage.getItem('cw_board_ratio'))
+    return saved >= 20 && saved <= 80 ? saved : 50
+  })
+  const [showPrinciples, setShowPrinciples] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
+  )
+  const mainContentRef = useRef(null)
+  const resizingRef = useRef(false)
+  const boardRatioRef = useRef(boardRatio)
+
+  // 데스크톱/모바일 전환 감지 (Tailwind md 브레이크포인트와 동일)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const handler = (e) => setIsDesktop(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  // 보드↔채팅 구분선 드래그로 비율 조절
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!resizingRef.current || !mainContentRef.current) return
+      const rect = mainContentRef.current.getBoundingClientRect()
+      const ratio = ((e.clientX - rect.left) / rect.width) * 100
+      const clamped = Math.min(80, Math.max(20, ratio))
+      boardRatioRef.current = clamped
+      setBoardRatio(clamped)
+    }
+    const onUp = () => {
+      if (!resizingRef.current) return
+      resizingRef.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      localStorage.setItem('cw_board_ratio', String(Math.round(boardRatioRef.current)))
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [])
+
+  const startResize = (e) => {
+    e.preventDefault()
+    resizingRef.current = true
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }
+
   // 메시지 로드 함수 (인증 실패 시 1회 재시도)
   const loadMessagesWithRetry = useCallback(async (pid) => {
     messagesLoadedRef.current = false
@@ -434,7 +487,7 @@ export default function ProjectPage() {
   ]
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden" style={{ height: '100dvh', background: 'var(--color-bg-primary)' }}>
+    <div className="work-shell flex flex-col overflow-hidden" style={{ background: 'var(--color-bg-primary)' }}>
       {/* 상단 헤더 */}
       <header style={{
         background: 'var(--color-bg-secondary)',
@@ -644,17 +697,51 @@ export default function ProjectPage() {
         </div>
       )}
 
-      {/* 메인 콘텐츠 — 3-panel layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* 좌측: 채팅 */}
+      {/* 메인 콘텐츠 — 보드(좌) + 채팅(우), 원리는 오른쪽 오버레이 드로어 */}
+      <div ref={mainContentRef} className="flex-1 flex overflow-hidden" style={{ position: 'relative' }}>
+        {/* 좌측: 설계 캔버스(보드) */}
+        <div
+          data-tour="design-board"
+          className={`${activePanel === 'board' ? 'block' : 'hidden'} md:block`}
+          style={{
+            width: isDesktop ? `${boardRatio}%` : '100%',
+            flexShrink: 0,
+            overflow: 'auto',
+            padding: 16,
+            borderRight: '1px solid var(--color-border)',
+          }}
+        >
+          <ErrorBoundary>
+            <ProcedureCanvas projectId={projectId} procedureCode={currentProcedure} readOnly={isReadOnlyProject} loading={isReadOnlyLoading} />
+          </ErrorBoundary>
+        </div>
+
+        {/* 드래그 구분선 (데스크톱 전용) */}
+        {isDesktop && (
+          <div
+            onMouseDown={startResize}
+            title="드래그하여 보드/채팅 너비 조절"
+            style={{
+              width: 6,
+              flexShrink: 0,
+              cursor: 'col-resize',
+              background: 'var(--color-border)',
+              transition: 'background var(--transition-fast)',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-primary)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--color-border)')}
+          />
+        )}
+
+        {/* 우측: 채팅 */}
         <div
           data-tour="chat-panel"
           className={`${activePanel === 'chat' ? 'flex' : 'hidden'} md:flex`}
           style={{
-            width: '100%',
-            maxWidth: 400,
+            width: isDesktop ? `${100 - boardRatio}%` : '100%',
+            flex: isDesktop ? undefined : 1,
+            minWidth: 0,
             flexShrink: 0,
-            borderRight: '1px solid var(--color-border)',
             flexDirection: 'column',
             background: 'var(--color-bg-secondary)',
           }}
@@ -670,39 +757,101 @@ export default function ProjectPage() {
           </ErrorBoundary>
         </div>
 
-        {/* 중앙: 설계 캔버스 */}
-        <div
-          data-tour="design-board"
-          className={`${activePanel === 'board' ? 'block' : 'hidden'} md:block`}
-          style={{
-            flex: 1,
-            overflow: 'auto',
-            padding: 16,
-            width: '100%',
-          }}
-        >
-          <ErrorBoundary>
-            <ProcedureCanvas projectId={projectId} procedureCode={currentProcedure} readOnly={isReadOnlyProject} loading={isReadOnlyLoading} />
-          </ErrorBoundary>
-        </div>
+        {/* 모바일: 원리 패널 (하단 탭에서 선택 시) */}
+        {!isDesktop && (
+          <div
+            className={`${activePanel === 'principles' ? 'block' : 'hidden'}`}
+            style={{ width: '100%', overflow: 'auto', background: 'var(--color-bg-secondary)' }}
+          >
+            <ErrorBoundary>
+              <PrinciplePanel stage={currentProcedure} />
+            </ErrorBoundary>
+          </div>
+        )}
 
-        {/* 우측: 원칙 패널 */}
-        <div
-          data-tour="principle-panel"
-          className={`${activePanel === 'principles' ? 'block' : 'hidden'} md:block`}
-          style={{
-            width: '100%',
-            maxWidth: 280,
-            flexShrink: 0,
-            borderLeft: '1px solid var(--color-border)',
-            background: 'var(--color-bg-secondary)',
-            overflow: 'auto',
-          }}
-        >
-          <ErrorBoundary>
-            <PrinciplePanel stage={currentProcedure} />
-          </ErrorBoundary>
-        </div>
+        {/* 데스크톱: 원리 드로어 토글 — 설계보드 좌상단 햄버거 버튼 (접힌 상태) */}
+        {isDesktop && !showPrinciples && (
+          <button
+            data-tour="principle-panel"
+            onClick={() => setShowPrinciples(true)}
+            title="설계 원리 펼치기"
+            style={{
+              position: 'absolute',
+              left: 10,
+              top: 10,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 10px',
+              background: 'var(--color-bg-secondary)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--radius-md)',
+              boxShadow: 'var(--shadow-sm)',
+              color: 'var(--color-text-secondary)',
+              fontSize: 12.5,
+              fontWeight: 600,
+              cursor: 'pointer',
+              zIndex: 15,
+              fontFamily: 'var(--font-sans)',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-primary)'; e.currentTarget.style.borderColor = 'var(--color-primary)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-secondary)'; e.currentTarget.style.borderColor = 'var(--color-border)' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            설계 원리
+          </button>
+        )}
+
+        {/* 데스크톱: 원리 오버레이 드로어 — 왼쪽(보드 위)에서 펼침 */}
+        {isDesktop && showPrinciples && (
+          <>
+            <div
+              onClick={() => setShowPrinciples(false)}
+              style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.18)', zIndex: 20 }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                bottom: 0,
+                width: 320,
+                maxWidth: '80%',
+                background: 'var(--color-bg-secondary)',
+                borderRight: '1px solid var(--color-border)',
+                boxShadow: 'var(--shadow-xl)',
+                zIndex: 21,
+                overflow: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 12px',
+                borderBottom: '1px solid var(--color-border)',
+                position: 'sticky',
+                top: 0,
+                background: 'var(--color-bg-secondary)',
+                zIndex: 1,
+              }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>설계 원리</span>
+                <button
+                  onClick={() => setShowPrinciples(false)}
+                  title="닫기"
+                  style={{ display: 'flex', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-text-tertiary)', padding: 4, borderRadius: 'var(--radius-md)' }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <ErrorBoundary>
+                <PrinciplePanel stage={currentProcedure} />
+              </ErrorBoundary>
+            </div>
+          </>
+        )}
       </div>
 
       {/* 모바일 하단 탭 바 */}
