@@ -383,6 +383,15 @@ export default function ProjectPage() {
     reloadProjectArtifacts()
   }, [currentProcedure, projectId, currentProject])
 
+  // 원칙 패널을 열 때(데스크톱 드로어/모바일 탭) 현재 단계 원리를 항상 다시 로드.
+  // reloadProjectArtifacts 에서는 loadPrinciples 가 loadBoards await 뒤에 있어,
+  // 보드 로드가 실패/지연되면 이전 단계 원리가 그대로 남는 문제를 방지한다.
+  useEffect(() => {
+    if ((showPrinciples || activePanel === 'principles') && currentProcedure) {
+      loadPrinciples(currentProcedure)
+    }
+  }, [showPrinciples, activePanel, currentProcedure, loadPrinciples])
+
   useEffect(() => {
     const handleResumeRefresh = async () => {
       if (resumeRefreshRef.current) return
