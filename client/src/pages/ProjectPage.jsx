@@ -396,6 +396,9 @@ export default function ProjectPage() {
     const handleResumeRefresh = async () => {
       if (resumeRefreshRef.current) return
       if (document.visibilityState && document.visibilityState !== 'visible') return
+      // 스트리밍/전송 중에는 새로고침을 보류한다. 진행 중 대화를 서버 스냅샷으로
+      // 덮어써 '이전 대화로 되돌아가는' 현상을 막는다.
+      if (useChatStore.getState().streaming) return
 
       resumeRefreshRef.current = true
       setResumeRefreshing(true)
@@ -416,14 +419,14 @@ export default function ProjectPage() {
       }
     }
 
+    // 'focus'는 창을 다시 클릭하기만 해도 발생해 너무 잦은 새로고침을 유발했다.
+    // 탭 복귀는 visibilitychange로 충분히 커버되므로 focus 리스너는 제거한다.
     window.addEventListener('pageshow', handleResumeRefresh)
-    window.addEventListener('focus', handleResumeRefresh)
     window.addEventListener('online', handleResumeRefresh)
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       window.removeEventListener('pageshow', handleResumeRefresh)
-      window.removeEventListener('focus', handleResumeRefresh)
       window.removeEventListener('online', handleResumeRefresh)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }

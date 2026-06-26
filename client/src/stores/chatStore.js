@@ -189,10 +189,20 @@ export const useChatStore = create((set, get) => ({
   // ── 메시지 로드 ────
 
   loadMessages: async (projectId) => {
+    // 스트리밍 중에는 서버 스냅샷으로 덮어쓰지 않는다.
+    // (탭 복귀/포커스/재연결로 loadMessages가 불려도 진행 중인 대화가 유실되지 않게)
+    if (get().streaming) return false
     set({ loadingMessages: true })
     try {
       const data = await apiGet(`/api/chat/${projectId}`)
       const msgs = Array.isArray(data) ? data : (data?.messages ?? [])
+      // 서버 스냅샷이 로컬보다 메시지 수가 적으면(방금 보낸/응답받은 메시지가
+      // 아직 서버에 반영되기 전) 덮어쓰지 않는다 — '대화가 이전으로 되돌아가는' 현상 방지.
+      // 로컬 AI 메시지는 임시 id라 id 머지는 중복을 만들 수 있어 개수 기준으로 판단한다.
+      const local = get().messages
+      if (local.length > 0 && msgs.length < local.length) {
+        return true
+      }
       // 메시지에서 절차별 첫 AI 인트로를 캐시에 복원
       const introsByProcedure = {}
       msgs.forEach(m => {
