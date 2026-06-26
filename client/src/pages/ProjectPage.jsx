@@ -804,7 +804,7 @@ export default function ProjectPage() {
                 background: 'var(--color-bg-secondary)',
                 zIndex: 1,
               }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>설계 원리</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>원칙</span>
                 <button
                   onClick={() => setShowPrinciples(false)}
                   title="닫기"
@@ -834,7 +834,7 @@ export default function ProjectPage() {
           <button
             data-tour="principle-panel"
             onClick={() => setShowPrinciples((v) => !v)}
-            title="설계 원리 보기"
+            title="원칙 보기"
             style={{
               display: 'flex',
               alignItems: 'center',
