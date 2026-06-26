@@ -769,40 +769,7 @@ export default function ProjectPage() {
           </div>
         )}
 
-        {/* 데스크톱: 원리 드로어 토글 — 설계보드 좌상단 햄버거 버튼 (접힌 상태) */}
-        {isDesktop && !showPrinciples && (
-          <button
-            data-tour="principle-panel"
-            onClick={() => setShowPrinciples(true)}
-            title="설계 원리 펼치기"
-            style={{
-              position: 'absolute',
-              left: 10,
-              top: 10,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 10px',
-              background: 'var(--color-bg-secondary)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-md)',
-              boxShadow: 'var(--shadow-sm)',
-              color: 'var(--color-text-secondary)',
-              fontSize: 12.5,
-              fontWeight: 600,
-              cursor: 'pointer',
-              zIndex: 15,
-              fontFamily: 'var(--font-sans)',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-primary)'; e.currentTarget.style.borderColor = 'var(--color-primary)' }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-secondary)'; e.currentTarget.style.borderColor = 'var(--color-border)' }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-            설계 원리
-          </button>
-        )}
-
-        {/* 데스크톱: 원리 오버레이 드로어 — 왼쪽(보드 위)에서 펼침 */}
+        {/* 데스크톱: 원리 오버레이 드로어 — 왼쪽(보드 위)에서 펼침 (하단 바 '원칙' 버튼으로 토글) */}
         {isDesktop && showPrinciples && (
           <>
             <div
@@ -853,6 +820,45 @@ export default function ProjectPage() {
           </>
         )}
       </div>
+
+      {/* 데스크톱 하단 바 — '원칙' 버튼으로 설계 원리 드로어 토글 */}
+      {isDesktop && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderTop: '1px solid var(--color-border)',
+          background: 'var(--color-bg-secondary)',
+          flexShrink: 0,
+        }}>
+          <button
+            data-tour="principle-panel"
+            onClick={() => setShowPrinciples((v) => !v)}
+            title="설계 원리 보기"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '7px 16px',
+              background: showPrinciples ? '#EFF6FF' : 'transparent',
+              border: 'none',
+              borderRadius: 'var(--radius-md)',
+              margin: 4,
+              color: showPrinciples ? '#3B82F6' : 'var(--color-text-secondary)',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all var(--transition-fast)',
+              fontFamily: 'var(--font-sans)',
+            }}
+            onMouseEnter={(e) => { if (!showPrinciples) e.currentTarget.style.background = 'var(--color-bg-tertiary)' }}
+            onMouseLeave={(e) => { if (!showPrinciples) e.currentTarget.style.background = 'transparent' }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+            설계 원칙
+          </button>
+        </div>
+      )}
 
       {/* 모바일 하단 탭 바 */}
       <div className="md:hidden safe-bottom" style={{
