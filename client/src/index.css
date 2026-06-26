@@ -76,6 +76,21 @@ html, body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* 작업 화면 기본 확대 — 브라우저 150% 확대 느낌을 기본값으로.
+   zoom 으로 모든 px 요소를 균일 확대하되, vw/dvh 는 재계산되지 않으므로
+   width/height 를 zoom 으로 나눠 화면 밖으로 넘치지 않게 보정한다.
+   확대 비율은 --app-zoom 하나만 바꾸면 된다. */
+.work-shell {
+  --app-zoom: 1.5;
+  zoom: var(--app-zoom);
+  width: calc(100vw / var(--app-zoom));
+  height: calc(100dvh / var(--app-zoom));
+}
+/* 데스크톱이 아닌 좁은 화면(모바일/태블릿)에서는 과확대가 오히려 답답하므로 1배 */
+@media (max-width: 767px) {
+  .work-shell { --app-zoom: 1; }
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
