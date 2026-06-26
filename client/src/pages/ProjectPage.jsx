@@ -487,7 +487,7 @@ export default function ProjectPage() {
   ]
 
   return (
-    <div className="work-shell flex flex-col overflow-hidden" style={{ background: 'var(--color-bg-primary)' }}>
+    <div className="work-shell flex flex-col overflow-hidden" style={{ background: 'var(--color-bg-primary)', '--app-zoom': isDesktop ? 1.5 : 1 }}>
       {/* 상단 헤더 */}
       <header style={{
         background: 'var(--color-bg-secondary)',
@@ -702,8 +702,8 @@ export default function ProjectPage() {
         {/* 좌측: 설계 캔버스(보드) */}
         <div
           data-tour="design-board"
-          className={`${activePanel === 'board' ? 'block' : 'hidden'} md:block`}
           style={{
+            display: (isDesktop || activePanel === 'board') ? 'block' : 'none',
             width: isDesktop ? `${boardRatio}%` : '100%',
             flexShrink: 0,
             overflow: 'auto',
@@ -736,8 +736,8 @@ export default function ProjectPage() {
         {/* 우측: 채팅 */}
         <div
           data-tour="chat-panel"
-          className={`${activePanel === 'chat' ? 'flex' : 'hidden'} md:flex`}
           style={{
+            display: (isDesktop || activePanel === 'chat') ? 'flex' : 'none',
             width: isDesktop ? `${100 - boardRatio}%` : '100%',
             flex: isDesktop ? undefined : 1,
             minWidth: 0,
@@ -860,9 +860,9 @@ export default function ProjectPage() {
         </div>
       )}
 
-      {/* 모바일 하단 탭 바 */}
-      <div className="md:hidden safe-bottom" style={{
-        display: 'flex',
+      {/* 모바일 하단 탭 바 (데스크톱 아닐 때만) */}
+      <div className="safe-bottom" style={{
+        display: isDesktop ? 'none' : 'flex',
         borderTop: '1px solid var(--color-border)',
         background: 'var(--color-bg-secondary)',
         flexShrink: 0,

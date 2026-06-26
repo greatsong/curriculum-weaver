@@ -79,16 +79,14 @@ html, body {
 /* 작업 화면 기본 확대 — 브라우저 150% 확대 느낌을 기본값으로.
    zoom 으로 모든 px 요소를 균일 확대하되, vw/dvh 는 재계산되지 않으므로
    width/height 를 zoom 으로 나눠 화면 밖으로 넘치지 않게 보정한다.
-   확대 비율은 --app-zoom 하나만 바꾸면 된다. */
+   확대 비율(--app-zoom)은 ProjectPage 에서 isDesktop 에 따라 인라인으로 주입한다
+   (모바일=1, 데스크톱=1.5). CSS 미디어쿼리로 토글하지 않는 이유: zoom 이
+   미디어쿼리 평가 폭을 바꿔 JS matchMedia 와 엇갈리는 버그를 막기 위함. */
 .work-shell {
   --app-zoom: 1.5;
   zoom: var(--app-zoom);
   width: calc(100vw / var(--app-zoom));
   height: calc(100dvh / var(--app-zoom));
-}
-/* 데스크톱이 아닌 좁은 화면(모바일/태블릿)에서는 과확대가 오히려 답답하므로 1배 */
-@media (max-width: 767px) {
-  .work-shell { --app-zoom: 1; }
 }
 
 /* Scrollbar styling */
