@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   X,
+  Copy,
+  Check,
 } from 'lucide-react'
 import { useChatStore } from '../stores/chatStore'
 import { useProcedureStore } from '../stores/procedureStore'
@@ -41,6 +43,46 @@ function cleanStreamingText(text) {
     .replace(/<stage_advance[\s\S]*$/g, '')
     .trim() || '...'
 }
+
+// 코드블록(WITH AI 프롬프트 예시 등)에 복사 버튼을 붙이는 커스텀 렌더러
+function CodeBlock({ inline, className, children, ...props }) {
+  const [copied, setCopied] = useState(false)
+  const text = String(children).replace(/\n$/, '')
+
+  if (inline) {
+    return <code className={className} {...props}>{children}</code>
+  }
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <pre className={className}><code {...props}>{children}</code></pre>
+      <button
+        onClick={handleCopy}
+        title="복사"
+        style={{
+          position: 'absolute', top: 6, right: 6,
+          display: 'flex', alignItems: 'center', gap: 4,
+          padding: '4px 8px', fontSize: 11,
+          background: 'var(--color-surface, #fff)',
+          border: '1px solid var(--color-border, #e2e8f0)',
+          borderRadius: 6, cursor: 'pointer',
+          color: copied ? '#16a34a' : 'var(--color-text-tertiary, #64748b)',
+        }}
+      >
+        {copied ? <Check size={12} /> : <Copy size={12} />}
+        {copied ? '복사됨' : '복사'}
+      </button>
+    </div>
+  )
+}
+
+const markdownComponents = { code: CodeBlock }
 
 export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, onStageChange, readOnly = false, loading = false }) {
   const projectId = projectIdProp || sessionId
@@ -891,7 +933,7 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
             {/* 모달 본문 */}
             <div style={{ padding: '16px 20px', overflow: 'auto', flex: 1 }}>
               <div className="prose-chat" style={{ fontSize: 14, lineHeight: 1.7 }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]} children={introModalContent || ''} />
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={introModalContent || ''} />
               </div>
             </div>
           </div>
@@ -908,7 +950,7 @@ const MessageItem = memo(function MessageItem({ msg, onOpenAttachment }) {
   // AI 마크다운은 content가 바뀔 때만 재파싱
   const aiBody = useMemo(
     () => (msg.sender_type === 'ai'
-      ? <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} children={msg.content || ''} /></div>
+      ? <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={msg.content || ''} /></div>
       : null),
     [msg.sender_type, msg.content],
   )
@@ -1009,7 +1051,7 @@ function StreamingBubble({ scrollRef }) {
           fontSize: 14,
           lineHeight: 1.6,
         }}>
-          <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} children={cleanStreamingText(streamingText) || ''} /></div>
+          <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={cleanStreamingText(streamingText) || ''} /></div>
           <span style={{
             display: 'inline-block',
             width: 5,
