@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useProjectStore } from '../stores/projectStore'
@@ -7,6 +7,22 @@ import { apiGet, apiPost } from '../lib/api'
 import { PROCEDURES, PHASES, PROCEDURE_LIST, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculum-weaver-shared/constants.js'
 import Logo from '../components/Logo'
 import HostSetupWizard from '../components/HostSetupWizard'
+
+// 최근 활동 상대시간 (동일 제목 프로젝트 구분용)
+function formatRelativeTime(iso) {
+  if (!iso) return ''
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return ''
+  const diffMin = Math.floor((Date.now() - then) / 60000)
+  if (diffMin < 1) return '방금'
+  if (diffMin < 60) return `${diffMin}분 전`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}시간 전`
+  const diffDay = Math.floor(diffHr / 24)
+  if (diffDay < 7) return `${diffDay}일 전`
+  const d = new Date(iso)
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`
+}
 
 export default function WorkspaceDetailPage() {
   const { workspaceId } = useParams()
@@ -31,6 +47,7 @@ export default function WorkspaceDetailPage() {
   const [inviteRole, setInviteRole] = useState('member')
   const [inviteLinkInfo, setInviteLinkInfo] = useState(null) // 미가입자 토큰 초대 결과
   const [creating, setCreating] = useState(false)
+  const creatingRef = useRef(false) // 동기 더블서브밋 가드 (state 재렌더 전 두 번째 클릭 차단)
 
   // Feature 1: 호스트 설정 상태
   const [aiConfig, setAiConfig] = useState({ model: 'claude-sonnet-4-6' })
@@ -148,6 +165,10 @@ export default function WorkspaceDetailPage() {
   const handleCreateProject = async (e) => {
     e.preventDefault()
     if (!projectTitle.trim()) return
+    // 동기 가드: 버튼 disabled가 재렌더되기 전의 빠른 더블클릭도 즉시 차단해
+    // 동일 제목 쌍둥이 프로젝트 생성을 막는다.
+    if (creatingRef.current) return
+    creatingRef.current = true
     setCreating(true)
     try {
       const project = await createProject(workspaceId, {
@@ -180,6 +201,7 @@ export default function WorkspaceDetailPage() {
       alert(`프로젝트 생성 실패: ${err.message}`)
     } finally {
       setCreating(false)
+      creatingRef.current = false
     }
   }
 
@@ -433,16 +455,27 @@ export default function WorkspaceDetailPage() {
                         <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {project.title}
                         </h3>
-                        <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: 0, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                          {proc?.name || '비전설정'}
+                          <span>{proc?.name || '비전설정'}</span>
+                          {typeof project.message_count === 'number' && (
+                            <span>· 💬 {project.message_count}개</span>
+                          )}
+                          {project.updated_at && (
+                            <span>· {formatRelativeTime(project.updated_at)} 활동</span>
+                          )}
                         </p>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (confirm('이 프로젝트를 삭제하시겠습니까?')) deleteProject(project.id)
+                            // 동일 제목 프로젝트가 있을 수 있으므로 제목·대화 수를 확인에 노출해 오삭제 방지
+                            const n = project.message_count
+                            const detail = typeof n === 'number' && n > 0
+                              ? `\n\n"${project.title}"\n대화 ${n}개가 함께 삭제되며, 되돌릴 수 없습니다.`
+                              : `\n\n"${project.title}"`
+                            if (confirm(`이 프로젝트를 삭제하시겠습니까?${detail}`)) deleteProject(project.id)
                           }}
                           style={{
                             display: 'flex',

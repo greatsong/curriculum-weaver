@@ -601,6 +601,24 @@ export async function getMessages(projectId, limit = 200, offset = 0) {
 }
 
 /**
+ * 프로젝트의 메시지 개수 (목록 화면에서 동일 제목 프로젝트 구분용 — 시스템 메시지 제외).
+ * @param {string} projectId
+ * @returns {Promise<number>}
+ */
+export async function countMessagesByProject(projectId) {
+  const sb = getSupabase()
+  if (!sb) {
+    return (mem.messages.get(projectId) || []).filter((m) => m.sender_type !== 'system').length
+  }
+  const { count, error } = await sb.from('messages')
+    .select('*', { count: 'exact', head: true })
+    .eq('project_id', projectId)
+    .neq('sender_type', 'system')
+  if (error) throw new Error(error.message)
+  return count || 0
+}
+
+/**
  * 단일 메시지 조회
  * @param {string} messageId
  * @returns {Promise<object|null>}

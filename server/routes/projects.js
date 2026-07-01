@@ -16,7 +16,7 @@ import { requireAuth } from '../middleware/auth.js'
 import {
   getProjectsByWorkspace, createProject, getProject,
   updateProject, deleteProject,
-  getMemberRole, logActivity,
+  getMemberRole, logActivity, countMessagesByProject,
 } from '../lib/supabaseService.js'
 import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
 
@@ -57,6 +57,16 @@ router.get('/workspaces/:workspaceId/projects', async (req, res) => {
       projects = projects.filter(p => p.status === status)
     }
 
+    // 메시지 수 보강 — 동일 제목 프로젝트를 목록에서 구분할 수 있게 한다(best-effort).
+    // 실패해도 목록 조회 자체는 성공시킨다.
+    projects = await Promise.all(projects.map(async (p) => {
+      try {
+        return { ...p, message_count: await countMessagesByProject(p.id) }
+      } catch {
+        return { ...p, message_count: null }
+      }
+    }))
+
     res.json({ projects })
   } catch (err) {
     console.error('[projects] 목록 조회 오류:', err.message)
@@ -93,8 +103,28 @@ router.post('/workspaces/:workspaceId/projects', async (req, res) => {
       return res.status(400).json({ error: '프로젝트 제목은 필수입니다.' })
     }
 
+    const cleanTitle = title.trim()
+
+    // 더블서브밋 방지(멱등성): 같은 워크스페이스에 동일 제목 프로젝트가 방금(10초 이내)
+    // 생성됐다면 새로 만들지 않고 그 프로젝트를 반환한다. 생성 버튼 중복 클릭으로 동일 제목
+    // 쌍둥이 프로젝트가 생겨 목록을 오염시키고 "대화가 사라진 것처럼" 보이던 버그를 차단한다.
+    // (10초 넘게 떨어진 동일 제목은 의도적 별개 프로젝트로 보고 허용.)
+    try {
+      const existing = await getProjectsByWorkspace(workspaceId)
+      const dupe = (existing || []).find((p) =>
+        (p.title || '').trim() === cleanTitle &&
+        p.created_at && (Date.now() - new Date(p.created_at).getTime()) < 10_000
+      )
+      if (dupe) {
+        console.warn('[projects] 더블서브밋 감지 — 기존 프로젝트 반환:', dupe.id)
+        return res.status(200).json(dupe)
+      }
+    } catch (dupeErr) {
+      console.warn('[projects] 중복 체크 실패 (생성 계속):', dupeErr.message)
+    }
+
     const project = await createProject(workspaceId, {
-      title: title.trim(),
+      title: cleanTitle,
       description: description?.trim() || null,
       grade: grade || null,
       subjects: subjects || [],
