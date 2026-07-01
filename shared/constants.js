@@ -289,51 +289,51 @@ export const PROCEDURE_ACTIVITIES = {
     description: '학년, 디지털 리터러시, 학급 구성 등 AI가 수업설계를 지원하는 데 필요한 기초 정보를 입력합니다.',
   },
   'T-1-1': {
-    activity: '비전설정',
+    activity: '공동 비전 설정',
     description: '개인의 교육적 비전을 구상하고, 팀 논의를 거쳐 공통 비전을 확정합니다.',
   },
   'T-1-2': {
-    activity: '수업설계 방향 수립',
+    activity: '수업설계 방향 설정',
     description: '비전을 기반으로 핵심 키워드를 도출하고, 수업설계의 구체적 방향을 합의합니다.',
   },
   'T-2-1': {
-    activity: '역할 분담',
+    activity: '역할 배분',
     description: '팀원별 강점과 전문성을 파악하고, 수업설계 과정에서의 역할을 배분합니다.',
   },
   'T-2-2': {
-    activity: '팀 규칙',
+    activity: '팀 규칙 결정',
     description: '팀 활동의 Ground Rule을 브레인스토밍하고 핵심 규칙을 결정합니다.',
   },
   'T-2-3': {
-    activity: '팀 일정',
+    activity: '팀 일정 결정',
     description: '개인 일정을 공유하고, 모임/마감 일정을 조정하여 팀 일정표를 수립합니다.',
   },
   'A-1-1': {
-    activity: '주제 선정 기준',
+    activity: '주제 선정 기준 논의 및 조정',
     description: '융합 수업 주제를 선정하기 위한 기준을 구상하고 논의하여 확정합니다.',
   },
   'A-1-2': {
-    activity: '주제 선정',
+    activity: '비전에 적합한 주제 선정',
     description: '교과 연계 주제를 구상하고, 비교 평가를 거쳐 최종 주제를 선정합니다.',
   },
   'A-2-1': {
-    activity: '핵심 아이디어 및 성취기준 분석',
+    activity: '주제의 상세 내용 분석',
     description: '교과별 성취기준의 지식·이해, 과정·기능, 가치·태도를 분석하고 연결맵을 작성합니다.',
   },
   'A-2-2': {
-    activity: '통합된 수업 목표',
+    activity: '통합된 수업 목표 진술',
     description: '교과별 세부학습목표를 통합하여 융합 수업의 통합학습목표를 수립합니다.',
   },
   'Ds-1-1': {
-    activity: '평가 계획',
+    activity: '평가 설계',
     description: '교과별 평가 내용과 방법을 구상하고, 수업목표-평가 정합성을 검토합니다.',
   },
   'Ds-1-2': {
-    activity: '문제 상황',
+    activity: '문제 상황 설정',
     description: '실제 데이터 기반의 문제 상황을 생성하고, 통합 문제 상황을 결정합니다.',
   },
   'Ds-1-3': {
-    activity: '학습 활동 설계',
+    activity: '학습활동 설계',
     description: '문제 해결 절차에 따른 학습 활동을 설계하고, 교과/시간 배분을 결정합니다.',
   },
   'Ds-2-1': {
@@ -345,19 +345,19 @@ export const PROCEDURE_ACTIVITIES = {
     description: '학습자 관점에서 스캐폴딩 방안을 설계하고 적절성을 검토합니다.',
   },
   'DI-1-1': {
-    activity: '개발 자료 목록',
+    activity: '자료 탐색·개발',
     description: '교과별 개발/탐색 자료를 구분하고, 제작 역할·일정·우선순위를 조정합니다.',
   },
   'DI-2-1': {
-    activity: '수업 기록',
+    activity: '수업 실행·기록',
     description: '수업 실행 중 주요 상황을 기록하고, 전사/분석을 통해 시사점을 도출합니다.',
   },
   'E-1-1': {
-    activity: '수업 성찰',
+    activity: '수업 성찰과 공동 개선',
     description: '수업 과정과 결과를 공유하고, 개선사항을 도출하여 수업 개선 아이디어를 생성합니다.',
   },
   'E-2-1': {
-    activity: '수업설계 과정 성찰',
+    activity: '협력 과정 성찰',
     description: '협력적 수업설계 전체 과정을 성찰하고, 개선사항을 도출·수정·보완합니다.',
   },
 }
