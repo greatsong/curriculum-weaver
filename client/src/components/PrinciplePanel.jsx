@@ -51,7 +51,7 @@ export default function PrinciplePanel({ stage }) {
                   className="w-full flex items-center gap-2 p-3 text-left hover:bg-blue-100/50 transition-colors rounded-lg"
                 >
                   <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded shrink-0">
-                    {substep}
+                    {PROCEDURES[substep]?.displayCode || PROCEDURES[substep]?.name || substep}
                   </span>
                   <span className="text-sm font-medium text-blue-900 flex-1">{items.length}개 유의사항</span>
                   {expandedSubstep === substep

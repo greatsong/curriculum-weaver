@@ -46,7 +46,7 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
       {/* 절차 헤더 */}
       <div className="card" style={{ padding: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-          {phase && (
+          {phase && procInfo.displayCode && (
             <span style={{
               fontSize: 11,
               fontWeight: 700,
@@ -55,7 +55,7 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
               color: phase.color,
               background: `${phase.color}12`,
             }}>
-              {procedureCode}
+              {procInfo.displayCode}
             </span>
           )}
           <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{phase?.name}</span>

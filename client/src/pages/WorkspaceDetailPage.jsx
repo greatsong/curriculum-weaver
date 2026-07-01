@@ -449,7 +449,7 @@ export default function WorkspaceDetailPage() {
                         background: `${phase?.color || '#3b82f6'}12`,
                         color: phase?.color || '#3b82f6',
                       }}>
-                        {project.current_procedure || 'T-1-1'}
+                        {proc?.displayCode || 'T-1'}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -457,7 +457,7 @@ export default function WorkspaceDetailPage() {
                         </h3>
                         <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: 0, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                          <span>{proc?.name || '비전설정'}</span>
+                          <span>{proc?.name || '공동 비전 설정'}</span>
                           {typeof project.message_count === 'number' && (
                             <span>· 💬 {project.message_count}개</span>
                           )}
@@ -796,7 +796,7 @@ export default function WorkspaceDetailPage() {
                         color: phase?.color || '#3B82F6',
                         flexShrink: 0,
                       }}>
-                        {proc.code}
+                        {proc.displayCode || proc.code}
                       </span>
                       <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>{proc.name}</span>
                     </label>

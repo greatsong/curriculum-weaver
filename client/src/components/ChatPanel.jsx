@@ -642,7 +642,7 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
               </p>
               {procInfo && (
                 <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: '8px 0 0', opacity: 0.6 }}>
-                  {stage}: {procInfo.name}
+                  {procInfo.displayCode && `${procInfo.displayCode}: `}{procInfo.name}
                 </p>
               )}
             </div>
@@ -917,7 +917,8 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
               flexShrink: 0,
             }}>
               <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                {introModalProcedure}: {PROCEDURES[introModalProcedure]?.name || '절차 안내'}
+                {PROCEDURES[introModalProcedure]?.displayCode && `${PROCEDURES[introModalProcedure].displayCode}: `}
+                {PROCEDURES[introModalProcedure]?.name || '절차 안내'}
               </span>
               <button
                 onClick={closeIntroModal}

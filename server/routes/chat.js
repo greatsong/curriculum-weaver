@@ -47,9 +47,12 @@ function buildStaticIntro(procedureCode) {
     lines.push('')
   }
 
-  // displayCode(가이드북 3장 표시용, 예: T-1)가 있으면 내부 코드 옆에 함께 표기
-  const codeLabel = procInfo.displayCode ? `${procedureCode}(${procInfo.displayCode})` : procedureCode
-  lines.push(`**[${phaseInfo?.name || ''} > ${codeLabel}: ${procInfo.name}]** 절차에 진입했습니다.`)
+  // 교사에게는 내부 코드(T-1-1 등)를 노출하지 않고, 가이드북 표시용 displayCode(T-1 등)만 보여준다.
+  // displayCode가 없는 절차(prep 등)는 코드 표기 없이 단계명만 표시.
+  const header = procInfo.displayCode
+    ? `${phaseInfo?.name || ''} > ${procInfo.displayCode}: ${procInfo.name}`
+    : `${phaseInfo?.name || ''}: ${procInfo.name}`
+  lines.push(`**[${header}]** 절차에 진입했습니다.`)
   lines.push('')
 
   // 핵심 질문
