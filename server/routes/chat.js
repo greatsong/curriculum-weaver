@@ -14,7 +14,7 @@ import { Router } from 'express'
 import { requireAuth } from '../middleware/auth.js'
 import { buildAIResponse, buildProcedureIntroResponse } from '../services/aiAgent.js'
 import {
-  getMessages, getMessage, createMessage,
+  getMessages, getMessage, createMessage, getRecentMessages,
   getProject, getMemberRole, getDesignsByProject,
   getStandardsByProject, upsertDesign,
 } from '../lib/supabaseService.js'
@@ -553,17 +553,19 @@ chatRouter.post('/message', async (req, res) => {
   try {
     // 컨텍스트 로드 (Supabase 영속 저장소)
     const designs = await getDesignsByProject(session_id).catch(() => [])
-    const allMessages = await getMessages(session_id)
+    // '최근' 메시지를 컨텍스트로 로드. getMessages는 오름차순 range라 긴 프로젝트에서
+    // 가장 오래된 메시지만 줘서 AI가 최근 결정·제약(예: "SUNO 안 씀")을 못 보던 버그가 있었다.
+    const allMessages = await getRecentMessages(session_id, 60)
 
-    // 현재 절차의 이전 대화를 우선 포함 + 최근 대화도 포함
-    // (절차 1→2→3→4→5 진행 후 절차 2로 돌아오면, 절차 2의 대화가 최근 20개에서 밀려나 있으므로)
+    // 현재 절차의 대화를 우선 포함 + 최근 전체 대화도 포함.
+    // (더 오래된 이전 절차의 확정 내용은 보드 요약으로 별도 주입되므로 여기선 최근성에 집중.)
     const currentProcMessages = allMessages.filter(
       m => (m.procedure_context || m.stage_context) === activeProcedure
     )
-    const recentGlobalMessages = allMessages.slice(-10)
+    const recentGlobalMessages = allMessages.slice(-20)
 
-    // 현재 절차 대화(최대 10개) + 최근 전체 대화(최대 10개)를 시간순 병합, 중복 제거
-    const procSlice = currentProcMessages.slice(-10)
+    // 현재 절차 대화(최대 12개) + 최근 전체 대화(최대 20개)를 시간순 병합, 중복 제거
+    const procSlice = currentProcMessages.slice(-12)
     const mergedMap = new Map()
     for (const m of procSlice) mergedMap.set(m.id, m)
     for (const m of recentGlobalMessages) mergedMap.set(m.id, m)

@@ -137,7 +137,7 @@ function BoardCard({ boardType, board, suggestion, isHost, onUpdate, onRequestAI
         ) : (
           <div className="text-center py-8 text-gray-400">
             <p className="text-sm">아직 내용이 없습니다</p>
-            <p className="text-xs mt-1 mb-3">AI와 대화하면 자동으로 이 보드가 채워집니다</p>
+            <p className="text-xs mt-1 mb-3">AI와 대화하면 보드 내용을 제안합니다. 수락하면 여기에 반영됩니다</p>
             <button
               onClick={onRequestAI}
               className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition mx-auto"
@@ -152,14 +152,14 @@ function BoardCard({ boardType, board, suggestion, isHost, onUpdate, onRequestAI
   )
 }
 
-// ─── AI 자동 반영 알림 배너 ───
+// ─── AI 제안 반영 알림 배너 ───
 function SuggestionBanner({ onDismiss }) {
   return (
     <div className="mx-5 mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
       <div className="flex items-center gap-2">
         <Check size={16} className="text-green-600 shrink-0" />
         <p className="flex-1 text-sm font-medium text-green-800">
-          AI 대화 내용이 보드에 자동 반영되었습니다
+          수락한 AI 제안이 보드에 반영되었습니다
         </p>
         <button
           onClick={onDismiss}

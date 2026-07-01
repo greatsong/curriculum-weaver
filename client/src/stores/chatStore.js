@@ -313,7 +313,9 @@ export const useChatStore = create((set, get) => ({
         set((state) => ({ streamingText: state.streamingText + text }))
       },
       onPrinciples: () => {},
-      onBoardSuggestions: (suggestions, appliedBoards) => {
+      onBoardSuggestions: (suggestions) => {
+        // 보드 반영은 교사가 인라인 제안 카드에서 '수락'해야만 일어난다(자동 저장 없음).
+        // 서버는 status:'pending' 제안만 전송하며, 자동 반영(appliedBoards) 경로는 없다.
         set({ boardSuggestions: suggestions || [] })
         // 서버 형식 suggestions → pendingSuggestions로 변환
         if (suggestions?.length > 0) {
@@ -331,16 +333,6 @@ export const useChatStore = create((set, get) => ({
               _serverIndex: i,
             })),
           })
-        }
-        // 서버에서 자동 반영된 보드 → procedureStore에 업데이트
-        if (appliedBoards?.length > 0) {
-          const procState = useProcedureStore.getState()
-          const updatedBoards = { ...procState.boards }
-          for (const board of appliedBoards) {
-            updatedBoards[board.board_type] = board
-            socket.emit('board_updated', { projectId, board })
-          }
-          useProcedureStore.setState({ boards: updatedBoards })
         }
       },
       onStageAdvance: (data) => {

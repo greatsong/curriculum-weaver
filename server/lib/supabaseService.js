@@ -601,6 +601,33 @@ export async function getMessages(projectId, limit = 200, offset = 0) {
 }
 
 /**
+ * 프로젝트의 '최근' 메시지 N개를 시간순(오름차순)으로 반환.
+ *
+ * getMessages는 created_at 오름차순 + range(0, limit-1)라 메시지가 limit개를 넘는
+ * 긴 프로젝트에선 '가장 오래된' N개만 준다. AI 컨텍스트에는 최근 대화를 실어야 하므로
+ * (안 그러면 후반 절차에서 AI가 초기 대화만 보고 최근 결정을 잊는다) 이 함수를 쓴다.
+ * @param {string} projectId
+ * @param {number} [limit=60]
+ * @returns {Promise<object[]>}
+ */
+export async function getRecentMessages(projectId, limit = 60) {
+  const sb = getSupabase()
+  if (!sb) {
+    const all = mem.messages.get(projectId) || []
+    return all.slice(-limit)
+  }
+  const rows = handleResult(
+    await sb.from('messages')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+      .range(0, limit - 1),
+    '최근 메시지 조회 실패'
+  )
+  return (rows || []).slice().reverse() // 최신순 → 시간순(오름차순)
+}
+
+/**
  * 프로젝트의 메시지 개수 (목록 화면에서 동일 제목 프로젝트 구분용 — 시스템 메시지 제외).
  * @param {string} projectId
  * @returns {Promise<number>}
