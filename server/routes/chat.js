@@ -82,6 +82,33 @@ function buildStaticIntro(procedureCode) {
     lines.push('')
   }
 
+  // 활동 흐름 / 협력UP / WITH AI 프롬프트 예시 / 활동 사례 (가이드북 3장 반영)
+  if (guide.activityFlow?.length) {
+    const gpNameById = Object.fromEntries(GENERAL_PRINCIPLES.map(gp => [gp.id, gp.name.replace('의 원리', '')]))
+
+    lines.push(`**활동 흐름**`)
+    lines.push('')
+    for (const step of guide.activityFlow) {
+      const tag = gpNameById[step.collaborationTag] ? ` _(협력UP: ${gpNameById[step.collaborationTag]})_` : ''
+      lines.push(`${step.step}. **${step.title}**${tag}`)
+      lines.push(`   ${step.description}`)
+      if (step.aiPrompt) {
+        lines.push('')
+        lines.push('   WITH AI 프롬프트 예시:')
+        lines.push('   ```')
+        lines.push(`   ${step.aiPrompt}`)
+        lines.push('   ```')
+      }
+      lines.push('')
+    }
+
+    if (guide.exampleCase) {
+      lines.push(`> **활동 사례 — ${guide.exampleCase.title}**`)
+      lines.push(`> ${guide.exampleCase.content}`)
+      lines.push('')
+    }
+  }
+
   lines.push(`이 절차에서 궁금한 점이 있으시면 자유롭게 질문해 주세요!`)
 
   return lines.join('\n')
