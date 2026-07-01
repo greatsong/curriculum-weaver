@@ -100,22 +100,19 @@ export async function collectReportData(projectId) {
     }
   }
 
-  // 절차별 완료 상태 계산
-  const isSimulation = project.status === 'simulation' || project.title?.startsWith('[시뮬레이션]')
+  // 절차별 완료 상태 계산.
+  // '절차 확정' UI가 없어 실제로는 대부분 보드가 draft로 남는다. 따라서 명시적 confirmed뿐
+  // 아니라 '내용이 채워진 절차'도 완료로 집계한다. (내용이 있으면 그 절차의 설계는 작성 완료)
   const procedureStatus = {}
   for (const proc of PROCEDURE_LIST) {
     const design = designMap[proc.code]
-    if (!design) {
-      procedureStatus[proc.code] = 'empty'
-    } else if (design.save_status === 'confirmed') {
+    const hasContent = !!(design?.content && Object.keys(design.content).length > 0)
+    if (design?.save_status === 'confirmed' || hasContent) {
       procedureStatus[proc.code] = 'confirmed'
-    } else if (isSimulation && design.content && Object.keys(design.content).length > 0) {
-      // 시뮬레이션 프로젝트: 내용이 있으면 완료 취급
-      procedureStatus[proc.code] = 'confirmed'
-    } else if (design.save_status === 'draft') {
+    } else if (design?.save_status === 'draft') {
       procedureStatus[proc.code] = 'draft'
     } else {
-      procedureStatus[proc.code] = 'in_progress'
+      procedureStatus[proc.code] = design ? 'in_progress' : 'empty'
     }
   }
 
@@ -221,7 +218,7 @@ function generateExecutiveSummary(data) {
 
   // 참여자
   if (participants.length > 0) {
-    const subjects = [...new Set(participants.map(p => p.subject).filter(Boolean))]
+    const subjects = [...new Set(participants.filter(p => p && typeof p === 'object').map(p => p.subject).filter(Boolean))]
     lines.push(`참여 교과: ${subjects.join(', ') || '미정'}`)
   }
 
@@ -505,6 +502,7 @@ export function generateHTML(data) {
   <div class="section-title">참여 선생님</div>
   <div class="members-grid">`
     participants.forEach((p, i) => {
+      if (!p || typeof p !== 'object') return
       const color = avatarColors[i % avatarColors.length]
       const initial = (p.name || '?')[0]
       const detail = [p.subject, p.role].filter(Boolean).join(' · ')
@@ -540,6 +538,7 @@ export function generateHTML(data) {
     html += `<hr class="divider">
   <div class="section-title">관련 성취기준 <span style="font-size:14px;font-weight:400;color:#9b9a97;">${standards.length}개</span></div>`
     for (const s of standards) {
+      if (!s || typeof s !== 'object') continue
       const std = s.curriculum_standards || s
       const code = std.code || s.standard_id || ''
       const content = std.content || ''
@@ -728,6 +727,7 @@ export function generateMarkdown(data) {
   if (participants.length > 0) {
     md += `## 참여 선생님\n\n`
     for (const p of participants) {
+      if (!p || typeof p !== 'object') continue
       const detail = [p.subject, p.role].filter(Boolean).join(' · ')
       md += `- **${p.name}**${detail ? ` — ${detail}` : ''}\n`
     }
@@ -755,6 +755,7 @@ export function generateMarkdown(data) {
   if (standards.length > 0) {
     md += `## 관련 성취기준\n\n`
     for (const s of standards) {
+      if (!s || typeof s !== 'object') continue
       const std = s.curriculum_standards || s
       const code = std.code || s.standard_id || ''
       const content = std.content || ''
