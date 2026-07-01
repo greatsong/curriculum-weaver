@@ -698,15 +698,15 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Ds-1-1: 평가 계획 (8 스텝)
+  // Ds-1-1: 평가 설계 (8 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'Ds-1-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '평가 계획 안내',
-      description: '역방향 설계(Backward Design) 관점에서 평가 계획의 의미와 진행 방법을 안내한다.',
+      title: '평가 설계 안내',
+      description: '역방향 설계(Backward Design) 관점에서 평가 설계의 의미와 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
@@ -751,7 +751,7 @@ export const PROCEDURE_STEPS = {
       actionType: 'discuss',
       actorColumn: 'team',
       title: '활동별 평가 확정',
-      description: '팀이 활동별 평가 계획을 최종 확정한다.',
+      description: '팀이 활동별 평가 설계를 최종 확정한다.',
       aiCapability: null,
       boardField: 'assessments',
     },
@@ -760,7 +760,7 @@ export const PROCEDURE_STEPS = {
       actionType: 'check',
       actorColumn: 'team_ai',
       title: '수업목표-평가 정합성 검토',
-      description: 'AI가 수업목표와 평가 계획의 정합성을 검토한다.',
+      description: 'AI가 수업목표와 평가 설계의 정합성을 검토한다.',
       aiCapability: 'check',
       boardField: 'objectiveAlignmentCheck',
     },
@@ -769,14 +769,14 @@ export const PROCEDURE_STEPS = {
       actionType: 'record',
       actorColumn: 'ai_only',
       title: '저장 및 리포트',
-      description: 'AI가 평가 계획을 보드에 저장하고 요약 리포트를 생성한다.',
+      description: 'AI가 평가 설계를 보드에 저장하고 요약 리포트를 생성한다.',
       aiCapability: 'record',
       boardField: null,
     },
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Ds-1-2: 문제 상황 (8 스텝)
+  // Ds-1-2: 문제 상황 설정 (8 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'Ds-1-2': [
     {
