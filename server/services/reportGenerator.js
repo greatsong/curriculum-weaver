@@ -575,7 +575,22 @@ export function generateHTML(data) {
       const design = designMap[proc.code]
       const sections = design ? renderBoardContent(boardType, design.content) : null
 
-      if (!sections) continue
+      // 빈 절차는 건너뛰되, E-1-1(수업 성찰)만 '수업 후 예정' 자리표시로 남긴다.
+      if (!sections) {
+        if (proc.code === 'E-1-1') {
+          html += `
+  <div class="proc-block">
+    <div class="proc-header">
+      <span class="proc-code" style="background:${phaseColor};">${esc(proc.code)}</span>
+      ${esc(proc.name)}
+      <span class="proc-status status-empty">수업 후 예정</span>
+    </div>
+    <div class="proc-desc">${esc(proc.description)}</div>
+    <p style="color:#9b9a97;font-size:13px;margin:8px 0 0;">실제 수업(2026-07-10) 이후에 작성 예정입니다.</p>
+  </div>`
+        }
+        continue
+      }
 
       const status = procedureStatus[proc.code] || 'empty'
       const statusLabel = status === 'confirmed' ? '확정' : status === 'draft' ? '초안' : ''
@@ -785,7 +800,13 @@ export function generateMarkdown(data) {
       const boardType = BOARD_TYPES[proc.code]
       const design = designMap[proc.code]
       const sections = design ? renderBoardContent(boardType, design.content) : null
-      if (!sections) continue
+      // 빈 절차는 건너뛰되, E-1-1(수업 성찰)만 '수업 후 예정' 자리표시로 남긴다.
+      if (!sections) {
+        if (proc.code === 'E-1-1') {
+          md += `### ${proc.code}: ${proc.name} [수업 후 예정]\n\n> ${proc.description}\n\n실제 수업(2026-07-10) 이후에 작성 예정입니다.\n\n`
+        }
+        continue
+      }
 
       const status = procedureStatus[proc.code] || 'empty'
       const statusTag = status === 'confirmed' ? ' [확정]' : status === 'draft' ? ' [초안]' : ''
