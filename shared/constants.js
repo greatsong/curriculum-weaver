@@ -257,14 +257,14 @@ export const BOARD_TYPE_LABELS = {
   learner_context:      '학습자 맥락',
   team_vision:          '팀 비전',
   design_direction:     '수업설계 방향',
-  role_assignment:      '역할 분담',
+  role_assignment:      '역할 배분',
   team_rules:           '팀 규칙',
   team_schedule:        '팀 일정',
   topic_criteria:       '주제 선정 기준',
   topic_selection:      '선정 주제',
   standards_analysis:   '성취기준 분석',
   integrated_objectives:'통합 수업목표',
-  assessment_plan:      '평가 계획',
+  assessment_plan:      '평가 설계',
   problem_situation:    '문제 상황',
   learning_activities:  '학습 활동',
   support_tools:        '지원 도구',
@@ -272,7 +272,7 @@ export const BOARD_TYPE_LABELS = {
   material_list:        '개발 자료 목록',
   class_record:         '수업 기록',
   class_reflection:     '수업 성찰',
-  process_reflection:   '과정 성찰',
+  process_reflection:   '협력 과정 성찰',
 }
 
 // ──────────────────────────────────────────
