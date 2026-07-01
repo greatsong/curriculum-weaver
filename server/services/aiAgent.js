@@ -226,6 +226,33 @@ ${gpBlocks}`
 }
 
 // ──────────────────────────────────────────
+// 헬퍼 함수: 절차별 활동 흐름(가이드북 3장 반영)
+// ──────────────────────────────────────────
+
+/**
+ * 절차의 활동 흐름(activityFlow)과 활동 사례(exampleCase)를 프롬프트 텍스트로 변환
+ * — 가이드북의 ➊➋➌➍ 흐름·협력UP 태그·WITH AI 예시를 AI가 참고하도록 제공
+ */
+function buildActivityFlowText(guide) {
+  if (!guide?.activityFlow?.length) return ''
+
+  const gpById = Object.fromEntries(GENERAL_PRINCIPLES.map(gp => [gp.id, gp.name]))
+
+  const stepLines = guide.activityFlow.map(step => {
+    const tag = gpById[step.collaborationTag] ? ` (협력UP: ${gpById[step.collaborationTag]})` : ''
+    const prompt = step.aiPrompt ? `\n    WITH AI 예시: "${step.aiPrompt}"` : ''
+    return `  ${step.step}. ${step.title}${tag}\n    ${step.description}${prompt}`
+  }).join('\n\n')
+
+  const example = guide.exampleCase
+    ? `\n\n활동 사례(${guide.exampleCase.title}): ${guide.exampleCase.content}`
+    : ''
+
+  return `[활동 흐름 — 가이드북 반영]
+${stepLines}${example}`
+}
+
+// ──────────────────────────────────────────
 // 업로드 자료 컨텍스트 빌더 (intent 기반)
 // ──────────────────────────────────────────
 
@@ -657,6 +684,11 @@ AI 역할:
 
 성찰 질문:
 ${guide.reflectionQuestions.map(q => `  - ${q}`).join('\n')}`)
+
+    const activityFlowText = buildActivityFlowText(guide)
+    if (activityFlowText) {
+      parts.push(activityFlowText)
+    }
   }
 
   // ─── 3. 현재 스텝 정보 + 스텝 목록 ───
