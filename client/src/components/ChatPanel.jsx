@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
@@ -44,15 +44,30 @@ function cleanStreamingText(text) {
 
 export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, onStageChange, readOnly = false, loading = false }) {
   const projectId = projectIdProp || sessionId
-  const {
-    messages, streaming, streamingText, sendMessage,
-    pendingSuggestions, coherenceCheckResult, procedureAdvanceSuggestion,
-    acceptSuggestion, editAcceptSuggestion, rejectSuggestion,
-    clearProcedureAdvance, clearCoherenceCheck,
-    stageAdvanceSuggestion, clearStageAdvance,
-    introCache, showIntroModal, introModalContent, introModalProcedure,
-    openIntroModal, closeIntroModal,
-  } = useChatStore()
+  // ── 성능: 슬라이스별 셀렉터 구독 ──
+  // 과거엔 useChatStore()로 스토어 전체를 구독해, streamingText가 토큰마다 갱신될 때마다
+  // ChatPanel 전체(=누적 N개 메시지 목록)가 리렌더+마크다운 재파싱되어 오래 쓸수록 느려졌다.
+  // streamingText는 여기서 구독하지 않고 StreamingBubble에서만 구독한다.
+  const messages = useChatStore((s) => s.messages)
+  const streaming = useChatStore((s) => s.streaming)
+  const pendingSuggestions = useChatStore((s) => s.pendingSuggestions)
+  const coherenceCheckResult = useChatStore((s) => s.coherenceCheckResult)
+  const procedureAdvanceSuggestion = useChatStore((s) => s.procedureAdvanceSuggestion)
+  const stageAdvanceSuggestion = useChatStore((s) => s.stageAdvanceSuggestion)
+  const introCache = useChatStore((s) => s.introCache)
+  const showIntroModal = useChatStore((s) => s.showIntroModal)
+  const introModalContent = useChatStore((s) => s.introModalContent)
+  const introModalProcedure = useChatStore((s) => s.introModalProcedure)
+  // 액션은 스토어에서 고정 참조 — 구독해도 리렌더를 유발하지 않는다.
+  const sendMessage = useChatStore((s) => s.sendMessage)
+  const acceptSuggestion = useChatStore((s) => s.acceptSuggestion)
+  const editAcceptSuggestion = useChatStore((s) => s.editAcceptSuggestion)
+  const rejectSuggestion = useChatStore((s) => s.rejectSuggestion)
+  const clearProcedureAdvance = useChatStore((s) => s.clearProcedureAdvance)
+  const clearCoherenceCheck = useChatStore((s) => s.clearCoherenceCheck)
+  const clearStageAdvance = useChatStore((s) => s.clearStageAdvance)
+  const openIntroModal = useChatStore((s) => s.openIntroModal)
+  const closeIntroModal = useChatStore((s) => s.closeIntroModal)
   const { currentStep, getCurrentStep, materials, uploadMaterial, getSelectedMaterialIds } = useProcedureStore()
   const [input, setInput] = useState('')
   const [aiModel, setAiModel] = useState(() => localStorage.getItem('cw_ai_model') || 'fast')
@@ -87,10 +102,12 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
     [materials],
   )
 
-  // 자동 스크롤
+  // 자동 스크롤 (스트리밍 토큰 단위 스크롤은 StreamingBubble에서 처리)
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, streamingText, pendingSuggestions, procedureAdvanceSuggestion, stageAdvanceSuggestion])
+  }, [messages, pendingSuggestions, procedureAdvanceSuggestion, stageAdvanceSuggestion])
+
+  const handleOpenAttachment = useCallback((id) => setDetailMaterialId(id), [])
 
   const handleSend = async (e) => {
     e.preventDefault()
@@ -591,132 +608,12 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
           )}
 
           {messages.map((msg) => (
-            msg.sender_type === 'system' ? (
-              msg.attached_material_id ? (
-                <SystemAttachmentMessage
-                  key={msg.id}
-                  message={msg}
-                  onOpen={() => setDetailMaterialId(msg.attached_material_id)}
-                />
-              ) : (
-                <div key={msg.id} style={{ display: 'flex', justifyContent: 'center' }}>
-                  <p style={{
-                    fontSize: 11,
-                    color: 'var(--color-text-secondary)',
-                    background: 'var(--color-bg-tertiary)',
-                    borderRadius: 9999,
-                    padding: '4px 14px',
-                    margin: 0,
-                  }}>
-                    {msg.content}
-                  </p>
-                </div>
-              )
-            ) : (
-              <div
-                key={msg.id}
-                style={{
-                  display: 'flex',
-                  justifyContent: msg.sender_type === 'teacher' ? 'flex-end' : 'flex-start',
-                }}
-              >
-                <div style={{ maxWidth: '85%' }}>
-                  {/* 발신자 이름 */}
-                  <p style={{
-                    fontSize: 11,
-                    color: 'var(--color-text-tertiary)',
-                    margin: '0 0 3px',
-                    padding: '0 4px',
-                    textAlign: msg.sender_type === 'teacher' ? 'right' : 'left',
-                  }}>
-                    {msg.sender_type === 'ai' ? 'AI 공동설계자' : (
-                      msg.sender_subject
-                        ? `${msg.sender_name} · ${msg.sender_subject}`
-                        : msg.sender_name || '교사'
-                    )}
-                  </p>
-                  {/* 메시지 버블 */}
-                  <div style={{
-                    borderRadius: 16,
-                    padding: '10px 16px',
-                    fontSize: 14,
-                    lineHeight: 1.6,
-                    ...(msg.sender_type === 'teacher' ? {
-                      background: '#111827',
-                      color: '#fff',
-                      borderBottomRightRadius: 4,
-                    } : msg.sender_type === 'ai' ? {
-                      background: 'var(--color-bg-tertiary)',
-                      color: 'var(--color-text-primary)',
-                      borderBottomLeftRadius: 4,
-                    } : {
-                      background: '#FFFBEB',
-                      color: '#92400E',
-                      border: '1px solid #FDE68A',
-                      borderBottomLeftRadius: 4,
-                    }),
-                  }}>
-                    {msg.sender_type === 'ai' ? (
-                      <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} children={msg.content || ''} /></div>
-                    ) : (
-                      renderWithMentions(msg.content || '')
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
+            <MessageItem key={msg.id} msg={msg} onOpenAttachment={handleOpenAttachment} />
           ))}
 
-          {/* 스트리밍 중인 AI 응답 */}
-          {streaming && streamingText && (
-            <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-              <div style={{
-                maxWidth: '85%',
-                background: 'var(--color-bg-tertiary)',
-                color: 'var(--color-text-primary)',
-                borderRadius: 16,
-                borderBottomLeftRadius: 4,
-                padding: '10px 16px',
-                fontSize: 14,
-                lineHeight: 1.6,
-              }}>
-                <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} children={cleanStreamingText(streamingText) || ''} /></div>
-                <span style={{
-                  display: 'inline-block',
-                  width: 5,
-                  height: 16,
-                  background: '#3B82F6',
-                  borderRadius: 1,
-                  marginLeft: 2,
-                  animation: 'pulse 1s infinite',
-                }} />
-              </div>
-            </div>
-          )}
-
-          {/* 타이핑 인디케이터 */}
-          {streaming && !streamingText && (
-            <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-              <div style={{
-                background: 'var(--color-bg-tertiary)',
-                borderRadius: 16,
-                borderBottomLeftRadius: 4,
-                padding: '12px 16px',
-                display: 'flex',
-                gap: 4,
-              }}>
-                {[0, 1, 2].map((i) => (
-                  <div key={i} style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: '50%',
-                    background: '#9CA3AF',
-                    animation: `bounce 1.4s infinite ${i * 0.16}s`,
-                  }} />
-                ))}
-              </div>
-            </div>
-          )}
+          {/* 스트리밍 미리보기 + 타이핑 인디케이터 — streamingText를 독립 구독해
+              토큰 갱신이 위 메시지 목록 리렌더로 번지지 않게 한다. */}
+          <StreamingBubble scrollRef={scrollRef} />
 
           {/* AI 인라인 제안 카드 */}
           {!streaming && pendingSuggestions.filter((s) => s.status === 'pending').map((suggestion) => (
@@ -1000,6 +897,154 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── 개별 메시지 (React.memo) ──
+// 스트리밍 중 부모가 리렌더되어도 과거 메시지는 props(msg) 참조가 그대로면 리렌더되지 않아
+// ReactMarkdown 재파싱이 발생하지 않는다 — 누적 메시지가 많을수록(오래 쓸수록) 효과가 크다.
+const MessageItem = memo(function MessageItem({ msg, onOpenAttachment }) {
+  // AI 마크다운은 content가 바뀔 때만 재파싱
+  const aiBody = useMemo(
+    () => (msg.sender_type === 'ai'
+      ? <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} children={msg.content || ''} /></div>
+      : null),
+    [msg.sender_type, msg.content],
+  )
+
+  if (msg.sender_type === 'system') {
+    if (msg.attached_material_id) {
+      return <SystemAttachmentMessage message={msg} onOpen={() => onOpenAttachment(msg.attached_material_id)} />
+    }
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <p style={{
+          fontSize: 11,
+          color: 'var(--color-text-secondary)',
+          background: 'var(--color-bg-tertiary)',
+          borderRadius: 9999,
+          padding: '4px 14px',
+          margin: 0,
+        }}>
+          {msg.content}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: msg.sender_type === 'teacher' ? 'flex-end' : 'flex-start',
+    }}>
+      <div style={{ maxWidth: '85%' }}>
+        {/* 발신자 이름 */}
+        <p style={{
+          fontSize: 11,
+          color: 'var(--color-text-tertiary)',
+          margin: '0 0 3px',
+          padding: '0 4px',
+          textAlign: msg.sender_type === 'teacher' ? 'right' : 'left',
+        }}>
+          {msg.sender_type === 'ai' ? 'AI 공동설계자' : (
+            msg.sender_subject
+              ? `${msg.sender_name} · ${msg.sender_subject}`
+              : msg.sender_name || '교사'
+          )}
+        </p>
+        {/* 메시지 버블 */}
+        <div style={{
+          borderRadius: 16,
+          padding: '10px 16px',
+          fontSize: 14,
+          lineHeight: 1.6,
+          ...(msg.sender_type === 'teacher' ? {
+            background: '#111827',
+            color: '#fff',
+            borderBottomRightRadius: 4,
+          } : msg.sender_type === 'ai' ? {
+            background: 'var(--color-bg-tertiary)',
+            color: 'var(--color-text-primary)',
+            borderBottomLeftRadius: 4,
+          } : {
+            background: '#FFFBEB',
+            color: '#92400E',
+            border: '1px solid #FDE68A',
+            borderBottomLeftRadius: 4,
+          }),
+        }}>
+          {msg.sender_type === 'ai' ? aiBody : renderWithMentions(msg.content || '')}
+        </div>
+      </div>
+    </div>
+  )
+})
+
+// ── 스트리밍 미리보기 버블 (streamingText 전용 구독) ──
+// streamingText는 토큰마다 갱신되므로, 여기서만 구독해 리렌더를 이 컴포넌트로 격리한다.
+function StreamingBubble({ scrollRef }) {
+  const streaming = useChatStore((s) => s.streaming)
+  const streamingText = useChatStore((s) => s.streamingText)
+
+  // 스트리밍 중 토큰 갱신마다 하단으로 스크롤 (부모 autoscroll effect 대체)
+  useEffect(() => {
+    if (streaming && scrollRef?.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight })
+    }
+  }, [streaming, streamingText, scrollRef])
+
+  if (!streaming) return null
+
+  if (streamingText) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+        <div style={{
+          maxWidth: '85%',
+          background: 'var(--color-bg-tertiary)',
+          color: 'var(--color-text-primary)',
+          borderRadius: 16,
+          borderBottomLeftRadius: 4,
+          padding: '10px 16px',
+          fontSize: 14,
+          lineHeight: 1.6,
+        }}>
+          <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} children={cleanStreamingText(streamingText) || ''} /></div>
+          <span style={{
+            display: 'inline-block',
+            width: 5,
+            height: 16,
+            background: '#3B82F6',
+            borderRadius: 1,
+            marginLeft: 2,
+            animation: 'pulse 1s infinite',
+          }} />
+        </div>
+      </div>
+    )
+  }
+
+  // 타이핑 인디케이터 (아직 첫 토큰 전)
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+      <div style={{
+        background: 'var(--color-bg-tertiary)',
+        borderRadius: 16,
+        borderBottomLeftRadius: 4,
+        padding: '12px 16px',
+        display: 'flex',
+        gap: 4,
+      }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{
+            width: 7,
+            height: 7,
+            borderRadius: '50%',
+            background: '#9CA3AF',
+            animation: `bounce 1.4s infinite ${i * 0.16}s`,
+          }} />
+        ))}
+      </div>
     </div>
   )
 }
