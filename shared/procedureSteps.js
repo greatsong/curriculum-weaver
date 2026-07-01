@@ -41,7 +41,7 @@ export const PROCEDURE_STEPS = {
   // (별도 스텝 없이 보드 입력으로만 구성)
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T-1-1: 비전설정 (9 스텝)
+  // T-1-1: 공동 비전 설정 (9 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'T-1-1': [
     {
@@ -128,15 +128,15 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T-1-2: 수업설계 방향 수립 (8 스텝)
+  // T-1-2: 수업설계 방향 설정 (8 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'T-1-2': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '수업설계 방향 수립 안내',
-      description: '수업설계 방향 수립의 의미와 진행 방법을 안내한다.',
+      title: '수업설계 방향 설정 안내',
+      description: '수업설계 방향 설정의 의미와 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
@@ -206,15 +206,15 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T-2-1: 역할 분담 (7 스텝)
+  // T-2-1: 역할 배분 (7 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'T-2-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '역할 분담 안내',
-      description: '역할 분담의 중요성과 진행 방법을 안내한다.',
+      title: '역할 배분 안내',
+      description: '역할 배분의 중요성과 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
@@ -240,8 +240,8 @@ export const PROCEDURE_STEPS = {
       stepNumber: 4,
       actionType: 'generate',
       actorColumn: 'team_ai',
-      title: '역할 분담 예시 생성',
-      description: 'AI가 팀원 강점을 고려한 역할 분담 예시를 제안한다.',
+      title: '역할 배분 예시 생성',
+      description: 'AI가 팀원 강점을 고려한 역할 배분 예시를 제안한다.',
       aiCapability: 'generate',
       boardField: null,
     },
@@ -268,22 +268,22 @@ export const PROCEDURE_STEPS = {
       actionType: 'record',
       actorColumn: 'ai_only',
       title: '저장 및 리포트',
-      description: 'AI가 역할 분담 결과를 보드에 저장하고 요약 리포트를 생성한다.',
+      description: 'AI가 역할 배분 결과를 보드에 저장하고 요약 리포트를 생성한다.',
       aiCapability: 'record',
       boardField: null,
     },
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T-2-2: 팀 규칙 (7 스텝)
+  // T-2-2: 팀 규칙 결정 (7 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'T-2-2': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '팀 규칙 설정 안내',
-      description: 'Ground Rule 설정의 의미와 진행 방법을 안내한다.',
+      title: '팀 규칙 결정 안내',
+      description: 'Ground Rule 결정의 의미와 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
@@ -344,15 +344,15 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T-2-3: 팀 일정 (6 스텝)
+  // T-2-3: 팀 일정 결정 (6 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'T-2-3': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '팀 일정 수립 안내',
-      description: '팀 일정 수립의 진행 방법과 고려사항을 안내한다.',
+      title: '팀 일정 결정 안내',
+      description: '팀 일정 결정의 진행 방법과 고려사항을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
