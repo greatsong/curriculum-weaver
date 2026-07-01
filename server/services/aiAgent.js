@@ -20,7 +20,7 @@ import {
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { getBoardSchemaForPrompt } from 'curriculum-weaver-shared/boardSchemas.js'
 import { PROCEDURE_GUIDE, COMMON_RULES, getCoherenceTargets } from '../data/procedureGuide.js'
-import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
+import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -236,10 +236,9 @@ ${gpBlocks}`
 function buildActivityFlowText(guide) {
   if (!guide?.activityFlow?.length) return ''
 
-  const gpById = Object.fromEntries(GENERAL_PRINCIPLES.map(gp => [gp.id, gp.name]))
-
   const stepLines = guide.activityFlow.map(step => {
-    const tag = gpById[step.collaborationTag] ? ` (협력UP: ${gpById[step.collaborationTag]})` : ''
+    const gpName = getGeneralPrincipleName(step.collaborationTag)
+    const tag = gpName ? ` (협력UP: ${gpName})` : ''
     const prompt = step.aiPrompt ? `\n    WITH AI 예시: "${step.aiPrompt}"` : ''
     return `  ${step.step}. ${step.title}${tag}\n    ${step.description}${prompt}`
   }).join('\n\n')

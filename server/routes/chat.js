@@ -22,7 +22,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials } from '../lib/store.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
-import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
+import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
 import { PROCEDURE_GUIDE } from '../data/procedureGuide.js'
 import { resolveSelectedMaterialIds } from '../lib/materialSelection.js'
@@ -84,12 +84,11 @@ function buildStaticIntro(procedureCode) {
 
   // 활동 흐름 / 협력UP / WITH AI 프롬프트 예시 / 활동 사례 (가이드북 3장 반영)
   if (guide.activityFlow?.length) {
-    const gpNameById = Object.fromEntries(GENERAL_PRINCIPLES.map(gp => [gp.id, gp.name.replace('의 원리', '')]))
-
     lines.push(`**활동 흐름**`)
     lines.push('')
     for (const step of guide.activityFlow) {
-      const tag = gpNameById[step.collaborationTag] ? ` _(협력UP: ${gpNameById[step.collaborationTag]})_` : ''
+      const gpName = getGeneralPrincipleName(step.collaborationTag, { short: true })
+      const tag = gpName ? ` _(협력UP: ${gpName})_` : ''
       lines.push(`${step.step}. **${step.title}**${tag}`)
       lines.push(`   ${step.description}`)
       if (step.aiPrompt) {
