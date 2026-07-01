@@ -85,9 +85,13 @@ export const useProcedureStore = create((set, get) => ({
         remembered && remembered >= 1 && remembered <= maxStep
           ? remembered
           : (maxStep > 0 ? 1 : 0)
+      const changingProcedure = get().currentProcedure !== code
       set({
         currentProcedure: code,
         currentStep: restoredStep,
+        // 이전 절차의 협력UP 강조가 새 절차에 잘못 남지 않도록 초기화.
+        // 다음 채팅 메시지의 SSE 응답으로 새 절차 기준 값이 다시 채워진다.
+        ...(changingProcedure ? { relevantGeneralPrincipleIds: [] } : {}),
       })
     }
   },
