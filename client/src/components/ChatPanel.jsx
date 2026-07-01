@@ -44,14 +44,13 @@ function cleanStreamingText(text) {
     .trim() || '...'
 }
 
-// 코드블록(WITH AI 프롬프트 예시 등)에 복사 버튼을 붙이는 커스텀 렌더러
-function CodeBlock({ inline, className, children, ...props }) {
+// 펜스드 코드블록(WITH AI 프롬프트 예시 등)에 복사 버튼을 붙이는 커스텀 렌더러
+// react-markdown v9+부터 code 컴포넌트에 inline prop이 전달되지 않으므로(인라인/블록 구분 불가),
+// 블록 코드에만 항상 쓰이는 pre를 오버라이드해 인라인 코드(``x``)에 영향을 주지 않는다.
+function PreBlock({ node, children, ...props }) {
   const [copied, setCopied] = useState(false)
-  const text = String(children).replace(/\n$/, '')
-
-  if (inline) {
-    return <code className={className} {...props}>{children}</code>
-  }
+  const codeElement = Array.isArray(children) ? children[0] : children
+  const text = String(codeElement?.props?.children ?? '').replace(/\n$/, '')
 
   const handleCopy = () => {
     navigator.clipboard.writeText(text)
@@ -61,7 +60,7 @@ function CodeBlock({ inline, className, children, ...props }) {
 
   return (
     <div style={{ position: 'relative' }}>
-      <pre className={className}><code {...props}>{children}</code></pre>
+      <pre {...props}>{children}</pre>
       <button
         onClick={handleCopy}
         title="복사"
@@ -82,7 +81,7 @@ function CodeBlock({ inline, className, children, ...props }) {
   )
 }
 
-const markdownComponents = { code: CodeBlock }
+const markdownComponents = { pre: PreBlock }
 
 export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, onStageChange, readOnly = false, loading = false }) {
   const projectId = projectIdProp || sessionId
