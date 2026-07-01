@@ -186,31 +186,31 @@ function extractCoherenceCheck(text) {
  * @param {string} text - AI 전체 응답
  * @returns {{ cleanText: string, procedureAdvance: Object|null }}
  */
-function extractProcedureAdvance(text) {
-  const regex = /<procedure_advance\s+current="([^"]+)"\s+suggested="([^"]+)"\s+reason="([^"]*?)"\s*\/>/g
-  const match = regex.exec(text)
-  if (!match) {
-    // 대체 형식: 블록 형태
-    const blockRegex = /<procedure_advance\s+current="([^"]+)"\s+suggested="([^"]+)"\s+reason="([^"]*?)">\s*<\/procedure_advance>/g
-    const blockMatch = blockRegex.exec(text)
-    if (!blockMatch) return { cleanText: text, procedureAdvance: null }
+export function extractProcedureAdvance(text) {
+  // self-closing(<... />) 또는 블록(<...></procedure_advance>) 형태의 태그 하나를 통째로 잡는다.
+  // 속성 순서에 의존하지 않고 각 속성을 개별 추출한다(엄격한 순서 요구 시 AI 출력이 조금만 달라도
+  // 파싱이 실패해 "이동 버튼 제목 없음" 버그가 발생하던 문제 방지).
+  const cleanRegex = /<procedure_advance\b[\s\S]*?(?:\/>|<\/procedure_advance>)/g
+  const tag = text.match(/<procedure_advance\b[\s\S]*?(?:\/>|<\/procedure_advance>)/)
+  if (!tag) return { cleanText: text, procedureAdvance: null }
 
-    const procedureAdvance = {
-      current: blockMatch[1],
-      suggested: blockMatch[2],
-      reason: blockMatch[3],
+  const raw = tag[0]
+  const suggested = raw.match(/suggested="([^"]*)"/)?.[1]?.trim() || null
+  const current = raw.match(/current="([^"]*)"/)?.[1]?.trim() || null
+  const reason = raw.match(/reason="([^"]*)"/)?.[1]?.trim() || ''
+
+  const cleanText = text.replace(cleanRegex, '').trim()
+
+  // suggested가 없거나, 실제 존재하지 않는 절차 코드(AI 환각)면 전환 제안을 버린다.
+  // → 클라이언트가 코드·이름이 빈 "깨진 이동 버튼"을 렌더하지 않게 한다.
+  if (!suggested || !PROCEDURES[suggested]) {
+    if (suggested && !PROCEDURES[suggested]) {
+      console.warn('[chat/message] 존재하지 않는 절차 전환 제안 무시:', suggested)
     }
-    const cleanText = text.replace(/<procedure_advance[^>]*>[\s\S]*?<\/procedure_advance>/g, '').trim()
-    return { cleanText, procedureAdvance }
+    return { cleanText, procedureAdvance: null }
   }
 
-  const procedureAdvance = {
-    current: match[1],
-    suggested: match[2],
-    reason: match[3],
-  }
-  const cleanText = text.replace(/<procedure_advance\s+[^>]*\/>/g, '').trim()
-  return { cleanText, procedureAdvance }
+  return { cleanText, procedureAdvance: { current, suggested, reason } }
 }
 
 /**

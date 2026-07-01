@@ -339,6 +339,12 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
   }
 
   const advance = procedureAdvanceSuggestion || stageAdvanceSuggestion
+  // 이동 버튼 표시 안전망: 다음 절차 코드를 확정하고, 실제 존재하는 절차일 때만 카드를 노출한다.
+  // (코드/이름이 비면 "(으)로 이동"만 남는 '제목 없는 오류' 버튼이 되므로 아예 렌더하지 않는다.)
+  const advanceCode = advance ? (advance.next_procedure || advance.next_code || advance.next_stage || '') : ''
+  const advanceProc = advanceCode ? PROCEDURES[advanceCode] : null
+  const advanceName = advanceProc?.name || advance?.next_name || ''
+  const canAdvance = !!advanceProc
 
   return (
     <div
@@ -730,8 +736,8 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
             </div>
           )}
 
-          {/* 절차 전환 제안 */}
-          {advance && !streaming && (
+          {/* 절차 전환 제안 (유효한 다음 절차가 있을 때만) */}
+          {canAdvance && !streaming && (
             <div style={{ maxWidth: '90%', margin: '0 auto' }}>
               <div style={{
                 background: 'linear-gradient(135deg, #F5F3FF 0%, #EFF6FF 100%)',
@@ -750,8 +756,8 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
                     onMouseEnter={(e) => e.currentTarget.style.background = '#6D28D9'}
                     onMouseLeave={(e) => e.currentTarget.style.background = '#7C3AED'}
                   >
-                    {advance.next_procedure || advance.next_code || advance.next_stage}{' '}
-                    {advance.next_name || ''}(으)로 이동
+                    {advanceCode}{' '}
+                    {advanceName}(으)로 이동
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                   </button>
                   <button

@@ -684,12 +684,16 @@ ${guide.reflectionQuestions.map(q => `  - ${q}`).join('\n')}`)
    - 스텝 순서를 따르되, 교사의 자연스러운 흐름을 존중합니다.
    - 한 턴에 하나의 핵심 주제에 집중합니다.
 
-3. 절차 전환 제안
+3. 절차 전환 제안${nextProcEntry ? `
    - 이 절차의 핵심 보드가 충분히 채워졌고, 교사가 "다음 절차로" 등을 말하면
-   - 반드시 <procedure_advance> XML 블록을 응답에 포함하세요.${nextProcEntry ? `
+   - 반드시 아래 형식의 <procedure_advance> XML 블록을 응답에 포함하세요.
+   - suggested 값은 반드시 "${nextProcEntry[0]}"여야 합니다. 존재하지 않는 절차 코드를 지어내지 마세요.
 
 <procedure_advance> 형식:
-<procedure_advance current="${procedure}" suggested="${nextProcEntry[0]}" reason="현재 절차 성과 요약"/>` : ''}`)
+<procedure_advance current="${procedure}" suggested="${nextProcEntry[0]}" reason="현재 절차 성과 요약"/>` : `
+   - ${procedure}는 전체 설계의 마지막 절차입니다. 다음 절차가 없습니다.
+   - <procedure_advance> 블록을 절대 생성하지 마세요. "E-2-2"처럼 존재하지 않는 다음 절차를 지어내거나 "다음 절차로 이동할까요?"라고 제안하지 마세요.
+   - 모든 절차를 완주했다면 전체 과정 완료를 축하하고 최종 정리를 돕는 데 집중하세요.`}`)
 
   // ─── 6. 보드 스키마 + AI 제안 지침 ───
   const boardType = BOARD_TYPES[procedure]

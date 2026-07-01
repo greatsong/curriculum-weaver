@@ -68,34 +68,37 @@ function parseCoherenceCheck(text) {
  * AI 응답에서 <procedure_advance> XML을 파싱한다
  */
 function parseProcedureAdvance(text) {
+  // 다음 절차 코드를 확정하고, 실제 존재하는 절차일 때만 전환 제안을 반환한다.
+  // (빈 코드/존재하지 않는 코드(AI 환각)는 null → 코드·이름이 빈 "제목 없는 이동 버튼" 방지)
   // 속성 형식 (AI가 실제로 생성하는 형식, aiAgent.js 시스템 프롬프트 기준):
   // <procedure_advance current="A-1-1" suggested="A-2-1" reason="..."/>
   const selfClosing = text.match(/<procedure_advance\b([^>]*?)\/?>/)
   if (selfClosing && /suggested=/.test(selfClosing[1])) {
     const attrs = selfClosing[1]
-    const suggested = attrs.match(/suggested="([^"]*)"/)?.[1] || null
-    const current = attrs.match(/current="([^"]*)"/)?.[1] || null
-    const reason = attrs.match(/reason="([^"]*)"/)?.[1] || ''
-    if (suggested) {
+    const suggested = attrs.match(/suggested="([^"]*)"/)?.[1]?.trim() || null
+    const current = attrs.match(/current="([^"]*)"/)?.[1]?.trim() || null
+    const reason = attrs.match(/reason="([^"]*)"/)?.[1]?.trim() || ''
+    if (suggested && PROCEDURES[suggested]) {
       return {
         next_procedure: suggested,
-        next_name: PROCEDURES[suggested]?.name || '',
+        next_name: PROCEDURES[suggested].name,
         summary: reason,
         current,
       }
     }
+    return null
   }
   // 레거시 자식 태그 형식: <procedure_advance><next_procedure>...</next_procedure></procedure_advance>
   const match = text.match(/<procedure_advance>([\s\S]*?)<\/procedure_advance>/)
   if (!match) return null
   const inner = match[1]
-  const nextMatch = inner.match(/<next_procedure>([\s\S]*?)<\/next_procedure>/)
-  const summaryMatch = inner.match(/<summary>([\s\S]*?)<\/summary>/)
-  const nameMatch = inner.match(/<next_name>([\s\S]*?)<\/next_name>/)
+  const nextCode = inner.match(/<next_procedure>([\s\S]*?)<\/next_procedure>/)?.[1]?.trim() || null
+  const summary = inner.match(/<summary>([\s\S]*?)<\/summary>/)?.[1]?.trim() || ''
+  if (!nextCode || !PROCEDURES[nextCode]) return null
   return {
-    next_procedure: nextMatch ? nextMatch[1].trim() : null,
-    next_name: nameMatch ? nameMatch[1].trim() : '',
-    summary: summaryMatch ? summaryMatch[1].trim() : '',
+    next_procedure: nextCode,
+    next_name: PROCEDURES[nextCode].name,
+    summary,
   }
 }
 
@@ -342,10 +345,13 @@ export const useChatStore = create((set, get) => ({
       },
       onStageAdvance: (data) => {
         // 서버 shape (current/suggested/reason) → 클라이언트 shape (next_procedure/summary/next_name)
+        const nextCode = data.suggested || data.next_procedure || data.next_stage
+        // 존재하지 않는 절차 코드(AI 환각)는 무시 — 코드·이름이 빈 "제목 없는 이동 버튼" 방지
+        if (!nextCode || !PROCEDURES[nextCode]) return
         const advance = {
-          next_procedure: data.suggested || data.next_procedure || data.next_stage,
+          next_procedure: nextCode,
           summary: data.reason || data.summary || '',
-          next_name: PROCEDURES[data.suggested]?.name || data.next_name || '',
+          next_name: PROCEDURES[nextCode].name,
           current: data.current,
         }
         set({
