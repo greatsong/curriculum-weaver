@@ -246,7 +246,10 @@ chatRouter.use(checkProjectAccess)
 // ─── 채팅 메시지 목록 조회 ───
 chatRouter.get('/:sessionId', async (req, res) => {
   try {
-    const messages = await getMessages(req.params.sessionId)
+    // 최근 메시지를 시간순으로 로드. getMessages(오름차순 range)는 200개를 넘는 프로젝트에서
+    // '가장 오래된' 200개만 줘서, 새로고침 시 최근 대화가 통째로 안 보이던 버그가 있었다.
+    // 1000개면 현재 모든 프로젝트가 전체 로드되고, 이후 초장기 프로젝트는 최근 1000개를 보인다.
+    const messages = await getRecentMessages(req.params.sessionId, 1000)
     // 클라이언트 호환: procedure_context → stage_context 별칭
     const mapped = messages.map((m) => ({
       ...m,
