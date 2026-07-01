@@ -312,7 +312,9 @@ export const useChatStore = create((set, get) => ({
       onText: (text) => {
         set((state) => ({ streamingText: state.streamingText + text }))
       },
-      onPrinciples: () => {},
+      onPrinciples: (_principles, relevantGeneralPrincipleIds) => {
+        useProcedureStore.getState().setRelevantGeneralPrincipleIds(relevantGeneralPrincipleIds)
+      },
       onBoardSuggestions: (suggestions) => {
         // 보드 반영은 교사가 인라인 제안 카드에서 '수락'해야만 일어난다(자동 저장 없음).
         // 서버는 status:'pending' 제안만 전송하며, 자동 반영(appliedBoards) 경로는 없다.

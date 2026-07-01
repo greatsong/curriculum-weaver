@@ -702,9 +702,15 @@ chatRouter.post('/message', async (req, res) => {
     const generalPrinciples = GENERAL_PRINCIPLES || []
     const principlesUsed = generalPrinciples.map((gp) => gp.id)
 
+    // 현재 절차의 활동흐름(가이드북 3장)이 실제로 강조하는 협력UP 원리 — PrinciplePanel 강조 표시용
+    const activeGuide = PROCEDURE_GUIDE[activeProcedure]
+    const relevantGeneralPrincipleIds = activeGuide?.activityFlow?.length
+      ? [...new Set(activeGuide.activityFlow.map((step) => step.collaborationTag).filter(Boolean))]
+      : []
+
     // 적용된 원칙 전송
     if (principlesUsed.length > 0) {
-      res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.PRINCIPLES, principles: principlesUsed })}\n\n`)
+      res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.PRINCIPLES, principles: principlesUsed, relevantGeneralPrincipleIds })}\n\n`)
     }
 
     // Claude API 스트리밍 응답
