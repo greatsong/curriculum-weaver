@@ -170,6 +170,19 @@ export const useAuthStore = create((set, get) => ({
   },
 
   /**
+   * 온보딩 투어 '완료'를 영구 저장.
+   * localStorage(빠른 캐시) + Supabase user_metadata(기기·브라우저 무관 영구).
+   * → 학교/집 등 다른 PC로 접속해도 투어가 다시 뜨지 않게 한다.
+   */
+  markTourDone: async () => {
+    try { localStorage.setItem('cw_tour_done', '1') } catch { /* noop */ }
+    try {
+      const { data } = await supabase.auth.updateUser({ data: { onboarding_tour_done: true } })
+      if (data?.user) set({ user: data.user })
+    } catch { /* 서버 실패해도 localStorage 캐시로 이 브라우저에선 안 뜬다 */ }
+  },
+
+  /**
    * 에러 초기화
    */
   clearError: () => set({ error: null }),

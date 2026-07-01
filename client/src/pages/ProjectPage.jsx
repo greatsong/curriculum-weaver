@@ -150,7 +150,7 @@ function NicknameModal({ onConfirm }) {
 export default function ProjectPage() {
   const { workspaceId, projectId } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuthStore()
+  const { user, markTourDone } = useAuthStore()
   const { currentProject, fetchProject, updateProcedure } = useProjectStore()
   const { currentWorkspace, fetchWorkspace } = useWorkspaceStore()
   const {
@@ -171,7 +171,13 @@ export default function ProjectPage() {
   const [showTutorial, setShowTutorial] = useState(
     () => !localStorage.getItem('cw_tutorial_done') && !!localStorage.getItem('cw_tour_done')
   )
-  const [showTour, setShowTour] = useState(() => !localStorage.getItem('cw_tour_done'))
+  // 투어는 '한 번만' 노출. localStorage(빠른 캐시)와 사용자 프로필(기기 무관 영구)을 모두 확인해
+  // 학교/집 등 다른 PC(브라우저마다 localStorage 별개)에서 매번 다시 뜨던 문제를 막는다.
+  const [showTour, setShowTour] = useState(() => {
+    if (localStorage.getItem('cw_tour_done')) return false
+    if (useAuthStore.getState().user?.user_metadata?.onboarding_tour_done) return false
+    return true
+  })
   const [activePanel, setActivePanel] = useState('chat')
   const [boardUpdated, setBoardUpdated] = useState(false)
   const [showReport, setShowReport] = useState(false)
@@ -181,6 +187,15 @@ export default function ProjectPage() {
     if (user) return false // 로그인 상태면 건너뛰기
     return !localStorage.getItem('cw_nickname')
   })
+
+  // 인증이 늦게 로드돼도(프로필에 온보딩 완료 기록이 있으면) 투어를 숨긴다.
+  // localStorage가 비어 있어도 다른 기기에서 이미 완료했다면 다시 뜨지 않게 한다.
+  useEffect(() => {
+    if (user?.user_metadata?.onboarding_tour_done) {
+      try { localStorage.setItem('cw_tour_done', '1') } catch { /* noop */ }
+      setShowTour(false)
+    }
+  }, [user])
 
   const joinedRef = useRef(false)
   const introRequestedRef = useRef(false)
@@ -940,6 +955,8 @@ export default function ProjectPage() {
       {showTutorial && !showTour && <Tutorial onComplete={() => setShowTutorial(false)} />}
       {showTour && <InteractiveTour onComplete={() => {
         setShowTour(false)
+        // 완료/건너뛰기를 사용자 프로필에 영구 저장 → 다른 기기에서도 다시 안 뜬다.
+        markTourDone()
         // 투어를 끝낸 신규 사용자에게 레거시 Tutorial이 곧바로 겹쳐 뜨지 않도록 함께 완료 처리
         localStorage.setItem('cw_tutorial_done', '1')
         setShowTutorial(false)
