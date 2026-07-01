@@ -1061,14 +1061,14 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // DI-1-1: 개발 자료 목록 (6 스텝)
+  // DI-1-1: 자료 탐색·개발 (6 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'DI-1-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '개발 자료 목록 안내',
+      title: '자료 탐색·개발 안내',
       description: '개발/탐색 자료의 구분 방법과 목록 작성 절차를 안내한다.',
       aiCapability: 'guide',
       boardField: null,
@@ -1121,14 +1121,14 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // DI-2-1: 수업 기록 (7 스텝)
+  // DI-2-1: 수업 실행·기록 (7 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'DI-2-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '수업 기록 안내',
+      title: '수업 실행·기록 안내',
       description: '효과적인 수업 기록의 방법과 기록 요소를 안내한다.',
       aiCapability: 'guide',
       boardField: null,
@@ -1190,14 +1190,14 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // E-1-1: 수업 성찰 (6 스텝)
+  // E-1-1: 수업 성찰과 공동 개선 (6 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'E-1-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '수업 성찰 안내',
+      title: '수업 성찰과 공동 개선 안내',
       description: '수업 성찰의 의미, 관점, 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
@@ -1250,15 +1250,15 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // E-2-1: 수업설계 과정 성찰 (5 스텝)
+  // E-2-1: 협력 과정 성찰 (5 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'E-2-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '과정 성찰 안내',
-      description: '수업설계 전체 과정에 대한 성찰의 의미와 진행 방법을 안내한다.',
+      title: '협력 과정 성찰 안내',
+      description: '협력 전체 과정에 대한 성찰의 의미와 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
