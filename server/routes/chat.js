@@ -47,7 +47,9 @@ function buildStaticIntro(procedureCode) {
     lines.push('')
   }
 
-  lines.push(`**[${phaseInfo?.name || ''} > ${procedureCode}: ${procInfo.name}]** 절차에 진입했습니다.`)
+  // displayCode(가이드북 3장 표시용, 예: T-1)가 있으면 내부 코드 옆에 함께 표기
+  const codeLabel = procInfo.displayCode ? `${procedureCode}(${procInfo.displayCode})` : procedureCode
+  lines.push(`**[${phaseInfo?.name || ''} > ${codeLabel}: ${procInfo.name}]** 절차에 진입했습니다.`)
   lines.push('')
 
   // 핵심 질문
