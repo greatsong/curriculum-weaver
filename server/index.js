@@ -52,6 +52,10 @@ if (!loadSemanticIndex()) {
 }
 
 const app = express()
+// Railway 프록시 1홉 뒤에서 실행 — 미설정 시 req.ip가 프록시 IP로 고정되어
+// IP 기반 rate limit이 전체 사용자 공유 제한으로 동작한다.
+// (불리언 true는 X-Forwarded-For 스푸핑을 허용하므로 홉 수 1로 명시)
+app.set('trust proxy', 1)
 const server = createServer(app)
 const PORT = process.env.PORT || 4007
 
