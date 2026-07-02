@@ -35,9 +35,14 @@ export const PHASE_LIST = Object.values(PHASES).sort((a, b) => a.order - b.order
  * 세부절차(Procedure) 정의
  *
  * 키: 절차 코드 (예: 'T-1-1')
- * 값: { phase, name, description, order }
+ * 값: { phase, name, description, order, displayCode? }
  *
- * @type {Record<string, {phase: string, name: string, description: string, order: number}>}
+ * ⚠️ UI 표시 정책: 내부 코드(키, 'T-1-1' 등)는 교사에게 노출하지 않는다.
+ *    화면에 절차 코드를 표시할 때는 반드시 displayCode('T-1' 등)를 사용하고,
+ *    displayCode가 없는 절차(prep)는 코드 없이 이름만 표시한다.
+ *    (회귀 테스트: server/lib/__tests__/procedureDisplayCode.test.js)
+ *
+ * @type {Record<string, {phase: string, name: string, description: string, order: number, displayCode?: string}>}
  */
 export const PROCEDURES = {
   'prep': {
@@ -181,6 +186,28 @@ export const PROCEDURES = {
 export const PROCEDURE_LIST = Object.entries(PROCEDURES)
   .map(([code, proc]) => ({ code, ...proc }))
   .sort((a, b) => a.order - b.order)
+
+/**
+ * UI 표시용 절차 코드 반환 — 내부 코드(T-1-1)는 노출하지 않고 displayCode(T-1)만.
+ * displayCode 없는 절차(prep)는 빈 문자열 (이름만 표시).
+ * @param {string} code - 내부 절차 코드
+ * @returns {string}
+ */
+export function getProcedureDisplayCode(code) {
+  return PROCEDURES[code]?.displayCode || ''
+}
+
+/**
+ * UI 표시용 절차 라벨 반환 — "T-1 공동 비전 설정" 또는 (displayCode 없으면) 이름만.
+ * @param {string} code - 내부 절차 코드
+ * @param {string} [nameOverride] - 이름을 외부 값(SSE 이벤트 등)으로 대체할 때
+ * @returns {string}
+ */
+export function getProcedureLabel(code, nameOverride) {
+  const proc = PROCEDURES[code]
+  const name = nameOverride || proc?.name || ''
+  return proc?.displayCode ? `${proc.displayCode} ${name}`.trim() : name
+}
 
 // ──────────────────────────────────────────
 // 액션 타입 (8종)

@@ -484,7 +484,7 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
                         color: phase?.color || '#3B82F6',
                         flexShrink: 0,
                       }}>
-                        {proc.code}
+                        {proc.displayCode || proc.code}
                       </span>
                       <span style={{ fontSize: 13, color: '#374151' }}>{proc.name}</span>
                     </label>

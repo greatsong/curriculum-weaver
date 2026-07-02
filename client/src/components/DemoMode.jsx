@@ -11,6 +11,8 @@ import { useNavigate } from 'react-router-dom'
 import Logo from './Logo'
 import { API_BASE, apiGet, getHeaders } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
+// 절차 내부 코드(T-1-1 등)는 UI에 노출하지 않는다 — 가이드북 표시용 displayCode(T-1 등)만 표시
+import { getProcedureDisplayCode, getProcedureLabel } from 'curriculum-weaver-shared/constants.js'
 
 const GRADE_GROUPS = [
   {
@@ -764,7 +766,7 @@ export default function DemoMode() {
                       ✓
                     </span>
                     <span style={{ fontSize: 12, color: '#6B7280', fontFamily: 'monospace', minWidth: 44 }}>
-                      {p.procedure}
+                      {getProcedureDisplayCode(p.procedure)}
                     </span>
                     <span style={{ fontSize: 12, color: '#374151' }}>{p.name}</span>
                   </div>
@@ -779,7 +781,7 @@ export default function DemoMode() {
                   }} />
                   <span style={{ fontSize: 12, color: '#9CA3AF' }}>
                     {lastProgress?.nextName
-                      ? `${lastProgress.nextProcedure} ${lastProgress.nextName} 생성 중...`
+                      ? `${getProcedureLabel(lastProgress.nextProcedure, lastProgress.nextName)} 생성 중...`
                       : '마무리 중...'}
                     {tokenCount > 0 && <span style={{ marginLeft: 6, fontSize: 11, color: '#D1D5DB' }}>({tokenCount.toLocaleString()}토큰)</span>}
                   </span>
