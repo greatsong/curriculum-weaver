@@ -94,3 +94,16 @@ export const GENERAL_PRINCIPLES = [
     ],
   },
 ]
+
+/**
+ * GP id → 원리 이름 조회 (activityFlow의 collaborationTag 표시에 사용)
+ * short: true면 "~의 원리" 접미사를 뗀 짧은 형태(교사 대상 UI용)를 반환한다.
+ * @param {string} id - GP01~GP05
+ * @param {{ short?: boolean }} [opts]
+ * @returns {string|null} 이름 또는 id가 유효하지 않으면 null
+ */
+export function getGeneralPrincipleName(id, { short = false } = {}) {
+  const gp = GENERAL_PRINCIPLES.find((g) => g.id === id)
+  if (!gp) return null
+  return short ? gp.name.replace(/의 원리$/, '') : gp.name
+}

@@ -69,6 +69,8 @@ export const useProcedureStore = create((set, get) => ({
   excludedMaterialIds: new Set(),
   principles: [],
   generalPrinciples: [],
+  // 현재 절차의 활동흐름(가이드북 3장)이 특히 강조하는 총괄 원리(GP) id 목록 — PrinciplePanel 강조용
+  relevantGeneralPrincipleIds: [],
   loading: false,
 
   // ── 절차/스텝 네비게이션 ────
@@ -83,9 +85,13 @@ export const useProcedureStore = create((set, get) => ({
         remembered && remembered >= 1 && remembered <= maxStep
           ? remembered
           : (maxStep > 0 ? 1 : 0)
+      const changingProcedure = get().currentProcedure !== code
       set({
         currentProcedure: code,
         currentStep: restoredStep,
+        // 이전 절차의 협력UP 강조가 새 절차에 잘못 남지 않도록 초기화.
+        // 다음 채팅 메시지의 SSE 응답으로 새 절차 기준 값이 다시 채워진다.
+        ...(changingProcedure ? { relevantGeneralPrincipleIds: [] } : {}),
       })
     }
   },
@@ -723,6 +729,10 @@ export const useProcedureStore = create((set, get) => ({
     }
   },
 
+  setRelevantGeneralPrincipleIds: (ids) => {
+    set({ relevantGeneralPrincipleIds: Array.isArray(ids) ? ids : [] })
+  },
+
   loadGeneralPrinciples: async (retries = 2) => {
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
@@ -765,6 +775,7 @@ export const useProcedureStore = create((set, get) => ({
       excludedMaterialIds: new Set(),
       principles: [],
       generalPrinciples: [],
+      relevantGeneralPrincipleIds: [],
       _boardHandler: null,
     })
   },

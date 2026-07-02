@@ -575,7 +575,7 @@ ${candidateText}
 
     const aiClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
     const response = await aiClient.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 4096,
       messages: [{ role: 'user', content: aiPrompt }],
     })
@@ -775,7 +775,7 @@ ${overviewSection}`
 
     let fullResponse = ''
     const stream = client.messages.stream({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-5',
       max_tokens: 4096,
       system: systemPrompt,
       messages,

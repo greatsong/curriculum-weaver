@@ -50,7 +50,7 @@ export default function WorkspaceDetailPage() {
   const creatingRef = useRef(false) // 동기 더블서브밋 가드 (state 재렌더 전 두 번째 클릭 차단)
 
   // Feature 1: 호스트 설정 상태
-  const [aiConfig, setAiConfig] = useState({ model: 'claude-sonnet-4-6' })
+  const [aiConfig, setAiConfig] = useState({ model: 'claude-sonnet-5' })
   const [hiddenProcedures, setHiddenProcedures] = useState([])
   const [enabledAI, setEnabledAI] = useState({ guide: true, generate: true, check: true, record: true })
   const [aiRole, setAiRole] = useState(DEFAULT_AI_ROLE)
@@ -69,7 +69,8 @@ export default function WorkspaceDetailPage() {
     if (currentWorkspace) {
       const ac = currentWorkspace.ai_config || {}
       setAiConfig({
-        model: ac.model || 'claude-sonnet-4-6',
+        // 레거시 저장값(claude-sonnet-4-6 등)은 Sonnet 5로 정규화 — select 옵션과 불일치 방지
+        model: ac.model === 'claude-opus-4-8' ? 'claude-opus-4-8' : 'claude-sonnet-5',
       })
       const wc = currentWorkspace.workflow_config || {}
       setHiddenProcedures(wc.hiddenProcedures || [])
@@ -449,7 +450,7 @@ export default function WorkspaceDetailPage() {
                         background: `${phase?.color || '#3b82f6'}12`,
                         color: phase?.color || '#3b82f6',
                       }}>
-                        {project.current_procedure || 'T-1-1'}
+                        {proc?.displayCode || 'T-1'}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -457,7 +458,7 @@ export default function WorkspaceDetailPage() {
                         </h3>
                         <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: 0, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                          <span>{proc?.name || '비전설정'}</span>
+                          <span>{proc?.name || '공동 비전 설정'}</span>
                           {typeof project.message_count === 'number' && (
                             <span>· 💬 {project.message_count}개</span>
                           )}
@@ -632,7 +633,7 @@ export default function WorkspaceDetailPage() {
                   onChange={(e) => setAiConfig({ ...aiConfig, model: e.target.value })}
                   style={inputStyle}
                 >
-                  <option value="claude-sonnet-4-6">Claude Sonnet 4 (기본, 빠름)</option>
+                  <option value="claude-sonnet-5">Claude Sonnet 5 (기본, 빠름)</option>
                   <option value="claude-opus-4-8">Claude Opus 4.8 (최고 품질, 느림)</option>
                 </select>
                 <p style={hintStyle}>모든 프로젝트에 동일하게 적용됩니다</p>
@@ -796,7 +797,7 @@ export default function WorkspaceDetailPage() {
                         color: phase?.color || '#3B82F6',
                         flexShrink: 0,
                       }}>
-                        {proc.code}
+                        {proc.displayCode || proc.code}
                       </span>
                       <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>{proc.name}</span>
                     </label>

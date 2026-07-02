@@ -41,7 +41,7 @@ export const PROCEDURE_STEPS = {
   // (별도 스텝 없이 보드 입력으로만 구성)
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T-1-1: 비전설정 (9 스텝)
+  // T-1-1: 공동 비전 설정 (9 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'T-1-1': [
     {
@@ -128,15 +128,15 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T-1-2: 수업설계 방향 수립 (8 스텝)
+  // T-1-2: 수업설계 방향 설정 (8 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'T-1-2': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '수업설계 방향 수립 안내',
-      description: '수업설계 방향 수립의 의미와 진행 방법을 안내한다.',
+      title: '수업설계 방향 설정 안내',
+      description: '수업설계 방향 설정의 의미와 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
@@ -206,15 +206,15 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T-2-1: 역할 분담 (7 스텝)
+  // T-2-1: 역할 배분 (7 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'T-2-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '역할 분담 안내',
-      description: '역할 분담의 중요성과 진행 방법을 안내한다.',
+      title: '역할 배분 안내',
+      description: '역할 배분의 중요성과 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
@@ -240,8 +240,8 @@ export const PROCEDURE_STEPS = {
       stepNumber: 4,
       actionType: 'generate',
       actorColumn: 'team_ai',
-      title: '역할 분담 예시 생성',
-      description: 'AI가 팀원 강점을 고려한 역할 분담 예시를 제안한다.',
+      title: '역할 배분 예시 생성',
+      description: 'AI가 팀원 강점을 고려한 역할 배분 예시를 제안한다.',
       aiCapability: 'generate',
       boardField: null,
     },
@@ -268,22 +268,22 @@ export const PROCEDURE_STEPS = {
       actionType: 'record',
       actorColumn: 'ai_only',
       title: '저장 및 리포트',
-      description: 'AI가 역할 분담 결과를 보드에 저장하고 요약 리포트를 생성한다.',
+      description: 'AI가 역할 배분 결과를 보드에 저장하고 요약 리포트를 생성한다.',
       aiCapability: 'record',
       boardField: null,
     },
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T-2-2: 팀 규칙 (7 스텝)
+  // T-2-2: 팀 규칙 결정 (7 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'T-2-2': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '팀 규칙 설정 안내',
-      description: 'Ground Rule 설정의 의미와 진행 방법을 안내한다.',
+      title: '팀 규칙 결정 안내',
+      description: 'Ground Rule 결정의 의미와 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
@@ -344,15 +344,15 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // T-2-3: 팀 일정 (6 스텝)
+  // T-2-3: 팀 일정 결정 (6 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'T-2-3': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '팀 일정 수립 안내',
-      description: '팀 일정 수립의 진행 방법과 고려사항을 안내한다.',
+      title: '팀 일정 결정 안내',
+      description: '팀 일정 결정의 진행 방법과 고려사항을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
@@ -404,7 +404,7 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // A-1-1: 주제 선정 기준 (6 스텝)
+  // A-1-1: 주제 선정 기준 논의 및 조정 (6 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'A-1-1': [
     {
@@ -464,7 +464,7 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // A-1-2: 주제 선정 (8 스텝)
+  // A-1-2: 비전에 적합한 주제 선정 (8 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'A-1-2': [
     {
@@ -542,7 +542,7 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // A-2-1: 핵심 아이디어 및 성취기준 분석 (8 스텝)
+  // A-2-1: 주제의 상세 내용 분석 (8 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'A-2-1': [
     {
@@ -620,14 +620,14 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // A-2-2: 통합된 수업 목표 (8 스텝)
+  // A-2-2: 통합된 수업 목표 진술 (8 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'A-2-2': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '통합 수업목표 수립 안내',
+      title: '통합된 수업 목표 진술 안내',
       description: '세부학습목표와 통합학습목표의 차이, 목표 진술 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
@@ -698,15 +698,15 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Ds-1-1: 평가 계획 (8 스텝)
+  // Ds-1-1: 평가 설계 (8 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'Ds-1-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '평가 계획 안내',
-      description: '역방향 설계(Backward Design) 관점에서 평가 계획의 의미와 진행 방법을 안내한다.',
+      title: '평가 설계 안내',
+      description: '역방향 설계(Backward Design) 관점에서 평가 설계의 의미와 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
@@ -751,7 +751,7 @@ export const PROCEDURE_STEPS = {
       actionType: 'discuss',
       actorColumn: 'team',
       title: '활동별 평가 확정',
-      description: '팀이 활동별 평가 계획을 최종 확정한다.',
+      description: '팀이 활동별 평가 설계를 최종 확정한다.',
       aiCapability: null,
       boardField: 'assessments',
     },
@@ -760,7 +760,7 @@ export const PROCEDURE_STEPS = {
       actionType: 'check',
       actorColumn: 'team_ai',
       title: '수업목표-평가 정합성 검토',
-      description: 'AI가 수업목표와 평가 계획의 정합성을 검토한다.',
+      description: 'AI가 수업목표와 평가 설계의 정합성을 검토한다.',
       aiCapability: 'check',
       boardField: 'objectiveAlignmentCheck',
     },
@@ -769,14 +769,14 @@ export const PROCEDURE_STEPS = {
       actionType: 'record',
       actorColumn: 'ai_only',
       title: '저장 및 리포트',
-      description: 'AI가 평가 계획을 보드에 저장하고 요약 리포트를 생성한다.',
+      description: 'AI가 평가 설계를 보드에 저장하고 요약 리포트를 생성한다.',
       aiCapability: 'record',
       boardField: null,
     },
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Ds-1-2: 문제 상황 (8 스텝)
+  // Ds-1-2: 문제 상황 설정 (8 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'Ds-1-2': [
     {
@@ -1061,14 +1061,14 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // DI-1-1: 개발 자료 목록 (6 스텝)
+  // DI-1-1: 자료 탐색·개발 (6 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'DI-1-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '개발 자료 목록 안내',
+      title: '자료 탐색·개발 안내',
       description: '개발/탐색 자료의 구분 방법과 목록 작성 절차를 안내한다.',
       aiCapability: 'guide',
       boardField: null,
@@ -1121,14 +1121,14 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // DI-2-1: 수업 기록 (7 스텝)
+  // DI-2-1: 수업 실행·기록 (7 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'DI-2-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '수업 기록 안내',
+      title: '수업 실행·기록 안내',
       description: '효과적인 수업 기록의 방법과 기록 요소를 안내한다.',
       aiCapability: 'guide',
       boardField: null,
@@ -1190,14 +1190,14 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // E-1-1: 수업 성찰 (6 스텝)
+  // E-1-1: 수업 성찰과 공동 개선 (6 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'E-1-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '수업 성찰 안내',
+      title: '수업 성찰과 공동 개선 안내',
       description: '수업 성찰의 의미, 관점, 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
@@ -1250,15 +1250,15 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // E-2-1: 수업설계 과정 성찰 (5 스텝)
+  // E-2-1: 협력 과정 성찰 (5 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'E-2-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '과정 성찰 안내',
-      description: '수업설계 전체 과정에 대한 성찰의 의미와 진행 방법을 안내한다.',
+      title: '협력 과정 성찰 안내',
+      description: '협력 전체 과정에 대한 성찰의 의미와 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },

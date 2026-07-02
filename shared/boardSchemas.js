@@ -92,7 +92,7 @@ export const BOARD_SCHEMAS = {
     },
   },
 
-  // ─── T-2-1: 역할 분담 ───
+  // ─── T-2-1: 역할 배분 ───
   role_assignment: {
     fields: [
       { name: 'roles', label: '역할 배분', type: 'table', required: true,
@@ -236,7 +236,7 @@ export const BOARD_SCHEMAS = {
     },
   },
 
-  // ─── Ds-1-1: 평가 계획 ───
+  // ─── Ds-1-1: 평가 설계 ───
   assessment_plan: {
     fields: [
       { name: 'assessments', label: '평가 항목', type: 'table', required: true,
@@ -249,7 +249,7 @@ export const BOARD_SCHEMAS = {
           { name: 'rubricSummary', label: '루브릭 요약' },
         ] },
       { name: 'objectiveAlignmentCheck', label: '수업목표-평가 정합성', type: 'textarea', required: false,
-        description: 'AI 검토: 수업목표와 평가 계획의 정합성' },
+        description: 'AI 검토: 수업목표와 평가 설계의 정합성' },
     ],
     empty: {
       assessments: [], objectiveAlignmentCheck: '',
@@ -351,7 +351,7 @@ export const BOARD_SCHEMAS = {
     },
   },
 
-  // ─── DI-1-1: 개발 자료 목록 ───
+  // ─── DI-1-1: 자료 탐색·개발 ───
   material_list: {
     fields: [
       { name: 'materials', label: '개발 자료 목록', type: 'table', required: true,

@@ -35,9 +35,14 @@ export const PHASE_LIST = Object.values(PHASES).sort((a, b) => a.order - b.order
  * 세부절차(Procedure) 정의
  *
  * 키: 절차 코드 (예: 'T-1-1')
- * 값: { phase, name, description, order }
+ * 값: { phase, name, description, order, displayCode? }
  *
- * @type {Record<string, {phase: string, name: string, description: string, order: number}>}
+ * ⚠️ UI 표시 정책: 내부 코드(키, 'T-1-1' 등)는 교사에게 노출하지 않는다.
+ *    화면에 절차 코드를 표시할 때는 반드시 displayCode('T-1' 등)를 사용하고,
+ *    displayCode가 없는 절차(prep)는 코드 없이 이름만 표시한다.
+ *    (회귀 테스트: server/lib/__tests__/procedureDisplayCode.test.js)
+ *
+ * @type {Record<string, {phase: string, name: string, description: string, order: number, displayCode?: string}>}
  */
 export const PROCEDURES = {
   'prep': {
@@ -48,111 +53,129 @@ export const PROCEDURES = {
   },
   'T-1-1': {
     phase: 'T',
-    name: '비전설정',
+    name: '공동 비전 설정',
     description: '팀원들이 협력적 수업설계를 통해 실현하고자 하는 궁극적인 교육목적(비전)을 설정한다',
     order: 1,
+    displayCode: 'T-1',
   },
   'T-1-2': {
     phase: 'T',
-    name: '수업설계 방향 수립',
+    name: '수업설계 방향 설정',
     description: '비전을 기반으로 수업설계의 구체적 방향과 핵심 키워드를 도출한다',
     order: 2,
+    displayCode: 'T-2',
   },
   'T-2-1': {
     phase: 'T',
-    name: '역할 분담',
+    name: '역할 배분',
     description: '팀원별 강점을 파악하고, 수업설계 과정에서의 역할을 배분한다',
     order: 3,
+    displayCode: 'T-3',
   },
   'T-2-2': {
     phase: 'T',
-    name: '팀 규칙',
+    name: '팀 규칙 결정',
     description: '팀 활동의 Ground Rule을 브레인스토밍하고 핵심 규칙을 확정한다',
     order: 4,
+    displayCode: 'T-4',
   },
   'T-2-3': {
     phase: 'T',
-    name: '팀 일정',
+    name: '팀 일정 결정',
     description: '개인 일정을 공유하고, 모임·마감 일정을 조정하여 팀 일정표를 수립한다',
     order: 5,
+    displayCode: 'T-5',
   },
   'A-1-1': {
     phase: 'A',
-    name: '주제 선정 기준',
+    name: '주제 선정 기준 논의 및 조정',
     description: '융합 수업 주제를 선정하기 위한 기준을 논의하고 확정한다',
     order: 6,
+    displayCode: 'A-1',
   },
   'A-1-2': {
     phase: 'A',
-    name: '주제 선정',
+    name: '비전에 적합한 주제 선정',
     description: '교과 연계 주제를 구상하고, 비교·평가를 거쳐 최종 주제를 선정한다',
     order: 7,
+    displayCode: 'A-2',
   },
   'A-2-1': {
     phase: 'A',
-    name: '핵심 아이디어 및 성취기준 분석',
+    name: '주제의 상세 내용 분석',
     description: '교과별 성취기준의 지식·이해, 과정·기능, 가치·태도를 분석하고 연결맵을 작성한다',
     order: 8,
+    displayCode: 'A-3',
   },
   'A-2-2': {
     phase: 'A',
-    name: '통합된 수업 목표',
+    name: '통합된 수업 목표 진술',
     description: '교과별 세부학습목표를 통합하여 융합 수업의 통합학습목표를 수립한다',
     order: 9,
+    displayCode: 'A-4',
   },
   'Ds-1-1': {
     phase: 'Ds',
-    name: '평가 계획',
+    name: '평가 설계',
     description: '교과별 평가 내용과 방법을 구상하고, 수업목표-평가 정합성을 검토한다',
     order: 10,
+    displayCode: 'Ds-1',
   },
   'Ds-1-2': {
     phase: 'Ds',
-    name: '문제 상황',
+    name: '문제 상황 설정',
     description: '실제 데이터 기반의 문제 상황 초안을 생성하고, 통합 문제 상황을 결정한다',
     order: 11,
+    displayCode: 'Ds-2',
   },
   'Ds-1-3': {
     phase: 'Ds',
-    name: '학습 활동 설계',
+    name: '학습활동 설계',
     description: '문제 해결 절차에 따른 학습 활동을 설계하고, 교과·시간 배분을 결정한다',
     order: 12,
+    displayCode: 'Ds-3',
   },
   'Ds-2-1': {
     phase: 'Ds',
     name: '지원 도구 설계',
     description: '학습 활동에 필요한 도구를 선정하고 활용 방안을 매칭한다',
     order: 13,
+    displayCode: 'Ds-4',
   },
   'Ds-2-2': {
     phase: 'Ds',
     name: '스캐폴딩 설계',
     description: '학습자 관점에서 스캐폴딩 방안을 설계하고 적절성을 검토한다',
     order: 14,
+    displayCode: 'Ds-5',
   },
   'DI-1-1': {
     phase: 'DI',
-    name: '개발 자료 목록',
+    name: '자료 탐색·개발',
     description: '교과별 개발·탐색 자료를 구분하고, 제작 역할·일정·우선순위를 조정한다',
     order: 15,
+    displayCode: 'DI-1',
   },
   'DI-2-1': {
     phase: 'DI',
-    name: '수업 기록',
+    name: '수업 실행·기록',
     description: '수업 실행 중 주요 상황을 기록하고, 전사·분석을 통해 시사점을 도출한다',
     order: 16,
+    displayCode: 'DI-2',
   },
   'E-1-1': {
     phase: 'E',
-    name: '수업 성찰',
+    name: '수업 성찰과 공동 개선',
     description: '수업 과정과 결과를 공유하고, 개선사항을 도출하여 수업 개선 아이디어를 생성한다',
     order: 17,
+    displayCode: 'E-1',
   },
   'E-2-1': {
     phase: 'E',
-    name: '수업설계 과정 성찰',
+    name: '협력 과정 성찰',
     description: '협력적 수업설계 전체 과정을 성찰하고, 개선사항을 도출·수정·보완한다',
     order: 18,
+    displayCode: 'E-2',
   },
 }
 
@@ -163,6 +186,28 @@ export const PROCEDURES = {
 export const PROCEDURE_LIST = Object.entries(PROCEDURES)
   .map(([code, proc]) => ({ code, ...proc }))
   .sort((a, b) => a.order - b.order)
+
+/**
+ * UI 표시용 절차 코드 반환 — 내부 코드(T-1-1)는 노출하지 않고 displayCode(T-1)만.
+ * displayCode 없는 절차(prep)는 빈 문자열 (이름만 표시).
+ * @param {string} code - 내부 절차 코드
+ * @returns {string}
+ */
+export function getProcedureDisplayCode(code) {
+  return PROCEDURES[code]?.displayCode || ''
+}
+
+/**
+ * UI 표시용 절차 라벨 반환 — "T-1 공동 비전 설정" 또는 (displayCode 없으면) 이름만.
+ * @param {string} code - 내부 절차 코드
+ * @param {string} [nameOverride] - 이름을 외부 값(SSE 이벤트 등)으로 대체할 때
+ * @returns {string}
+ */
+export function getProcedureLabel(code, nameOverride) {
+  const proc = PROCEDURES[code]
+  const name = nameOverride || proc?.name || ''
+  return proc?.displayCode ? `${proc.displayCode} ${name}`.trim() : name
+}
 
 // ──────────────────────────────────────────
 // 액션 타입 (8종)
@@ -239,14 +284,14 @@ export const BOARD_TYPE_LABELS = {
   learner_context:      '학습자 맥락',
   team_vision:          '팀 비전',
   design_direction:     '수업설계 방향',
-  role_assignment:      '역할 분담',
+  role_assignment:      '역할 배분',
   team_rules:           '팀 규칙',
   team_schedule:        '팀 일정',
   topic_criteria:       '주제 선정 기준',
   topic_selection:      '선정 주제',
   standards_analysis:   '성취기준 분석',
   integrated_objectives:'통합 수업목표',
-  assessment_plan:      '평가 계획',
+  assessment_plan:      '평가 설계',
   problem_situation:    '문제 상황',
   learning_activities:  '학습 활동',
   support_tools:        '지원 도구',
@@ -254,7 +299,7 @@ export const BOARD_TYPE_LABELS = {
   material_list:        '개발 자료 목록',
   class_record:         '수업 기록',
   class_reflection:     '수업 성찰',
-  process_reflection:   '과정 성찰',
+  process_reflection:   '협력 과정 성찰',
 }
 
 // ──────────────────────────────────────────
@@ -271,51 +316,51 @@ export const PROCEDURE_ACTIVITIES = {
     description: '학년, 디지털 리터러시, 학급 구성 등 AI가 수업설계를 지원하는 데 필요한 기초 정보를 입력합니다.',
   },
   'T-1-1': {
-    activity: '비전설정',
+    activity: '공동 비전 설정',
     description: '개인의 교육적 비전을 구상하고, 팀 논의를 거쳐 공통 비전을 확정합니다.',
   },
   'T-1-2': {
-    activity: '수업설계 방향 수립',
+    activity: '수업설계 방향 설정',
     description: '비전을 기반으로 핵심 키워드를 도출하고, 수업설계의 구체적 방향을 합의합니다.',
   },
   'T-2-1': {
-    activity: '역할 분담',
+    activity: '역할 배분',
     description: '팀원별 강점과 전문성을 파악하고, 수업설계 과정에서의 역할을 배분합니다.',
   },
   'T-2-2': {
-    activity: '팀 규칙',
+    activity: '팀 규칙 결정',
     description: '팀 활동의 Ground Rule을 브레인스토밍하고 핵심 규칙을 결정합니다.',
   },
   'T-2-3': {
-    activity: '팀 일정',
+    activity: '팀 일정 결정',
     description: '개인 일정을 공유하고, 모임/마감 일정을 조정하여 팀 일정표를 수립합니다.',
   },
   'A-1-1': {
-    activity: '주제 선정 기준',
+    activity: '주제 선정 기준 논의 및 조정',
     description: '융합 수업 주제를 선정하기 위한 기준을 구상하고 논의하여 확정합니다.',
   },
   'A-1-2': {
-    activity: '주제 선정',
+    activity: '비전에 적합한 주제 선정',
     description: '교과 연계 주제를 구상하고, 비교 평가를 거쳐 최종 주제를 선정합니다.',
   },
   'A-2-1': {
-    activity: '핵심 아이디어 및 성취기준 분석',
+    activity: '주제의 상세 내용 분석',
     description: '교과별 성취기준의 지식·이해, 과정·기능, 가치·태도를 분석하고 연결맵을 작성합니다.',
   },
   'A-2-2': {
-    activity: '통합된 수업 목표',
+    activity: '통합된 수업 목표 진술',
     description: '교과별 세부학습목표를 통합하여 융합 수업의 통합학습목표를 수립합니다.',
   },
   'Ds-1-1': {
-    activity: '평가 계획',
+    activity: '평가 설계',
     description: '교과별 평가 내용과 방법을 구상하고, 수업목표-평가 정합성을 검토합니다.',
   },
   'Ds-1-2': {
-    activity: '문제 상황',
+    activity: '문제 상황 설정',
     description: '실제 데이터 기반의 문제 상황을 생성하고, 통합 문제 상황을 결정합니다.',
   },
   'Ds-1-3': {
-    activity: '학습 활동 설계',
+    activity: '학습활동 설계',
     description: '문제 해결 절차에 따른 학습 활동을 설계하고, 교과/시간 배분을 결정합니다.',
   },
   'Ds-2-1': {
@@ -327,19 +372,19 @@ export const PROCEDURE_ACTIVITIES = {
     description: '학습자 관점에서 스캐폴딩 방안을 설계하고 적절성을 검토합니다.',
   },
   'DI-1-1': {
-    activity: '개발 자료 목록',
+    activity: '자료 탐색·개발',
     description: '교과별 개발/탐색 자료를 구분하고, 제작 역할·일정·우선순위를 조정합니다.',
   },
   'DI-2-1': {
-    activity: '수업 기록',
+    activity: '수업 실행·기록',
     description: '수업 실행 중 주요 상황을 기록하고, 전사/분석을 통해 시사점을 도출합니다.',
   },
   'E-1-1': {
-    activity: '수업 성찰',
+    activity: '수업 성찰과 공동 개선',
     description: '수업 과정과 결과를 공유하고, 개선사항을 도출하여 수업 개선 아이디어를 생성합니다.',
   },
   'E-2-1': {
-    activity: '수업설계 과정 성찰',
+    activity: '협력 과정 성찰',
     description: '협력적 수업설계 전체 과정을 성찰하고, 개선사항을 도출·수정·보완합니다.',
   },
 }

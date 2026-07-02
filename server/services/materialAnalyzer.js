@@ -37,10 +37,9 @@ const TEXT_TRUNCATE = 20000
 /** AI 분석 타임아웃 (ms) */
 const AI_TIMEOUT_MS = 60_000
 /**
- * 자료 분석용 AI 모델 — 프로젝트 다수가 claude-sonnet-4-6(fast) 사용 중이므로 동일 유지.
- * aiAgent.js의 MODEL_MAP.fast와 일치.
+ * 자료 분석용 AI 모델 — aiAgent.js의 MODEL_MAP.fast와 일치.
  */
-const ANALYZER_MODEL = 'claude-sonnet-4-6'
+const ANALYZER_MODEL = 'claude-sonnet-5'
 
 // ── 시스템 프롬프트 (캐싱 대상, intent 블록은 끝에 배치) ──
 // 앞 부분(공통 규칙)을 고정해 프롬프트 캐시 히트율을 유지한다.

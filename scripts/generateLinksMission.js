@@ -17,7 +17,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ─── 설정 ───
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-5'; // 구 claude-sonnet-4-20250514는 deprecated
 const CONCURRENCY = 5;
 const OUTPUT_DIR = path.join(__dirname, 'mission_output');
 const REPORT_DIR = path.join(__dirname, 'mission_reports');

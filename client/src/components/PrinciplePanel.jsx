@@ -4,7 +4,7 @@ import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
 import { Layers, Target, ChevronDown, ChevronRight } from 'lucide-react'
 
 export default function PrinciplePanel({ stage }) {
-  const { principles, generalPrinciples } = useProcedureStore()
+  const { principles, generalPrinciples, relevantGeneralPrincipleIds } = useProcedureStore()
   // stage는 procedure 코드(예: 'T-1-1') 또는 레거시 숫자
   const procedureInfo = PROCEDURES[stage]
   const [expandedGP, setExpandedGP] = useState(null)
@@ -51,7 +51,7 @@ export default function PrinciplePanel({ stage }) {
                   className="w-full flex items-center gap-2 p-3 text-left hover:bg-blue-100/50 transition-colors rounded-lg"
                 >
                   <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded shrink-0">
-                    {substep}
+                    {PROCEDURES[substep]?.displayCode || PROCEDURES[substep]?.name || substep}
                   </span>
                   <span className="text-sm font-medium text-blue-900 flex-1">{items.length}개 유의사항</span>
                   {expandedSubstep === substep
@@ -98,8 +98,13 @@ export default function PrinciplePanel({ stage }) {
           </div>
         ) : (
           <div className="space-y-2">
-            {generalPrinciples.map((gp) => (
-              <div key={gp.id} className="bg-purple-50 rounded-lg border border-purple-100">
+            {generalPrinciples.map((gp) => {
+              const isRelevant = relevantGeneralPrincipleIds?.includes(gp.id)
+              return (
+              <div
+                key={gp.id}
+                className={`rounded-lg border ${isRelevant ? 'bg-purple-100 border-purple-300 ring-1 ring-purple-300' : 'bg-purple-50 border-purple-100'}`}
+              >
                 <button
                   onClick={() => toggleGP(gp.id)}
                   className="w-full flex items-start gap-2 p-3 text-left hover:bg-purple-100/50 transition-colors rounded-lg"
@@ -108,7 +113,14 @@ export default function PrinciplePanel({ stage }) {
                     {gp.id.replace('GP0', '')}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-purple-900">{gp.name}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-purple-900">{gp.name}</p>
+                      {isRelevant && (
+                        <span className="text-[10px] bg-purple-600 text-white px-1.5 py-0.5 rounded-full shrink-0">
+                          이 절차에서 특히
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-purple-700 mt-0.5 leading-relaxed">{gp.description}</p>
                   </div>
                   {expandedGP === gp.id
@@ -128,7 +140,8 @@ export default function PrinciplePanel({ stage }) {
                   </div>
                 )}
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

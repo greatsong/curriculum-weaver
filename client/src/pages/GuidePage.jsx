@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Logo from '../components/Logo'
+import { PHASE_LIST, PROCEDURES } from 'curriculum-weaver-shared/constants.js'
 
 /* ───────────────────────── 유틸 ───────────────────────── */
 
@@ -261,10 +262,10 @@ function MockChatPanel() {
 /** 보드 목업 */
 function MockBoard() {
   return (
-    <BrowserFrame title="T-1-1 팀 비전 보드">
+    <BrowserFrame title="T-1 팀 비전 보드">
       <div className="space-y-3">
         <div className="flex items-center gap-2 mb-1">
-          <PhaseBadge code="T-1-1" label="비전설정" color="violet" />
+          <PhaseBadge code="T-1" label="공동 비전 설정" color="violet" />
           <span className="text-xs text-slate-400">|</span>
           <span className="text-xs text-slate-500">AI 제안 반영됨</span>
         </div>
@@ -428,28 +429,21 @@ function FAQItem({ q, a }) {
 
 /* ─────────────── 워크플로우 데이터 ─────────────── */
 
-const PHASES = [
-  {
-    code: 'T', name: '팀준비', color: 'violet',
-    procedures: ['T-1-1 비전설정', 'T-1-2 방향수립', 'T-2-1 역할분담', 'T-2-2 팀규칙', 'T-2-3 팀일정'],
-  },
-  {
-    code: 'A', name: '분석', color: 'blue',
-    procedures: ['A-1-1 주제선정기준', 'A-1-2 주제선정', 'A-2-1 성취기준분석', 'A-2-2 통합목표'],
-  },
-  {
-    code: 'Ds', name: '설계', color: 'emerald',
-    procedures: ['Ds-1-1 평가계획', 'Ds-1-2 문제상황', 'Ds-1-3 학습활동', 'Ds-2-1 지원도구', 'Ds-2-2 스캐폴딩'],
-  },
-  {
-    code: 'DI', name: '개발/실행', color: 'amber',
-    procedures: ['DI-1-1 자료목록', 'DI-2-1 수업기록'],
-  },
-  {
-    code: 'E', name: '평가', color: 'rose',
-    procedures: ['E-1-1 수업성찰', 'E-2-1 과정성찰'],
-  },
-]
+// 가이드북(3장) 및 shared/constants.js의 PROCEDURES를 그대로 파생시켜, 원본이 바뀌어도
+// 이 안내 페이지가 따로 관리하던 사본 때문에 내용이 어긋나지 않도록 한다.
+const PHASE_COLOR_BY_ID = { T: 'violet', A: 'blue', Ds: 'emerald', DI: 'amber', E: 'rose' }
+
+const PHASES = PHASE_LIST
+  .filter((p) => p.id !== 'prep')
+  .map((p) => ({
+    code: p.id,
+    name: p.name,
+    color: PHASE_COLOR_BY_ID[p.id],
+    procedures: Object.entries(PROCEDURES)
+      .filter(([, proc]) => proc.phase === p.id)
+      .sort((a, b) => a[1].order - b[1].order)
+      .map(([, proc]) => (proc.displayCode ? `${proc.displayCode} ${proc.name}` : proc.name)),
+  }))
 
 const PHASE_BG = {
   violet: 'from-violet-50 to-violet-100/50 border-violet-200',

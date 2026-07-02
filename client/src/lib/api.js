@@ -255,7 +255,7 @@ export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardS
       try {
         const parsed = JSON.parse(data)
         if (parsed.type === 'text') onText?.(parsed.content)
-        else if (parsed.type === 'principles') onPrinciples?.(parsed.principles)
+        else if (parsed.type === 'principles') onPrinciples?.(parsed.principles, parsed.relevantGeneralPrincipleIds)
         else if (parsed.type === 'board_suggestions') onBoardSuggestions?.(parsed.suggestions, parsed.appliedBoards)
         else if (parsed.type === 'stage_advance' || parsed.type === 'procedure_advance') onStageAdvance?.(parsed)
         else if (parsed.type === 'step_advance') onStageAdvance?.(parsed)

@@ -13,3 +13,6 @@ server/data/embeddings-cache.json
 
 # 프로젝트 로컬 백업 (실제 교사 대화 포함 — 커밋 금지)
 backups/
+
+# gstack 보안 감사 리포트 (로컬 전용)
+.gstack/

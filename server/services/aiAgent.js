@@ -20,7 +20,7 @@ import {
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { getBoardSchemaForPrompt } from 'curriculum-weaver-shared/boardSchemas.js'
 import { PROCEDURE_GUIDE, COMMON_RULES, getCoherenceTargets } from '../data/procedureGuide.js'
-import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
+import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -29,7 +29,7 @@ const aiQueue = new PQueue({ concurrency: 5, timeout: 60000 })
 
 // AI 모델 매핑 (빠른 모드 / 정밀 모드)
 const MODEL_MAP = {
-  fast: 'claude-sonnet-4-6',
+  fast: 'claude-sonnet-5',
   precise: 'claude-opus-4-8',
 }
 
@@ -223,6 +223,32 @@ function buildGeneralPrinciplesText() {
 다음 5가지 총괄 원리와 지침은 모든 설계 절차에서 일관되게 적용되어야 합니다.
 
 ${gpBlocks}`
+}
+
+// ──────────────────────────────────────────
+// 헬퍼 함수: 절차별 활동 흐름(가이드북 3장 반영)
+// ──────────────────────────────────────────
+
+/**
+ * 절차의 활동 흐름(activityFlow)과 활동 사례(exampleCase)를 프롬프트 텍스트로 변환
+ * — 가이드북의 ➊➋➌➍ 흐름·협력UP 태그·WITH AI 예시를 AI가 참고하도록 제공
+ */
+function buildActivityFlowText(guide) {
+  if (!guide?.activityFlow?.length) return ''
+
+  const stepLines = guide.activityFlow.map(step => {
+    const gpName = getGeneralPrincipleName(step.collaborationTag)
+    const tag = gpName ? ` (협력UP: ${gpName})` : ''
+    const prompt = step.aiPrompt ? `\n    WITH AI 예시: "${step.aiPrompt}"` : ''
+    return `  ${step.step}. ${step.title}${tag}\n    ${step.description}${prompt}`
+  }).join('\n\n')
+
+  const example = guide.exampleCase
+    ? `\n\n활동 사례(${guide.exampleCase.title}): ${guide.exampleCase.content}`
+    : ''
+
+  return `[활동 흐름 — 가이드북 반영]
+${stepLines}${example}`
 }
 
 // ──────────────────────────────────────────
@@ -657,6 +683,11 @@ AI 역할:
 
 성찰 질문:
 ${guide.reflectionQuestions.map(q => `  - ${q}`).join('\n')}`)
+
+    const activityFlowText = buildActivityFlowText(guide)
+    if (activityFlowText) {
+      parts.push(activityFlowText)
+    }
   }
 
   // ─── 3. 현재 스텝 정보 + 스텝 목록 ───

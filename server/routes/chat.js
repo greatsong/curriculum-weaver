@@ -22,7 +22,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials } from '../lib/store.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
-import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
+import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
 import { PROCEDURE_GUIDE } from '../data/procedureGuide.js'
 import { resolveSelectedMaterialIds } from '../lib/materialSelection.js'
@@ -47,7 +47,12 @@ function buildStaticIntro(procedureCode) {
     lines.push('')
   }
 
-  lines.push(`**[${phaseInfo?.name || ''} > ${procedureCode}: ${procInfo.name}]** 절차에 진입했습니다.`)
+  // 교사에게는 내부 코드(T-1-1 등)를 노출하지 않고, 가이드북 표시용 displayCode(T-1 등)만 보여준다.
+  // displayCode가 없는 절차(prep 등)는 코드 표기 없이 단계명만 표시.
+  const header = procInfo.displayCode
+    ? `${phaseInfo?.name || ''} > ${procInfo.displayCode}: ${procInfo.name}`
+    : `${phaseInfo?.name || ''}: ${procInfo.name}`
+  lines.push(`**[${header}]** 절차에 진입했습니다.`)
   lines.push('')
 
   // 핵심 질문
@@ -80,6 +85,32 @@ function buildStaticIntro(procedureCode) {
     lines.push(`**첫 번째 스텝**: ${first.title}`)
     lines.push(`- ${first.description}`)
     lines.push('')
+  }
+
+  // 활동 흐름 / 협력UP / WITH AI 프롬프트 예시 / 활동 사례 (가이드북 3장 반영)
+  if (guide.activityFlow?.length) {
+    lines.push(`**활동 흐름**`)
+    lines.push('')
+    for (const step of guide.activityFlow) {
+      const gpName = getGeneralPrincipleName(step.collaborationTag, { short: true })
+      const tag = gpName ? ` _(협력UP: ${gpName})_` : ''
+      lines.push(`${step.step}. **${step.title}**${tag}`)
+      lines.push(`   ${step.description}`)
+      if (step.aiPrompt) {
+        lines.push('')
+        lines.push('   WITH AI 프롬프트 예시:')
+        lines.push('   ```')
+        lines.push(`   ${step.aiPrompt}`)
+        lines.push('   ```')
+      }
+      lines.push('')
+    }
+
+    if (guide.exampleCase) {
+      lines.push(`> **활동 사례 — ${guide.exampleCase.title}**`)
+      lines.push(`> ${guide.exampleCase.content}`)
+      lines.push('')
+    }
   }
 
   lines.push(`이 절차에서 궁금한 점이 있으시면 자유롭게 질문해 주세요!`)
@@ -675,9 +706,15 @@ chatRouter.post('/message', async (req, res) => {
     const generalPrinciples = GENERAL_PRINCIPLES || []
     const principlesUsed = generalPrinciples.map((gp) => gp.id)
 
+    // 현재 절차의 활동흐름(가이드북 3장)이 실제로 강조하는 협력UP 원리 — PrinciplePanel 강조 표시용
+    const activeGuide = PROCEDURE_GUIDE[activeProcedure]
+    const relevantGeneralPrincipleIds = activeGuide?.activityFlow?.length
+      ? [...new Set(activeGuide.activityFlow.map((step) => step.collaborationTag).filter(Boolean))]
+      : []
+
     // 적용된 원칙 전송
     if (principlesUsed.length > 0) {
-      res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.PRINCIPLES, principles: principlesUsed })}\n\n`)
+      res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.PRINCIPLES, principles: principlesUsed, relevantGeneralPrincipleIds })}\n\n`)
     }
 
     // Claude API 스트리밍 응답
