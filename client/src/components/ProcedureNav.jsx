@@ -3,7 +3,7 @@ import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { useState } from 'react'
 
 /**
- * 16 절차를 6개 Phase 그룹으로 보여주는 네비게이션
+ * 준비(prep) + 5개 과정(T·A·Ds·DI·E)의 18개 세부활동을 그룹으로 보여주는 네비게이션
  * Dribbble-quality: 깔끔한 수평 탭 + 확장 절차 바
  */
 export default function ProcedureNav({

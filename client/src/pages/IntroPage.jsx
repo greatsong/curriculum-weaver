@@ -4,17 +4,17 @@ import Logo from '../components/Logo'
 import { Bot, Users, User, ArrowRight, Sparkles, MessageSquare, LayoutDashboard, BookOpen } from 'lucide-react'
 
 const PROCESS_STEPS = [
-  { phase: 'T', stages: ['T-1 비전·방향', 'T-2 환경 조성'], color: '#8b5cf6' },
-  { phase: 'A', stages: ['A-1 주제 선정', 'A-2 내용·목표 분석'], color: '#3b82f6' },
-  { phase: 'Ds', stages: ['Ds-1 활동 설계', 'Ds-2 지원 설계'], color: '#22c55e' },
-  { phase: 'DI', stages: ['DI-1 자료 개발', 'DI-2 수업 실행'], color: '#f59e0b' },
-  { phase: 'E', stages: ['E-1 수시 평가', 'E-2 종합평가'], color: '#ef4444' },
+  { phase: 'T', stages: ['비전', '방향', '역할', '규칙', '일정'], color: '#8b5cf6' },
+  { phase: 'A', stages: ['주제 기준', '주제 선정', '성취기준 분석', '통합 목표'], color: '#3b82f6' },
+  { phase: 'Ds', stages: ['평가', '문제 상황', '학습활동', '자료·도구', '스캐폴딩'], color: '#22c55e' },
+  { phase: 'DI', stages: ['자료 개발', '수업 실행·기록'], color: '#f59e0b' },
+  { phase: 'E', stages: ['수업 개선', '협력 성찰'], color: '#ef4444' },
 ]
 
 const FEATURES = [
   { icon: MessageSquare, title: 'AI 퍼실리테이터', desc: '단계별 핵심 질문과 예시로 설계를 안내합니다' },
   { icon: LayoutDashboard, title: '설계 보드', desc: 'AI 대화 내용이 보드에 자동 반영됩니다' },
-  { icon: BookOpen, title: '40가지 설계 원칙', desc: '검증된 설계 원칙으로 수업 품질을 높입니다' },
+  { icon: BookOpen, title: '5가지 협력 원리', desc: '검증된 협력 원리로 설계 품질을 높입니다' },
   { icon: Users, title: '실시간 협업', desc: '초대 코드로 동료 교사와 함께 설계합니다' },
 ]
 
@@ -46,14 +46,14 @@ export default function IntroPage() {
         <p className="text-sm text-gray-500 max-w-xl mx-auto leading-relaxed">
           교사 팀의 협력적 수업설계 과정을 AI가 퍼실리테이터로서 함께합니다.
           단계별 핵심 질문과 예시 자료를 통해 설계를 안내하고,
-          40가지 검증된 설계 원칙으로 수업의 품질을 높입니다.
+          검증된 5가지 협력 원리로 협력적 수업 설계의 품질을 높입니다.
         </p>
       </div>
 
       {/* TADDs-DIE 프로세스 */}
       <div className="max-w-4xl mx-auto px-4 pb-10">
         <h2 className="text-center text-sm font-semibold text-gray-500 uppercase tracking-wider mb-6">
-          TADDs-DIE 설계 프로세스 (10단계)
+          TADDs-DIE 설계 프로세스 (5개 과정 · 18개 세부활동)
         </h2>
         <div className="flex flex-col sm:flex-row items-stretch gap-2 sm:gap-1">
           {PROCESS_STEPS.map((step, i) => {

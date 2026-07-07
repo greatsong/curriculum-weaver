@@ -1,7 +1,7 @@
 # curriculum-weaver — Claude Code 가이드
 
 ## 프로젝트 개요
-교사들이 AI와 함께 40가지 설계 원리 기반으로 융합 수업을 협력 설계하는 플랫폼
+교사들이 AI와 함께 5가지 협력 원리(협력UP: 활성화·외현화·조정·상호의존·인지분산) 기반으로 융합 수업을 협력 설계하는 플랫폼
 
 ## 기술 스택
 - **프론트엔드**: React 19, Vite 7, Tailwind CSS 4, Zustand 5, React Router 7

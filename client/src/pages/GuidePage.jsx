@@ -315,7 +315,7 @@ function MockPrinciplesPanel() {
             </div>
           </div>
         ))}
-        <div className="text-[10px] text-slate-400 text-center mt-2">40가지 원리 중 3개 매칭됨</div>
+        <div className="text-[10px] text-slate-400 text-center mt-2">5가지 협력 원리 중 3개 매칭됨</div>
       </div>
     </BrowserFrame>
   )
@@ -385,7 +385,7 @@ const FAQ_DATA = [
   },
   {
     q: '어떤 AI를 사용하나요?',
-    a: 'Anthropic의 Claude를 AI 공동설계자로 사용합니다. 교육과정 전문 프롬프트 엔지니어링을 통해 40가지 설계 원리에 기반한 맥락 있는 제안을 제공합니다.',
+    a: 'Anthropic의 Claude를 AI 공동설계자로 사용합니다. 교육과정 전문 프롬프트 엔지니어링을 통해 5가지 협력 원리에 기반한 맥락 있는 제안을 제공합니다.',
   },
   {
     q: '몇 명까지 함께 설계할 수 있나요?',
@@ -393,7 +393,7 @@ const FAQ_DATA = [
   },
   {
     q: '생성된 수업 설계를 다운로드할 수 있나요?',
-    a: 'PDF와 DOCX 형식으로 내보내기가 가능합니다. 19개 절차별 보드 내용, AI 대화 기록, 팀 댓글까지 포함된 완전한 설계 문서를 받아보실 수 있습니다.',
+    a: 'PDF와 DOCX 형식으로 내보내기가 가능합니다. 18개 세부활동별 보드 내용, AI 대화 기록, 팀 댓글까지 포함된 완전한 설계 문서를 받아보실 수 있습니다.',
   },
   {
     q: '교육과정 성취기준은 어떻게 활용되나요?',
@@ -517,8 +517,8 @@ export default function GuidePage() {
             AI와 함께<br className="sm:hidden" /> 융합 수업을<br />설계하세요
           </h1>
           <p className="text-base sm:text-lg text-slate-500 max-w-xl mx-auto mb-10 leading-relaxed">
-            40가지 설계 원리 기반 협력적 수업 설계 플랫폼.<br className="hidden sm:block" />
-            교사 팀이 AI 공동설계자와 함께 19개 절차를 따라<br className="hidden sm:block" />
+            5가지 협력 원리 기반 협력적 수업 설계 플랫폼.<br className="hidden sm:block" />
+            교사 팀이 AI 공동설계자와 함께 5개 과정, 18개 세부활동을 따라<br className="hidden sm:block" />
             체계적으로 융합 수업을 만들어갑니다.
           </p>
           <div className="flex items-center justify-center gap-3">
@@ -575,7 +575,7 @@ export default function GuidePage() {
       <Section id="workflow" className="bg-slate-50/80">
         <div className="text-center mb-16">
           <span className="text-xs font-semibold text-violet-600 tracking-widest uppercase mb-3 block">Workflow</span>
-          <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-3">5 Phase, 19 절차의 체계적 설계</h2>
+          <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-3">5개 과정, 18개 세부활동의 체계적 설계</h2>
           <p className="text-sm text-slate-500 max-w-lg mx-auto">
             팀 준비부터 평가까지, 검증된 절차를 따라 빈틈 없이 수업을 설계합니다.
           </p>
@@ -589,8 +589,8 @@ export default function GuidePage() {
               className={`bg-gradient-to-r ${PHASE_BG[phase.color]} border rounded-xl p-5 md:p-6`}
             >
               <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
-                <PhaseBadge code={`Phase ${phase.code}`} label={phase.name} color={phase.color} />
-                <span className="text-xs text-slate-400">{phase.procedures.length}개 절차</span>
+                <PhaseBadge code={phase.code} label={phase.name} color={phase.color} />
+                <span className="text-xs text-slate-400">{phase.procedures.length}개 세부활동</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {phase.procedures.map((proc) => (
@@ -723,24 +723,21 @@ export default function GuidePage() {
         </div>
       </Section>
 
-      {/* S4-3: 40가지 설계 원리 */}
+      {/* S4-3: 5가지 협력 원리 */}
       <Section id="principles">
         <div className="grid md:grid-cols-2 gap-10 md:gap-16 items-center">
           <div>
             <span className="text-xs font-semibold text-blue-600 tracking-widest uppercase mb-3 block">Design Principles</span>
-            <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4">40가지 설계 원리</h2>
+            <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4">5가지 협력 원리</h2>
             <p className="text-sm text-slate-600 leading-relaxed mb-5">
-              교육학 연구에서 검증된 40가지 설계 원리가 각 절차에 맞게 자동으로 제시됩니다. AI가 원리에 기반하여 설계를 점검하고 개선점을 제안합니다.
+              교육학 연구에서 검증된 5가지 협력 원리가 각 세부활동에 맞게 자동으로 제시됩니다. AI가 원리에 기반하여 설계를 점검하고 개선점을 제안합니다.
             </p>
             <div className="flex flex-wrap gap-2">
-              {['상호 의존', '인지 분산', '활성화', '시연', '적용', '통합', '점진적 복잡성', '메타인지'].map((p) => (
+              {['활성화', '외현화', '조정', '상호 의존', '인지 분산'].map((p) => (
                 <span key={p} className="px-3 py-1.5 bg-blue-50 text-blue-700 text-xs rounded-full font-medium border border-blue-100">
                   {p}
                 </span>
               ))}
-              <span className="px-3 py-1.5 bg-slate-50 text-slate-400 text-xs rounded-full font-medium border border-slate-100">
-                +32개
-              </span>
             </div>
           </div>
           <MockPrinciplesPanel />
@@ -784,7 +781,7 @@ export default function GuidePage() {
           <span className="text-xs font-semibold text-emerald-600 tracking-widest uppercase mb-3 block">Try Demo</span>
           <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-3">3분 만에 체험해 보세요</h2>
           <p className="text-sm text-slate-500 mb-10">
-            학년, 교과, 주제만 입력하면 AI가 19개 절차의 수업 설계를 자동으로 생성합니다.
+            학년, 교과, 주제만 입력하면 AI가 5개 과정, 18개 세부활동의 수업 설계를 자동으로 생성합니다.
           </p>
 
           {/* 데모 입력 폼 목업 */}
@@ -872,7 +869,7 @@ export default function GuidePage() {
             <span className="text-xs text-slate-500">커리큘럼 위버</span>
           </div>
           <p className="text-xs text-slate-600">
-            40가지 설계 원리 기반 AI 협력적 수업 설계 플랫폼
+            5가지 협력 원리 기반 AI 협력적 수업 설계 플랫폼
           </p>
         </div>
       </footer>
