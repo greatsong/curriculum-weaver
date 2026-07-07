@@ -1,6 +1,12 @@
 /**
  * seed-standards-to-supabase.mjs
  *
+ * ⚠️ [DEPRECATED] 레거시 ETL 소스(standards_full.json, 4,484개)를 시드한다.
+ *    이 소스는 검색 런타임(store.js → server/data/standards.js, 4,856개 정본)과
+ *    code 집합이 다르고 일부 content가 잘려 있어 DB/검색 불일치를 유발한다.
+ *    정본 기준 재정합은 scripts/seed-standards-from-canonical.mjs 를 사용할 것.
+ *    검증은 scripts/verify-standards-supabase.mjs.
+ *
  * standards_full.json → Supabase curriculum_standards 테이블 upsert
  *
  * 실행: node scripts/seed-standards-to-supabase.mjs

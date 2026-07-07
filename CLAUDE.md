@@ -34,6 +34,24 @@ curriculum-weaver/
 - `scripts/migrateLinksToDB.js` — generatedLinks.js → curriculum_links 테이블 마이그레이션
 - `supabase/migrations/` — 15개 테이블 스키마 + RLS + Realtime
 
+## 성취기준 데이터 정본 (2026-06-12 일원화)
+
+성취기준 데이터는 **`server/data/standards.js` (`ALL_STANDARDS`, 4,856개 code)** 가 **정본**이다.
+검색 런타임·reload·Supabase 시드가 모두 이 단일 파일을 소스로 쓴다.
+
+| 파일 | 역할 | 비고 |
+|------|------|------|
+| `server/data/standards.js` | **정본** (4,856 code) | `store.js`가 import. `parse-xlsx-to-standards.mjs`가 직접 출력 |
+| `server/data/standards_full.js` | **레거시 ETL** (4,484 code) | 풍부한 메타(competencies/content_system/assessment_guide)의 원천이나 일부 content가 잘림 + 정본 외 10개 code. 더 이상 런타임 소스 아님 |
+| `server/data/standards_social.js` | 사회과 412개 (`SOCIAL_STANDARDS`) | 오프라인 링크생성 스크립트 전용. 검색 런타임 미사용(standards.js에 사회 145개 별도 포함) |
+
+- **검색**: `routes/standards.js`의 `/search`는 항상 `store.js`의 인메모리 `Standards`(= standards.js, 오염필터 후 4,711개)를 단일 소스로 사용. Supabase `searchStandards`는 미사용.
+- **reload()**: `store.js`의 `Standards.reload()`는 정본 standards.js만 로드(과거 standards_full.js 우선 → 4,484로 되돌아가던 버그 제거). initStore와 동일하게 4,711 반환.
+- **Supabase 재정합**: `scripts/seed-standards-from-canonical.mjs` — 정본 구동, `code` onConflict upsert, 기존 id·rich 메타·embedding 보존(비파괴). content는 정본 권위로 교체, 나머지는 빈 값만 채움.
+- **검증**: `scripts/verify-standards-supabase.mjs` — 검색 code 전부가 Supabase에서 resolve되는지 확인(현재 PASS).
+- `scripts/seed-standards-to-supabase.mjs`는 레거시(standards_full.json 시드) — **DEPRECATED**, 사용 금지.
+- Supabase에는 정본 외 잉여 code 10개(`[12정치…]`, `[디직 …]`, `[성직 …]`)가 남아 있음. FK 참조 0건이라 삭제 가능하나 검색엔 안 나오므로 무해.
+
 ## 환경변수
 - 클라이언트: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 - 서버: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`

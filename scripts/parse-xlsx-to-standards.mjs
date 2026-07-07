@@ -404,9 +404,11 @@ function main() {
 export const ALL_STANDARDS = ${JSON.stringify(deduped, null, 2)};
 `;
 
-  const outPath = join(__dirname, '..', 'server', 'data', 'standards_new.js');
+  // 정본 standards.js로 직접 출력 (store.js import + reload + Supabase 시드의 단일 소스).
+  // 과거에는 standards_new.js로 써서 수동 승격해야 했고, 그 결과 바이트 동일한 중복 파일이 남았다.
+  const outPath = join(__dirname, '..', 'server', 'data', 'standards.js');
   writeFileSync(outPath, output, 'utf-8');
-  console.log(`\n✅ 출력: ${outPath}`);
+  console.log(`\n✅ 출력(정본): ${outPath}`);
   console.log(`총 ${deduped.length}개 성취기준`);
 }
 
