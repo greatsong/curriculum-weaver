@@ -700,9 +700,9 @@ export default function GuidePage() {
           </div>
           <div className="order-1 md:order-2">
             <span className="text-xs font-semibold text-emerald-600 tracking-widest uppercase mb-3 block">Design Boards</span>
-            <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4">19개 설계 보드</h2>
+            <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4">18개 설계 보드</h2>
             <p className="text-sm text-slate-600 leading-relaxed mb-5">
-              각 절차마다 전용 보드가 자동으로 생성됩니다. AI가 초안을 제안하면 교사가 수락, 편집, 거부를 선택할 수 있습니다.
+              각 세부활동마다 전용 보드가 자동으로 생성됩니다. AI가 초안을 제안하면 교사가 수락, 편집, 거부를 선택할 수 있습니다.
             </p>
             <ul className="space-y-2.5 text-sm text-slate-600">
               {[

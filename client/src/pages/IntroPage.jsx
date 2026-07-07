@@ -6,7 +6,7 @@ import { Bot, Users, User, ArrowRight, Sparkles, MessageSquare, LayoutDashboard,
 const PROCESS_STEPS = [
   { phase: 'T', stages: ['비전', '방향', '역할', '규칙', '일정'], color: '#8b5cf6' },
   { phase: 'A', stages: ['주제 기준', '주제 선정', '성취기준 분석', '통합 목표'], color: '#3b82f6' },
-  { phase: 'Ds', stages: ['평가', '문제 상황', '학습활동', '자료·도구', '스캐폴딩'], color: '#22c55e' },
+  { phase: 'Ds', stages: ['평가', '문제 상황', '학습활동', '자료와 도구', '스캐폴딩'], color: '#22c55e' },
   { phase: 'DI', stages: ['자료 개발', '수업 실행·기록'], color: '#f59e0b' },
   { phase: 'E', stages: ['수업 개선', '협력 성찰'], color: '#ef4444' },
 ]
@@ -57,7 +57,7 @@ export default function IntroPage() {
         </h2>
         <div className="flex flex-col sm:flex-row items-stretch gap-2 sm:gap-1">
           {PROCESS_STEPS.map((step, i) => {
-            const phaseInfo = PHASES.find((p) => p.id === step.phase)
+            const phaseInfo = Object.values(PHASES).find((p) => p.id === step.phase)
             return (
               <div key={step.phase} className="flex-1 flex flex-col">
                 <div
