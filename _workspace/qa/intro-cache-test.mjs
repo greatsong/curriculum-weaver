@@ -138,13 +138,13 @@ for (const code of guideCodes) {
 console.log('\n[1-2] T-1-1 첫 절차 인사 포함')
 const t11Intro = buildStaticIntro('T-1-1')
 assert(t11Intro.includes('안녕하세요'), 'T-1-1: 인사 포함')
-assert(t11Intro.includes('비전설정'), 'T-1-1: 절차명 포함')
+assert(t11Intro.includes('공동 비전 설정'), 'T-1-1: 절차명 포함')
 
 // 1-3: T-1-1 이외 절차는 인사 미포함
 console.log('\n[1-3] T-1-2는 인사 미포함')
 const t12Intro = buildStaticIntro('T-1-2')
 assert(!t12Intro.includes('안녕하세요'), 'T-1-2: 인사 미포함')
-assert(t12Intro.includes('수업설계 방향 수립'), 'T-1-2: 절차명 포함')
+assert(t12Intro.includes('수업설계 방향 설정'), 'T-1-2: 절차명 포함')
 
 // 1-4: 잘못된 코드
 console.log('\n[1-4] 잘못된 절차 코드')

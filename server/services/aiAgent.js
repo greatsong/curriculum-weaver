@@ -1,5 +1,5 @@
 /**
- * AI 공동설계자 — 16절차 × 액션스텝 기반 시스템 프롬프트 빌더 + SSE 스트리밍
+ * AI 공동설계자 — 18절차 × 액션스텝 기반 시스템 프롬프트 빌더 + SSE 스트리밍
  *
  * TADDs-DIE 모형 리빌드:
  * - procedureGuide.js (절차별 가이드) 사용
@@ -244,7 +244,7 @@ function buildActivityFlowText(guide) {
   }).join('\n\n')
 
   const example = guide.exampleCase
-    ? `\n\n활동 사례(${guide.exampleCase.title}): ${guide.exampleCase.content}`
+    ? `\n\n${guide.exampleCase.label || '활동 사례'}(${guide.exampleCase.title}): ${guide.exampleCase.content}`
     : ''
 
   return `[활동 흐름 — 가이드북 반영]

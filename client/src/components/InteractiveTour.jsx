@@ -33,7 +33,7 @@ const TOUR_STEPS = [
   {
     id: 'procedure-nav',
     title: '절차 네비게이션',
-    description: '6개 Phase, 19개 절차를 순서대로 진행합니다. 클릭하여 이동하세요.',
+    description: '5개 과정(T·A·Ds·DI·E), 18개 세부활동을 순서대로 진행합니다. 클릭하여 이동하세요.',
     targetSelector: '[data-tour="procedure-nav"]',
     fallbackPosition: { top: 48, left: 0, width: '100vw', height: 48 },
     arrowPosition: 'bottom',
