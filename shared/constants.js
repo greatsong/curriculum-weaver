@@ -137,8 +137,8 @@ export const PROCEDURES = {
   },
   'Ds-2-1': {
     phase: 'Ds',
-    name: '지원 도구 설계',
-    description: '학습 활동에 필요한 도구를 선정하고 활용 방안을 매칭한다',
+    name: '자료와 도구 연결',
+    description: '학습 활동을 지원하는 자료와 도구를 각 활동에 연결하고, 탐색·개발 자료로 나누어 조정한다',
     order: 13,
     displayCode: 'Ds-4',
   },
@@ -294,7 +294,7 @@ export const BOARD_TYPE_LABELS = {
   assessment_plan:      '평가 설계',
   problem_situation:    '문제 상황',
   learning_activities:  '학습 활동',
-  support_tools:        '지원 도구',
+  support_tools:        '자료와 도구',
   scaffolding_design:   '스캐폴딩 설계',
   material_list:        '개발 자료 목록',
   class_record:         '수업 기록',
@@ -364,8 +364,8 @@ export const PROCEDURE_ACTIVITIES = {
     description: '문제 해결 절차에 따른 학습 활동을 설계하고, 교과/시간 배분을 결정합니다.',
   },
   'Ds-2-1': {
-    activity: '지원 도구 설계',
-    description: '학습 활동에 필요한 도구를 선정하고 활용 방안을 매칭합니다.',
+    activity: '자료와 도구 연결',
+    description: '학습 활동을 지원하는 자료와 도구를 각 활동에 연결하고, 탐색·개발 자료로 나누어 조정합니다.',
   },
   'Ds-2-2': {
     activity: '스캐폴딩 설계',

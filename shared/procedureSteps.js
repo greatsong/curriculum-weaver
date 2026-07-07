@@ -914,15 +914,15 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Ds-2-1: 지원 도구 설계 (7 스텝)
+  // Ds-2-1: 자료와 도구 연결 (7 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'Ds-2-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '지원 도구 설계 안내',
-      description: '학습 활동에 필요한 도구 선정과 활용 방안 설계 방법을 안내한다.',
+      title: '자료와 도구 연결 안내',
+      description: '학습 활동을 지원하는 자료와 도구를 활동에 연결하고, 탐색·개발 자료로 나누는 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
@@ -976,7 +976,7 @@ export const PROCEDURE_STEPS = {
       actionType: 'record',
       actorColumn: 'ai_only',
       title: '저장 및 리포트',
-      description: 'AI가 지원 도구 설계를 보드에 저장하고 요약 리포트를 생성한다.',
+      description: 'AI가 자료와 도구 설계를 보드에 저장하고 요약 리포트를 생성한다.',
       aiCapability: 'record',
       boardField: null,
     },

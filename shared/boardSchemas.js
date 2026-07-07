@@ -300,7 +300,7 @@ export const BOARD_SCHEMAS = {
     },
   },
 
-  // ─── Ds-2-1: 지원 도구 ───
+  // ─── Ds-2-1: 자료와 도구 연결 (보드 필드는 도구 중심 유지 — 자료 컬럼 보강은 후속) ───
   support_tools: {
     fields: [
       { name: 'experiencedTools', label: '경험한 도구 정리', type: 'list', required: false,

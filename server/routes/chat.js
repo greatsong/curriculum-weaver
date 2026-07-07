@@ -107,7 +107,7 @@ function buildStaticIntro(procedureCode) {
     }
 
     if (guide.exampleCase) {
-      lines.push(`> **활동 사례 — ${guide.exampleCase.title}**`)
+      lines.push(`> **${guide.exampleCase.label || '활동 사례'} — ${guide.exampleCase.title}**`)
       lines.push(`> ${guide.exampleCase.content}`)
       lines.push('')
     }

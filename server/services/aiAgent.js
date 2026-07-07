@@ -244,7 +244,7 @@ function buildActivityFlowText(guide) {
   }).join('\n\n')
 
   const example = guide.exampleCase
-    ? `\n\n활동 사례(${guide.exampleCase.title}): ${guide.exampleCase.content}`
+    ? `\n\n${guide.exampleCase.label || '활동 사례'}(${guide.exampleCase.title}): ${guide.exampleCase.content}`
     : ''
 
   return `[활동 흐름 — 가이드북 반영]
