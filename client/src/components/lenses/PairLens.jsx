@@ -94,8 +94,20 @@ export default function PairLens({ graph, subjects, pair, onPickPair, basket, on
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <p className="text-gray-600 font-medium mb-1">두 교과를 선택하면 성취기준 연결이 표시됩니다</p>
-        <p className="text-sm text-gray-400 mb-6">예: 데이터 과학 × 인공지능 기초, 과학 × 사회</p>
+        <p className="text-sm text-gray-400 mb-6">직접 고르거나, 예시로 바로 체험해 보세요</p>
         <PairPicker subjects={subjects} pair={pair} onPickPair={onPickPair} />
+        <div className="flex gap-2 flex-wrap justify-center mt-5">
+          {[
+            ['데이터 과학(진로선택)', '인공지능 기초(진로선택)'],
+            ['과학', '수학'],
+            ['통합과학1', '통합사회1'],
+          ].filter(p => p.every(s => subjects.includes(s))).map(p => (
+            <button key={p.join()} onClick={() => onPickPair(p)}
+              className="px-3.5 py-2 rounded-full border border-blue-300 bg-blue-50/60 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition">
+              예시: {p[0].replace(/\(.+\)/, '')} × {p[1].replace(/\(.+\)/, '')}
+            </button>
+          ))}
+        </div>
       </div>
     )
   }
