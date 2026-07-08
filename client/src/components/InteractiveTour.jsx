@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
 // ============================================================
 // 투어 스텝 정의
@@ -232,7 +233,11 @@ export default function InteractiveTour({ onComplete }) {
     }
   }
 
-  return (
+  // ProjectPage는 .work-shell(zoom:1.5)로 감싸져 있다. getBoundingClientRect()가
+  // 반환하는 실제 화면 좌표를 그대로 position:fixed에 쓰는 이 컴포넌트를 zoom
+  // 조상 안에 두면 좌표에 zoom이 중복 적용돼 하이라이트가 엉뚱한 곳에 뜬다.
+  // document.body로 포탈해서 zoom 영향을 받지 않는 좌표계에서 렌더링한다.
+  return createPortal(
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 9997 }}
       role="dialog"
@@ -394,6 +399,7 @@ export default function InteractiveTour({ onComplete }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
