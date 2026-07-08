@@ -48,9 +48,21 @@ const opt = (name, def) => {
 const DRY_RUN = flag('--dry-run')
 const NO_DB = flag('--no-db')
 const BACKFILL = flag('--backfill-semantic')
+// 같은 교과군 내부(단, 다른 과목) 쌍만 대상 — 선수학습/심화 계열 연결 생성용
+// (예: 정보군의 인공지능 기초 ↔ 데이터 과학. 같은 과목 내 쌍은 여전히 제외)
+const SAME_GROUP = flag('--same-group')
+// rejudge 모드: quality_score가 없는 기존 DB 링크(v1)를 동일 저지로 재판정해 점수 기록
+// (링크 생성이 아니라 기존 행 UPDATE — rationale 보존, 빈 theme/hook만 채움, 기각은 0.2)
+const REJUDGE = flag('--rejudge')
+// import-results 모드: 결과 파일(v2_links.jsonl)의 채택 링크를 DB에 멱등 upsert
+// (실행 말미 DB 적재가 네트워크 오류로 실패했을 때의 복구 경로)
+const IMPORT_RESULTS = flag('--import-results')
 const LIMIT_BATCHES = opt('--limit', Infinity)
 const TOP_K = opt('--top-k', 6)
 const MIN_COS = opt('--min-cos', 0.45)
+// same-group 모드: 과목쌍별 top-N 보장 (전역 임계값이 아니라 과목쌍마다 상위 N쌍 선발)
+// → 상호보완적이라 코사인이 중간대인 과목쌍(예: 데이터 과학↔인공지능 기초)도 커버
+const PAIR_TOP = opt('--pair-top', 4)
 const CONCURRENCY = opt('--concurrency', 3)
 const BATCH_SIZE = opt('--batch-size', 25)
 
@@ -141,6 +153,7 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
   const stats = { compared: 0, belowMinCos: 0, sameGroup: 0, levelGap: 0, existing: 0 }
   // 각 성취기준별 top-K (교과군 밖, 학교급 인접) 후보 수집
   const perStandard = new Map() // code -> [{code, cos}]
+  const perSubjectPair = new Map() // "subjA|subjB" -> [{a, b, cos}] (same-group 모드)
   for (const s of items) perStandard.set(s.code, [])
 
   for (let i = 0; i < items.length; i++) {
@@ -149,7 +162,12 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
       const b = items[j]
       const groupA = a.subject_group || a.subject
       const groupB = b.subject_group || b.subject
-      if (groupA === groupB) { stats.sameGroup++; continue }
+      if (SAME_GROUP) {
+        // 같은 교과군 내 "다른 과목" 쌍만 (같은 과목 내부는 제외)
+        if (groupA !== groupB || a.subject === b.subject) { stats.sameGroup++; continue }
+      } else {
+        if (groupA === groupB) { stats.sameGroup++; continue }
+      }
       const la = SCHOOL_LEVEL_ORDER[a.school_level], lb = SCHOOL_LEVEL_ORDER[b.school_level]
       if (la !== undefined && lb !== undefined && Math.abs(la - lb) > 1) { stats.levelGap++; continue }
       stats.compared++
@@ -157,21 +175,43 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
       const va = a.vec, vb = b.vec
       for (let k = 0; k < va.length; k++) cos += va[k] * vb[k]
       if (cos < MIN_COS) { stats.belowMinCos++; continue }
-      perStandard.get(a.code).push({ code: b.code, cos })
-      perStandard.get(b.code).push({ code: a.code, cos })
+      if (SAME_GROUP) {
+        // 과목쌍별 수집 (뒤에서 top-N 선발)
+        const pairKey = a.subject < b.subject ? `${a.subject}|${b.subject}` : `${b.subject}|${a.subject}`
+        if (!perSubjectPair.has(pairKey)) perSubjectPair.set(pairKey, [])
+        perSubjectPair.get(pairKey).push({ a: a.code, b: b.code, cos })
+      } else {
+        perStandard.get(a.code).push({ code: b.code, cos })
+        perStandard.get(b.code).push({ code: a.code, cos })
+      }
     }
     if ((i + 1) % 500 === 0) log(`  ...${i + 1}/${items.length} 처리`)
   }
 
-  // top-K 자르기 + 쌍 dedupe + 기존 링크 제외
   const pairMap = new Map() // "a|b" -> cos
-  for (const [code, neighbors] of perStandard) {
-    neighbors.sort((x, y) => y.cos - x.cos)
-    for (const n of neighbors.slice(0, TOP_K)) {
-      const [a, b] = normalizePair(code, n.code)
-      const key = `${a}|${b}`
-      if (existingPairs.has(key)) { stats.existing++; continue }
-      if (!pairMap.has(key) || pairMap.get(key) < n.cos) pairMap.set(key, n.cos)
+  if (SAME_GROUP) {
+    // 과목쌍별 top-N 보장 선발 + 기존 링크 제외
+    for (const [, candidates] of perSubjectPair) {
+      candidates.sort((x, y) => y.cos - x.cos)
+      let taken = 0
+      for (const c of candidates) {
+        if (taken >= PAIR_TOP) break
+        const [a, b] = normalizePair(c.a, c.b)
+        const key = `${a}|${b}`
+        if (existingPairs.has(key)) { stats.existing++; continue }
+        if (!pairMap.has(key)) { pairMap.set(key, c.cos); taken++ }
+      }
+    }
+  } else {
+    // top-K 자르기 + 쌍 dedupe + 기존 링크 제외
+    for (const [code, neighbors] of perStandard) {
+      neighbors.sort((x, y) => y.cos - x.cos)
+      for (const n of neighbors.slice(0, TOP_K)) {
+        const [a, b] = normalizePair(code, n.code)
+        const key = `${a}|${b}`
+        if (existingPairs.has(key)) { stats.existing++; continue }
+        if (!pairMap.has(key) || pairMap.get(key) < n.cos) pairMap.set(key, n.cos)
+      }
     }
   }
 
@@ -289,9 +329,22 @@ async function upsertCandidates(supabase, links) {
       semantic_score: l.semantic_score, quality_score: l.quality_score,
       status: 'candidate', generation_method: 'ai',
     }))
-    const { error } = await supabase.from('curriculum_links')
-      .upsert(batch, { onConflict: 'source_code,target_code', ignoreDuplicates: true })
-    if (error) throw new Error(`DB 적재 실패: ${error.message}`)
+    // 네트워크 일시 오류 대비 재시도 (최대 3회, 지수 백오프)
+    let lastErr = null
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const { error } = await supabase.from('curriculum_links')
+          .upsert(batch, { onConflict: 'source_code,target_code', ignoreDuplicates: true })
+        if (error) throw new Error(error.message)
+        lastErr = null
+        break
+      } catch (e) {
+        lastErr = e
+        log(`  🔁 DB 적재 재시도 ${attempt}/3: ${e.message}`)
+        await new Promise(r => setTimeout(r, 3000 * attempt))
+      }
+    }
+    if (lastErr) throw new Error(`DB 적재 실패: ${lastErr.message}`)
     inserted += batch.length
   }
   return inserted
@@ -327,11 +380,95 @@ async function backfillSemanticScores(embeddings) {
   log(`✅ 백필 완료: ${updated}개 업데이트, 임베딩 없음 ${noEmb}개 스킵`)
 }
 
+// ─── rejudge 모드: 기존 링크(quality_score 없음) 재판정 ───
+async function rejudgeExistingLinks(standards) {
+  const supabase = getSupabase()
+  if (!supabase) throw new Error('재판정에는 SUPABASE_URL/SERVICE_ROLE_KEY 필요')
+  if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY 필요')
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  const stdByCode = new Map(standards.map(s => [s.code, s]))
+
+  // 대상 조회: quality_score 없는 링크 (id 순 고정 → 배치 구성 결정적, resume 안전)
+  const rows = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from('curriculum_links')
+      .select('id, source_code, target_code, integration_theme, lesson_hook')
+      .is('quality_score', null)
+      .order('id', { ascending: true })
+      .range(from, from + 999)
+    if (error) throw new Error(error.message)
+    rows.push(...data)
+    if (data.length < 1000) break
+  }
+  const judgeable = rows.filter(r => stdByCode.has(r.source_code) && stdByCode.has(r.target_code))
+  log(`🔄 재판정 대상: ${rows.length}행 중 판정 가능 ${judgeable.length}행 (미등재 코드 ${rows.length - judgeable.length}개 제외)`)
+
+  const batches = []
+  for (let i = 0; i < judgeable.length; i += BATCH_SIZE) {
+    batches.push({ batchId: `rj-s${BATCH_SIZE}-b${Math.floor(i / BATCH_SIZE)}`, rows: judgeable.slice(i, i + BATCH_SIZE) })
+  }
+  const done = loadDoneBatches()
+  const remaining = batches.filter(b => !done.has(b.batchId))
+  const todo = remaining.slice(0, LIMIT_BATCHES)
+  log(`  총 ${batches.length}배치 중 완료 ${batches.length - remaining.length}, 이번 실행 ${todo.length}배치`)
+
+  let scored = 0, rejectedCount = 0, failed = 0
+  let cursor = 0
+  async function worker() {
+    while (cursor < todo.length) {
+      const batch = todo[cursor++]
+      const pairs = batch.rows.map(r => ({ a: r.source_code, b: r.target_code }))
+      const results = await judgeBatch(client, pairs, stdByCode, batch.batchId)
+      if (!results) { failed++; continue }
+      for (const r of results) {
+        const row = batch.rows[r.idx]
+        const patch = r.accept
+          ? {
+              quality_score: r.quality,
+              // rationale은 v1 원본 보존, 비어 있는 메타만 채움
+              ...(row.integration_theme ? {} : { integration_theme: r.integration_theme }),
+              ...(row.lesson_hook ? {} : { lesson_hook: r.lesson_hook }),
+            }
+          : { quality_score: 0.2 } // 재판정 기각 표식 (어떤 게시 기준에도 미달)
+        const { error } = await supabase.from('curriculum_links').update(patch).eq('id', row.id)
+        if (error) { log(`  ⚠️ ${row.source_code}|${row.target_code} 업데이트 실패: ${error.message}`); continue }
+        if (r.accept) scored++; else rejectedCount++
+      }
+      fs.appendFileSync(PROGRESS_FILE, JSON.stringify({ batchId: batch.batchId, judged: results.length, ts: new Date().toISOString() }) + '\n')
+      log(`  ✅ ${batch.batchId}: 통과 ${results.filter(x => x.accept).length}/${batch.rows.length} (누적 통과 ${scored} / 기각 ${rejectedCount})`)
+    }
+  }
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker))
+  log(`\n📊 재판정 완료: 통과 ${scored} / 기각 ${rejectedCount} / 실패 배치 ${failed}`)
+  log('ℹ️ 강등은 별도 실행: node scripts/promoteLinks.mjs --demote-below 0.7 --dry-run')
+}
+
+// ─── import-results 모드: 결과 파일 → DB 멱등 upsert ───
+async function importResultsFile() {
+  const supabase = getSupabase()
+  if (!supabase) throw new Error('SUPABASE_URL/SERVICE_ROLE_KEY 필요')
+  if (!fs.existsSync(RESULT_FILE)) throw new Error(`결과 파일 없음: ${RESULT_FILE}`)
+  const links = []
+  for (const line of fs.readFileSync(RESULT_FILE, 'utf-8').split('\n')) {
+    if (!line.trim()) continue
+    try { links.push(JSON.parse(line)) } catch { log(`  ⚠️ 손상 라인 무시: ${line.slice(0, 60)}`) }
+  }
+  log(`📥 결과 파일에서 ${links.length}개 링크 로드 — DB upsert (기존 쌍 무시, 멱등)`)
+  const inserted = await upsertCandidates(supabase, links)
+  log(`✅ ${inserted}행 upsert 완료 (status=candidate)`)
+}
+
 // ─── 메인 ───
 async function main() {
   ensureDir(OUTPUT_DIR); ensureDir(REPORT_DIR)
+
+  if (IMPORT_RESULTS) return importResultsFile() // 성취기준/임베딩 불필요
+
   const standards = await loadStandards()
   log(`📚 정본 성취기준 ${standards.length}개 로드`)
+
+  if (REJUDGE) return rejudgeExistingLinks(standards) // 임베딩 불필요 — 로드 생략
+
   const embeddings = loadEmbeddings()
 
   if (BACKFILL) return backfillSemanticScores(embeddings)
@@ -366,7 +503,7 @@ async function main() {
   // 배치 구성 (결정적: 코사인 내림차순 정렬 기준)
   // batchId에 파라미터를 포함 — top-k/min-cos가 바뀌면 후보 목록이 달라지므로
   // 다른 파라미터의 진행 기록과 섞여 잘못 스킵되는 것을 방지
-  const runKey = `k${TOP_K}c${MIN_COS}s${BATCH_SIZE}`
+  const runKey = `${SAME_GROUP ? 'sg-' : ''}k${TOP_K}c${MIN_COS}s${BATCH_SIZE}`
   const batches = []
   for (let i = 0; i < pairs.length; i += BATCH_SIZE) {
     batches.push({ batchId: `${runKey}-b${Math.floor(i / BATCH_SIZE)}`, pairs: pairs.slice(i, i + BATCH_SIZE) })

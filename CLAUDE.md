@@ -99,8 +99,15 @@ node scripts/generateLinksV2.mjs --min-cos 0.6       # 전체 실행 + DB candid
 node scripts/generateLinksV2.mjs --backfill-semantic # 기존 링크 semantic_score 백필
 node scripts/promoteLinks.mjs --dry-run              # 승격 대상 확인 (quality>=0.8 → published)
 ```
-2026-07-08 실행: 후보 2,938쌍 → 1,660 채택(candidate) → quality≥0.8 663개 published 승격.
-v1 링크 2,021개는 semantic_score 백필 완료(평균 0.39). v1 스크립트(generateLinksAI/Mission)는 레거시.
+**모드**: 기본(교과군 간) | `--same-group`(같은 교과군 내 과목 간, 과목쌍별 top-N 보장 — 계열성·선수학습) |
+`--rejudge`(기존 링크 재판정) | `--import-results`(결과 파일 → DB 복구 적재) | `--backfill-semantic`.
+승격/강등: `promoteLinks.mjs` (`--min-quality`, `--demote-below`).
+
+2026-07-08 전면 재정비 결과:
+- 교차군 생성 2,938쌍 → 1,660 채택 / 같은군 생성 8,907쌍 → 4,342 채택 (데이터 과학↔인공지능 기초 등 커버)
+- v1 2,021개 재판정: 통과 1,314 / 기각 460, quality<0.7 854개 candidate 강등
+- **게시 정책: quality_score ≥ 0.8 자동 승격, < 0.7 강등 — 게시 링크는 전부 0.7 이상**
+- 최종: published 2,938 / candidate 5,085. 전 링크 실측 semantic_score 보유. v1 스크립트(generateLinksAI/Mission)는 레거시.
 
 ### 테이블: `curriculum_links` (`supabase/migrations/00015_curriculum_links.sql`)
 | 컬럼 | 설명 |
