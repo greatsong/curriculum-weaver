@@ -31,6 +31,7 @@ curriculum-weaver/
 - `server/lib/store.js` — 인메모리 데이터 스토어 (성취기준, 링크, 세션 관리)
 - `server/routes/standards.js` — 성취기준/그래프/링크 API 엔드포인트
 - `client/src/components/InlineGraph2D.jsx` — 2D 교과 연결 그래프 시각화
+- `client/src/components/DesignMode.jsx` + `lenses/` — /graph 설계 모드 (과목쌍·주제·계열·이웃 렌즈, URL이 상태 기록). 기본 진입=설계, ?mode=explore가 기존 3D
 - `scripts/migrateLinksToDB.js` — generatedLinks.js → curriculum_links 테이블 마이그레이션
 - `supabase/migrations/` — 15개 테이블 스키마 + RLS + Realtime
 

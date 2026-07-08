@@ -1,0 +1,213 @@
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { X } from 'lucide-react'
+import { apiGet } from '../lib/api'
+import Logo from './Logo'
+import PairLens from './lenses/PairLens'
+import ThemeLens from './lenses/ThemeLens'
+import NeighborLens from './lenses/NeighborLens'
+import SeriesLens from './lenses/SeriesLens'
+
+const LENSES = [
+  { id: 'pair', label: '과목쌍', hint: '두 교과의 성취기준이 어떻게 붙는지' },
+  { id: 'theme', label: '주제', hint: '이 주제로 어떤 교과가 엮이는지' },
+  { id: 'series', label: '계열', hint: '앞뒤 학습 계열은 무엇인지' },
+  { id: 'neighbor', label: '이웃', hint: '이 성취기준과 연결된 것' },
+]
+
+const BASKET_KEY = 'cw_design_basket'
+
+/**
+ * 설계 모드 — 교사의 4가지 질문에 답하는 렌즈 셸
+ * URL이 상태를 기록: ?mode=design&lens=pair&a=교과A&b=교과B&q=검색어&focus=코드
+ */
+export default function DesignMode() {
+  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [graphData, setGraphData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [showAllLinks, setShowAllLinks] = useState(false)
+
+  // ── URL 상태 ──
+  const lens = searchParams.get('lens') || 'pair'
+  const pair = [searchParams.get('a') || '', searchParams.get('b') || '']
+  const query = searchParams.get('q') || ''
+  const focusCode = searchParams.get('focus') || ''
+
+  const patchParams = useCallback((patch) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      for (const [k, v] of Object.entries(patch)) {
+        if (v) next.set(k, v)
+        else next.delete(k)
+      }
+      return next
+    }, { replace: true })
+  }, [setSearchParams])
+
+  // ── 담기 트레이 (세션 유지) ──
+  const [basket, setBasket] = useState(() => {
+    try { return new Set(JSON.parse(sessionStorage.getItem(BASKET_KEY) || '[]')) } catch { return new Set() }
+  })
+  const toggleBasket = useCallback((codes) => {
+    setBasket(prev => {
+      const next = new Set(prev)
+      const allIn = codes.every(c => next.has(c))
+      codes.forEach(c => allIn ? next.delete(c) : next.add(c))
+      sessionStorage.setItem(BASKET_KEY, JSON.stringify([...next]))
+      return next
+    })
+  }, [])
+
+  // ── 그래프 데이터 (published | all) ──
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    const status = showAllLinks ? 'all' : 'published'
+    apiGet(`/api/standards/graph?status=${status}`)
+      .then(data => { if (!cancelled) setGraphData(data) })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [showAllLinks])
+
+  const subjects = useMemo(() => {
+    if (!graphData) return []
+    return [...new Set(graphData.nodes.map(n => n.subject))].sort()
+  }, [graphData])
+
+  // 렌즈 간 이동 헬퍼
+  const openNeighbor = useCallback((code) => patchParams({ lens: 'neighbor', focus: code }), [patchParams])
+
+  // 탐험 모드로 전환 (선택 교과군을 3D 필터로 이월)
+  const toExplore = () => {
+    const groups = new Set()
+    if (graphData) {
+      for (const s of pair.filter(Boolean)) {
+        const node = graphData.nodes.find(n => n.subject === s)
+        if (node) groups.add(node.subject_group || node.subject)
+      }
+    }
+    const next = new URLSearchParams(searchParams)
+    next.set('mode', 'explore')
+    if (groups.size > 0) next.set('subjects', [...groups].join(','))
+    setSearchParams(next)
+  }
+
+  // 프로젝트 시작 CTA (기존 Graph3D CTA와 동일 계약 + 세션 저장)
+  const startProject = () => {
+    const params = new URLSearchParams()
+    const subjectSet = new Set()
+    if (graphData) {
+      for (const code of basket) {
+        const node = graphData.nodes.find(n => n.code === code)
+        if (node) subjectSet.add(node.subject_group || node.subject)
+      }
+    }
+    if (subjectSet.size > 0) params.set('subjects', [...subjectSet].join(','))
+    if (basket.size > 0) params.set('standards', [...basket].join(','))
+    navigate(params.toString() ? `/?${params}` : '/')
+  }
+
+  const basketList = [...basket]
+
+  return (
+    <div className="h-full flex flex-col bg-gray-50">
+      {/* 앱 바 */}
+      <div className="flex items-center gap-3 px-4 py-2.5 bg-white border-b border-gray-200 shrink-0">
+        <a href="/" onClick={(e) => { e.preventDefault(); navigate('/') }} className="flex items-center gap-1.5 hover:opacity-80 transition">
+          <Logo size={22} />
+          <span className="hidden sm:inline text-sm font-bold text-gray-800">커리큘럼 위버</span>
+        </a>
+        <span className="text-gray-300">|</span>
+        <h1 className="text-sm font-medium text-gray-600">교과 연결</h1>
+        <div className="ml-auto flex items-center gap-3">
+          <label className="hidden sm:flex items-center gap-1.5 cursor-pointer select-none text-[11px] text-gray-500">
+            <input type="checkbox" checked={showAllLinks} onChange={e => setShowAllLinks(e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            AI 제안 포함
+          </label>
+          <div className="flex bg-gray-100 rounded-xl p-0.5">
+            <span className="px-4 py-1.5 rounded-[10px] text-xs font-bold bg-blue-600 text-white shadow-sm">🧭 설계</span>
+            <button onClick={toExplore}
+              className="px-4 py-1.5 rounded-[10px] text-xs font-bold text-gray-500 hover:text-gray-700 transition">
+              ✨ 탐험 3D
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 렌즈 바 */}
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-white border-b border-gray-200 shrink-0 overflow-x-auto">
+        {LENSES.map(l => (
+          <button key={l.id} onClick={() => patchParams({ lens: l.id })} title={l.hint}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold border transition whitespace-nowrap ${
+              lens === l.id
+                ? 'bg-blue-50 border-blue-500 text-blue-700'
+                : 'border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700'}`}>
+            {l.label}
+          </button>
+        ))}
+        <span className="hidden md:inline text-[11px] text-gray-400 ml-1">
+          {LENSES.find(l => l.id === lens)?.hint}
+        </span>
+      </div>
+
+      {/* 렌즈 콘텐츠 */}
+      <div className="flex-1 overflow-auto min-h-0 px-4 py-4">
+        {loading && !graphData ? (
+          <div className="flex items-center justify-center h-full text-gray-400">
+            <div className="text-center">
+              <div className="w-7 h-7 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <p className="text-sm">교과 연결 데이터 로딩 중…</p>
+            </div>
+          </div>
+        ) : (
+          <div className="max-w-6xl mx-auto">
+            {lens === 'pair' && (
+              <PairLens graph={graphData} subjects={subjects} pair={pair}
+                onPickPair={(p) => patchParams({ a: p[0], b: p[1] })}
+                basket={basket} onToggleBasket={toggleBasket} onOpenNeighbor={openNeighbor} />
+            )}
+            {lens === 'theme' && (
+              <ThemeLens query={query} onQuery={(q) => patchParams({ q })}
+                basket={basket} onToggleBasket={toggleBasket} onOpenNeighbor={openNeighbor} />
+            )}
+            {lens === 'series' && (
+              <SeriesLens graph={graphData} focusCode={focusCode}
+                onFocus={(code) => patchParams({ focus: code })}
+                basket={basket} onToggleBasket={toggleBasket} />
+            )}
+            {lens === 'neighbor' && (
+              <NeighborLens graph={graphData} focusCode={focusCode}
+                onFocus={(code) => patchParams({ focus: code })}
+                basket={basket} onToggleBasket={toggleBasket} />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 담기 트레이 */}
+      {basket.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-white border-t border-gray-200 shrink-0">
+          <span className="text-xs text-gray-600">
+            🧺 담은 성취기준 <b className="text-blue-700">{basket.size}</b>
+          </span>
+          <div className="flex gap-1.5 overflow-x-auto min-w-0">
+            {basketList.slice(0, 6).map(code => (
+              <span key={code} className="flex items-center gap-1 px-2 py-0.5 bg-gray-100 rounded-lg text-[11px] font-mono text-gray-600 whitespace-nowrap">
+                {code}
+                <button onClick={() => toggleBasket([code])} className="text-gray-400 hover:text-gray-600"><X size={10} /></button>
+              </span>
+            ))}
+            {basketList.length > 6 && <span className="text-[11px] text-gray-400 self-center whitespace-nowrap">외 {basketList.length - 6}</span>}
+          </div>
+          <button onClick={startProject}
+            className="ml-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition whitespace-nowrap">
+            이 조합으로 프로젝트 시작 →
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
