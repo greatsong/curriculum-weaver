@@ -1,6 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk'
+import { getAnthropic } from '../lib/anthropicClient.js'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 /**
  * PDF/DOCX 파일에서 교육과정 성취기준을 추출하여 구조화된 JSON으로 변환
@@ -351,7 +350,7 @@ function mergeResults(regexResult, aiResult) {
  * AI를 사용하여 텍스트에서 성취기준 구조화 추출 (확장 스키마)
  */
 async function extractWithAI(text) {
-  const response = await client.messages.create({
+  const response = await getAnthropic().messages.create({
     model: 'claude-sonnet-5',
     max_tokens: 8192,
     messages: [{

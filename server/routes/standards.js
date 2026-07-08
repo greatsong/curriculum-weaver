@@ -26,7 +26,7 @@
  * - POST /api/standards/graph/add-links                 — AI 추천 링크 추가
  */
 import { Router } from 'express'
-import Anthropic from '@anthropic-ai/sdk'
+import { getAnthropic } from '../lib/anthropicClient.js'
 import { Standards, StandardLinks } from '../lib/store.js'
 import { validateCode, getStandardsForSubjects } from '../lib/standardsValidator.js'
 import { computeEmbedding3D, invalidateEmbeddingCache } from '../services/embeddings.js'
@@ -38,8 +38,6 @@ import {
   addStandardToProject, removeStandardFromProject, resolveStandardId,
   getProject, getMemberRole, logActivity,
 } from '../lib/supabaseService.js'
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export const standardsRouter = Router()
 
@@ -579,8 +577,7 @@ ${candidateText}
 }
 \`\`\``
 
-    const aiClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-    const response = await aiClient.messages.create({
+    const response = await getAnthropic().messages.create({
       model: 'claude-sonnet-5',
       max_tokens: 4096,
       messages: [{ role: 'user', content: aiPrompt }],
@@ -780,7 +777,7 @@ ${overviewSection}`
     messages.push({ role: 'user', content: message })
 
     let fullResponse = ''
-    const stream = client.messages.stream({
+    const stream = getAnthropic().messages.stream({
       model: 'claude-sonnet-5',
       max_tokens: 4096,
       system: systemPrompt,
