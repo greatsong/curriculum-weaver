@@ -381,7 +381,7 @@ function MockRealtimeCollab() {
 const FAQ_DATA = [
   {
     q: '커리큘럼 위버는 무료인가요?',
-    a: '네, 커리큘럼 위버는 서울특별시교육청에서 제작한 서비스로 모든 선생님께 무료로 제공됩니다.',
+    a: '네, 커리큘럼 위버는 모든 선생님께 무료로 제공됩니다.',
   },
   {
     q: '어떤 AI를 사용하나요?',
@@ -563,7 +563,7 @@ export default function GuidePage() {
         <div className="relative max-w-[1120px] mx-auto px-5 md:px-8 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-full text-xs text-blue-700 font-medium mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-            서울특별시교육청 제작 · 모든 선생님 무료
+            협력적 수업 설계를 AI 에이전트와 함께!
           </div>
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-slate-900 leading-tight tracking-tight mb-5">
             AI와 함께<br className="sm:hidden" /> 융합 수업을<br />설계하세요
