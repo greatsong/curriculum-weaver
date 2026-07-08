@@ -43,6 +43,8 @@ export default function WorkspaceDetailPage() {
   const [selectedStandardIds, setSelectedStandardIds] = useState(new Set())
   const [loadingRecommend, setLoadingRecommend] = useState(false)
   const [standardSearchQuery, setStandardSearchQuery] = useState('')
+  // 설계 모드(교과 연결)에서 담아온 성취기준 — 프로젝트 생성 시 자동 포함
+  const [designBasket, setDesignBasket] = useState([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('member')
   const [inviteLinkInfo, setInviteLinkInfo] = useState(null) // 미가입자 토큰 초대 결과
@@ -163,6 +165,16 @@ export default function WorkspaceDetailPage() {
     }
   }, [projectTitle])
 
+  // 생성 모달 열릴 때 설계 모드 장바구니 로드
+  useEffect(() => {
+    if (!showCreateProject) return
+    try {
+      setDesignBasket(JSON.parse(sessionStorage.getItem('cw_design_basket') || '[]'))
+    } catch {
+      setDesignBasket([])
+    }
+  }, [showCreateProject])
+
   const handleCreateProject = async (e) => {
     e.preventDefault()
     if (!projectTitle.trim()) return
@@ -179,12 +191,16 @@ export default function WorkspaceDetailPage() {
         grade: projectGrade,
       })
 
-      // 선택된 성취기준 일괄 저장
-      if (selectedStandardIds.size > 0) {
+      // 선택된 성취기준 + 설계 모드에서 담아온 성취기준 일괄 저장
+      const allCodes = [...new Set([...selectedStandardIds, ...designBasket])]
+      if (allCodes.length > 0) {
         try {
           await apiPost(`/api/standards/project/${project.id}/bulk`, {
-            standard_codes: [...selectedStandardIds],
+            standard_codes: allCodes,
           })
+          // 담아온 성취기준은 프로젝트에 반영됐으므로 장바구니 비움
+          sessionStorage.removeItem('cw_design_basket')
+          setDesignBasket([])
         } catch (e) {
           console.warn('성취기준 일괄 저장 실패:', e.message)
         }
@@ -913,6 +929,35 @@ export default function WorkspaceDetailPage() {
                   ))}
                 </div>
               </div>
+
+              {/* 설계 모드에서 담아온 성취기준 */}
+              {designBasket.length > 0 && (
+                <div style={{ border: '1px solid #bfdbfe', borderRadius: 8, padding: 12, background: '#eff6ff' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#1d4ed8', marginBottom: 8 }}>
+                    🧺 교과 연결에서 담아온 성취기준 {designBasket.length}개 — 프로젝트에 자동 포함됩니다
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {designBasket.map(code => (
+                      <span key={code} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px',
+                        background: '#fff', border: '1px solid #dbeafe', borderRadius: 6,
+                        fontSize: 11, fontFamily: 'ui-monospace, monospace', color: '#374151',
+                      }}>
+                        {code}
+                        <button type="button" title="제외"
+                          onClick={() => {
+                            const next = designBasket.filter(c => c !== code)
+                            setDesignBasket(next)
+                            sessionStorage.setItem('cw_design_basket', JSON.stringify(next))
+                          }}
+                          style={{ border: 'none', background: 'none', color: '#9ca3af', cursor: 'pointer', padding: 0, fontSize: 11 }}>
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* 추천 성취기준 목록 */}
               {recommendedStandards.length > 0 && (() => {

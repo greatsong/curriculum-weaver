@@ -38,10 +38,16 @@ export default function ThemeLens({ query, onQuery, basket, onToggleBasket, onOp
     return () => clearTimeout(timerRef.current)
   }, [query])
 
+  // 학교급 필터 (교사는 자기 학교급이 기본 관심사)
+  const [schoolLevel, setSchoolLevel] = useState('')
+  const filtered = useMemo(() => (
+    schoolLevel ? results.filter(r => r.school_level === schoolLevel) : results
+  ), [results, schoolLevel])
+
   // 교과군별 컬럼 (컬럼 순서 = 최고 유사도순)
   const columns = useMemo(() => {
     const byGroup = new Map()
-    for (const r of results) {
+    for (const r of filtered) {
       const g = r.subject_group || r.subject || '기타'
       if (!byGroup.has(g)) byGroup.set(g, [])
       byGroup.get(g).push(r)
@@ -49,7 +55,7 @@ export default function ThemeLens({ query, onQuery, basket, onToggleBasket, onOp
     return [...byGroup.entries()]
       .map(([group, items]) => ({ group, items, top: Math.max(...items.map(i => i._similarity ?? 0)) }))
       .sort((a, b) => b.top - a.top)
-  }, [results])
+  }, [filtered])
 
   return (
     <div className="flex flex-col gap-4">
@@ -78,10 +84,24 @@ export default function ThemeLens({ query, onQuery, basket, onToggleBasket, onOp
         </div>
       )}
 
+      {results.length > 0 && (
+        <div className="flex items-center gap-1.5">
+          {['', '초등학교', '중학교', '고등학교'].map(lv => (
+            <button key={lv} onClick={() => setSchoolLevel(lv)}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
+                schoolLevel === lv
+                  ? 'bg-blue-50 border-blue-500 text-blue-700'
+                  : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+              {lv ? lv.replace('학교', '') : '전체 학교급'}
+            </button>
+          ))}
+        </div>
+      )}
+
       {columns.length > 0 && (
         <>
           <p className="text-xs text-gray-500">
-            <b className="text-gray-700">{columns.length}개 교과군</b>에서 관련 성취기준 {results.length}개 —
+            <b className="text-gray-700">{columns.length}개 교과군</b>에서 관련 성취기준 {filtered.length}개 —
             교과군이 여러 개 걸리면 융합 수업 소재가 됩니다
           </p>
           <div className="flex gap-3 overflow-x-auto pb-2 items-start">

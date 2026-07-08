@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useLayoutEffect, useCallback } from 'react'
 import { Sparkles, Plus, Check } from 'lucide-react'
-import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality } from './lensCommon'
+import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, linkPriority, isSameGrade, gradeBucket } from './lensCommon'
 
 /**
  * 과목쌍 렌즈 — 두 교과 성취기준을 좌우 2열로 놓고 연결을 이분 다이어그램으로 표시
@@ -40,13 +40,15 @@ export default function PairLens({ graph, subjects, pair, onPickPair, basket, on
         const b = idsA.has(s) ? nodeById.get(t) : nodeById.get(s)
         return { ...l, a, b }
       })
-      .sort((x, y) => linkQuality(y) - linkQuality(x))
+      // 같은 학년군 우선, 그 안에서 품질순 (융합 수업 기본 = 같은 학년군)
+      .sort((x, y) => linkPriority(y, y.a, y.b) - linkPriority(x, x.a, x.b))
 
-    // 연결된 코드 → 정렬: 연결 카드(품질순) 먼저, 미연결은 뒤에 흐리게
-    const connectedA = new Map(), connectedB = new Map() // code -> bestQuality
+    // 연결된 코드 → 정렬: 같은 학년군 연결 카드 먼저, 그다음 교차 학년, 미연결은 뒤에 흐리게
+    const connectedA = new Map(), connectedB = new Map() // code -> best priority
     links.forEach(l => {
-      connectedA.set(l.a.code, Math.max(connectedA.get(l.a.code) || 0, linkQuality(l)))
-      connectedB.set(l.b.code, Math.max(connectedB.get(l.b.code) || 0, linkQuality(l)))
+      const p = linkPriority(l, l.a, l.b)
+      connectedA.set(l.a.code, Math.max(connectedA.get(l.a.code) || 0, p))
+      connectedB.set(l.b.code, Math.max(connectedB.get(l.b.code) || 0, p))
     })
     const sortCol = (stds, connected) => [...stds].sort((x, y) => {
       const qx = connected.get(x.code) ?? -1, qy = connected.get(y.code) ?? -1
@@ -177,6 +179,12 @@ export default function PairLens({ graph, subjects, pair, onPickPair, basket, on
             {selectedLink.semantic_score != null && <span className="text-gray-400" title="임베딩 코사인 유사도">의미 유사도 {selectedLink.semantic_score.toFixed(2)}</span>}
             {selectedLink.status && selectedLink.status !== 'published' && (
               <span className="px-1.5 py-0.5 rounded bg-gray-200 text-gray-600 text-[10px] font-medium">AI 제안 (검토 전)</span>
+            )}
+            {!isSameGrade(selectedLink.a, selectedLink.b) && (
+              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-medium"
+                title="학년군이 달라 한 교실 융합보다는 계열(선수·심화) 연계에 적합합니다">
+                학년군 차이 ({gradeBucket(selectedLink.a).label} ↔ {gradeBucket(selectedLink.b).label})
+              </span>
             )}
           </div>
           {selectedLink.rationale && <p className="text-sm text-gray-700 leading-relaxed">{selectedLink.rationale}</p>}
