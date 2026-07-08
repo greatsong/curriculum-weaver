@@ -16,3 +16,7 @@ backups/
 
 # gstack 보안 감사 리포트 (로컬 전용)
 .gstack/
+
+# 링크 생성 파이프라인 실행 산출물 (진행상태/리포트)
+scripts/mission_output/
+scripts/mission_reports/

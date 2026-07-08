@@ -17,6 +17,7 @@ import { initStore, Standards } from './lib/store.js'
 import { precomputeEmbeddings } from './services/embeddings.js'
 import { loadSemanticIndex, ensureEmbeddingsCache } from './services/semanticSearch.js'
 import { supabaseAdmin } from './lib/supabaseAdmin.js'
+import { hydrateLinksFromDB } from './lib/linkService.js'
 
 // ── Rate Limiter 임포트 ──
 import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter } from './middleware/rateLimit.js'
@@ -42,6 +43,10 @@ import { demoRouter } from './routes/demo.js'
 // 인메모리 스토어 초기화 (로컬 성취기준/링크 데이터 로드)
 const defaultSessionId = initStore()
 console.log(`  기본 세션 ID: ${defaultSessionId}`)
+
+// 링크 단일 소스: Supabase curriculum_links → 인메모리 하이드레이션
+// (미설정/장애/빈 테이블이면 정적 파일 링크 유지 — 비파괴 폴백)
+setImmediate(() => hydrateLinksFromDB())
 
 // 임베딩 사전 계산 (파일 캐시 있으면 즉시, 없으면 백그라운드)
 precomputeEmbeddings(Standards.list())
