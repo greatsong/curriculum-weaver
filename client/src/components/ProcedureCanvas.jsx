@@ -245,7 +245,7 @@ function SuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
   )
 
   return (
-    <div className="glass-card" style={{
+    <div data-tour="ai-suggestion" className="glass-card" style={{
       background: 'linear-gradient(135deg, rgba(245,243,255,0.8), rgba(239,246,255,0.6))',
       border: '1px solid #DDD6FE',
       borderRadius: 'var(--radius-lg)',

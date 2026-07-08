@@ -19,7 +19,7 @@ const TOUR_STEPS = [
     description: 'AI 공동설계자와 대화하는 공간입니다. 질문하면 AI가 답하고, 보드 업데이트를 제안합니다.',
     // CSS selector or position hint for highlight
     targetSelector: '[data-tour="chat-panel"]',
-    fallbackPosition: { top: 60, left: 0, width: 400, height: 'calc(100vh - 160px)' },
+    fallbackPosition: { top: 60, left: 0, width: 400, height: () => window.innerHeight - 160 },
     arrowPosition: 'right',
   },
   {
@@ -27,7 +27,7 @@ const TOUR_STEPS = [
     title: '설계보드',
     description: '각 절차의 설계 결과물이 여기에 쌓입니다. AI 제안을 수락하거나 직접 편집할 수 있습니다.',
     targetSelector: '[data-tour="design-board"]',
-    fallbackPosition: { top: 60, left: 400, width: 'calc(100vw - 680px)', height: 'calc(100vh - 160px)' },
+    fallbackPosition: { top: 60, left: 400, width: () => window.innerWidth - 680, height: () => window.innerHeight - 160 },
     arrowPosition: 'left',
   },
   {
@@ -35,7 +35,7 @@ const TOUR_STEPS = [
     title: '절차 네비게이션',
     description: '5개 과정(T·A·Ds·DI·E), 18개 세부활동을 순서대로 진행합니다. 클릭하여 이동하세요.',
     targetSelector: '[data-tour="procedure-nav"]',
-    fallbackPosition: { top: 48, left: 0, width: '100vw', height: 48 },
+    fallbackPosition: { top: 48, left: 0, width: () => window.innerWidth, height: 48 },
     arrowPosition: 'bottom',
   },
   {
@@ -51,7 +51,7 @@ const TOUR_STEPS = [
     title: '설계 원칙',
     description: '각 절차에 맞는 설계 원칙이 표시됩니다. 참고하여 설계하세요.',
     targetSelector: '[data-tour="principle-panel"]',
-    fallbackPosition: { top: 60, left: 'calc(100vw - 280px)', width: 280, height: 'calc(100vh - 160px)' },
+    fallbackPosition: { top: 60, left: () => window.innerWidth - 280, width: 280, height: () => window.innerHeight - 160 },
     arrowPosition: 'left',
   },
   {
@@ -84,11 +84,16 @@ function getTargetRect(step) {
   // fallback
   if (step.fallbackPosition) {
     const fp = step.fallbackPosition
+    const resolve = (v, defaultValue) => {
+      if (typeof v === 'number') return v
+      if (typeof v === 'function') return v()
+      return defaultValue
+    }
     return {
-      top: typeof fp.top === 'number' ? fp.top : 0,
-      left: typeof fp.left === 'number' ? fp.left : 0,
-      width: typeof fp.width === 'number' ? fp.width : 400,
-      height: typeof fp.height === 'number' ? fp.height : 300,
+      top: resolve(fp.top, 0),
+      left: resolve(fp.left, 0),
+      width: resolve(fp.width, 400),
+      height: resolve(fp.height, 300),
     }
   }
   return null
@@ -108,6 +113,10 @@ export default function InteractiveTour({ onComplete }) {
   const isCenterStep = step.arrowPosition === 'center' || !step.targetSelector
 
   // 타겟 영역 계산 + 리사이즈 대응
+  // 투어는 페이지 데이터(배너·메시지·isDesktop 판정 등)가 아직 로딩 중일 때도
+  // 뜰 수 있어, 마운트 시점 1회 측정만으론 최종 레이아웃과 어긋난 위치에
+  // 하이라이트가 고정돼버린다(이후 window resize가 없으면 영영 안 맞음).
+  // DOM 변화를 감지해 하이라이트 위치를 레이아웃이 안정될 때까지 계속 재계산한다.
   useEffect(() => {
     const updateRect = () => {
       const rect = getTargetRect(step)
@@ -115,7 +124,20 @@ export default function InteractiveTour({ onComplete }) {
     }
     updateRect()
     window.addEventListener('resize', updateRect)
-    return () => window.removeEventListener('resize', updateRect)
+
+    let raf = null
+    const scheduleUpdate = () => {
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(updateRect)
+    }
+    const observer = new MutationObserver(scheduleUpdate)
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] })
+
+    return () => {
+      window.removeEventListener('resize', updateRect)
+      observer.disconnect()
+      if (raf) cancelAnimationFrame(raf)
+    }
   }, [currentStep])
 
   const handleNext = useCallback(() => {
