@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, X, GitBranch, HelpCircle } from 'lucide-react'
 import { apiGet, apiPost, apiDelete } from '../lib/api'
@@ -53,6 +53,12 @@ export default function DataManage() {
 
   // 교과 선택 상태 (인라인 그래프 탐색용)
   const [pickedSubjects, setPickedSubjects] = useState(new Set())
+
+  // 성취기준 보기 탭: 상단에서 선택한 교과로 목록 필터링 (미선택 시 전체)
+  const visibleStandards = useMemo(() => {
+    if (pickedSubjects.size === 0) return allStandards
+    return allStandards.filter((s) => pickedSubjects.has(s.subject))
+  }, [allStandards, pickedSubjects])
   const togglePickSubject = useCallback((subject) => {
     setPickedSubjects(prev => {
       const next = new Set(prev)
@@ -170,7 +176,7 @@ export default function DataManage() {
             {stats.bySubject.length > 0 && (
               <div className="mt-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <p className="text-xs text-gray-400">교과를 클릭하면 연결 그래프를 탐색할 수 있습니다</p>
+                  <p className="text-xs text-gray-400">교과를 클릭하면 아래 성취기준 목록이 필터링되고, 2개 이상 선택 시 연결 그래프가 표시됩니다</p>
                   {pickedSubjects.size > 0 && (
                     <button
                       onClick={() => setPickedSubjects(new Set())}
@@ -378,16 +384,30 @@ export default function DataManage() {
         {/* 성취기준 보기 탭 */}
         {tab === 'browse' && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            {allStandards.length === 0 ? (
+            {/* 선택 교과 필터 표시줄 */}
+            {pickedSubjects.size > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 border-b border-blue-100 text-xs">
+                <span className="text-blue-700 font-medium">
+                  {[...pickedSubjects].join(' · ')} — {visibleStandards.length.toLocaleString()}개 성취기준
+                </span>
+                <button
+                  onClick={() => setPickedSubjects(new Set())}
+                  className="ml-auto text-blue-500 hover:text-blue-700 transition"
+                >
+                  전체 보기
+                </button>
+              </div>
+            )}
+            {visibleStandards.length === 0 ? (
               <div className="text-center py-12 text-gray-400">
                 <Database size={32} className="mx-auto mb-2 opacity-50" />
-                <p>성취기준 데이터가 없습니다</p>
+                <p>{allStandards.length === 0 ? '성취기준 데이터가 없습니다' : '선택한 교과의 성취기준이 없습니다'}</p>
               </div>
             ) : (
               <>
                 {/* 모바일: 카드 레이아웃 */}
                 <div className="md:hidden overflow-auto max-h-[60vh] p-3 space-y-3">
-                  {allStandards.map((std) => (
+                  {visibleStandards.map((std) => (
                     <div key={std.id} className="bg-white border border-gray-200 rounded-lg p-3 space-y-1.5">
                       <div className="flex items-center justify-between">
                         <span className="font-mono text-xs text-blue-600 font-bold">{std.code}</span>
@@ -415,7 +435,7 @@ export default function DataManage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {allStandards.map((std) => (
+                      {visibleStandards.map((std) => (
                         <tr key={std.id} className="hover:bg-gray-50">
                           <td className="px-4 py-2 font-mono text-xs text-blue-600 whitespace-nowrap">{std.code}</td>
                           <td className="px-4 py-2 whitespace-nowrap">{std.subject}</td>
