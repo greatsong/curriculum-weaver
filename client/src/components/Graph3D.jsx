@@ -103,6 +103,14 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
   const [focusMode, setFocusMode] = useState(false)
   const [hoveredLink, setHoveredLink] = useState(null)
   const [searchIndex, setSearchIndex] = useState(-1)
+  const [graphNotice, setGraphNotice] = useState('') // 그래프 이동 불가 등 일시 안내 메시지
+
+  // 안내 메시지 자동 소멸
+  useEffect(() => {
+    if (!graphNotice) return
+    const timer = setTimeout(() => setGraphNotice(''), 6000)
+    return () => clearTimeout(timer)
+  }, [graphNotice])
 
   // 외부에서 주입된 초기 교과 선택 동기화
   const initialSubjectsKey = initialSubjects ? JSON.stringify([...initialSubjects].sort()) : null
@@ -447,6 +455,9 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
     return items
   }, [graphData, filteredData, searchQuery, semanticResults, selectedSubjects, selectedSchoolLevels, selectedGradeGroups])
 
+  // 현재 그래프에 실제 표시 중인 노드 ID (목록에서 "그래프 미표시" 뱃지 판단용)
+  const visibleNodeIds = useMemo(() => new Set((filteredData?.nodes || []).map(n => n.id)), [filteredData])
+
   const linkCountMap = useMemo(() => {
     if (!graphData) return new Map()
     const map = new Map()
@@ -497,7 +508,15 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
   const zoomToNode = useCallback((node) => {
     if (!fgRef.current || !filteredData) return
     const realNode = filteredData.nodes?.find(n => n.id === node.id)
-    if (!realNode) return
+    if (!realNode) {
+      // 연결이 없어 그래프에서 숨겨진 노드 → AI 탐색으로 안내 (dead-end 방지)
+      setGraphNotice(`${node.code}은(는) 아직 다른 교과와 연결이 없습니다`)
+      return
+    }
+    setGraphNotice('')
+    // 카메라를 의도적으로 움직이므로, 대기 중인 최초 zoomToFit(onEngineStop)은 취소
+    // (엔진 정지가 검색 줌인보다 늦게 오면 카메라가 전체 뷰로 튕겨나가는 레이스 방지)
+    initialFitDoneRef.current = true
     const x = realNode.x ?? 0, y = realNode.y ?? 0, z = realNode.z ?? 0
     const dist = Math.hypot(x, y, z) || 1
     const targetDist = 200
@@ -1235,6 +1254,17 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
             </div>
             )
           })()}
+          {/* 일시 안내 토스트 (연결 없는 성취기준 → AI 탐색 유도) */}
+          {graphNotice && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-amber-900/90 border border-amber-600/60 text-amber-200 text-xs px-3 py-2 rounded-lg shadow-lg max-w-[90%]">
+              <span>{graphNotice}</span>
+              <button
+                onClick={() => { setSidebarOpen(true); setSidebarTab('chat'); setGraphNotice('') }}
+                className="shrink-0 px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded font-medium transition whitespace-nowrap">
+                AI에게 연결 제안받기
+              </button>
+            </div>
+          )}
           <div className="absolute bottom-3 left-3 text-[10px] sm:text-[11px] text-gray-500 bg-gray-800/80 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg">
             <span className="hidden sm:inline">드래그: 회전 · 스크롤: 확대/축소 · 노드 클릭: 상세 · 상단 교과: 멀티 선택</span>
             <span className="sm:hidden">터치: 회전 · 핀치: 확대 · 탭: 상세 · 교과 탭: 멀티 선택</span>
@@ -1507,6 +1537,12 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
                                 : 'bg-gray-700/40 text-gray-400 border border-gray-600/50'
                             }`}>
                               {(node._similarity * 100).toFixed(0)}%
+                            </span>
+                          )}
+                          {!visibleNodeIds.has(node.id) && (
+                            <span className="px-1 py-0.5 rounded text-[9px] bg-gray-700/60 text-gray-500 border border-gray-600/50 whitespace-nowrap"
+                              title="아직 다른 교과와의 연결이 발견되지 않아 그래프에 표시되지 않는 성취기준입니다">
+                              연결 없음
                             </span>
                           )}
                           {count > 0 && !searchQuery && (

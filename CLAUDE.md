@@ -82,6 +82,26 @@ curriculum-weaver/
 candidate (AI 제안 후보) → reviewed (검토 완료) → published (사용자 노출)
 ```
 
+### 링크 단일 소스 = Supabase `curriculum_links` (2026-07-08 일원화)
+- 서버 부팅 시 `server/lib/linkService.js`의 `hydrateLinksFromDB()`가 DB 전체를 인메모리로 로드
+- Supabase 미설정(placeholder dev)/장애/빈 테이블 시 정적 `server/data/generatedLinks.js` 폴백 (비파괴)
+- `add-links`·`PATCH status`는 인메모리 + DB 동시 반영 (재시작 시 소실 문제 해결)
+- add-links는 사용자 확정 행위로 간주해 `published`로 저장
+- 스키마 제약 `CHECK (source_code < target_code)` — DB 쓰기 전 반드시 정규화
+
+### 링크 생성 파이프라인 v2 — `scripts/generateLinksV2.mjs`
+1단계 OpenAI 임베딩 코사인 top-k 후보쌍 추출(결정적, 실측 semantic_score) →
+2단계 claude-sonnet-5 배치 판정(인덱스 참조로 코드 할루시네이션 원천 차단,
+quality_score·rationale·integration_theme·lesson_hook 생성) → **candidate 적재**.
+```bash
+node scripts/generateLinksV2.mjs --dry-run           # 1단계 통계만 (비용 없음)
+node scripts/generateLinksV2.mjs --min-cos 0.6       # 전체 실행 + DB candidate 적재
+node scripts/generateLinksV2.mjs --backfill-semantic # 기존 링크 semantic_score 백필
+node scripts/promoteLinks.mjs --dry-run              # 승격 대상 확인 (quality>=0.8 → published)
+```
+2026-07-08 실행: 후보 2,938쌍 → 1,660 채택(candidate) → quality≥0.8 663개 published 승격.
+v1 링크 2,021개는 semantic_score 백필 완료(평균 0.39). v1 스크립트(generateLinksAI/Mission)는 레거시.
+
 ### 테이블: `curriculum_links` (`supabase/migrations/00015_curriculum_links.sql`)
 | 컬럼 | 설명 |
 |------|------|

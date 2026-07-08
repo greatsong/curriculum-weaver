@@ -32,6 +32,7 @@ import { validateCode, getStandardsForSubjects } from '../lib/standardsValidator
 import { computeEmbedding3D, invalidateEmbeddingCache } from '../services/embeddings.js'
 import { semanticSearch, isSemanticSearchAvailable } from '../services/semanticSearch.js'
 import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js'
+import { persistLinks, persistLinkStatus } from '../lib/linkService.js'
 import {
   searchStandards, getStandardsByProject,
   addStandardToProject, removeStandardFromProject, resolveStandardId,
@@ -199,7 +200,12 @@ standardsRouter.patch('/links/:linkId/status', requireAuth, requireAdmin, async 
   if (status === 'reviewed' || status === 'published') {
     link.reviewed_at = new Date().toISOString()
   }
-  res.json({ ok: true, link })
+  // DB 영속화 (서버 재시작 시 상태 리셋 방지)
+  const persistResult = await persistLinkStatus(link.source_code, link.target_code, status)
+  if (!persistResult.persisted && persistResult.error !== 'not_configured') {
+    console.warn('[standards] 링크 상태 DB 영속화 실패:', persistResult.error)
+  }
+  res.json({ ok: true, link, persisted: persistResult.persisted })
 })
 
 // 특정 성취기준의 연결 조회
@@ -839,6 +845,19 @@ standardsRouter.post('/graph/add-links', requireAuth, async (req, res) => {
     })
   }
 
-  const added = StandardLinks.addBulk(links)
-  res.status(201).json({ message: `${added.length}개 연결 추가됨`, count: added.length })
+  // 사용자가 명시적으로 추가한 링크 — 검토·게시 절차를 거친 것으로 간주해 published로 노출
+  // (기본값 candidate면 기본 그래프(published 필터)에서 추가 직후에도 보이지 않는 문제)
+  const added = StandardLinks.addBulk(links.map(l => ({ ...l, status: l.status || 'published' })))
+
+  // DB 영속화 (실패해도 인메모리 추가는 유지 — 응답에 persisted로 보고)
+  const persistResult = added.length > 0 ? await persistLinks(added) : { persisted: true, count: 0 }
+  if (!persistResult.persisted && persistResult.error !== 'not_configured') {
+    console.warn('[standards] add-links DB 영속화 실패 (인메모리만 반영):', persistResult.error)
+  }
+
+  res.status(201).json({
+    message: `${added.length}개 연결 추가됨`,
+    count: added.length,
+    persisted: persistResult.persisted,
+  })
 })

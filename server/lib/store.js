@@ -680,6 +680,47 @@ export const Standards = {
 export const StandardLinks = {
   list: () => [...standardLinks.values()],
 
+  /**
+   * DB(curriculum_links) 행 전체로 인메모리 링크를 교체 (부팅 시 하이드레이션).
+   * 인메모리 standards에 없는 코드의 링크는 스킵하고 개수를 보고한다.
+   * @param {object[]} rows - curriculum_links 행 배열
+   * @returns {{ loaded: number, skipped: number }}
+   */
+  replaceAll: (rows) => {
+    const codeToStd = new Map()
+    for (const [, s] of standards) codeToStd.set(s.code, s)
+    const typeSim = { same_concept: 0.9, prerequisite: 0.85, cross_subject: 0.7 }
+    const next = new Map()
+    let skipped = 0
+    for (const row of rows) {
+      const sourceStd = codeToStd.get(row.source_code)
+      const targetStd = codeToStd.get(row.target_code)
+      if (!sourceStd || !targetStd) { skipped++; continue }
+      const id = row.id || uuid()
+      next.set(id, {
+        id,
+        db_id: row.id || null,
+        source_id: sourceStd.id,
+        target_id: targetStd.id,
+        source_code: row.source_code,
+        target_code: row.target_code,
+        link_type: row.link_type,
+        rationale: row.rationale || '',
+        similarity: row.semantic_score ?? typeSim[row.link_type] ?? 0.6,
+        status: row.status || 'candidate',
+        quality_score: row.quality_score ?? null,
+        semantic_score: row.semantic_score ?? null,
+        integration_theme: row.integration_theme || null,
+        lesson_hook: row.lesson_hook || null,
+        generation_method: row.generation_method || 'ai',
+        created_at: row.created_at || new Date().toISOString(),
+      })
+    }
+    standardLinks.clear()
+    for (const [id, link] of next) standardLinks.set(id, link)
+    return { loaded: next.size, skipped }
+  },
+
   getByStandard: (standardId) => {
     return [...standardLinks.values()].filter(
       (l) => l.source_id === standardId || l.target_id === standardId
