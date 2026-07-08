@@ -10,7 +10,7 @@
  * AI 4대 역할: 안내(guide) / 생성(generate) / 점검(check) / 기록(record)
  */
 
-import Anthropic from '@anthropic-ai/sdk'
+import { getAnthropic } from '../lib/anthropicClient.js'
 import PQueue from 'p-queue'
 import {
   PROCEDURES, PHASES, ACTION_TYPES, ACTOR_COLUMNS, BOARD_TYPES, BOARD_TYPE_LABELS,
@@ -22,7 +22,6 @@ import { getBoardSchemaForPrompt } from 'curriculum-weaver-shared/boardSchemas.j
 import { PROCEDURE_GUIDE, COMMON_RULES, getCoherenceTargets } from '../data/procedureGuide.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 // 동시 AI 요청 5개로 제한 (Anthropic API rate limit 준수)
 const aiQueue = new PQueue({ concurrency: 5, timeout: 60000 })
@@ -1028,7 +1027,7 @@ ${sessionTitle ? `세션: ${sessionTitle}` : ''}
 
   try {
     await aiQueue.add(async () => {
-      const stream = client.messages.stream({
+      const stream = getAnthropic().messages.stream({
         model: getModelId(context?.aiModel),
         max_tokens: 1200,
         system: systemPrompt,
@@ -1102,7 +1101,7 @@ export async function buildAIResponse(context, { onText, onError }) {
 
   try {
     await aiQueue.add(async () => {
-      const stream = client.messages.stream({
+      const stream = getAnthropic().messages.stream({
         model: getModelId(context?.aiModel),
         max_tokens: 12000,
         system: systemPrompt,

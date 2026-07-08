@@ -10,14 +10,13 @@
  */
 
 import { Router } from 'express'
-import Anthropic from '@anthropic-ai/sdk'
+import { getAnthropic } from '../lib/anthropicClient.js'
 import { requireAuth } from '../middleware/auth.js'
-import { createProject, updateProject, upsertDesign, createMessage, getMemberRole, addStandardToProject } from '../lib/supabaseService.js'
+import { createProject, updateProject, upsertDesign, createMessage, getMemberRole, addStandardToProject, resolveStandardId } from '../lib/supabaseService.js'
 import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
 import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
 import { getStandardsForSubjects } from '../lib/standardsValidator.js'
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export const demoRouter = Router()
 
@@ -165,7 +164,7 @@ async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, lab
   console.log(`[demo][${label}] AI 스트리밍 시작 — ${codes.length}개 절차`)
 
   // output-128k 베타 헤더는 Claude 4+ 모델에 기본 내장되어 제거
-  const stream = await client.messages.stream({
+  const stream = await getAnthropic().messages.stream({
     model: 'claude-sonnet-5',
     max_tokens: 64000,
     system: systemPrompt,
@@ -344,7 +343,7 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
           if (s.area) line += ` (영역: ${s.area})`
           return line
         }).join('\n')
-        const selectionResponse = await client.messages.create({
+        const selectionResponse = await getAnthropic().messages.create({
           model: 'claude-sonnet-5',
           max_tokens: 2048,
           messages: [{ role: 'user', content: `당신은 2022 개정 교육과정 기반 융합수업 설계 전문가입니다.
@@ -415,11 +414,18 @@ ${candidateList}
     }
 
     // 선별된 성취기준을 project_standards에 저장
+    // 주의: std.id는 인메모리 store의 부팅별 UUID — Supabase FK가 요구하는 실제 id로
+    // 반드시 code 기반 해석(resolveStandardId)을 거쳐야 한다 (미해석 시 FK 위반으로 전부 실패)
     let linkedCount = 0
     for (const std of selectedStandards) {
-      try { await addStandardToProject(projectId, std.id, userId, false); linkedCount++ } catch { /* 중복 무시 */ }
+      try {
+        const realId = await resolveStandardId({ code: std.code, id: std.id })
+        if (!realId) continue
+        await addStandardToProject(projectId, realId, userId, false)
+        linkedCount++
+      } catch { /* 중복 무시 */ }
     }
-    console.log(`[demo] 성취기준 ${linkedCount}개를 프로젝트에 연결`)
+    console.log(`[demo] 성취기준 ${linkedCount}/${selectedStandards.length}개를 프로젝트에 연결`)
 
     // 프롬프트용 텍스트 생성 (선별된 것만)
     const bySubject = {}
