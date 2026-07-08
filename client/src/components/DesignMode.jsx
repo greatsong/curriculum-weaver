@@ -94,19 +94,10 @@ export default function DesignMode() {
     setSearchParams(next)
   }
 
-  // 프로젝트 시작 CTA (기존 Graph3D CTA와 동일 계약 + 세션 저장)
+  // 프로젝트 시작 CTA — 워크스페이스에서 새 프로젝트를 만들면
+  // 담은 성취기준(sessionStorage)이 생성 모달에 자동 포함된다
   const startProject = () => {
-    const params = new URLSearchParams()
-    const subjectSet = new Set()
-    if (graphData) {
-      for (const code of basket) {
-        const node = graphData.nodes.find(n => n.code === code)
-        if (node) subjectSet.add(node.subject_group || node.subject)
-      }
-    }
-    if (subjectSet.size > 0) params.set('subjects', [...subjectSet].join(','))
-    if (basket.size > 0) params.set('standards', [...basket].join(','))
-    navigate(params.toString() ? `/?${params}` : '/')
+    navigate('/workspaces')
   }
 
   const basketList = [...basket]

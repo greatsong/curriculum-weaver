@@ -61,3 +61,9 @@ export function gradeBucket(node) {
 
 // 링크 대표 품질 (없으면 semantic으로 폴백)
 export const linkQuality = (l) => l.quality_score ?? l.semantic_score ?? 0.5
+
+// 같은 학년군 여부 — 융합 수업은 같은 학년군끼리가 기본이므로 정렬 우선순위에 사용
+export const isSameGrade = (a, b) => gradeBucket(a).order === gradeBucket(b).order
+
+// 정렬 점수: 같은 학년군 우선, 그 안에서 품질순
+export const linkPriority = (l, a, b) => (isSameGrade(a, b) ? 10 : 0) + linkQuality(l)

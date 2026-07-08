@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Search, ChevronRight, Plus, Check } from 'lucide-react'
-import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality } from './lensCommon'
+import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, isSameGrade } from './lensCommon'
 
 /**
  * 이웃 렌즈 — 성취기준 하나를 중심으로 직접 연결된 이웃을 탐색 (한 홉씩 걷기)
@@ -29,7 +29,11 @@ export default function NeighborLens({ graph, focusCode, onFocus, basket, onTogg
         return { link: l, node: nodeById.get(otherId) }
       })
       .filter(x => x.node)
-      .sort((x, y) => linkQuality(y.link) - linkQuality(x.link))
+      // 같은 학년군 우선(융합 수업 기본), 그 안에서 품질순
+      .sort((x, y) =>
+        ((isSameGrade(center, y.node) ? 10 : 0) + linkQuality(y.link)) -
+        ((isSameGrade(center, x.node) ? 10 : 0) + linkQuality(x.link))
+      )
   }, [graph, center, nodeById])
 
   const walk = (code) => {
@@ -118,7 +122,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, basket, onTogg
                   {LINK_TYPE_LABELS[link.link_type] || link.link_type}
                 </span>
                 <span className="font-mono text-[11px] font-bold text-gray-700">{node.code}</span>
-                <span className="text-[10px] text-gray-400 ml-auto">{node.subject}</span>
+                <span className="text-[10px] text-gray-400 ml-auto">{node.subject} · {node.grade_group}</span>
               </div>
               <p className="text-xs text-gray-600 leading-relaxed line-clamp-2">{node.content}</p>
               {link.rationale && (
