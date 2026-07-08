@@ -401,6 +401,58 @@ const FAQ_DATA = [
   },
 ]
 
+/** 과목쌍 렌즈 미니 목업 — 이분 다이어그램 */
+function MockLensPair() {
+  const cardCls = 'rounded-lg border border-slate-200 bg-white px-2.5 py-1.5'
+  return (
+    <BrowserFrame title="교과 연결 — 설계 모드 · 과목쌍 렌즈">
+      <div className="flex gap-1.5 mb-3">
+        {['과목쌍', '주제', '계열', '이웃'].map((l, i) => (
+          <span key={l} className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border ${
+            i === 0 ? 'bg-blue-50 border-blue-400 text-blue-700' : 'border-slate-200 text-slate-400'}`}>
+            {l}
+          </span>
+        ))}
+        <span className="ml-auto px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-semibold">4개 연결 · 평균 품질 0.85</span>
+      </div>
+      <div className="grid items-start" style={{ gridTemplateColumns: '1fr 56px 1fr' }}>
+        <div className="flex flex-col gap-2">
+          <p className="text-[10px] font-bold text-slate-500">🟦 데이터 과학</p>
+          <div className={`${cardCls} ring-2 ring-blue-100 border-blue-400`}>
+            <p className="text-[9px] font-mono font-bold text-blue-600">[12데과02-03]</p>
+            <p className="text-[9px] text-slate-500 leading-snug">데이터 속성 간의 관계를 파악하고 통합한다</p>
+          </div>
+          <div className={cardCls}>
+            <p className="text-[9px] font-mono font-bold text-blue-600">[12데과01-04]</p>
+            <p className="text-[9px] text-slate-500 leading-snug">데이터 기반 문제 해결 사례를 분석한다</p>
+          </div>
+        </div>
+        <svg viewBox="0 0 56 130" className="w-full h-[130px]">
+          <path d="M0,28 C25,28 31,30 56,30" stroke="#3b82f6" strokeWidth="3.5" fill="none" />
+          <path d="M0,86 C25,86 31,88 56,88" stroke="#f59e0b" strokeWidth="2" fill="none" opacity="0.55" />
+        </svg>
+        <div className="flex flex-col gap-2">
+          <p className="text-[10px] font-bold text-slate-500">🟦 인공지능 기초</p>
+          <div className={`${cardCls} ring-2 ring-blue-100 border-blue-400`}>
+            <p className="text-[9px] font-mono font-bold text-blue-600">[12인기02-02]</p>
+            <p className="text-[9px] text-slate-500 leading-snug">AI 학습 데이터를 가공하고 속성을 추출한다</p>
+          </div>
+          <div className={cardCls}>
+            <p className="text-[9px] font-mono font-bold text-blue-600">[12인기03-02]</p>
+            <p className="text-[9px] text-slate-500 leading-snug">AI에 의한 삶·직업 변화를 이해하고 진로를 탐색한다</p>
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2">
+        <p className="text-[9.5px] text-slate-600 leading-snug">
+          <span className="px-1.5 py-px rounded bg-blue-500 text-white text-[8.5px] font-bold mr-1">동일개념</span>
+          두 성취기준 모두 <b>특징 공학</b>을 다룬다 — 하나의 데이터셋으로 EDA → AI 모델 학습까지 잇는 연속 차시 가능
+        </p>
+      </div>
+    </BrowserFrame>
+  )
+}
+
 function FAQItem({ q, a }) {
   const [open, setOpen] = useState(false)
   return (
@@ -772,6 +824,43 @@ export default function GuidePage() {
               ))}
             </ul>
           </div>
+        </div>
+      </Section>
+
+      {/* S4-5: 교과 연결 탐색 (설계 모드 + 탐험 3D) */}
+      <Section id="curriculum-graph">
+        <div className="grid md:grid-cols-2 gap-10 md:gap-16 items-center">
+          <div>
+            <span className="text-xs font-semibold text-cyan-600 tracking-widest uppercase mb-3 block">Curriculum Graph</span>
+            <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4">교과 연결 탐색</h2>
+            <p className="text-sm text-slate-600 leading-relaxed mb-5">
+              4,700여 개 성취기준과 AI가 검증한 교과 간 연결을 탐색하세요.
+              교사의 질문에 하나씩 대응하는 <b>설계 모드 렌즈 4개</b>와,
+              교육과정 전체를 성운처럼 조망하는 <b>탐험 3D 모드</b>를 오가며 융합 수업 소재를 발견할 수 있습니다.
+            </p>
+            <ul className="space-y-2.5 text-sm text-slate-600 mb-6">
+              {[
+                '과목쌍 렌즈 — 두 교과의 성취기준이 어떻게 붙는지 (선 굵기 = 검증 품질)',
+                '주제 렌즈 — "기후변화"로 몇 개 교과가 엮이는지 한눈에',
+                '계열 렌즈 — 선수 학습과 심화·확장의 학년 흐름',
+                '모든 연결에 근거·융합 주제·수업 아이디어 포함, 담아서 바로 프로젝트로',
+              ].map((item, i) => (
+                <li key={i} className="flex items-start gap-2.5">
+                  <svg className="w-5 h-5 text-cyan-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {item}
+                </li>
+              ))}
+            </ul>
+            <button
+              onClick={() => navigate('/graph')}
+              className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-xl transition shadow-sm"
+            >
+              교과 연결 탐색해보기 →
+            </button>
+          </div>
+          <MockLensPair />
         </div>
       </Section>
 
