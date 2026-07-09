@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import {
   MATERIAL_CATEGORIES,
   MATERIAL_PROCESSING_STATUSES,
@@ -925,7 +926,10 @@ function MaterialDetailModal({ material, onClose }) {
   const suggestions = analysis.design_suggestions || []
   const keywords = analysis.extracted_keywords || []
 
-  return (
+  // ProjectPage는 .work-shell(zoom:1.5)로 감싸져 있어, 그 안에서 position:fixed
+  // 모달을 렌더링하면 zoom이 중복 적용돼 화면 밖으로 밀려난다. document.body로
+  // 포탈해서 zoom 조상 밖 좌표계에서 렌더링한다.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
       onClick={onClose}
@@ -1036,6 +1040,7 @@ function MaterialDetailModal({ material, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

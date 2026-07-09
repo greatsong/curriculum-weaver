@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X, FileText, FileCode, FileDown, ExternalLink, Loader2 } from 'lucide-react'
 import { API_BASE, getHeaders } from '../lib/api'
 
@@ -79,7 +80,10 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
     }
   }
 
-  return (
+  // ProjectPage는 .work-shell(zoom:1.5)로 감싸져 있어, 그 안에서 position:fixed
+  // 모달을 렌더링하면 zoom이 중복 적용돼 화면 밖으로 밀려난다. document.body로
+  // 포탈해서 zoom 조상 밖 좌표계에서 렌더링한다.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-md overflow-hidden">
@@ -138,6 +142,7 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
           </p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
