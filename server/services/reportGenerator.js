@@ -172,10 +172,14 @@ function renderBoardContent(boardType, content) {
     } else if (field.type === 'tags' && Array.isArray(value)) {
       sections.push({ label: field.label, type: 'tags', items: value })
     } else if (field.type === 'json' && value) {
-      // JSON 필드: 클러스터맵 형태이면 cluster, 아니면 텍스트
-      const isClusterMap = typeof value === 'object' && !Array.isArray(value) &&
+      // JSON 필드: nodes/edges 그래프 형태 → graph, 그 외 그룹형 객체 → cluster, 아니면 텍스트
+      const isGraphMap = typeof value === 'object' && !Array.isArray(value) &&
+        Array.isArray(value.nodes) && Array.isArray(value.edges)
+      const isClusterMap = !isGraphMap && typeof value === 'object' && !Array.isArray(value) &&
         Object.values(value).some(v => Array.isArray(v))
-      if (isClusterMap) {
+      if (isGraphMap) {
+        sections.push({ label: field.label, type: 'graph', nodes: value.nodes, edges: value.edges })
+      } else if (isClusterMap) {
         sections.push({ label: field.label, type: 'cluster', clusters: value })
       } else {
         sections.push({ label: field.label, type: 'text', value: typeof value === 'string' ? value : JSON.stringify(value, null, 2) })
@@ -714,11 +718,61 @@ function renderSectionsHTML(sections) {
         html += `</div></div>`
       })
       html += `</div></div>`
+    } else if (sec.type === 'graph') {
+      html += renderGraphHTML(sec.label, sec.nodes, sec.edges)
     } else {
       html += `<div class="f-group"><div class="f-label">${esc(sec.label)}</div><div class="f-value">${esc(sec.value)}</div></div>`
     }
   }
   return html
+}
+
+/**
+ * 연결맵(nodes/edges) SVG 시각화 — 원형 배치 후 엣지를 선으로 연결
+ */
+function renderGraphHTML(label, nodes, edges) {
+  const { order, idToLabel, edges: validEdges } = buildGraphLayout(nodes, edges)
+  if (order.length === 0) return ''
+
+  const n = order.length
+  const cx = 260, cy = 190
+  const r = Math.min(150, 70 + n * 6)
+  const positions = {}
+  order.forEach((id, i) => {
+    const angle = (2 * Math.PI * i) / n - Math.PI / 2
+    positions[id] = { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) }
+  })
+
+  let svg = `<svg viewBox="0 0 ${cx * 2} ${cy * 2 + 20}" style="width:100%;max-width:520px;height:auto;display:block;margin:8px auto;">`
+  for (const ep of validEdges) {
+    const p1 = positions[ep.source]
+    const p2 = positions[ep.target]
+    if (!p1 || !p2) continue
+    svg += `<line x1="${p1.x.toFixed(1)}" y1="${p1.y.toFixed(1)}" x2="${p2.x.toFixed(1)}" y2="${p2.y.toFixed(1)}" stroke="#94a3b8" stroke-width="1.5"/>`
+    if (ep.relation) {
+      const mx = ((p1.x + p2.x) / 2).toFixed(1)
+      const my = ((p1.y + p2.y) / 2).toFixed(1)
+      svg += `<text x="${mx}" y="${my}" font-size="9" fill="#64748b" text-anchor="middle">${esc(truncateLabel(ep.relation, 16))}</text>`
+    }
+  }
+  const nodeColors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
+  order.forEach((id, i) => {
+    const pos = positions[id]
+    const color = nodeColors[i % nodeColors.length]
+    svg += `<circle cx="${pos.x.toFixed(1)}" cy="${pos.y.toFixed(1)}" r="6" fill="${color}"/>`
+    svg += `<text x="${pos.x.toFixed(1)}" y="${(pos.y - 11).toFixed(1)}" font-size="11" fill="#1e293b" text-anchor="middle" font-weight="600">${esc(truncateLabel(idToLabel.get(id), 14))}</text>`
+  })
+  svg += `</svg>`
+
+  // 인쇄/스크린리더 대비: 연결 목록도 텍스트로 함께 제공
+  let listHtml = ''
+  if (validEdges.length > 0) {
+    listHtml = `<ul class="n-list" style="margin-top:8px;">` +
+      validEdges.map(ep => `<li>${esc(idToLabel.get(ep.source) || ep.source)} ↔ ${esc(idToLabel.get(ep.target) || ep.target)}${ep.relation ? ` — ${esc(ep.relation)}` : ''}</li>`).join('') +
+      `</ul>`
+  }
+
+  return `<div class="board-section"><div class="board-label">${esc(label)}</div>${svg}${listHtml}</div>`
 }
 
 // ════════════════════════════════════════════
@@ -868,11 +922,34 @@ function renderSectionsMD(sections) {
         md += `- **${name}**: ${itemList.join(', ')}\n`
       }
       md += `\n`
+    } else if (sec.type === 'graph') {
+      md += renderGraphMD(sec.label, sec.nodes, sec.edges)
     } else {
       md += `**${sec.label}**: ${sec.value}\n\n`
     }
   }
   return md
+}
+
+/**
+ * 연결맵(nodes/edges)을 텍스트 기반 연결 목록으로 표현 (Markdown은 이미지 없이 텍스트만)
+ */
+function renderGraphMD(label, nodes, edges) {
+  const { order, idToLabel, edges: validEdges } = buildGraphLayout(nodes, edges)
+  let md = `**${label}**\n\n`
+  if (order.length === 0) return md + '\n'
+
+  if (validEdges.length > 0) {
+    for (const ep of validEdges) {
+      const rel = ep.relation ? ` — ${ep.relation}` : ''
+      md += `- ${idToLabel.get(ep.source) || ep.source} ↔ ${idToLabel.get(ep.target) || ep.target}${rel}\n`
+    }
+  } else {
+    for (const id of order) {
+      md += `- ${idToLabel.get(id)}\n`
+    }
+  }
+  return md + '\n'
 }
 
 // ════════════════════════════════════════════
@@ -898,4 +975,60 @@ function esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+// ── 연결맵(nodes/edges 그래프) 유틸리티 ──
+// AI가 생성하는 connectionMap은 필드 스키마상 자유 형식(json)이라 노드 키가
+// {id, label} / {id, name} 등으로 제각각일 수 있어 방어적으로 정규화한다.
+
+function graphNodeId(node, idx) {
+  if (node == null) return String(idx)
+  if (typeof node !== 'object') return String(node)
+  return node.id != null ? String(node.id) : graphNodeLabel(node, idx)
+}
+
+function graphNodeLabel(node, idx) {
+  if (node == null) return `노드${idx + 1}`
+  if (typeof node !== 'object') return String(node)
+  return node.label || node.name || node.title || node.text || node.subject || node.code ||
+    (node.id != null ? String(node.id) : `노드${idx + 1}`)
+}
+
+function graphEdgeEndpoints(edge) {
+  if (edge == null || typeof edge !== 'object') return null
+  const source = edge.source ?? edge.from ?? edge.start
+  const target = edge.target ?? edge.to ?? edge.end
+  if (source == null || target == null) return null
+  const relation = edge.relation || edge.label || edge.type || edge.description || ''
+  return { source: String(source), target: String(target), relation: relation ? String(relation) : '' }
+}
+
+// 노드/엣지 원본 데이터를 { order, idToLabel, edges } 형태로 정규화.
+// edges가 nodes 목록에 없는 id를 참조해도(방어) 해당 id를 노드로 편입시켜 누락 없이 그린다.
+function buildGraphLayout(nodes, edges) {
+  const idToLabel = new Map()
+  const order = []
+  const addNode = (id, label) => {
+    if (!idToLabel.has(id)) {
+      idToLabel.set(id, label)
+      order.push(id)
+    }
+  }
+  ;(Array.isArray(nodes) ? nodes : []).forEach((node, i) => {
+    addNode(graphNodeId(node, i), graphNodeLabel(node, i))
+  })
+  const validEdges = []
+  ;(Array.isArray(edges) ? edges : []).forEach((edge) => {
+    const ep = graphEdgeEndpoints(edge)
+    if (!ep) return
+    addNode(ep.source, idToLabel.get(ep.source) || ep.source)
+    addNode(ep.target, idToLabel.get(ep.target) || ep.target)
+    validEdges.push(ep)
+  })
+  return { order, idToLabel, edges: validEdges }
+}
+
+function truncateLabel(text, max = 14) {
+  const s = String(text || '')
+  return s.length > max ? s.slice(0, max - 1) + '…' : s
 }
