@@ -13,7 +13,7 @@ import { Router } from 'express'
 import { getAnthropic } from '../lib/anthropicClient.js'
 import { requireAuth } from '../middleware/auth.js'
 import { createProject, updateProject, upsertDesign, createMessage, getMemberRole, addStandardToProject, resolveStandardId } from '../lib/supabaseService.js'
-import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_LIST, getProcedureDisplayCode } from 'curriculum-weaver-shared/constants.js'
 import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
 import { getStandardsForSubjects } from '../lib/standardsValidator.js'
 
@@ -26,6 +26,15 @@ const PHASE2_CODES = ['Ds-1-1', 'Ds-1-2', 'Ds-1-3', 'Ds-2-1', 'Ds-2-2', 'DI-1-1'
 const ALL_CODES = [...PHASE1_CODES, ...PHASE2_CODES]
 const procedureNameMap = Object.fromEntries(PROCEDURE_LIST.map((p) => [p.code, p.name]))
 const MAX_DEMO_DESCRIPTION_LENGTH = 1500
+
+// JSON 응답의 키(board/conversation 매핑용)는 내부 코드(Ds-1-1 등)를 그대로 써야 하지만,
+// conversation.message 자연어 텍스트에서는 사용자에게 노출되는 표시 코드(Ds-1)만 써야 한다.
+// AI가 대화 중 "이전 절차"를 언급할 때 내부 코드를 그대로 echo하지 않도록 매핑을 제공한다.
+function buildDisplayCodeReference(codes) {
+  return codes
+    .map((code) => `${code} → "${getProcedureDisplayCode(code) || procedureNameMap[code] || code}"`)
+    .join(', ')
+}
 
 // ── 교사 이름 풀 (교과별 자연스러운 한국 이름) ──
 // 각 교과 첫 번째 이름은 "일반형", 두 번째는 "창의·모험형" 성향으로 우선 배치
@@ -489,6 +498,13 @@ ${teacherProfileText}
 - "아까 prep에서 말씀하신 것처럼...", "앞서 팀 비전으로 정한 ... 에 맞춰서..."
 - 이전 절차에서 합의된 내용을 언급하며 자연스럽게 이어가세요.
 - 교사들이 이전 대화 내용을 기억하고, 누적된 논의 위에 새로운 아이디어를 쌓아가는 느낌이어야 합니다.
+
+## 절차 코드 표기 규칙 (절대 준수 — 위반 시 사용자에게 노출되는 실제 버그가 됩니다!)
+JSON 응답의 절차 키(예: "Ds-1-1")는 반드시 아래 목록의 내부 코드 그대로 사용하세요.
+하지만 conversation의 "message" 자연어 텍스트 안에서 절차를 언급할 때는 내부 코드
+("Ds-1-1", "DI-2-1" 등)를 절대 쓰지 말고, 아래 화살표 오른쪽의 표시 코드나 절차 이름만 쓰세요.
+내부 코드 → 표시 코드: ${buildDisplayCodeReference(ALL_CODES)}
+예: (O) "설계 단계(Ds-1)에서 정한 문제 상황대로..." / (X) "Ds-1-1에서 정한..."
 
 ## 형식 지침
 각 절차마다 "board"(보드 데이터)와 "conversation"(대화 기록)을 포함하세요.
