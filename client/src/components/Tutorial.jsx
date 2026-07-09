@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Sparkles, X } from 'lucide-react'
 
 // ============================================================
@@ -343,7 +344,10 @@ export default function Tutorial({ onComplete }) {
   // 프로그레스 퍼센트
   const progress = ((step + 1) / totalSteps) * 100
 
-  return (
+  // ProjectPage는 .work-shell(zoom:1.5)로 감싸져 있어, 그 안에서 position:fixed
+  // 모달을 렌더링하면 zoom이 중복 적용돼 화면 밖으로 밀려난다. document.body로
+  // 포탈해서 zoom 조상 밖 좌표계에서 렌더링한다.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
@@ -541,6 +545,7 @@ export default function Tutorial({ onComplete }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

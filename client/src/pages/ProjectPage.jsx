@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo, Component } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useProjectStore } from '../stores/projectStore'
 import { useProcedureStore } from '../stores/procedureStore'
@@ -59,7 +60,10 @@ function NicknameModal({ onConfirm }) {
     onConfirm({ name: nickname, subject: displaySubject })
   }
 
-  return (
+  // ProjectPage는 .work-shell(zoom:1.5)로 감싸져 있어, 그 안에서 position:fixed
+  // 모달을 렌더링하면 zoom이 중복 적용돼 화면 밖으로 밀려난다. document.body로
+  // 포탈해서 zoom 조상 밖 좌표계에서 렌더링한다.
+  return createPortal(
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.15)', backdropFilter: 'blur(4px)' }} />
       <form
@@ -143,7 +147,8 @@ function NicknameModal({ onConfirm }) {
           닉네임을 비워두면 자동 생성돼요
         </p>
       </form>
-    </div>
+    </div>,
+    document.body
   )
 }
 
