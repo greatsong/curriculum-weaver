@@ -188,9 +188,10 @@ export default function StandardSearch({ sessionId, onClose }) {
     setLinks(data || [])
   }
 
-  // ProjectPage는 .work-shell(zoom:1.5)로 감싸져 있어, 그 안에서 position:fixed
-  // 모달을 렌더링하면 zoom이 중복 적용돼 화면 밖으로 밀려난다. document.body로
-  // 포탈해서 zoom 조상 밖 좌표계에서 렌더링한다.
+  // ProjectPage는 .work-shell(zoom:1.5)로 감싸져 있다. 이 모달이 그 안에서
+  // fixed inset-0으로 렌더링되면 zoom이 중복 적용돼 뷰포트보다 커지고 상단이
+  // 화면 밖으로 밀려난다(InteractiveTour와 동일한 원인). document.body로
+  // 포탈해서 zoom 영향을 받지 않는 좌표계에서 렌더링한다.
   return createPortal(
     <div className="fixed inset-0 bg-black/40 sm:flex sm:items-center sm:justify-center z-50" onClick={onClose}>
       <div className="bg-white h-full sm:h-auto sm:rounded-xl sm:shadow-2xl w-full sm:max-w-3xl sm:max-h-[90vh] sm:mx-4 flex flex-col" onClick={(e) => e.stopPropagation()}>

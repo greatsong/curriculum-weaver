@@ -533,7 +533,7 @@ function BoardRenderer({ schema, content }) {
               ) : field.type === 'textarea' ? (
                 <p style={{ fontSize: 13, color: 'var(--color-text-primary)', whiteSpace: 'pre-wrap', lineHeight: 1.7, margin: 0 }}>{value}</p>
               ) : field.type === 'json' ? (
-                <ClusterMapRenderer value={value} label={field.label} />
+                <JsonFieldRenderer value={value} />
               ) : (
                 <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{String(value)}</p>
               )}
@@ -570,20 +570,130 @@ function itemToText(item) {
   return String(item)
 }
 
-function ClusterMapRenderer({ value, label }) {
-  // 객체 형태의 클러스터맵인지 확인
-  const isClusterMap = value && typeof value === 'object' && !Array.isArray(value) &&
-    Object.values(value).some((v) => Array.isArray(v) || typeof v === 'string')
+// JSON 필드는 AI가 스키마 제약 없이 자유 형식으로 생성한다 — {nodes,edges} 그래프,
+// 단순 그룹(이름→항목배열) 클러스터맵, 또는 완전히 임의로 중첩된 객체까지 다양하다.
+// 셋 중 어디에도 안 맞으면 raw JSON을 그대로 보여주는 게 예전 폴백이었는데, 실제
+// 저장된 데이터를 보면 중첩 구조가 흔해서 "글씨(JSON)로 나온다" 문제가 잦았다.
+// 그래서 마지막 폴백을 재귀 트리 렌더러로 바꿔 어떤 중첩이든 읽을 수 있게 편다.
+function isGraphShape(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value) &&
+    Array.isArray(value.nodes) && Array.isArray(value.edges)
+}
 
-  if (!isClusterMap) {
-    // 일반 JSON 폴백
-    return (
-      <pre style={{ fontSize: 12, color: 'var(--color-text-secondary)', background: 'var(--color-bg-primary)', padding: 10, borderRadius: 'var(--radius-md)', overflowX: 'auto', maxHeight: 200, margin: 0, fontFamily: 'var(--font-mono)' }}>
-        {typeof value === 'string' ? value : JSON.stringify(value, null, 2)}
-      </pre>
-    )
+function isFlatClusterMap(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const entries = Object.entries(value)
+  if (entries.length === 0) return false
+  return entries.every(([, v]) => typeof v === 'string' ||
+    (Array.isArray(v) && v.every((i) => i == null || typeof i !== 'object')))
+}
+
+function JsonFieldRenderer({ value }) {
+  if (isGraphShape(value)) return <GraphMapRenderer nodes={value.nodes} edges={value.edges} />
+  if (isFlatClusterMap(value)) return <ClusterMapRenderer value={value} />
+  // 그 외 임의로 중첩된 형태는 AI 제안 카드에서도 쓰는 ReadableValue로 재귀 렌더링
+  // (raw JSON.stringify 폴백은 "프로그램 오류처럼 보인다"는 이유로 이미 폐기된 패턴)
+  return <ReadableValue value={value} />
+}
+
+// ── 연결맵(nodes/edges 그래프) ──
+function graphNodeId(node, idx) {
+  if (node == null) return String(idx)
+  if (typeof node !== 'object') return String(node)
+  return node.id != null ? String(node.id) : graphNodeLabel(node, idx)
+}
+
+function graphNodeLabel(node, idx) {
+  if (node == null) return `노드${idx + 1}`
+  if (typeof node !== 'object') return String(node)
+  return node.label || node.name || node.title || node.text || node.subject || node.code ||
+    (node.id != null ? String(node.id) : `노드${idx + 1}`)
+}
+
+function graphEdgeEndpoints(edge) {
+  if (edge == null || typeof edge !== 'object') return null
+  const source = edge.source ?? edge.from ?? edge.start
+  const target = edge.target ?? edge.to ?? edge.end
+  if (source == null || target == null) return null
+  const relation = edge.relation || edge.label || edge.type || edge.description || ''
+  return { source: String(source), target: String(target), relation: relation ? String(relation) : '' }
+}
+
+function buildGraphLayout(nodes, edges) {
+  const idToLabel = new Map()
+  const order = []
+  const addNode = (id, label) => {
+    if (!idToLabel.has(id)) { idToLabel.set(id, label); order.push(id) }
   }
+  ;(Array.isArray(nodes) ? nodes : []).forEach((node, i) => addNode(graphNodeId(node, i), graphNodeLabel(node, i)))
+  const validEdges = []
+  ;(Array.isArray(edges) ? edges : []).forEach((edge) => {
+    const ep = graphEdgeEndpoints(edge)
+    if (!ep) return
+    addNode(ep.source, idToLabel.get(ep.source) || ep.source)
+    addNode(ep.target, idToLabel.get(ep.target) || ep.target)
+    validEdges.push(ep)
+  })
+  return { order, idToLabel, edges: validEdges }
+}
 
+function truncateLabel(text, max = 14) {
+  const s = String(text || '')
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s
+}
+
+const GRAPH_NODE_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']
+
+function GraphMapRenderer({ nodes, edges }) {
+  const { order, idToLabel, edges: validEdges } = useMemo(() => buildGraphLayout(nodes, edges), [nodes, edges])
+  if (order.length === 0) return null
+
+  const n = order.length
+  const cx = 220, cy = 170
+  const r = Math.min(120, 55 + n * 5)
+  const positions = {}
+  order.forEach((id, i) => {
+    const angle = (2 * Math.PI * i) / n - Math.PI / 2
+    positions[id] = { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) }
+  })
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <svg viewBox={`0 0 ${cx * 2} ${cy * 2 + 20}`} style={{ width: '100%', maxWidth: 440, height: 'auto', margin: '0 auto', display: 'block' }}>
+        {validEdges.map((ep, i) => {
+          const p1 = positions[ep.source], p2 = positions[ep.target]
+          if (!p1 || !p2) return null
+          const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2
+          return (
+            <g key={i}>
+              <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#94a3b8" strokeWidth={1.5} />
+              {ep.relation && <text x={mx} y={my} fontSize={9} fill="#64748b" textAnchor="middle">{truncateLabel(ep.relation, 14)}</text>}
+            </g>
+          )
+        })}
+        {order.map((id, i) => {
+          const pos = positions[id]
+          const color = GRAPH_NODE_COLORS[i % GRAPH_NODE_COLORS.length]
+          return (
+            <g key={id}>
+              <circle cx={pos.x} cy={pos.y} r={6} fill={color} />
+              <text x={pos.x} y={pos.y - 11} fontSize={11} fill="#1e293b" textAnchor="middle" fontWeight={600}>{truncateLabel(idToLabel.get(id), 14)}</text>
+            </g>
+          )
+        })}
+      </svg>
+      {validEdges.length > 0 && (
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: 'var(--color-text-secondary)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {validEdges.map((ep, i) => (
+            <li key={i}>{idToLabel.get(ep.source) || ep.source} ↔ {idToLabel.get(ep.target) || ep.target}{ep.relation ? ` — ${ep.relation}` : ''}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function ClusterMapRenderer({ value }) {
   const entries = Object.entries(value)
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
