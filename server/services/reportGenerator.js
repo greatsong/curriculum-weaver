@@ -13,7 +13,7 @@ import {
 } from '../lib/supabaseService.js'
 import {
   PHASES, PHASE_LIST, PROCEDURES, PROCEDURE_LIST,
-  BOARD_TYPES, BOARD_TYPE_LABELS, getProceduresByPhase,
+  BOARD_TYPES, BOARD_TYPE_LABELS, getProceduresByPhase, getProcedureDisplayCode,
 } from '../../shared/constants.js'
 import { BOARD_SCHEMAS } from '../../shared/boardSchemas.js'
 
@@ -581,7 +581,7 @@ export function generateHTML(data) {
           html += `
   <div class="proc-block">
     <div class="proc-header">
-      <span class="proc-code" style="background:${phaseColor};">${esc(proc.code)}</span>
+      <span class="proc-code" style="background:${phaseColor};">${esc(getProcedureDisplayCode(proc.code) || proc.code)}</span>
       ${esc(proc.name)}
       <span class="proc-status status-empty">수업 후 예정</span>
     </div>
@@ -599,7 +599,7 @@ export function generateHTML(data) {
       html += `
   <div class="proc-block">
     <div class="proc-header">
-      <span class="proc-code" style="background:${phaseColor};">${esc(proc.code)}</span>
+      <span class="proc-code" style="background:${phaseColor};">${esc(getProcedureDisplayCode(proc.code) || proc.code)}</span>
       ${esc(proc.name)}
       ${statusLabel ? `<span class="proc-status ${statusClass}">${statusLabel}</span>` : ''}
     </div>
@@ -803,7 +803,7 @@ export function generateMarkdown(data) {
       // 빈 절차는 건너뛰되, E-1-1(수업 성찰)만 '수업 후 예정' 자리표시로 남긴다.
       if (!sections) {
         if (proc.code === 'E-1-1') {
-          md += `### ${proc.code}: ${proc.name} [수업 후 예정]\n\n> ${proc.description}\n\n실제 수업(2026-07-10) 이후에 작성 예정입니다.\n\n`
+          md += `### ${getProcedureDisplayCode(proc.code) || proc.code}: ${proc.name} [수업 후 예정]\n\n> ${proc.description}\n\n실제 수업(2026-07-10) 이후에 작성 예정입니다.\n\n`
         }
         continue
       }
@@ -811,7 +811,7 @@ export function generateMarkdown(data) {
       const status = procedureStatus[proc.code] || 'empty'
       const statusTag = status === 'confirmed' ? ' [확정]' : status === 'draft' ? ' [초안]' : ''
 
-      md += `### ${proc.code}: ${proc.name}${statusTag}\n\n`
+      md += `### ${getProcedureDisplayCode(proc.code) || proc.code}: ${proc.name}${statusTag}\n\n`
       md += `> ${proc.description}\n\n`
       md += renderSectionsMD(sections)
 
