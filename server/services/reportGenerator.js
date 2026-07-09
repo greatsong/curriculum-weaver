@@ -172,17 +172,24 @@ function renderBoardContent(boardType, content) {
     } else if (field.type === 'tags' && Array.isArray(value)) {
       sections.push({ label: field.label, type: 'tags', items: value })
     } else if (field.type === 'json' && value) {
-      // JSON 필드: nodes/edges 그래프 형태 → graph, 그 외 그룹형 객체 → cluster, 아니면 텍스트
+      // JSON 필드는 AI가 스키마 제약 없이 자유 형식으로 생성한다 — 실제로는
+      // {nodes,edges} 그래프, 단순 그룹(이름→항목배열) 클러스터맵, 또는 완전히
+      // 임의로 중첩된 객체(클러스터 안에 클러스터, 배열 안에 객체 등)까지 다양하다.
+      // 앞의 두 형태만 특수 처리하고 나머지는 raw JSON 텍스트로 떨어뜨리면
+      // "글씨로 나온다"는 문제가 생기므로, 마지막 폴백을 재귀 트리 렌더러로 바꿔
+      // 어떤 중첩 구조든 읽을 수 있는 형태로 펼친다.
       const isGraphMap = typeof value === 'object' && !Array.isArray(value) &&
         Array.isArray(value.nodes) && Array.isArray(value.edges)
-      const isClusterMap = !isGraphMap && typeof value === 'object' && !Array.isArray(value) &&
-        Object.values(value).some(v => Array.isArray(v))
+      const isFlatClusterMap = !isGraphMap && typeof value === 'object' && !Array.isArray(value) &&
+        Object.entries(value).length > 0 &&
+        Object.values(value).every(v => typeof v === 'string' ||
+          (Array.isArray(v) && v.every(i => i == null || typeof i !== 'object')))
       if (isGraphMap) {
         sections.push({ label: field.label, type: 'graph', nodes: value.nodes, edges: value.edges })
-      } else if (isClusterMap) {
+      } else if (isFlatClusterMap) {
         sections.push({ label: field.label, type: 'cluster', clusters: value })
       } else {
-        sections.push({ label: field.label, type: 'text', value: typeof value === 'string' ? value : JSON.stringify(value, null, 2) })
+        sections.push({ label: field.label, type: 'tree', value })
       }
     } else if (typeof value === 'string' || typeof value === 'number') {
       sections.push({ label: field.label, type: 'text', value: String(value) })
@@ -720,11 +727,47 @@ function renderSectionsHTML(sections) {
       html += `</div></div>`
     } else if (sec.type === 'graph') {
       html += renderGraphHTML(sec.label, sec.nodes, sec.edges)
+    } else if (sec.type === 'tree') {
+      html += `<div class="board-section"><div class="board-label">${esc(sec.label)}</div>${renderTreeNodeHTML(sec.value)}</div>`
     } else {
       html += `<div class="f-group"><div class="f-label">${esc(sec.label)}</div><div class="f-value">${esc(sec.value)}</div></div>`
     }
   }
   return html
+}
+
+/**
+ * 임의로 중첩된 JSON을 읽을 수 있는 형태로 재귀 렌더링.
+ * 원시값 배열은 태그 칩, 객체 배열은 카드, 객체는 라벨:값 행으로 펼친다.
+ */
+function renderTreeNodeHTML(value) {
+  if (value == null || value === '') return ''
+  if (typeof value !== 'object') {
+    return `<p style="margin:2px 0;font-size:12.5px;color:#374151;">${esc(String(value))}</p>`
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return ''
+    const allPrimitive = value.every(v => v == null || typeof v !== 'object')
+    if (allPrimitive) {
+      return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0;">` +
+        value.map(v => `<span style="font-size:11.5px;padding:3px 9px;border-radius:9999px;background:#EFF6FF;color:#1E40AF;">${esc(String(v))}</span>`).join('') +
+        `</div>`
+    }
+    return `<div style="display:flex;flex-direction:column;gap:8px;margin:4px 0;">` +
+      value.map(v => `<div style="border:1px solid #E5E7EB;border-radius:8px;padding:8px 10px;background:#FAFAFA;">${renderTreeNodeHTML(v)}</div>`).join('') +
+      `</div>`
+  }
+  const entries = Object.entries(value).filter(([, v]) => v != null && v !== '')
+  if (entries.length === 0) return ''
+  return entries.map(([k, v]) => {
+    const isSimple = typeof v !== 'object'
+    return `<div style="margin:3px 0;">` +
+      `<span style="font-size:11px;font-weight:700;color:#6B7280;">${esc(k)}</span>` +
+      (isSimple
+        ? ` <span style="font-size:12.5px;color:#374151;">${esc(String(v))}</span>`
+        : `<div style="margin:3px 0 0 8px;">${renderTreeNodeHTML(v)}</div>`) +
+      `</div>`
+  }).join('')
 }
 
 /**
@@ -924,11 +967,35 @@ function renderSectionsMD(sections) {
       md += `\n`
     } else if (sec.type === 'graph') {
       md += renderGraphMD(sec.label, sec.nodes, sec.edges)
+    } else if (sec.type === 'tree') {
+      md += `**${sec.label}**\n\n${renderTreeNodeMD(sec.value, 0)}\n`
     } else {
       md += `**${sec.label}**: ${sec.value}\n\n`
     }
   }
   return md
+}
+
+/**
+ * 임의로 중첩된 JSON을 들여쓰기된 불릿 목록으로 재귀 렌더링 (HTML 트리 렌더러의 MD 버전)
+ */
+function renderTreeNodeMD(value, depth) {
+  const pad = '  '.repeat(depth)
+  if (value == null || value === '') return ''
+  if (typeof value !== 'object') return `${pad}${value}\n`
+  if (Array.isArray(value)) {
+    if (value.length === 0) return ''
+    const allPrimitive = value.every(v => v == null || typeof v !== 'object')
+    if (allPrimitive) return value.map(v => `${pad}- ${v}\n`).join('')
+    return value.map(v => `${pad}-\n${renderTreeNodeMD(v, depth + 1)}`).join('')
+  }
+  const entries = Object.entries(value).filter(([, v]) => v != null && v !== '')
+  return entries.map(([k, v]) => {
+    const isSimple = typeof v !== 'object'
+    return isSimple
+      ? `${pad}- **${k}**: ${v}\n`
+      : `${pad}- **${k}**:\n${renderTreeNodeMD(v, depth + 1)}`
+  }).join('')
 }
 
 /**

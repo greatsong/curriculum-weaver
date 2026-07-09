@@ -13,18 +13,27 @@ import { subjectColor, simBadge } from './lensCommon'
  *  - onOpenNeighbor(code)
  */
 export default function ThemeLens({ query, onQuery, basket, onToggleBasket, onOpenNeighbor }) {
+  // 입력창은 로컬 state로 관리한다. query/onQuery는 URL(searchParams)에 바로
+  // 연결되어 있어서, 매 키 입력마다 onQuery를 호출해 <input value={query}>로
+  // 되돌리면 그 라운드트립이 한글 IME 조합을 깨뜨린다("안녕" → "ㅇ안ㄴㅕㅇ").
+  // 로컬 state로 타이핑을 받고, 디바운스된 시점에만 URL에 반영한다.
+  const [text, setText] = useState(query)
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const timerRef = useRef(null)
 
+  // 외부에서 query가 바뀌면(예시 칩 클릭, 다른 렌즈에서 이동 등) 입력값 동기화
+  useEffect(() => { setText(query) }, [query])
+
   useEffect(() => {
-    if (!query.trim()) { setResults([]); setError(''); return }
+    if (!text.trim()) { setResults([]); setError(''); if (query) onQuery(''); return }
     clearTimeout(timerRef.current)
     setLoading(true)
     timerRef.current = setTimeout(async () => {
+      onQuery(text)
       try {
-        const data = await apiGet('/api/standards/semantic-search', { q: query.trim() })
+        const data = await apiGet('/api/standards/semantic-search', { q: text.trim() })
         if (!Array.isArray(data)) throw new Error('invalid')
         setResults(data)
         setError('')
@@ -36,7 +45,8 @@ export default function ThemeLens({ query, onQuery, basket, onToggleBasket, onOp
       }
     }, 500)
     return () => clearTimeout(timerRef.current)
-  }, [query])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text])
 
   // 학교급 필터 (교사는 자기 학교급이 기본 관심사)
   const [schoolLevel, setSchoolLevel] = useState('')
@@ -61,7 +71,7 @@ export default function ThemeLens({ query, onQuery, basket, onToggleBasket, onOp
     <div className="flex flex-col gap-4">
       <div className="relative max-w-xl">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input value={query} onChange={e => onQuery(e.target.value)} autoFocus
+        <input value={text} onChange={e => setText(e.target.value)} autoFocus
           placeholder="주제로 검색 — 기후변화, 데이터, 에너지, 민주주의…"
           className="w-full pl-9 pr-3 py-2.5 border-2 border-blue-500/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
       </div>
@@ -69,11 +79,11 @@ export default function ThemeLens({ query, onQuery, basket, onToggleBasket, onOp
       {loading && <p className="text-sm text-gray-400 animate-pulse">의미 검색 중…</p>}
       {error && <p className="text-sm text-amber-600">{error}</p>}
 
-      {!loading && !error && query.trim() && columns.length === 0 && (
+      {!loading && !error && text.trim() && columns.length === 0 && (
         <p className="text-sm text-gray-400 py-8 text-center">검색 결과가 없습니다</p>
       )}
 
-      {!query.trim() && (
+      {!text.trim() && (
         <div className="flex gap-2 flex-wrap">
           {['기후변화', '데이터 분석', '에너지', '인공지능 윤리', '민주주의', '건강한 생활'].map(ex => (
             <button key={ex} onClick={() => onQuery(ex)}
