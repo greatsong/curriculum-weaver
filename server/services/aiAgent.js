@@ -16,12 +16,19 @@ import {
   PROCEDURES, PHASES, ACTION_TYPES, ACTOR_COLUMNS, BOARD_TYPES, BOARD_TYPE_LABELS,
   PROMPT_TONE_INSTRUCTIONS, AI_ROLE_PRESETS, DEFAULT_AI_ROLE,
   MATERIAL_INTENTS, MATERIAL_INTENT_LABELS,
-  getProcedureDisplayCode,
+  getProcedureDisplayCode, getProcedureLabel, replaceInternalProcedureCodes,
 } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { getBoardSchemaForPrompt } from 'curriculum-weaver-shared/boardSchemas.js'
 import { PROCEDURE_GUIDE, COMMON_RULES, getCoherenceTargets } from '../data/procedureGuide.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
+
+/**
+ * XML 속성용 절차 토큰 — 모델에게는 표시 코드(T-2)만 노출한다.
+ * displayCode 없는 절차(prep)는 'prep' 그대로 (T-#-# 혼동 패턴 밖이라 무해).
+ * 파서(서버·클라)는 normalizeProcedureCode로 표시·내부 어느 형식이든 수용한다.
+ */
+const xmlProcToken = (code) => getProcedureDisplayCode(code) || code
 
 
 // 동시 AI 요청 5개로 제한 (Anthropic API rate limit 준수)
@@ -737,7 +744,7 @@ ${procInfo.description}`)
    - 이 절차의 보드를 충분히 채우는 것이 목표입니다.
    - 절대 금지: 이 절차보다 뒤 절차의 내용을 미리 다루거나 보드에 반영하기.
    - 교사가 뒤 절차를 물어보면: "좋은 질문이에요. 그 부분은 ${nextProcEntry ? (getProcedureDisplayCode(nextProcEntry[0]) || nextProcEntry[0]) + '(' + nextProcEntry[1].name + ')' : '다음'} 절차에서 다루게 됩니다."
-   - 대화 텍스트에서 절차를 언급할 때는 반드시 위 표시 코드(예: "Ds-1")만 사용하세요. "Ds-1-1"처럼 내부 전용 코드를 절대 노출하지 마세요.
+   - 대화 텍스트에서 절차를 언급할 때는 반드시 위 표시 코드(예: "Ds-1")나 절차 이름만 사용하세요. 이 대화에 등장하지 않는 다른 형식의 절차 코드를 만들어 쓰지 마세요.
 
 2. 스텝 순서
    - 스텝 순서를 따르되, 교사의 자연스러운 흐름을 존중합니다.
@@ -746,12 +753,12 @@ ${procInfo.description}`)
 3. 절차 전환 제안${nextProcEntry ? `
    - 이 절차의 핵심 보드가 충분히 채워졌고, 교사가 "다음 절차로" 등을 말하면
    - 반드시 아래 형식의 <procedure_advance> XML 블록을 응답에 포함하세요.
-   - suggested 값은 반드시 "${nextProcEntry[0]}"여야 합니다. 존재하지 않는 절차 코드를 지어내지 마세요.
+   - suggested 값은 반드시 "${xmlProcToken(nextProcEntry[0])}"여야 합니다. 존재하지 않는 절차 코드를 지어내지 마세요.
 
 <procedure_advance> 형식:
-<procedure_advance current="${procedure}" suggested="${nextProcEntry[0]}" reason="현재 절차 성과 요약"/>` : `
+<procedure_advance current="${xmlProcToken(procedure)}" suggested="${xmlProcToken(nextProcEntry[0])}" reason="현재 절차 성과 요약"/>` : `
    - ${getProcedureDisplayCode(procedure) || procedure}는 전체 설계의 마지막 절차입니다. 다음 절차가 없습니다.
-   - <procedure_advance> 블록을 절대 생성하지 마세요. "E-2-2"처럼 존재하지 않는 다음 절차를 지어내거나 "다음 절차로 이동할까요?"라고 제안하지 마세요.
+   - <procedure_advance> 블록을 절대 생성하지 마세요. 존재하지 않는 다음 절차 코드를 지어내거나 "다음 절차로 이동할까요?"라고 제안하지 마세요.
    - 모든 절차를 완주했다면 전체 과정 완료를 축하하고 최종 정리를 돕는 데 집중하세요.`}`)
 
   // ─── 6. 보드 스키마 + AI 제안 지침 ───
@@ -769,7 +776,7 @@ ${schemaText}
 2. 이 블록은 "제안"이며, 교사가 수락/편집/거부합니다.
 
 <ai_suggestion> 형식:
-<ai_suggestion type="board_update" procedure="${procedure}" step="[현재스텝번호]" action="[액션타입]">
+<ai_suggestion type="board_update" procedure="${xmlProcToken(procedure)}" step="[현재스텝번호]" action="[액션타입]">
 {JSON 데이터 — 보드 스키마에 맞게}
 </ai_suggestion>
 
@@ -787,7 +794,7 @@ ${schemaText}
 
     // 점검 XML 형식 안내
     parts.push(`<coherence_check> 형식:
-<coherence_check procedure="${procedure}" against="[비교대상절차코드들,쉼표구분]">
+<coherence_check procedure="${xmlProcToken(procedure)}" against="[비교대상 절차의 표시 코드들(위 정합성 섹션의 T-1·A-2 형식), 쉼표구분]">
 {"aligned": true/false, "feedback": "점검 결과 요약", "details": [{"item": "점검 항목", "status": "ok/warning/mismatch", "suggestion": "개선 제안"}]}
 </coherence_check>`)
   }
@@ -852,7 +859,7 @@ ${session.description ? `설명: ${session.description}` : ''}`)
         const proc = PROCEDURES[b.procedure_code]
         const label = BOARD_TYPE_LABELS[b.board_type] || b.board_type
         const dataStr = JSON.stringify(b.content).slice(0, 2500)
-        return `[${b.procedure_code} ${proc?.name || ''}] ${label}:\n${dataStr}`
+        return `[${getProcedureLabel(b.procedure_code, proc?.name)}] ${label}:\n${dataStr}`
       }).join('\n\n')
       parts.push(`[지금까지의 설계 진행 — 교사와 함께 확정한 이전 절차 내용]
 이 프로젝트는 아래 이전 절차들을 이미 진행해 보드를 확정했습니다. 이 내용을 토대로 현재 절차를 이어서 진행하세요. 절대 "이전에 무엇을 했는지 모른다"거나 "다른 세션에서 진행했느냐"고 되묻지 마세요.
@@ -952,7 +959,12 @@ ${boardStr}`)
     parts.push(historySection)
   }
 
-  return parts.join('\n\n')
+  // ── 최종 관문: 어휘 격리 ──
+  // 어떤 경로(가이드 산문·보드 content·성취기준 메모 등)로 내부 절차 코드가 흘러들어도
+  // 모델에게는 표시 코드만 보이도록 조립 완료 시점에 프롬프트 전체를 스크럽한다.
+  // XML 형식 지시는 이미 표시 코드(xmlProcToken)라 치환 영향 없음.
+  // 봉인 테스트: services/__tests__/vocabularyIsolation.test.js
+  return replaceInternalProcedureCodes(parts.join('\n\n'))
 }
 
 // ──────────────────────────────────────────
@@ -1076,7 +1088,7 @@ ${sessionTitle ? `세션: ${sessionTitle}` : ''}
  * @param {string} userMessage - 현재 사용자 메시지
  * @returns {Object[]} Claude API messages 배열
  */
-function buildMessages(recentMessages, userMessage) {
+export function buildMessages(recentMessages, userMessage) {
   const messages = []
 
   for (const msg of recentMessages) {
@@ -1086,7 +1098,9 @@ function buildMessages(recentMessages, userMessage) {
 
     messages.push({
       role: msg.sender_type === 'teacher' ? 'user' : 'assistant',
-      content: msg.content,
+      // 가드 도입 전에 저장된 옛 메시지의 내부 절차 코드(T-1-2 등)가 모델 어휘로
+      // 재유입되지 않도록 이력도 표시 코드로 스크럽한다.
+      content: replaceInternalProcedureCodes(msg.content),
     })
   }
 
