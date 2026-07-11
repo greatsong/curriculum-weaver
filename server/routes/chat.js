@@ -20,7 +20,7 @@ import {
 } from '../lib/supabaseService.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials } from '../lib/store.js'
-import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES } from 'curriculum-weaver-shared/constants.js'
+import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
@@ -758,7 +758,11 @@ chatRouter.post('/message', async (req, res) => {
     processedText = afterCoherence
 
     // 4. <procedure_advance> 추출
-    const { cleanText: finalCleanText, procedureAdvance } = extractProcedureAdvance(processedText)
+    const { cleanText: extractedText, procedureAdvance } = extractProcedureAdvance(processedText)
+
+    // 5. 내부 절차 코드(T-1-2 등) → 표시 코드(T-2 등) 치환
+    //    XML 추출 후의 표시용 텍스트에만 적용 — suggestions의 procedure 속성은 내부 코드 유지
+    const finalCleanText = replaceInternalProcedureCodes(extractedText)
 
     // ─── SSE 이벤트 전송 ───
 

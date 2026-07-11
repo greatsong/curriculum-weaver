@@ -23,15 +23,16 @@ import {
   MAX_MATERIAL_SIZE_BYTES,
   SUPPORTED_MATERIAL_EXTENSIONS,
   MATERIAL_PROCESSING_STATUSES,
+  replaceInternalProcedureCodes,
 } from 'curriculum-weaver-shared/constants.js'
 import { getDefaultIntent } from '../lib/defaultIntentForStep'
 import { validateMaterialFile } from '../lib/materialErrors'
 import { fixEmphasisFlanking } from '../lib/markdownFix'
 import ReadableValue from './ReadableValue'
 
-// 스트리밍 텍스트에서 XML 마커 제거
+// 스트리밍 텍스트에서 XML 마커 제거 + 내부 절차 코드(T-1-2 등) → 표시 코드(T-2 등) 치환
 function cleanStreamingText(text) {
-  return text
+  return replaceInternalProcedureCodes(text)
     .replace(/<ai_suggestion[\s\S]*?<\/ai_suggestion>/g, '')
     .replace(/<coherence_check>[\s\S]*?<\/coherence_check>/g, '')
     .replace(/<procedure_advance>[\s\S]*?<\/procedure_advance>/g, '')
@@ -934,7 +935,7 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
             {/* 모달 본문 */}
             <div style={{ padding: '16px 20px', overflow: 'auto', flex: 1 }}>
               <div className="prose-chat" style={{ fontSize: 14, lineHeight: 1.7 }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={fixEmphasisFlanking(introModalContent || '')} />
+<ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={fixEmphasisFlanking(replaceInternalProcedureCodes(introModalContent || ''))} />
               </div>
             </div>
           </div>
@@ -949,9 +950,10 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
 // ReactMarkdown 재파싱이 발생하지 않는다 — 누적 메시지가 많을수록(오래 쓸수록) 효과가 크다.
 const MessageItem = memo(function MessageItem({ msg, onOpenAttachment }) {
   // AI 마크다운은 content가 바뀔 때만 재파싱
+  // 렌더 시 내부 절차 코드를 표시 코드로 치환 — DB에 이미 저장된 과거 메시지까지 커버
   const aiBody = useMemo(
     () => (msg.sender_type === 'ai'
-      ? <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={fixEmphasisFlanking(msg.content || '')} /></div>
+? <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={fixEmphasisFlanking(replaceInternalProcedureCodes(msg.content || ''))} /></div>
       : null),
     [msg.sender_type, msg.content],
   )

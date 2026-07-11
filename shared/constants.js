@@ -198,6 +198,18 @@ export function getProcedureDisplayCode(code) {
 }
 
 /**
+ * 사용자에게 보이는 텍스트에서 내부 절차 코드(T-1-2 등)를 가이드북 표시 코드(T-2 등)로 치환한다.
+ * AI가 규칙을 어기고 내부 코드를 노출해도 화면·저장본에는 표시 코드만 남게 하는 결정적 가드.
+ * PROCEDURES에 없는 패턴은 그대로 둔다 (성취기준 코드 등 다른 표기와 충돌 없음).
+ * @param {string} text
+ * @returns {string}
+ */
+export function replaceInternalProcedureCodes(text) {
+  if (!text || typeof text !== 'string') return text
+  return text.replace(/\b(?:T|A|Ds|DI|E)-\d+-\d+\b/g, (code) => PROCEDURES[code]?.displayCode || code)
+}
+
+/**
  * UI 표시용 절차 라벨 반환 — "T-1 공동 비전 설정" 또는 (displayCode 없으면) 이름만.
  * @param {string} code - 내부 절차 코드
  * @param {string} [nameOverride] - 이름을 외부 값(SSE 이벤트 등)으로 대체할 때
