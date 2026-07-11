@@ -3,6 +3,7 @@ import {
   apiGet,
   apiPost,
   apiPut,
+  apiDelete,
   apiUploadFile,
   apiGetMaterialAnalysis,
   apiReanalyzeMaterial,
@@ -67,6 +68,9 @@ export const useProcedureStore = create((set, get) => ({
   _stepProjectId: null,
   // 전 절차의 보드 진행 요약 (진행률 표시 + 후행 절차 stale 감지용).
   boardSummaries: {}, // { [procedureCode]: { hasContent, updatedAt, saveStatus } }
+  // 팀 결정으로 생략(스킵)된 절차 — 진행률 분모·네비 표시·AI 카드 가드의 원천.
+  // 프로젝트 GET 응답의 skipped_procedures로 초기화, 소켓으로 실시간 동기화.
+  skippedProcedures: [], // [{ procedure_code, reason, skipped_by, created_at }]
   boards: {},         // boardType → board data
   standards: [],
   materials: [],
@@ -258,21 +262,77 @@ export const useProcedureStore = create((set, get) => ({
         }))
       }
     }
+    // 다른 멤버의 스킵/해제를 실시간 반영 — 없으면 새로고침 전까지
+    // 팀원마다 다른 워크플로우를 보는 상태 발산이 생긴다.
+    const skipsHandler = ({ skips, current_procedure }) => {
+      set({ skippedProcedures: skips || [] })
+      // 내가 보고 있던 절차가 방금 스킵됐고 서버가 커서를 보정했으면 따라간다
+      const cur = get().currentProcedure
+      if (current_procedure && cur !== current_procedure
+        && (skips || []).some((s) => s.procedure_code === cur)) {
+        get().setProcedure(current_procedure)
+      }
+    }
     socket.on('board_changed', boardHandler)
     socket.on('design_changed', designHandler)
     socket.on('design_updated', designHandler)
-    set({ _boardHandler: boardHandler, _designHandler: designHandler })
+    socket.on('procedure_skips_changed', skipsHandler)
+    set({ _boardHandler: boardHandler, _designHandler: designHandler, _skipsHandler: skipsHandler })
   },
 
   unsubscribeBoardUpdates: () => {
     const boardHandler = get()._boardHandler
     const designHandler = get()._designHandler
+    const skipsHandler = get()._skipsHandler
     if (boardHandler) socket.off('board_changed', boardHandler)
     if (designHandler) {
       socket.off('design_changed', designHandler)
       socket.off('design_updated', designHandler)
     }
-    set({ _boardHandler: null, _designHandler: null })
+    if (skipsHandler) socket.off('procedure_skips_changed', skipsHandler)
+    set({ _boardHandler: null, _designHandler: null, _skipsHandler: null })
+  },
+
+  // ── 절차 스킵 (건너뛰기) ────
+
+  /** 프로젝트 GET 응답의 skipped_procedures로 초기화 */
+  setSkips: (skips) => set({ skippedProcedures: Array.isArray(skips) ? skips : [] }),
+
+  /** 스킵 여부 조회 헬퍼 */
+  isSkipped: (code) => get().skippedProcedures.some((s) => s.procedure_code === code),
+
+  /**
+   * 절차 건너뛰기 (host/owner 전용 — 서버가 검증).
+   * 서버가 커서를 보정했으면 로컬 뷰도 따라간다.
+   */
+  skipProcedure: async (projectId, procedureCode, reason) => {
+    const data = await apiPost(
+      `/api/projects/${projectId}/procedures/${procedureCode}/skip`,
+      reason ? { reason } : {}
+    )
+    set({ skippedProcedures: data.skips || [] })
+    if (data.current_procedure && get().currentProcedure === procedureCode) {
+      get().setProcedure(data.current_procedure)
+    }
+    return data
+  },
+
+  /**
+   * 건너뛰기 해제. 커서는 건드리지 않는다.
+   * 스킵 전에 캐시된 옛 맥락 인트로가 재생되지 않도록 introCache를 무효화한다.
+   */
+  unskipProcedure: async (projectId, procedureCode) => {
+    const data = await apiDelete(`/api/projects/${projectId}/procedures/${procedureCode}/skip`)
+    set({ skippedProcedures: data.skips || [] })
+    try {
+      const mod = await import('./chatStore')
+      mod.useChatStore.setState((state) => {
+        if (!state.introCache[procedureCode]) return state
+        const { [procedureCode]: _removed, ...rest } = state.introCache
+        return { introCache: rest }
+      })
+    } catch { /* chatStore 로드 실패 시 무시 */ }
+    return data
   },
 
   updateBoard: async (projectId, procedureCode, content) => {
@@ -802,6 +862,9 @@ export const useProcedureStore = create((set, get) => ({
       principles: [],
       generalPrinciples: [],
       relevantGeneralPrincipleIds: [],
+      // 프로젝트 전환 시 이전 프로젝트의 스킵이 남지 않게 초기화
+      // (진입 시 프로젝트 GET 응답의 skipped_procedures로 다시 채워짐)
+      skippedProcedures: [],
       _boardHandler: null,
     })
   },

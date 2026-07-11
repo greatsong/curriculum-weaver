@@ -9,11 +9,12 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import {
   getProject, getDesignsByProject, getStandardsByProject,
-  getMessages,
+  getMessages, getProjectSkips,
 } from '../lib/supabaseService.js'
 import {
   PHASES, PHASE_LIST, PROCEDURES, PROCEDURE_LIST,
   BOARD_TYPES, BOARD_TYPE_LABELS, getProceduresByPhase, getProcedureDisplayCode,
+  getActiveProcedures,
 } from '../../shared/constants.js'
 import { BOARD_SCHEMAS } from '../../shared/boardSchemas.js'
 
@@ -69,6 +70,14 @@ export async function collectReportData(projectId) {
   // 성취기준
   const standards = await getStandardsByProject(projectId)
 
+  // 생략(스킵)된 절차 — 보고서에 '미작성'이 아니라 '팀 합의로 생략'으로 표기
+  let skips = []
+  try {
+    skips = await getProjectSkips(projectId)
+  } catch { /* 스킵 조회 실패 시 빈 목록으로 계속 */ }
+  const skipMap = {}
+  for (const s of skips) skipMap[s.procedure_code] = s
+
   // 메시지 통계
   let messageStats = { total: 0, teacher: 0, ai: 0, system: 0 }
   try {
@@ -105,6 +114,11 @@ export async function collectReportData(projectId) {
   // 아니라 '내용이 채워진 절차'도 완료로 집계한다. (내용이 있으면 그 절차의 설계는 작성 완료)
   const procedureStatus = {}
   for (const proc of PROCEDURE_LIST) {
+    // 생략 절차는 내용 유무보다 우선 — '진행중' 오분류 방지
+    if (skipMap[proc.code]) {
+      procedureStatus[proc.code] = 'skipped'
+      continue
+    }
     const design = designMap[proc.code]
     const hasContent = !!(design?.content && Object.keys(design.content).length > 0)
     if (design?.save_status === 'confirmed' || hasContent) {
@@ -116,9 +130,9 @@ export async function collectReportData(projectId) {
     }
   }
 
-  // 완료 절차 수
+  // 완료 절차 수 — 생략 절차는 분모에서 제외 ("12/19 완료" 오표기 방지)
   const confirmedCount = Object.values(procedureStatus).filter(s => s === 'confirmed').length
-  const totalProcedures = PROCEDURE_LIST.length
+  const totalProcedures = getActiveProcedures(skips.map(s => s.procedure_code)).length
 
   return {
     project,
@@ -129,6 +143,7 @@ export async function collectReportData(projectId) {
     procedureStatus,
     confirmedCount,
     totalProcedures,
+    skipMap,
   }
 }
 
@@ -249,7 +264,7 @@ function generateExecutiveSummary(data) {
 // ════════════════════════════════════════════
 
 export function generateHTML(data) {
-  const { project, designMap, messageStats, participants, standards, procedureStatus, confirmedCount, totalProcedures } = data
+  const { project, designMap, messageStats, participants, standards, procedureStatus, confirmedCount, totalProcedures, skipMap = {} } = data
   const createdDate = new Date(project.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
   const now = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
   const summary = generateExecutiveSummary(data)
@@ -566,8 +581,9 @@ export function generateHTML(data) {
     const procedures = getProceduresByPhase(phase.id)
     const phaseColor = PHASE_COLORS[phase.id] || '#64748b'
 
-    // 이 Phase에 내용이 있는 절차가 있는지 확인
+    // 이 Phase에 내용이 있거나 생략 표기할 절차가 있는지 확인
     const hasContent = procedures.some(proc => {
+      if (skipMap[proc.code]) return true
       const boardType = BOARD_TYPES[proc.code]
       const design = designMap[proc.code]
       return design && renderBoardContent(boardType, design.content)
@@ -584,6 +600,24 @@ export function generateHTML(data) {
     for (const proc of procedures) {
       const boardType = BOARD_TYPES[proc.code]
       const design = designMap[proc.code]
+
+      // 생략된 절차: 내용 유무와 무관하게 '팀 합의로 생략' 블록으로 표기.
+      // 흔적 없이 사라지면 '하다 만 것'과 구분되지 않아 공식 기록물로서 부정확해진다.
+      const skip = skipMap[proc.code]
+      if (skip) {
+        html += `
+  <div class="proc-block">
+    <div class="proc-header">
+      <span class="proc-code" style="background:#9CA3AF;">${esc(getProcedureDisplayCode(proc.code) || proc.code)}</span>
+      <span style="text-decoration:line-through;opacity:0.7;">${esc(proc.name)}</span>
+      <span class="proc-status status-empty">팀 합의로 생략</span>
+    </div>
+    <div class="proc-desc">${esc(proc.description)}</div>
+    <p style="color:#9b9a97;font-size:13px;margin:8px 0 0;">이 절차는 팀 결정으로 생략되었습니다.${skip.reason ? ` 사유: ${esc(skip.reason)}` : ''}</p>
+  </div>`
+        continue
+      }
+
       const sections = design ? renderBoardContent(boardType, design.content) : null
 
       // 빈 절차는 건너뛰되, E-1-1(수업 성찰)만 '수업 후 예정' 자리표시로 남긴다.
@@ -823,7 +857,7 @@ function renderGraphHTML(label, nodes, edges) {
 // ════════════════════════════════════════════
 
 export function generateMarkdown(data) {
-  const { project, designMap, messageStats, participants, standards, procedureStatus, confirmedCount, totalProcedures } = data
+  const { project, designMap, messageStats, participants, standards, procedureStatus, confirmedCount, totalProcedures, skipMap = {} } = data
   const createdDate = new Date(project.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
   const now = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
   const summary = generateExecutiveSummary(data)
@@ -885,6 +919,7 @@ export function generateMarkdown(data) {
     const phaseIcon = PHASE_ICONS[phase.id] || ''
 
     const hasContent = procedures.some(proc => {
+      if (skipMap[proc.code]) return true
       const boardType = BOARD_TYPES[proc.code]
       const design = designMap[proc.code]
       return design && renderBoardContent(boardType, design.content)
@@ -896,6 +931,14 @@ export function generateMarkdown(data) {
     for (const proc of procedures) {
       const boardType = BOARD_TYPES[proc.code]
       const design = designMap[proc.code]
+
+      // 생략된 절차: '팀 합의로 생략' 표기 (HTML 쪽과 동일 정책)
+      const skip = skipMap[proc.code]
+      if (skip) {
+        md += `### ${getProcedureDisplayCode(proc.code) || proc.code}: ~~${proc.name}~~ [팀 합의로 생략]\n\n> ${proc.description}\n\n이 절차는 팀 결정으로 생략되었습니다.${skip.reason ? ` 사유: ${skip.reason}` : ''}\n\n`
+        continue
+      }
+
       const sections = design ? renderBoardContent(boardType, design.content) : null
       // 빈 절차는 건너뛰되, E-1-1(수업 성찰)만 '수업 후 예정' 자리표시로 남긴다.
       if (!sections) {

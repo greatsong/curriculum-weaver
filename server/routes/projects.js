@@ -15,10 +15,10 @@ import { Router } from 'express'
 import { requireAuth } from '../middleware/auth.js'
 import {
   getProjectsByWorkspace, createProject, getProject,
-  updateProject, deleteProject,
+  updateProject, deleteProject, getProjectSkips,
   getMemberRole, logActivity, countMessagesByProject,
 } from '../lib/supabaseService.js'
-import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, getProcedureLabel } from 'curriculum-weaver-shared/constants.js'
 import { requireWritableProject } from '../lib/projectGuards.js'
 
 const router = Router()
@@ -191,7 +191,14 @@ async function checkProjectAccess(req, res, next) {
  * @returns {object} 프로젝트 + designs[]
  */
 router.get('/projects/:id', checkProjectAccess, async (req, res) => {
-  res.json({ ...req.project, my_role: req.memberRole })
+  // 스킵 목록 포함 — 클라 초기 로드 시 진행률·네비·AI 경로가 스킵을 인식하는 원천
+  let skipped = []
+  try {
+    skipped = await getProjectSkips(req.params.id)
+  } catch (err) {
+    console.warn('[projects] 스킵 목록 조회 실패 (프로젝트 조회는 계속):', err.message)
+  }
+  res.json({ ...req.project, my_role: req.memberRole, skipped_procedures: skipped })
 })
 
 /**
@@ -227,6 +234,13 @@ router.put('/projects/:id', checkProjectAccess, requireWritableProject, async (r
       if (!PROCEDURES[current_procedure]) {
         return res.status(400).json({
           error: `유효하지 않은 절차 코드입니다: ${current_procedure}`
+        })
+      }
+      // 팀 커서를 스킵된 절차 위에 둘 수 없음 (심층 방어 — 클라는 이미 로컬 뷰만 이동)
+      const skips = await getProjectSkips(req.params.id)
+      if (skips.some((s) => s.procedure_code === current_procedure)) {
+        return res.status(400).json({
+          error: `${getProcedureLabel(current_procedure)} 절차는 팀 결정으로 생략되어 이동할 수 없습니다. 먼저 건너뛰기를 해제하세요.`,
         })
       }
       updateData.current_procedure = current_procedure

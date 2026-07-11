@@ -163,6 +163,7 @@ export default function ProjectPage() {
     currentProcedure, setProcedure, loadBoards, loadAllBoards, loadStandards, loadMaterials,
     loadPrinciples, loadGeneralPrinciples, subscribeBoardUpdates, unsubscribeBoardUpdates, reset,
     loadStepMemory, loadBoardSummaries, boardSummaries,
+    skippedProcedures, setSkips,
     loading: procedureLoading,
   } = useProcedureStore()
   const {
@@ -455,6 +456,9 @@ export default function ProjectPage() {
 
   const handleProcedureChange = async (code) => {
     setProcedure(code)
+    // 생략(스킵)된 절차는 열람만 — 팀 커서(current_procedure) PATCH·소켓 전파·
+    // AI 인트로 생성을 모두 건너뛴다. (서버도 스킵 절차 PATCH를 400으로 거부)
+    if (skippedCodes.has(code)) return
     await updateProcedure(projectId, code)
     socket.emit('stage_changed', { sessionId: projectId, stage: code })
     // 시뮬레이션/generating/failed 프로젝트에서는 AI 인트로 요청하지 않음
@@ -474,15 +478,30 @@ export default function ProjectPage() {
       .catch(() => alert(`링크를 복사하세요: ${url}`))
   }
 
+  // 프로젝트 진입/전환 시 스킵 목록 초기화 (이후 소켓으로 실시간 동기화)
+  useEffect(() => {
+    if (currentProject?.id) {
+      setSkips(currentProject.skipped_procedures || [])
+    }
+  }, [currentProject?.id, currentProject?.skipped_procedures, setSkips])
+
+  const skippedCodes = useMemo(
+    () => new Set((skippedProcedures || []).map((s) => s.procedure_code)),
+    [skippedProcedures]
+  )
+
   // 진행률(완료 절차) + 후행 절차 stale 감지.
   // stale = 내용 있는 절차인데, 그보다 앞 순서의 절차가 더 나중에 수정됨
   // → 앞 단계를 고친 뒤 이 절차를 아직 재검토하지 않았다는 신호.
+  // 스킵된 절차는 완료 집계·stale 체인 모두에서 제외한다.
+  // (해제 후 뒤늦게 작성해도 후행 절차 전체에 stale 폭탄이 떨어지지 않게 함)
   const { completedProcedures, boardStatuses } = useMemo(() => {
     const completed = []
     const statuses = {}
     const summaries = boardSummaries || {}
     let maxUpstreamUpdated = 0
     for (const proc of PROCEDURE_LIST) {
+      if (skippedCodes.has(proc.code)) continue
       const s = summaries[proc.code]
       if (!s?.hasContent) continue
       completed.push(proc.code)
@@ -495,7 +514,7 @@ export default function ProjectPage() {
       if (ts > maxUpstreamUpdated) maxUpstreamUpdated = ts
     }
     return { completedProcedures: completed, boardStatuses: statuses }
-  }, [boardSummaries])
+  }, [boardSummaries, skippedCodes])
 
   const currentIsStale = boardStatuses[currentProcedure] === 'stale'
 
@@ -711,6 +730,7 @@ export default function ProjectPage() {
           onProcedureChange={handleProcedureChange}
           completedProcedures={completedProcedures}
           boardStatuses={boardStatuses}
+          skippedCodes={skippedCodes}
         />
       </div>
 
@@ -748,7 +768,13 @@ export default function ProjectPage() {
           }}
         >
           <ErrorBoundary>
-            <ProcedureCanvas projectId={projectId} procedureCode={currentProcedure} readOnly={isReadOnlyProject} loading={isReadOnlyLoading} />
+            <ProcedureCanvas
+              projectId={projectId}
+              procedureCode={currentProcedure}
+              readOnly={isReadOnlyProject}
+              loading={isReadOnlyLoading}
+              memberRole={currentProject?.my_role}
+            />
           </ErrorBoundary>
         </div>
 

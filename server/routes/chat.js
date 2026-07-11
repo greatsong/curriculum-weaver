@@ -16,7 +16,7 @@ import { buildAIResponse, buildProcedureIntroResponse } from '../services/aiAgen
 import {
   getMessages, getMessage, createMessage, getRecentMessages,
   getProject, getMemberRole, getDesignsByProject,
-  getStandardsByProject, upsertDesign,
+  getStandardsByProject, upsertDesign, getProjectSkips,
 } from '../lib/supabaseService.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials } from '../lib/store.js'
@@ -381,6 +381,12 @@ chatRouter.post('/procedure-intro', async (req, res) => {
     return res.status(403).json({ error: '시뮬레이션 프로젝트에서는 새 AI 안내를 생성하지 않습니다.' })
   }
 
+  // 생략된 절차에는 인트로를 생성하지 않는다 (클라도 요청 안 하지만 직접 호출 대비 + 토큰 절약)
+  const introSkips = await getProjectSkips(session_id).catch(() => [])
+  if (introSkips.some((s) => s.procedure_code === procedure)) {
+    return res.status(400).json({ error: '팀 결정으로 생략된 절차에는 AI 안내를 생성하지 않습니다.' })
+  }
+
   // SSE 헤더
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
@@ -609,6 +615,11 @@ chatRouter.post('/message', async (req, res) => {
 
     const standards = await getStandardsByProject(session_id).catch(() => [])
 
+    // 스킵된 절차 — AI의 절차 전환 제안·정합성 문구가 생략 절차를 건너뛰게 함
+    const skippedCodes = await getProjectSkips(session_id)
+      .then((rows) => rows.map((s) => s.procedure_code))
+      .catch(() => [])
+
     // 프로젝트 소속 자료 로드 (분석 완료 + 진행 중 포함)
     // 일반 컨텍스트 주입용 — 멘션된 자료는 mentionedMaterials로 별도 관리
     let materials = []
@@ -676,6 +687,7 @@ chatRouter.post('/message', async (req, res) => {
       mentionedMaterialIds: mentionedIds,
       mentionedMaterials,
       selectedMaterialIds,
+      skippedCodes,
     }
 
     // ── 진단 로그: 자료가 실제로 프롬프트에 흘러가는지 추적 (Railway 로그용) ──

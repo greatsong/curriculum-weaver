@@ -14,6 +14,7 @@ vi.mock('../../lib/api', () => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
   apiPut: vi.fn(),
+  apiDelete: vi.fn(),
   apiUploadFile: vi.fn(),
   apiGetMaterialAnalysis: vi.fn(),
   apiReanalyzeMaterial: vi.fn(),
@@ -33,7 +34,10 @@ import { useToastStore } from '../toastStore.js'
 import {
   apiUploadFile,
   apiGetMaterialAnalysis,
+  apiPost,
+  apiDelete,
 } from '../../lib/api'
+import { socket } from '../../lib/socket'
 
 beforeEach(() => {
   // 각 테스트 전 store 리셋
@@ -245,5 +249,83 @@ describe('startMaterialPolling — 완료/실패 전역 토스트', () => {
 
     expect(useToastStore.getState().toasts).toHaveLength(0)
     vi.useRealTimers()
+  })
+})
+
+describe('절차 스킵 — 상태·액션·실시간 동기화', () => {
+  it('setSkips로 초기화하고 isSkipped로 조회한다', () => {
+    const store = useProcedureStore.getState()
+    store.setSkips([{ procedure_code: 'T-2-2', reason: '이미 있음' }])
+    expect(useProcedureStore.getState().isSkipped('T-2-2')).toBe(true)
+    expect(useProcedureStore.getState().isSkipped('T-2-3')).toBe(false)
+  })
+
+  it('skipProcedure: API 응답의 skips로 교체하고, 커서 보정을 따라간다', async () => {
+    apiPost.mockResolvedValue({
+      skips: [{ procedure_code: 'T-2-2' }],
+      current_procedure: 'T-2-3',
+    })
+    const store = useProcedureStore.getState()
+    store.setProcedure('T-2-2')
+    await store.skipProcedure('proj-1', 'T-2-2', '사유')
+
+    expect(apiPost).toHaveBeenCalledWith(
+      '/api/projects/proj-1/procedures/T-2-2/skip', { reason: '사유' }
+    )
+    const state = useProcedureStore.getState()
+    expect(state.skippedProcedures).toHaveLength(1)
+    // 내가 보던 절차가 스킵됨 → 서버 보정 커서로 이동
+    expect(state.currentProcedure).toBe('T-2-3')
+  })
+
+  it('skipProcedure: 다른 절차를 보고 있으면 커서를 건드리지 않는다', async () => {
+    apiPost.mockResolvedValue({
+      skips: [{ procedure_code: 'Ds-2-2' }],
+      current_procedure: 'A-1-1',
+    })
+    const store = useProcedureStore.getState()
+    store.setProcedure('A-1-1')
+    await store.skipProcedure('proj-1', 'Ds-2-2')
+    expect(useProcedureStore.getState().currentProcedure).toBe('A-1-1')
+  })
+
+  it('unskipProcedure: 목록에서 제거되고 introCache가 무효화된다', async () => {
+    const { useChatStore } = await import('../chatStore.js')
+    useChatStore.setState({ introCache: { 'T-2-2': '옛 인트로', 'A-1-1': '유지' } })
+    apiDelete.mockResolvedValue({ skips: [], current_procedure: 'A-1-1' })
+
+    const store = useProcedureStore.getState()
+    store.setSkips([{ procedure_code: 'T-2-2' }])
+    await store.unskipProcedure('proj-1', 'T-2-2')
+
+    expect(apiDelete).toHaveBeenCalledWith('/api/projects/proj-1/procedures/T-2-2/skip')
+    expect(useProcedureStore.getState().skippedProcedures).toHaveLength(0)
+    // 스킵 전 캐시된 옛 맥락 인트로가 재생되지 않도록 해당 절차만 제거
+    expect(useChatStore.getState().introCache['T-2-2']).toBeUndefined()
+    expect(useChatStore.getState().introCache['A-1-1']).toBe('유지')
+  })
+
+  it('procedure_skips_changed 소켓 이벤트가 스킵 목록을 동기화한다', () => {
+    const store = useProcedureStore.getState()
+    store.subscribeBoardUpdates('proj-1')
+
+    const call = socket.on.mock.calls.find(([event]) => event === 'procedure_skips_changed')
+    expect(call).toBeTruthy()
+
+    const handler = call[1]
+    handler({ skips: [{ procedure_code: 'T-2-2' }], current_procedure: 'T-2-3' })
+    expect(useProcedureStore.getState().skippedProcedures).toHaveLength(1)
+
+    // 구독 해제 시 off 등록 확인
+    store.unsubscribeBoardUpdates()
+    const offCall = socket.off.mock.calls.find(([event]) => event === 'procedure_skips_changed')
+    expect(offCall).toBeTruthy()
+  })
+
+  it('reset()이 스킵 목록을 비운다 (프로젝트 전환 시 잔존 방지)', () => {
+    const store = useProcedureStore.getState()
+    store.setSkips([{ procedure_code: 'T-2-2' }])
+    store.reset()
+    expect(useProcedureStore.getState().skippedProcedures).toEqual([])
   })
 })
