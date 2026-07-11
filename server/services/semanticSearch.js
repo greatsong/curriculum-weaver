@@ -5,41 +5,32 @@
  * 검색어를 실시간 임베딩 → 4,856개 성취기준과 비교 → 유사도순 정렬.
  */
 
-import fs from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
 import OpenAI from 'openai'
+import {
+  hasEmbeddingCacheFile, loadEmbeddingsAsync, whenReady,
+  getStoreIfReady, getEmbedding, setEmbeddings,
+} from './embeddingStore.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const CACHE_FILE = path.join(__dirname, '..', 'data', 'openai-embeddings-cache.json')
-
-let embeddingsData = null  // { code → float32[] }
 let openai = null
 
 /**
- * 임베딩 데이터 로드 (서버 시작 시 1회)
+ * 임베딩 인덱스 로드 시작 (서버 시작 시 1회)
+ *
+ * 과거엔 136MB JSON을 동기 파싱해 부팅이 수 초 블로킹됐다.
+ * 이제 파일 존재만 동기 확인하고 실제 로드는 백그라운드(embeddingStore)로 —
+ * 소비자(semanticSearch)는 whenReady()로 대기한다(바이너리 사이드카면 수십 ms).
+ * @returns {boolean} 캐시 파일 존재 여부 (false면 호출부가 백그라운드 재생성 시도)
  */
 export function loadSemanticIndex() {
   if (process.env.OPENAI_API_KEY) {
     openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   }
-
-  try {
-    if (!fs.existsSync(CACHE_FILE)) {
-      console.log('  ⚠️ OpenAI 임베딩 캐시 없음 — 시맨틱 검색 비활성 (백그라운드 생성 시도)')
-      return false
-    }
-    const raw = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf-8'))
-    embeddingsData = {}
-    for (const [code, vec] of Object.entries(raw.embeddings)) {
-      embeddingsData[code] = new Float32Array(vec)
-    }
-    console.log(`  🔍 시맨틱 검색 인덱스 로드: ${Object.keys(embeddingsData).length}개 임베딩`)
-    return true
-  } catch (e) {
-    console.warn('  시맨틱 검색 인덱스 로드 실패:', e.message)
+  if (!hasEmbeddingCacheFile()) {
+    console.log('  ⚠️ OpenAI 임베딩 캐시 없음 — 시맨틱 검색 비활성 (백그라운드 생성 시도)')
     return false
   }
+  loadEmbeddingsAsync() // 논블로킹 — 완료 시 로그는 embeddingStore가 남김
+  return true
 }
 
 /**
@@ -47,7 +38,7 @@ export function loadSemanticIndex() {
  * Railway 등 배포 환경에서 캐시 파일이 없을 때 자동으로 생성
  */
 export async function ensureEmbeddingsCache(standards) {
-  if (embeddingsData) return // 이미 로드됨
+  if (getStoreIfReady()) return // 이미 로드됨
   if (!openai) {
     console.log('  ⚠️ OPENAI_API_KEY 없음 — 임베딩 자동 생성 불가')
     return
@@ -80,22 +71,12 @@ export async function ensureEmbeddingsCache(standards) {
       console.log(`    배치 ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(standards.length / BATCH_SIZE)} 완료`)
     }
 
-    // 파일 캐시 저장
-    const cache = {
-      model: 'text-embedding-3-small',
-      count: standards.length,
+    // 공유 스토어 반영 + 파일(JSON·바이너리) 기록
+    await setEmbeddings('text-embedding-3-small', embeddings, {
       created_at: new Date().toISOString(),
       total_tokens: totalTokens,
-      embeddings,
-    }
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(cache))
+    })
     console.log(`  ✅ OpenAI 임베딩 캐시 생성 완료 (${standards.length}개, ${totalTokens} 토큰)`)
-
-    // 메모리에 로드
-    embeddingsData = {}
-    for (const [code, vec] of Object.entries(embeddings)) {
-      embeddingsData[code] = new Float32Array(vec)
-    }
   } catch (e) {
     console.error('  ❌ OpenAI 임베딩 자동 생성 실패:', e.message)
   }
@@ -122,9 +103,10 @@ function cosineSimilarity(a, b) {
  * @returns {object[]} 유사도순 정렬된 성취기준 + _similarity 점수
  */
 export async function semanticSearch(query, standards, limit = 50) {
-  if (!embeddingsData || !openai) {
-    return null // 시맨틱 검색 불가 → 호출자가 폴백 사용
-  }
+  if (!openai) return null // 시맨틱 검색 불가 → 호출자가 폴백 사용
+  // 백그라운드 로드 완료 대기 (바이너리 사이드카면 수십 ms, 최초 JSON 변환도 1회뿐)
+  const store = await whenReady()
+  if (!store) return null
 
   // 1. 검색어 임베딩
   const response = await openai.embeddings.create({
@@ -136,7 +118,7 @@ export async function semanticSearch(query, standards, limit = 50) {
   // 2. 모든 성취기준과 유사도 계산
   const scored = standards
     .map(s => {
-      const vec = embeddingsData[s.code]
+      const vec = getEmbedding(s.code)
       if (!vec) return null
       const similarity = cosineSimilarity(queryVec, vec)
       return { ...s, _similarity: similarity, _matchField: 'semantic' }
@@ -153,5 +135,5 @@ export async function semanticSearch(query, standards, limit = 50) {
  * 시맨틱 검색 가능 여부
  */
 export function isSemanticSearchAvailable() {
-  return !!(embeddingsData && openai)
+  return !!(getStoreIfReady() && openai)
 }

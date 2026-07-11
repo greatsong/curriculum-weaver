@@ -1,4 +1,5 @@
 import { UMAP } from 'umap-js'
+import { getLegacyShapeIfReady } from './embeddingStore.js'
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -30,6 +31,13 @@ let openaiEmbeddings = null
  */
 function loadOpenAIEmbeddings() {
   if (openaiEmbeddings) return openaiEmbeddings
+  // 공유 스토어(embeddingStore)가 이미 로드했으면 재파싱 없이 재사용 — 136MB 이중 상주 제거
+  const shared = getLegacyShapeIfReady()
+  if (shared) {
+    console.log(`  🤖 OpenAI 임베딩 공유 스토어 재사용: ${shared.count}개`)
+    openaiEmbeddings = shared
+    return shared
+  }
   try {
     if (fs.existsSync(OPENAI_CACHE_FILE)) {
       const data = JSON.parse(fs.readFileSync(OPENAI_CACHE_FILE, 'utf-8'))

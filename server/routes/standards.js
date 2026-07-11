@@ -87,11 +87,12 @@ standardsRouter.get('/semantic-search', async (req, res) => {
     const { q } = req.query
     if (!q || !q.trim()) return res.json([])
 
-    if (!isSemanticSearchAvailable()) {
+    // semanticSearch가 내부에서 로드 완료를 대기하므로(비동기 로드 도입),
+    // 가용성 판정은 호출 결과로 한다 — 부팅 직후 로드 창에서 오탐 503 방지.
+    const results = await semanticSearch(q.trim(), Standards.list(), 50)
+    if (results === null) {
       return res.status(503).json({ error: '시맨틱 검색을 사용할 수 없습니다 (임베딩 없음)' })
     }
-
-    const results = await semanticSearch(q.trim(), Standards.list(), 50)
     res.json(results)
   } catch (err) {
     console.error('[standards] 시맨틱 검색 오류:', err.message)
