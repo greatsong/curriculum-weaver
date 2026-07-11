@@ -5,7 +5,7 @@ import { useProcedureStore } from './procedureStore'
 import { useProjectStore } from './projectStore'
 import { useWorkspaceStore } from './workspaceStore'
 import { pushToast } from './toastStore'
-import { PROCEDURES, BOARD_TYPES } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, BOARD_TYPES, normalizeProcedureCode } from 'curriculum-weaver-shared/constants.js'
 
 function isReadOnlyProject(project) {
   return project?.status === 'simulation' ||
@@ -28,7 +28,9 @@ function parseAISuggestions(text) {
   const regex = /<ai_suggestion\s+type="([^"]+)"\s+procedure="([^"]+)"\s+step="([^"]*?)"\s*(?:action="([^"]*?)")?\s*>\s*([\s\S]*?)\s*<\/ai_suggestion>/g
   let match
   while ((match = regex.exec(text)) !== null) {
-    const [, type, procedureCode, , , inner] = match
+    // AI는 표시 코드(T-2)로 쓰도록 지시받음 — 내부 코드로 정규화 (수락 API는 내부 코드 기준)
+    const [, type, rawProcedure, , , inner] = match
+    const procedureCode = normalizeProcedureCode(rawProcedure)
     let value = inner.trim()
     try {
       value = JSON.parse(value)
@@ -76,8 +78,8 @@ function parseProcedureAdvance(text) {
   const selfClosing = text.match(/<procedure_advance\b([^>]*?)\/?>/)
   if (selfClosing && /suggested=/.test(selfClosing[1])) {
     const attrs = selfClosing[1]
-    const suggested = attrs.match(/suggested="([^"]*)"/)?.[1]?.trim() || null
-    const current = attrs.match(/current="([^"]*)"/)?.[1]?.trim() || null
+    const suggested = normalizeProcedureCode(attrs.match(/suggested="([^"]*)"/)?.[1]?.trim()) || null
+    const current = normalizeProcedureCode(attrs.match(/current="([^"]*)"/)?.[1]?.trim()) || null
     const reason = attrs.match(/reason="([^"]*)"/)?.[1]?.trim() || ''
     if (suggested && PROCEDURES[suggested]) {
       return {
@@ -93,7 +95,7 @@ function parseProcedureAdvance(text) {
   const match = text.match(/<procedure_advance>([\s\S]*?)<\/procedure_advance>/)
   if (!match) return null
   const inner = match[1]
-  const nextCode = inner.match(/<next_procedure>([\s\S]*?)<\/next_procedure>/)?.[1]?.trim() || null
+  const nextCode = normalizeProcedureCode(inner.match(/<next_procedure>([\s\S]*?)<\/next_procedure>/)?.[1]?.trim()) || null
   const summary = inner.match(/<summary>([\s\S]*?)<\/summary>/)?.[1]?.trim() || ''
   if (!nextCode || !PROCEDURES[nextCode]) return null
   return {
@@ -340,7 +342,7 @@ export const useChatStore = create((set, get) => ({
       },
       onStageAdvance: (data) => {
         // 서버 shape (current/suggested/reason) → 클라이언트 shape (next_procedure/summary/next_name)
-        const nextCode = data.suggested || data.next_procedure || data.next_stage
+        const nextCode = normalizeProcedureCode(data.suggested || data.next_procedure || data.next_stage)
         // 존재하지 않는 절차 코드(AI 환각)는 무시 — 코드·이름이 빈 "제목 없는 이동 버튼" 방지
         if (!nextCode || !PROCEDURES[nextCode]) return
         const advance = {

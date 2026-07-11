@@ -20,18 +20,18 @@ const baseContext = {
 describe('buildSystemPrompt 스킵 인식', () => {
   it('스킵 없으면 바로 다음 절차(T-2-2)를 procedure_advance로 제안', () => {
     const prompt = buildSystemPrompt({ ...baseContext })
-    expect(prompt).toContain('suggested="T-2-2"')
+    expect(prompt).toContain('suggested="T-4"')
   })
 
   it('다음 절차가 스킵이면 건너뛰고 그 다음(T-2-3)을 제안', () => {
     const prompt = buildSystemPrompt({ ...baseContext, skippedCodes: ['T-2-2'] })
-    expect(prompt).toContain('suggested="T-2-3"')
-    expect(prompt).not.toContain('suggested="T-2-2"')
+    expect(prompt).toContain('suggested="T-5"')
+    expect(prompt).not.toContain('suggested="T-4"')
   })
 
   it('연속 스킵도 건너뛴다', () => {
     const prompt = buildSystemPrompt({ ...baseContext, skippedCodes: ['T-2-2', 'T-2-3'] })
-    expect(prompt).toContain('suggested="A-1-1"')
+    expect(prompt).toContain('suggested="A-1"')
   })
 
   it('생략된 절차 섹션이 displayCode로 주입된다 (내부 코드 미노출)', () => {
@@ -47,7 +47,7 @@ describe('buildSystemPrompt 스킵 인식', () => {
 
   it('마지막 절차 이후가 전부 스킵이면 procedure_advance 미생성 안내', () => {
     const prompt = buildSystemPrompt({ ...baseContext, procedure: 'E-1-1', skippedCodes: ['E-2-1'] })
-    expect(prompt).not.toContain('suggested="E-2-1"')
+    expect(prompt).not.toContain('suggested="E-2"')
     expect(prompt).toContain('절대 생성하지 마세요')
   })
 })

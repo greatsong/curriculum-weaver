@@ -254,6 +254,31 @@ export function replaceInternalProcedureCodes(text) {
 }
 
 /**
+ * 표시 코드(T-2) → 내부 코드(T-1-2) 역매핑. displayCode는 절차별로 유일하다
+ * (회귀 테스트: server/services/__tests__/vocabularyIsolation.test.js — 전단사 보장).
+ * @type {Record<string, string>}
+ */
+export const DISPLAY_TO_INTERNAL = Object.fromEntries(
+  Object.entries(PROCEDURES)
+    .filter(([, proc]) => proc.displayCode)
+    .map(([code, proc]) => [proc.displayCode, code])
+)
+
+/**
+ * 절차 코드를 내부 코드로 정규화한다 — 내부(T-1-2)·표시(T-2) 어느 쪽이 와도 내부 코드 반환.
+ * AI가 XML 속성에 어느 형식을 쓰든 서버·클라 파서가 안전하게 받기 위한 관용(tolerant) 변환.
+ * 둘 다 아니면 원본을 그대로 반환한다 (호출부에서 PROCEDURES 존재 검증).
+ * @param {string} code - 내부 또는 표시 절차 코드
+ * @returns {string}
+ */
+export function normalizeProcedureCode(code) {
+  if (!code || typeof code !== 'string') return code
+  const trimmed = code.trim()
+  if (PROCEDURES[trimmed]) return trimmed
+  return DISPLAY_TO_INTERNAL[trimmed] || trimmed
+}
+
+/**
  * UI 표시용 절차 라벨 반환 — "T-1 공동 비전 설정" 또는 (displayCode 없으면) 이름만.
  * @param {string} code - 내부 절차 코드
  * @param {string} [nameOverride] - 이름을 외부 값(SSE 이벤트 등)으로 대체할 때

@@ -20,7 +20,7 @@ import {
 } from '../lib/supabaseService.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials } from '../lib/store.js'
-import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes } from 'curriculum-weaver-shared/constants.js'
+import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
@@ -158,7 +158,7 @@ async function checkProjectAccess(req, res, next) {
  * @param {string} text - AI 전체 응답
  * @returns {{ cleanText: string, suggestions: Object[] }}
  */
-function extractAiSuggestions(text) {
+export function extractAiSuggestions(text) {
   const suggestions = []
   const regex = /<ai_suggestion\s+type="([^"]+)"\s+procedure="([^"]+)"\s+step="([^"]*?)"\s*(?:action="([^"]*?)")?\s*>\s*([\s\S]*?)\s*<\/ai_suggestion>/g
   let match
@@ -167,7 +167,9 @@ function extractAiSuggestions(text) {
       const parsed = JSON.parse(match[5])
       suggestions.push({
         type: match[1],           // 'board_update'
-        procedure: match[2],      // 'T-1-1'
+        // AI는 표시 코드(T-2)로 쓰도록 지시받지만 내부 코드(T-1-2)가 와도 수용해
+        // 내부 코드로 정규화한다 — 이후 파이프라인(수락 라우트·BOARD_TYPES)은 내부 코드 기준.
+        procedure: normalizeProcedureCode(match[2]),
         step: match[3],           // '5'
         action: match[4] || '',   // 'generate'
         content: parsed,
@@ -187,7 +189,7 @@ function extractAiSuggestions(text) {
  * @param {string} text - AI 전체 응답
  * @returns {{ cleanText: string, coherenceCheck: Object|null }}
  */
-function extractCoherenceCheck(text) {
+export function extractCoherenceCheck(text) {
   const regex = /<coherence_check\s+procedure="([^"]+)"\s+against="([^"]+)">\s*([\s\S]*?)\s*<\/coherence_check>/g
   const match = regex.exec(text)
   if (!match) return { cleanText: text, coherenceCheck: null }
@@ -195,8 +197,8 @@ function extractCoherenceCheck(text) {
   try {
     const data = JSON.parse(match[3])
     const coherenceCheck = {
-      procedure: match[1],
-      against: match[2],
+      procedure: normalizeProcedureCode(match[1]),
+      against: match[2].split(',').map((c) => normalizeProcedureCode(c)).join(','),
       aligned: data.aligned,
       feedback: data.feedback,
       details: data.details || [],
@@ -224,8 +226,9 @@ export function extractProcedureAdvance(text) {
   if (!tag) return { cleanText: text, procedureAdvance: null }
 
   const raw = tag[0]
-  const suggested = raw.match(/suggested="([^"]*)"/)?.[1]?.trim() || null
-  const current = raw.match(/current="([^"]*)"/)?.[1]?.trim() || null
+  // 표시 코드(T-2)·내부 코드(T-1-2) 어느 형식이 와도 내부 코드로 정규화한 뒤 존재 검증한다.
+  const suggested = normalizeProcedureCode(raw.match(/suggested="([^"]*)"/)?.[1]?.trim()) || null
+  const current = normalizeProcedureCode(raw.match(/current="([^"]*)"/)?.[1]?.trim()) || null
   const reason = raw.match(/reason="([^"]*)"/)?.[1]?.trim() || ''
 
   const cleanText = text.replace(cleanRegex, '').trim()
