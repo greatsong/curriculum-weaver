@@ -17,6 +17,7 @@ import { initStore, Standards } from './lib/store.js'
 import { precomputeEmbeddings } from './services/embeddings.js'
 import { loadSemanticIndex, ensureEmbeddingsCache } from './services/semanticSearch.js'
 import { supabaseAdmin } from './lib/supabaseAdmin.js'
+import { verifyTokenCached } from './middleware/auth.js'
 import { hydrateLinksFromDB } from './lib/linkService.js'
 
 // ── Rate Limiter 임포트 ──
@@ -112,8 +113,9 @@ io.use(async (socket, next) => {
   }
 
   try {
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-    if (error || !user) {
+    // HTTP requireAuth와 동일한 60초 캐시 검증 공유 — 소켓 연결마다의 Auth 왕복 제거
+    const user = await verifyTokenCached(token)
+    if (!user) {
       return next(new Error('유효하지 않은 토큰입니다.'))
     }
     socket.user = user
