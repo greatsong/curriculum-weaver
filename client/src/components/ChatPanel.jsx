@@ -26,6 +26,7 @@ import {
 } from 'curriculum-weaver-shared/constants.js'
 import { getDefaultIntent } from '../lib/defaultIntentForStep'
 import { validateMaterialFile } from '../lib/materialErrors'
+import { fixEmphasisFlanking } from '../lib/markdownFix'
 import ReadableValue from './ReadableValue'
 
 // 스트리밍 텍스트에서 XML 마커 제거
@@ -933,7 +934,7 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
             {/* 모달 본문 */}
             <div style={{ padding: '16px 20px', overflow: 'auto', flex: 1 }}>
               <div className="prose-chat" style={{ fontSize: 14, lineHeight: 1.7 }}>
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={introModalContent || ''} />
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={fixEmphasisFlanking(introModalContent || '')} />
               </div>
             </div>
           </div>
@@ -950,7 +951,7 @@ const MessageItem = memo(function MessageItem({ msg, onOpenAttachment }) {
   // AI 마크다운은 content가 바뀔 때만 재파싱
   const aiBody = useMemo(
     () => (msg.sender_type === 'ai'
-      ? <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={msg.content || ''} /></div>
+      ? <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={fixEmphasisFlanking(msg.content || '')} /></div>
       : null),
     [msg.sender_type, msg.content],
   )
@@ -1051,7 +1052,7 @@ function StreamingBubble({ scrollRef }) {
           fontSize: 14,
           lineHeight: 1.6,
         }}>
-          <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={cleanStreamingText(streamingText) || ''} /></div>
+          <div className="prose-chat"><ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} children={fixEmphasisFlanking(cleanStreamingText(streamingText) || '')} /></div>
           <span style={{
             display: 'inline-block',
             width: 5,
