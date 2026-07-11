@@ -322,6 +322,21 @@ describe('절차 스킵 — 상태·액션·실시간 동기화', () => {
     expect(offCall).toBeTruthy()
   })
 
+  it('원격 스킵은 내 화면(로컬 뷰)을 강제 이동시키지 않는다 — 편집 초안 유실 방지', () => {
+    const store = useProcedureStore.getState()
+    store.setProcedure('T-2-2') // 내가 T-2-2를 보며 작업 중
+    store.subscribeBoardUpdates('proj-1')
+
+    const handler = socket.on.mock.calls.find(([event]) => event === 'procedure_skips_changed')[1]
+    // 다른 호스트가 내가 보던 절차를 스킵 (서버는 팀 커서를 T-2-3으로 보정해 내려줌)
+    handler({ skips: [{ procedure_code: 'T-2-2' }], current_procedure: 'T-2-3' })
+
+    // 스킵 목록은 동기화되되, 내 화면은 그대로 (생략 배너·읽기전용으로만 전환)
+    expect(useProcedureStore.getState().skippedProcedures).toHaveLength(1)
+    expect(useProcedureStore.getState().currentProcedure).toBe('T-2-2')
+    store.unsubscribeBoardUpdates()
+  })
+
   it('reset()이 스킵 목록을 비운다 (프로젝트 전환 시 잔존 방지)', () => {
     const store = useProcedureStore.getState()
     store.setSkips([{ procedure_code: 'T-2-2' }])

@@ -150,6 +150,16 @@ router.put('/projects/:projectId/designs/:procedureCode', checkDesignAccess, req
       return res.status(400).json({ error: 'content 필드가 필요합니다.' })
     }
 
+    // 생략(스킵)된 절차는 열람만 가능 — 서버에서도 쓰기 차단.
+    // 클라 UI는 편집을 막지만, 스킵 이벤트를 아직 못 받은 클라이언트나 직접 API 호출로
+    // 우회될 수 있다. 편집 중이던 내용은 클라 폼에 보존되므로 파괴적이지 않다.
+    const skipsForWrite = await getProjectSkips(projectId)
+    if (skipsForWrite.some((s) => s.procedure_code === procedureCode)) {
+      return res.status(403).json({
+        error: `${getProcedureLabel(procedureCode)} 절차는 팀 결정으로 생략되어 열람만 가능합니다. 건너뛰기를 해제한 뒤 저장하세요.`,
+      })
+    }
+
     // locked 상태 확인
     const existing = await getDesign(projectId, procedureCode)
     if (existing?.save_status === 'locked') {
@@ -222,6 +232,14 @@ router.put('/projects/:projectId/designs/:procedureCode/status', checkDesignAcce
     if (!validStatuses.includes(save_status)) {
       return res.status(400).json({
         error: `유효하지 않은 상태입니다. 허용: ${validStatuses.join(', ')}`
+      })
+    }
+
+    // 생략(스킵)된 절차는 상태 변경도 차단 (보드 쓰기 가드와 동일 정책)
+    const skipsForStatus = await getProjectSkips(projectId)
+    if (skipsForStatus.some((s) => s.procedure_code === procedureCode)) {
+      return res.status(403).json({
+        error: `${getProcedureLabel(procedureCode)} 절차는 팀 결정으로 생략되어 상태를 변경할 수 없습니다. 건너뛰기를 해제한 뒤 시도하세요.`,
       })
     }
 

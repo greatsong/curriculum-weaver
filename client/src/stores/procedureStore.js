@@ -264,33 +264,40 @@ export const useProcedureStore = create((set, get) => ({
     }
     // 다른 멤버의 스킵/해제를 실시간 반영 — 없으면 새로고침 전까지
     // 팀원마다 다른 워크플로우를 보는 상태 발산이 생긴다.
-    const skipsHandler = ({ skips, current_procedure }) => {
+    // 주의: 내 화면(로컬 뷰)은 강제 이동시키지 않는다. 스킵 절차는 열람이 허용되고,
+    // 편집 중이던 멤버를 다른 절차로 튕기면 미저장 초안이 유실된다.
+    // 화면에는 생략 배너·읽기전용 전환만 일어나고, 이동은 사용자의 선택.
+    const skipsHandler = ({ skips }) => {
       set({ skippedProcedures: skips || [] })
-      // 내가 보고 있던 절차가 방금 스킵됐고 서버가 커서를 보정했으면 따라간다
-      const cur = get().currentProcedure
-      if (current_procedure && cur !== current_procedure
-        && (skips || []).some((s) => s.procedure_code === cur)) {
-        get().setProcedure(current_procedure)
-      }
+    }
+    // 자료 분석 상태 실시간 반영 — 서버가 parsing/analyzing/completed/failed 전이마다
+    // material_updated를 쏜다. 폴링(3초 주기)의 감지 지연 없이 즉시 반영하고,
+    // 종결 상태면 폴링을 조기 종료한다 (폴링은 소켓 유실 대비 안전망으로 유지).
+    const materialHandler = (patch) => {
+      if (!patch?.id) return
+      get().applyMaterialUpdate(patch)
     }
     socket.on('board_changed', boardHandler)
     socket.on('design_changed', designHandler)
     socket.on('design_updated', designHandler)
     socket.on('procedure_skips_changed', skipsHandler)
-    set({ _boardHandler: boardHandler, _designHandler: designHandler, _skipsHandler: skipsHandler })
+    socket.on('material_updated', materialHandler)
+    set({ _boardHandler: boardHandler, _designHandler: designHandler, _skipsHandler: skipsHandler, _materialHandler: materialHandler })
   },
 
   unsubscribeBoardUpdates: () => {
     const boardHandler = get()._boardHandler
     const designHandler = get()._designHandler
     const skipsHandler = get()._skipsHandler
+    const materialHandler = get()._materialHandler
     if (boardHandler) socket.off('board_changed', boardHandler)
     if (designHandler) {
       socket.off('design_changed', designHandler)
       socket.off('design_updated', designHandler)
     }
     if (skipsHandler) socket.off('procedure_skips_changed', skipsHandler)
-    set({ _boardHandler: null, _designHandler: null, _skipsHandler: null })
+    if (materialHandler) socket.off('material_updated', materialHandler)
+    set({ _boardHandler: null, _designHandler: null, _skipsHandler: null, _materialHandler: null })
   },
 
   // ── 절차 스킵 (건너뛰기) ────
