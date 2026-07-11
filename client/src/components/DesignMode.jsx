@@ -5,6 +5,7 @@ import { apiGet } from '../lib/api'
 import Logo from './Logo'
 import DesignModeCoach from './DesignModeCoach'
 import PairLens from './lenses/PairLens'
+import { nodeSchoolLevel } from './lenses/lensCommon'
 import ThemeLens from './lenses/ThemeLens'
 import NeighborLens from './lenses/NeighborLens'
 import SeriesLens from './lenses/SeriesLens'
@@ -17,6 +18,7 @@ const LENSES = [
 ]
 
 const BASKET_KEY = 'cw_design_basket'
+const SCHOOL_LEVELS = ['초등학교', '중학교', '고등학교']
 
 /**
  * 설계 모드 — 교사의 4가지 질문에 답하는 렌즈 셸
@@ -34,6 +36,7 @@ export default function DesignMode() {
   const pair = [searchParams.get('a') || '', searchParams.get('b') || '']
   const query = searchParams.get('q') || ''
   const focusCode = searchParams.get('focus') || ''
+  const level = searchParams.get('level') || '' // 학교급 필터 ('' = 전체)
 
   const patchParams = useCallback((patch) => {
     setSearchParams(prev => {
@@ -72,10 +75,35 @@ export default function DesignMode() {
     return () => { cancelled = true }
   }, [showAllLinks])
 
+  // 학교급 필터가 적용된 과목 목록 (고교 교사가 106개 평면 목록에서 헤매지 않도록)
+  // 학교급 미상(null) 노드는 배제하지 않음 — 고교 선택과목 누락 방지
   const subjects = useMemo(() => {
     if (!graphData) return []
-    return [...new Set(graphData.nodes.map(n => n.subject))].sort()
-  }, [graphData])
+    const nodes = level
+      ? graphData.nodes.filter(n => { const lv = nodeSchoolLevel(n); return lv === level || lv === null })
+      : graphData.nodes
+    return [...new Set(nodes.map(n => n.subject))].sort()
+  }, [graphData, level])
+
+  // 학교급별 과목 그룹 (PairLens의 <optgroup> 용 — 초/중 공통 과목은 각 학교급에 모두 표시)
+  const subjectGroups = useMemo(() => {
+    if (!graphData) return []
+    const nodes = level
+      ? graphData.nodes.filter(n => { const lv = nodeSchoolLevel(n); return lv === level || lv === null })
+      : graphData.nodes
+    const byLevel = new Map(SCHOOL_LEVELS.map(lv => [lv, new Set()]))
+    const etc = new Set()
+    for (const n of nodes) {
+      const lv = nodeSchoolLevel(n)
+      if (byLevel.has(lv)) byLevel.get(lv).add(n.subject)
+      else etc.add(n.subject)
+    }
+    const groups = [...byLevel.entries()]
+      .map(([label, set]) => ({ label, subjects: [...set].sort() }))
+      .filter(g => g.subjects.length > 0)
+    if (etc.size > 0) groups.push({ label: '기타', subjects: [...etc].sort() })
+    return groups
+  }, [graphData, level])
 
   // 렌즈 간 이동 헬퍼
   const openNeighbor = useCallback((code) => patchParams({ lens: 'neighbor', focus: code }), [patchParams])
@@ -95,10 +123,10 @@ export default function DesignMode() {
     setSearchParams(next)
   }
 
-  // 프로젝트 시작 CTA — 워크스페이스에서 새 프로젝트를 만들면
-  // 담은 성취기준(sessionStorage)이 생성 모달에 자동 포함된다
+  // 프로젝트 시작 CTA — 워크스페이스 선택 후 생성 모달이 자동으로 열리고
+  // 담은 성취기준(sessionStorage)이 모달에 자동 포함된다
   const startProject = () => {
-    navigate('/workspaces')
+    navigate('/workspaces?createProject=1')
   }
 
   const basketList = [...basket]
@@ -151,6 +179,18 @@ export default function DesignMode() {
         <span className="hidden md:inline text-[11px] text-gray-400 ml-1">
           {LENSES.find(l => l.id === lens)?.hint}
         </span>
+        {/* 학교급 필터 — 과목 목록·검색 결과를 내 학교급으로 좁힌다 */}
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          {['', ...SCHOOL_LEVELS].map(lv => (
+            <button key={lv} onClick={() => patchParams({ level: lv })}
+              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition whitespace-nowrap ${
+                level === lv
+                  ? 'bg-blue-50 border-blue-500 text-blue-700'
+                  : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+              {lv ? lv.replace('학교', '') : '전체 학교급'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* 렌즈 콘텐츠 */}
@@ -165,21 +205,21 @@ export default function DesignMode() {
         ) : (
           <div className="max-w-6xl mx-auto">
             {lens === 'pair' && (
-              <PairLens graph={graphData} subjects={subjects} pair={pair}
+              <PairLens graph={graphData} subjects={subjects} subjectGroups={subjectGroups} pair={pair}
                 onPickPair={(p) => patchParams({ a: p[0], b: p[1] })}
                 basket={basket} onToggleBasket={toggleBasket} onOpenNeighbor={openNeighbor} />
             )}
             {lens === 'theme' && (
-              <ThemeLens query={query} onQuery={(q) => patchParams({ q })}
+              <ThemeLens query={query} onQuery={(q) => patchParams({ q })} level={level}
                 basket={basket} onToggleBasket={toggleBasket} onOpenNeighbor={openNeighbor} />
             )}
             {lens === 'series' && (
-              <SeriesLens graph={graphData} focusCode={focusCode}
+              <SeriesLens graph={graphData} focusCode={focusCode} level={level}
                 onFocus={(code) => patchParams({ focus: code })}
                 basket={basket} onToggleBasket={toggleBasket} />
             )}
             {lens === 'neighbor' && (
-              <NeighborLens graph={graphData} focusCode={focusCode}
+              <NeighborLens graph={graphData} focusCode={focusCode} level={level}
                 onFocus={(code) => patchParams({ focus: code })}
                 basket={basket} onToggleBasket={toggleBasket} />
             )}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Search, Plus, Check } from 'lucide-react'
 import { apiGet } from '../../lib/api'
-import { subjectColor, simBadge } from './lensCommon'
+import { subjectColor, simBadge, nodeSchoolLevel } from './lensCommon'
 
 /**
  * 주제 렌즈 — 시맨틱 검색 결과를 교과군별 컬럼으로 배열
@@ -9,10 +9,11 @@ import { subjectColor, simBadge } from './lensCommon'
  *
  * props:
  *  - query, onQuery(q)
+ *  - level: 셸의 학교급 필터 ('' = 전체) — 검색 결과를 필터링
  *  - basket, onToggleBasket
  *  - onOpenNeighbor(code)
  */
-export default function ThemeLens({ query, onQuery, basket, onToggleBasket, onOpenNeighbor }) {
+export default function ThemeLens({ query, onQuery, level, basket, onToggleBasket, onOpenNeighbor }) {
   // 입력창은 로컬 state로 관리한다. query/onQuery는 URL(searchParams)에 바로
   // 연결되어 있어서, 매 키 입력마다 onQuery를 호출해 <input value={query}>로
   // 되돌리면 그 라운드트립이 한글 IME 조합을 깨뜨린다("안녕" → "ㅇ안ㄴㅕㅇ").
@@ -48,11 +49,10 @@ export default function ThemeLens({ query, onQuery, basket, onToggleBasket, onOp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text])
 
-  // 학교급 필터 (교사는 자기 학교급이 기본 관심사)
-  const [schoolLevel, setSchoolLevel] = useState('')
+  // 학교급 필터 — 셸(DesignMode) 상단 토글 값을 그대로 사용 (자체 토글은 셸로 일원화)
   const filtered = useMemo(() => (
-    schoolLevel ? results.filter(r => r.school_level === schoolLevel) : results
-  ), [results, schoolLevel])
+    level ? results.filter(r => { const lv = nodeSchoolLevel(r); return lv === level || lv === null }) : results
+  ), [results, level])
 
   // 교과군별 컬럼 (컬럼 순서 = 최고 유사도순)
   const columns = useMemo(() => {
@@ -94,18 +94,10 @@ export default function ThemeLens({ query, onQuery, basket, onToggleBasket, onOp
         </div>
       )}
 
-      {results.length > 0 && (
-        <div className="flex items-center gap-1.5">
-          {['', '초등학교', '중학교', '고등학교'].map(lv => (
-            <button key={lv} onClick={() => setSchoolLevel(lv)}
-              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition ${
-                schoolLevel === lv
-                  ? 'bg-blue-50 border-blue-500 text-blue-700'
-                  : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-              {lv ? lv.replace('학교', '') : '전체 학교급'}
-            </button>
-          ))}
-        </div>
+      {results.length > 0 && level && filtered.length < results.length && (
+        <p className="text-[11px] text-gray-400">
+          {level} 필터 적용 중 — 전체 {results.length}개 중 {filtered.length}개 표시 (상단 토글로 변경)
+        </p>
       )}
 
       {columns.length > 0 && (

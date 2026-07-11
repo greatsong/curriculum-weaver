@@ -67,3 +67,15 @@ export const isSameGrade = (a, b) => gradeBucket(a).order === gradeBucket(b).ord
 
 // 정렬 점수: 같은 학년군 우선, 그 안에서 품질순
 export const linkPriority = (l, a, b) => (isSameGrade(a, b) ? 10 : 0) + linkQuality(l)
+
+// 노드의 학교급 판별 — school_level이 비면 grade_group 접두사로 추정.
+// 고교 선택과목 상당수가 school_level이 비어 있어(grade_group '고선택' 등),
+// school_level만 보면 고등 필터에서 경제 수학·데이터 과학 등이 누락된다 (서버 resolveSchoolLevel과 동일 규칙).
+export const nodeSchoolLevel = (node) => {
+  if (node?.school_level) return node.school_level
+  const gg = node?.grade_group || ''
+  if (/^초/.test(gg)) return '초등학교'
+  if (/^중/.test(gg)) return '중학교'
+  if (/^고/.test(gg)) return '고등학교'
+  return null
+}

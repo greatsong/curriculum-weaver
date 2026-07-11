@@ -50,6 +50,39 @@ function getModelId(aiModel) {
 }
 
 // ──────────────────────────────────────────
+// 헬퍼 함수: 검증된 교과 연결(curriculum_links) 컨텍스트
+// ──────────────────────────────────────────
+
+const LINK_TYPE_LABELS_KO = {
+  cross_subject: '교과연계', same_concept: '동일개념', prerequisite: '선수학습',
+  application: '적용', extension: '확장',
+}
+
+/**
+ * 선택 성취기준 간 검증된 링크를 프롬프트 섹션으로 직렬화.
+ * 한 줄 ≈ 90~130자 — 링크 하나가 곧 검증된 융합 수업 아이디어라 토큰 밀도가 높다.
+ * @param {Object[]} links - StandardLinks.getLinksAmongCodes() 결과
+ */
+export function buildLinkContextText(links) {
+  if (!links || links.length === 0) return ''
+  const wrap = (code) => (String(code).startsWith('[') ? code : `[${code}]`)
+  const lines = links.map((l) => {
+    const q = l.quality_score != null ? `·q${Number(l.quality_score).toFixed(2)}` : ''
+    let line = `  ${wrap(l.source_code)}↔${wrap(l.target_code)} (${LINK_TYPE_LABELS_KO[l.link_type] || l.link_type}${q})`
+    if (l.integration_theme) line += ` 주제: ${l.integration_theme}`
+    if (l.rationale) line += `\n    근거: ${String(l.rationale).slice(0, 120)}`
+    if (l.lesson_hook) line += `\n    수업 아이디어: ${String(l.lesson_hook).slice(0, 80)}`
+    return line
+  })
+  return `[선택 성취기준 간 검증된 교과 연결 — 품질 판정 통과 데이터 ${links.length}개]
+아래는 임베딩 유사도 + 전문가(AI) 판정 파이프라인을 통과해 게시된 실제 교과 간 연결입니다.
+- 융합 주제·통합 수업목표·학습활동을 제안할 때 이 연결의 근거를 1차 근거로 인용하세요.
+- 연결 목록에 없는 성취기준 쌍의 융합을 제안할 때는 "검증된 연결은 없지만"이라고 구분해 말하세요.
+- 수업 아이디어는 활동 설계의 출발점으로 활용하되 학습자 맥락에 맞게 변형하세요.
+${lines.join('\n')}`
+}
+
+// ──────────────────────────────────────────
 // 헬퍼 함수: 스텝 컨텍스트
 // ──────────────────────────────────────────
 
@@ -604,7 +637,7 @@ function formatMaterialBlock(m, { rich, index }) {
  * @param {number|null} params.currentStep - 현재 스텝 번호
  * @param {string} [params.aiRole] - AI 역할 프리셋 ID (recorder/advisor/facilitator/codesigner)
  */
-export function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes }) {
+export function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes, standardLinks }) {
   const procInfo = PROCEDURES[procedure]
   if (!procInfo) return '시스템 오류: 유효하지 않은 절차 코드입니다.'
 
@@ -926,6 +959,10 @@ ${stdText}${fusionGuard}
 3. 성취기준 내용을 변형하지 마세요. 원문 그대로만 유효합니다.
 4. A-2-1 보드의 code/content 필드는 위 목록에서 복사하세요. AI가 분석할 부분은 knowledge/process/values 열뿐입니다.
 5. 추가 성취기준이 필요하면 "성취기준 탐색기에서 추가로 선택해 주세요"라고 안내하세요.`)
+
+    // ─── 13-B. 선택 성취기준 간 검증된 교과 연결 (curriculum_links) ───
+    const linkSection = buildLinkContextText(standardLinks)
+    if (linkSection) parts.push(linkSection)
   } else {
     parts.push(`[성취기준 안내 — 절대 규칙]
 현재 이 프로젝트에 선택된 성취기준이 없습니다.

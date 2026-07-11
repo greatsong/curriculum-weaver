@@ -1396,14 +1396,18 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
 
             {/* 프로젝트 만들기 CTA */}
             <section className="border-t border-gray-700 pt-4">
-              <p className="text-xs text-gray-500 mb-2">탐색한 교과와 성취기준으로 바로 융합 수업 설계를 시작하세요.</p>
+              <p className="text-xs text-gray-500 mb-2">탐색한 성취기준을 담아 바로 융합 수업 설계를 시작하세요.</p>
               <button
                 onClick={() => {
-                  const params = new URLSearchParams()
-                  if (selectedSubjects.size > 0) params.set('subjects', [...selectedSubjects].join(','))
-                  if (selectedNode) params.set('standard', selectedNode.code)
-                  const url = params.toString() ? `/?${params}` : '/'
-                  navigate?.(url)
+                  // 설계 모드와 동일한 담기(basket) 패턴 — 선택한 성취기준을
+                  // sessionStorage에 담고, 워크스페이스에서 생성 모달이 자동으로 열린다.
+                  const codes = new Set()
+                  try {
+                    JSON.parse(sessionStorage.getItem('cw_design_basket') || '[]').forEach(c => codes.add(c))
+                  } catch { /* 손상된 값은 무시하고 새로 시작 */ }
+                  if (selectedNode) codes.add(selectedNode.code)
+                  sessionStorage.setItem('cw_design_basket', JSON.stringify([...codes]))
+                  navigate?.('/workspaces?createProject=1')
                 }}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
                 <Sparkles size={16} />

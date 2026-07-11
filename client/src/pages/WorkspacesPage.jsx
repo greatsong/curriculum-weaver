@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import Logo from '../components/Logo'
 
 export default function WorkspacesPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user, logout } = useAuthStore()
   const { workspaces, loading, error, errorStatus, fetchWorkspaces, createWorkspace, acceptInvite } = useWorkspaceStore()
   const [showCreate, setShowCreate] = useState(false)
@@ -14,6 +15,14 @@ export default function WorkspacesPage() {
   const [description, setDescription] = useState('')
   const [inviteToken, setInviteToken] = useState('')
   const [creating, setCreating] = useState(false)
+
+  // 그래프(설계/탐험)에서 성취기준을 담아온 흐름 — 워크스페이스 선택 후
+  // 상세 페이지에서 프로젝트 생성 모달이 자동으로 열리도록 쿼리를 이월한다.
+  const wantsCreateProject = searchParams.get('createProject') === '1'
+  const [basketCount] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('cw_design_basket') || '[]').length } catch { return 0 }
+  })
+  const detailPath = (wsId) => `/workspaces/${wsId}${wantsCreateProject ? '?createProject=1' : ''}`
 
   useEffect(() => { fetchWorkspaces() }, [fetchWorkspaces])
 
@@ -26,7 +35,7 @@ export default function WorkspacesPage() {
       setShowCreate(false)
       setName('')
       setDescription('')
-      navigate(`/workspaces/${ws.id}`)
+      navigate(detailPath(ws.id))
     } catch (err) {
       alert(`워크스페이스 생성 실패: ${err.message}`)
     } finally {
@@ -126,6 +135,33 @@ export default function WorkspacesPage() {
       </header>
 
       <main style={{ maxWidth: 1120, margin: '0 auto', padding: '32px 24px' }}>
+        {/* 그래프에서 담아온 성취기준 안내 배너 */}
+        {basketCount > 0 && (
+          <div
+            className="animate-fade-in"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '12px 16px',
+              marginBottom: 20,
+              background: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              borderRadius: 'var(--radius-lg)',
+              fontSize: 13,
+              color: '#1D4ED8',
+            }}
+          >
+            <span style={{ fontSize: 16 }}>🧺</span>
+            <span style={{ fontWeight: 600 }}>
+              담아온 성취기준 {basketCount}개
+            </span>
+            <span style={{ color: '#3B82F6' }}>
+              — 프로젝트를 만들 워크스페이스를 선택하세요. 새 프로젝트에 자동으로 포함됩니다.
+            </span>
+          </div>
+        )}
+
         {/* 타이틀 + 액션 */}
         <div style={{
           display: 'flex',
@@ -280,7 +316,7 @@ export default function WorkspacesPage() {
             {workspaces.map((ws, idx) => (
               <button
                 key={ws.id}
-                onClick={() => navigate(`/workspaces/${ws.id}`)}
+                onClick={() => navigate(detailPath(ws.id))}
                 className="card animate-slide-up"
                 style={{
                   animationDelay: `${idx * 50}ms`,

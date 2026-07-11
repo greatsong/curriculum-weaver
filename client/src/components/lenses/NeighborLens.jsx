@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Search, ChevronRight, Plus, Check } from 'lucide-react'
-import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, isSameGrade } from './lensCommon'
+import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, isSameGrade, nodeSchoolLevel } from './lensCommon'
 
 /**
  * 이웃 렌즈 — 성취기준 하나를 중심으로 직접 연결된 이웃을 탐색 (한 홉씩 걷기)
@@ -9,9 +9,10 @@ import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQualit
  *  - graph: { nodes, links }
  *  - focusCode: 중심 성취기준 코드 (없으면 검색 안내)
  *  - onFocus(code): 중심 변경 (브레드크럼은 내부 관리)
+ *  - level: 학교급 필터 — 검색 결과에 적용 (이웃 목록은 학교급을 넘나드는 것이 가치라 필터하지 않음)
  *  - basket, onToggleBasket
  */
-export default function NeighborLens({ graph, focusCode, onFocus, basket, onToggleBasket }) {
+export default function NeighborLens({ graph, focusCode, onFocus, level, basket, onToggleBasket }) {
   const [trail, setTrail] = useState([]) // 방문 경로 (code[])
   const [query, setQuery] = useState('')
 
@@ -41,14 +42,15 @@ export default function NeighborLens({ graph, focusCode, onFocus, basket, onTogg
     onFocus(code)
   }
 
-  // 검색 (코드/내용/과목 단순 매칭)
+  // 검색 (코드/내용/과목 단순 매칭 — 셸 학교급 필터 적용)
   const searchResults = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q || !graph) return []
     return graph.nodes
+      .filter(n => { if (!level) return true; const lv = nodeSchoolLevel(n); return lv === level || lv === null })
       .filter(n => n.code.toLowerCase().includes(q) || n.content?.toLowerCase().includes(q) || n.subject?.toLowerCase().includes(q))
       .slice(0, 12)
-  }, [query, graph])
+  }, [query, graph, level])
 
   if (!center) {
     return (
