@@ -20,6 +20,7 @@ import {
   MATERIAL_ERROR_CODES as E,
   MATERIAL_INTENTS,
   DEFAULT_MATERIAL_INTENT,
+  MAX_VISION_IMAGE_BYTES,
 } from '../../shared/constants.js'
 
 // Lazy 초기화 — ESM hoisting으로 dotenv 로드 이전에 모듈이 평가되는 경우를 대비.
@@ -34,8 +35,20 @@ function getClient() {
 
 /** 추출 본문 최대 길이 (약 20k 토큰) */
 const TEXT_TRUNCATE = 20000
-/** AI 분석 타임아웃 (ms) */
-const AI_TIMEOUT_MS = 60_000
+/** AI 분석 타임아웃 (ms) — 실측 p90 51s(감량 전) 대비 여유 확보 */
+const AI_TIMEOUT_MS = 90_000
+/** Vision(문서/이미지 직접 분석) 타임아웃 — 이미지 토큰 처리로 텍스트보다 오래 걸림 */
+const AI_TIMEOUT_VISION_MS = 150_000
+/** Vision PDF 페이지 상한 (Claude API 문서 입력 한도) */
+const VISION_PDF_MAX_PAGES = 600
+/** Vision 지원 이미지 확장자 → media_type (확장자 목록·크기 상한은 shared/constants가 정본) */
+export const VISION_IMAGE_MIME = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+}
 /**
  * 자료 분석용 AI 모델 — aiAgent.js의 MODEL_MAP.fast와 일치.
  */
@@ -47,11 +60,11 @@ const SYSTEM_PROMPT_BASE = `당신은 한국 2022 개정 교육과정 기반 융
 교사가 업로드한 자료를 분석해 수업 설계에 활용 가능한 인사이트를 구조화된 JSON으로 반환합니다.
 
 [절대 규칙]
-1. 성취기준 코드(suggested_standard_codes)는 "후보"로만 제시합니다. 형식은 [9과05-01], [4수02-03]처럼 대괄호를 포함한 한국 교육과정 표준 형식만 허용됩니다.
+1. 성취기준 코드(suggested_standard_codes)는 "후보"로만 제시합니다. 형식은 [9과05-01], [4수02-03]처럼 대괄호를 포함한 한국 교육과정 표준 형식만 허용됩니다. 가장 확신하는 것부터 최대 5개, reason은 100자 이내.
 2. 확신이 없으면 빈 배열을 반환하세요. 추측으로 코드를 만들지 마세요.
-3. summary는 5~7문장, 500자 이내로 작성합니다. 구조는 "개괄(1~2문장) → 핵심 포인트(2~3문장) → 수업 활용 제안(1~2문장)" 순서를 지키세요.
-4. intent_driven_summary는 아래 [교사 업로드 의도]의 지시에 맞춰 별도로 작성합니다. intent가 'general'이면 summary와 동일해도 됩니다. 5~7문장, 500자 이내.
-5. design_suggestions는 최대 5개, key_insights는 최대 8개, extracted_keywords는 최대 15개입니다.
+3. summary는 5~7문장으로 작성하되 500자를 절대 초과하지 마세요. 500자를 넘길 바에는 문장을 줄이세요. 구조는 "개괄(1~2문장) → 핵심 포인트(2~3문장) → 수업 활용 제안(1~2문장)" 순서를 지키세요.
+4. intent_driven_summary는 아래 [교사 업로드 의도]의 지시에 맞춰 별도로 작성합니다(500자 이내). 단, intent가 'general'이면 summary와 동일하므로 이 필드를 아예 생략하세요 — 같은 내용을 두 번 쓰지 마세요.
+5. design_suggestions는 최대 5개, key_insights는 최대 8개, extracted_keywords는 최대 15개입니다. 각 항목은 한 문장으로 간결하게.
 6. 반드시 제공된 tool(submit_material_analysis)을 호출해 JSON으로만 응답하세요. 자유 텍스트는 금지입니다.`
 
 /**
@@ -93,53 +106,59 @@ function buildSystemPrompt({ intent, intentNote } = {}) {
 }
 
 // ── Tool 스키마 (JSON 출력 강제) ──
-const ANALYZE_TOOL = {
-  name: 'submit_material_analysis',
-  description: '교사가 업로드한 수업자료에 대한 구조화된 분석 결과를 제출합니다.',
-  input_schema: {
-    type: 'object',
-    required: [
-      'material_type',
-      'summary',
-      'intent_driven_summary',
-      'key_insights',
-      'suggested_standard_codes',
-      'design_suggestions',
-      'extracted_keywords',
-    ],
-    properties: {
-      material_type: {
-        type: 'string',
-        enum: ['교과서단원', '수업지도안', '활동지', '뉴스기사', '학교문서', '학생결과물', '연구논문', '기타'],
-      },
-      summary: {
-        type: 'string',
-        maxLength: 500,
-        description: '범용 요약 — 5~7문장, 500자 이내, "개괄→포인트→활용" 구조.',
-      },
-      intent_driven_summary: {
-        type: 'string',
-        maxLength: 500,
-        description: '위 intent에 최적화된 요약 (5~7문장, 500자 내). intent=general이면 summary와 동일해도 됨.',
-      },
-      key_insights: { type: 'array', items: { type: 'string' }, maxItems: 8 },
-      suggested_standard_codes: {
-        type: 'array',
-        maxItems: 10,
-        items: {
-          type: 'object',
-          required: ['code', 'confidence', 'reason'],
-          properties: {
-            code: { type: 'string' },
-            confidence: { type: 'number', minimum: 0, maximum: 1 },
-            reason: { type: 'string', maxLength: 200 },
+// intent=general이면 intent_driven_summary가 summary와 중복이라 required에서 제외한다.
+// (요약 이중 생성은 출력 토큰 = 분석 지연의 최대 요인 — 서버가 summary로 폴백)
+function buildAnalyzeTool(intent) {
+  const required = [
+    'material_type',
+    'summary',
+    'key_insights',
+    'suggested_standard_codes',
+    'design_suggestions',
+    'extracted_keywords',
+  ]
+  if (intent !== MATERIAL_INTENTS.GENERAL) required.splice(2, 0, 'intent_driven_summary')
+
+  return {
+    name: 'submit_material_analysis',
+    description: '교사가 업로드한 수업자료에 대한 구조화된 분석 결과를 제출합니다.',
+    input_schema: {
+      type: 'object',
+      required,
+      properties: {
+        material_type: {
+          type: 'string',
+          enum: ['교과서단원', '수업지도안', '활동지', '뉴스기사', '학교문서', '학생결과물', '연구논문', '기타'],
+        },
+        summary: {
+          type: 'string',
+          maxLength: 500,
+          description: '범용 요약 — 5~7문장, 500자 이내, "개괄→포인트→활용" 구조.',
+        },
+        intent_driven_summary: {
+          type: 'string',
+          maxLength: 500,
+          description: '위 intent에 최적화된 요약 (5~7문장, 500자 내). intent=general이면 생략할 것.',
+        },
+        key_insights: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+        suggested_standard_codes: {
+          type: 'array',
+          maxItems: 5,
+          items: {
+            type: 'object',
+            required: ['code', 'confidence', 'reason'],
+            properties: {
+              code: { type: 'string' },
+              confidence: { type: 'number', minimum: 0, maximum: 1 },
+              reason: { type: 'string', maxLength: 100 },
+            },
           },
         },
+        design_suggestions: { type: 'array', items: { type: 'string' }, maxItems: 5 },
+        extracted_keywords: { type: 'array', items: { type: 'string' }, maxItems: 15 },
       },
-      design_suggestions: { type: 'array', items: { type: 'string' }, maxItems: 5 },
-      extracted_keywords: { type: 'array', items: { type: 'string' }, maxItems: 15 },
     },
-  },
+  }
 }
 
 /**
@@ -475,6 +494,56 @@ async function fetchUrlContent(rawUrl) {
 }
 
 /**
+ * HWPX(OWPML, KS X 6101) 텍스트 추출 — ZIP 컨테이너 안의 Contents/section*.xml에서
+ * <hp:t> 텍스트 런을 모은다. 바이너리 .hwp(OLE)와 달리 표준 XML이라 파서 없이 처리 가능.
+ * @returns {Promise<string>} 추출 평문 (섹션 순서 보존, 문단 경계는 개행)
+ */
+async function extractHwpxText(buffer) {
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(buffer)
+
+  // Contents/section0.xml, section1.xml … 순서대로 (숫자 기준 정렬)
+  const sectionNames = Object.keys(zip.files)
+    .filter((n) => /^Contents\/section\d+\.xml$/i.test(n))
+    .sort((a, b) => {
+      const na = Number(a.match(/section(\d+)/i)?.[1] ?? 0)
+      const nb = Number(b.match(/section(\d+)/i)?.[1] ?? 0)
+      return na - nb
+    })
+  if (sectionNames.length === 0) {
+    throw new Error('HWPX 본문(Contents/section*.xml)을 찾을 수 없습니다.')
+  }
+
+  const parts = []
+  for (const name of sectionNames) {
+    const xml = await zip.files[name].async('string')
+    // 문단(</hp:p>) 경계를 개행으로 표시한 뒤 <hp:t> 런만 수집.
+    // 태그명은 정확히 't'여야 한다 — [^>]*를 이름에 붙이면 hp:tbl(표)·hp:tc(셀)까지
+    // 매칭돼 XML 마크업이 본문으로 새어 들어온다 (실파일 검증에서 발견).
+    const withBreaks = xml.replace(/<\/hp:p>/gi, '\n')
+    const re = /<hp:t(?:\s[^>]*)?>([\s\S]*?)<\/hp:t>/gi
+    let m
+    let lastEnd = 0
+    let out = ''
+    while ((m = re.exec(withBreaks)) !== null) {
+      // 런 사이에 문단 개행이 있었으면 반영
+      const gap = withBreaks.slice(lastEnd, m.index)
+      if (gap.includes('\n')) out += '\n'
+      // 런 내부의 중첩 태그(마커 등) 제거 후 엔티티 디코딩
+      out += decodeEntities(m[1].replace(/<[^>]+>/g, ''))
+      lastEnd = re.lastIndex
+    }
+    parts.push(out)
+  }
+
+  return parts
+    .join('\n\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
  * 확장자별 파서 — {text, unsupported, error} 반환
  */
 async function extractText(buffer, ext) {
@@ -483,7 +552,8 @@ async function extractText(buffer, ext) {
     if (lower === 'pdf') {
       const pdfParse = (await import('pdf-parse')).default
       const result = await pdfParse(buffer)
-      return { text: result.text || '' }
+      // numpages: 텍스트가 비었을 때 Vision 폴백의 페이지 상한 판정에 사용
+      return { text: result.text || '', numpages: result.numpages || 0 }
     }
     if (lower === 'docx') {
       const mammoth = await import('mammoth')
@@ -532,14 +602,23 @@ async function extractText(buffer, ext) {
         return { unsupported: true, error: `pptx 파서 미설치 또는 실패: ${e.message}` }
       }
     }
-    if (['hwp', 'hwpx'].includes(lower)) {
-      return { unsupported: true, error: '한글(hwp/hwpx) 파서 미지원 — docx 또는 pdf로 변환해주세요.' }
+    if (lower === 'hwpx') {
+      // OWPML ZIP 컨테이너 — Contents/section*.xml에서 텍스트 런 추출
+      try {
+        return { text: await extractHwpxText(buffer) }
+      } catch (e) {
+        return { error: `hwpx 파싱 실패: ${e.message} — 손상됐거나 구버전 형식일 수 있어요. PDF로 변환해 올려주세요.` }
+      }
+    }
+    if (lower === 'hwp') {
+      return { unsupported: true, error: '한글 바이너리(.hwp)는 지원하지 않아요. 한글에서 .hwpx 또는 PDF로 저장해 올려주세요.' }
     }
     if (['doc', 'ppt', 'xls'].includes(lower)) {
       return { unsupported: true, error: '레거시 OLE 형식은 지원하지 않습니다. docx/pptx/xlsx로 변환해주세요.' }
     }
-    if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(lower)) {
-      return { unsupported: true, error: '이미지 Vision 분석은 추후 제공 예정입니다.' }
+    if (VISION_IMAGE_MIME[lower]) {
+      // 이미지는 텍스트 추출 대신 Vision 경로로 — analyzeMaterial이 이 sentinel을 보고 분기
+      return { visionImage: true, mediaType: VISION_IMAGE_MIME[lower] }
     }
     return { unsupported: true, error: `지원하지 않는 확장자: ${lower}` }
   } catch (err) {
@@ -548,17 +627,41 @@ async function extractText(buffer, ext) {
 }
 
 /**
- * Claude tool_use 기반 분석. Promise는 AI_TIMEOUT_MS 안에 resolve되지 않으면 reject.
+ * Claude tool_use 기반 분석. Promise는 타임아웃 안에 resolve되지 않으면 reject.
  *
- * @param {string} text
+ * @param {{text?: string, pdfBuffer?: Buffer, imageBuffer?: Buffer, imageMediaType?: string}} source
+ *   - text: 추출된 평문 (기본 경로)
+ *   - pdfBuffer: 텍스트 추출이 안 되는 PDF 원본 → Vision(document 블록)으로 직접 분석
+ *   - imageBuffer + imageMediaType: 이미지 자료 → Vision(image 블록)으로 직접 분석
  * @param {{intent?: string, intentNote?: string|null}} [options]
  */
-async function callClaudeAnalysis(text, { intent = DEFAULT_MATERIAL_INTENT, intentNote = null } = {}) {
-  const userMessage = `<자료본문>
-${text}
-</자료본문>
+async function callClaudeAnalysis(source, { intent = DEFAULT_MATERIAL_INTENT, intentNote = null } = {}) {
+  const instruction = '위 자료를 분석하여 submit_material_analysis 도구로 결과를 제출해주세요.'
+  let content
+  let timeoutMs = AI_TIMEOUT_MS
 
-위 자료를 분석하여 submit_material_analysis 도구로 결과를 제출해주세요.`
+  if (source.pdfBuffer) {
+    // 스캔본 등 텍스트 추출 불가 PDF — 원본을 document 블록으로 직접 전달 (베타 헤더 불필요)
+    content = [
+      {
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: source.pdfBuffer.toString('base64') },
+      },
+      { type: 'text', text: instruction },
+    ]
+    timeoutMs = AI_TIMEOUT_VISION_MS
+  } else if (source.imageBuffer) {
+    content = [
+      {
+        type: 'image',
+        source: { type: 'base64', media_type: source.imageMediaType, data: source.imageBuffer.toString('base64') },
+      },
+      { type: 'text', text: instruction },
+    ]
+    timeoutMs = AI_TIMEOUT_VISION_MS
+  } else {
+    content = `<자료본문>\n${source.text}\n</자료본문>\n\n${instruction}`
+  }
 
   const systemText = buildSystemPrompt({ intent, intentNote })
 
@@ -566,13 +669,13 @@ ${text}
     model: ANALYZER_MODEL,
     max_tokens: 4096,
     system: [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }],
-    tools: [ANALYZE_TOOL],
+    tools: [buildAnalyzeTool(intent)],
     tool_choice: { type: 'tool', name: 'submit_material_analysis' },
-    messages: [{ role: 'user', content: userMessage }],
+    messages: [{ role: 'user', content }],
   })
 
   const timeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('AI_TIMEOUT')), AI_TIMEOUT_MS)
+    setTimeout(() => reject(new Error('AI_TIMEOUT')), timeoutMs)
   )
   const response = await Promise.race([aiCall, timeout])
 
@@ -637,18 +740,40 @@ function filterHallucinations(suggestedCodes) {
 }
 
 /**
+ * 자료 상태 변경을 프로젝트 room에 실시간 전파 — 폴링(3초 주기) 지연 없이
+ * 업로더와 협업자 모두 즉시 상태를 본다. 폴링은 안전망으로 유지된다.
+ */
+function broadcastMaterialUpdate(projectId, patch) {
+  if (!projectId) return
+  const io = globalThis.__cwIo
+  if (!io) return
+  try {
+    io.to(projectId).emit('material_updated', { project_id: projectId, ...patch })
+  } catch (err) {
+    console.warn('[materialAnalyzer] material_updated emit 실패(무시):', err?.message || err)
+  }
+}
+
+/** 상태 갱신 + 첨부 메시지 전이 + 소켓 전파를 한 번에 (failed/parsing/analyzing 공통) */
+async function transitionMaterial(materialId, patch, messageStatus, projectId) {
+  await updateMaterialRow(materialId, patch)
+  if (messageStatus) await updateSystemAttachmentMessage(materialId, messageStatus)
+  broadcastMaterialUpdate(projectId, { id: materialId, ...patch })
+}
+
+/**
  * 업로드된 자료 분석 (fire-and-forget 호출 대상)
  *
  * @param {string} materialId - materials.id
  * @param {Buffer} fileBuffer - 파일 원본 버퍼 (호출 직후 해제 권장)
  * @param {string} fileExt   - 확장자 (소문자, 점 없음)
- * @param {{intent?: string, intentNote?: string|null}} [options]
+ * @param {{intent?: string, intentNote?: string|null, projectId?: string|null}} [options]
  */
 export async function analyzeMaterial(
   materialId,
   fileBuffer,
   fileExt,
-  { intent = DEFAULT_MATERIAL_INTENT, intentNote = null } = {}
+  { intent = DEFAULT_MATERIAL_INTENT, intentNote = null, projectId = null } = {}
 ) {
   const safeIntent = Object.values(MATERIAL_INTENTS).includes(intent)
     ? intent
@@ -656,39 +781,63 @@ export async function analyzeMaterial(
   const safeNote = safeIntent === MATERIAL_INTENTS.CUSTOM && intentNote
     ? String(intentNote).slice(0, 200)
     : null
+  const opts = { intent: safeIntent, intentNote: safeNote, projectId }
 
   // ── 1. parsing 단계 ──
   // intent/intent_note 컬럼도 함께 동기화 (업로드 시점과 분석 시점 사이 레코드 무결성 유지)
-  await updateMaterialRow(materialId, {
+  await transitionMaterial(materialId, {
     processing_status: 'parsing',
     processing_error: null,
     intent: safeIntent,
     intent_note: safeNote,
-  })
-  // 시스템 첨부 알림 메시지도 parsing으로 전이 (채팅 업로드인 경우에만 대응 메시지 존재)
-  await updateSystemAttachmentMessage(materialId, 'parsing')
+  }, 'parsing', projectId)
 
-  const { text, unsupported, error } = await extractText(fileBuffer, fileExt)
+  const { text, numpages, unsupported, error, visionImage, mediaType } = await extractText(fileBuffer, fileExt)
+
+  // 이미지 자료 → Vision 직접 분석
+  if (visionImage) {
+    if (fileBuffer.length > MAX_VISION_IMAGE_BYTES) {
+      await transitionMaterial(materialId, {
+        processing_status: 'failed',
+        processing_error: `${E.UNSUPPORTED_TYPE}: 이미지가 너무 큽니다 (${Math.round(fileBuffer.length / 1024 / 1024)}MB). 5MB 이하로 줄여 올려주세요.`,
+      }, 'failed', projectId)
+      return
+    }
+    await analyzeSource(materialId, { imageBuffer: fileBuffer, imageMediaType: mediaType }, opts)
+    return
+  }
 
   if (unsupported) {
     // 파일은 보관하되 분석 불가 — failed로 전이하고 사유 기록
-    await updateMaterialRow(materialId, {
+    await transitionMaterial(materialId, {
       processing_status: 'failed',
       processing_error: `${E.UNSUPPORTED_TYPE}: ${error || '지원하지 않는 형식'}`,
-    })
-    await updateSystemAttachmentMessage(materialId, 'failed')
+    }, 'failed', projectId)
     return
   }
   if (error) {
-    await updateMaterialRow(materialId, {
+    await transitionMaterial(materialId, {
       processing_status: 'failed',
       processing_error: `${E.PARSE_FAILED}: ${error}`,
-    })
-    await updateSystemAttachmentMessage(materialId, 'failed')
+    }, 'failed', projectId)
     return
   }
 
-  await analyzeExtractedText(materialId, text, { intent: safeIntent, intentNote: safeNote })
+  // 스캔본 PDF(텍스트가 사실상 없음) → 원본을 Vision으로 직접 분석
+  // 과거 실패 4건이 전부 이 케이스("추출된 텍스트가 비어 있습니다")였다.
+  if (String(fileExt).toLowerCase() === 'pdf' && (!text || text.trim().length < 50)) {
+    if ((numpages || 0) > VISION_PDF_MAX_PAGES) {
+      await transitionMaterial(materialId, {
+        processing_status: 'failed',
+        processing_error: `${E.PARSE_FAILED}: 텍스트를 추출할 수 없고 페이지가 너무 많습니다 (${numpages}p > ${VISION_PDF_MAX_PAGES}p). 필요한 부분만 나눠 올려주세요.`,
+      }, 'failed', projectId)
+      return
+    }
+    await analyzeSource(materialId, { pdfBuffer: fileBuffer }, opts)
+    return
+  }
+
+  await analyzeSource(materialId, { text }, opts)
 }
 
 /**
@@ -702,7 +851,7 @@ export async function analyzeMaterial(
 export async function analyzeUrlMaterial(
   materialId,
   url,
-  { intent = DEFAULT_MATERIAL_INTENT, intentNote = null } = {}
+  { intent = DEFAULT_MATERIAL_INTENT, intentNote = null, projectId = null } = {}
 ) {
   const safeIntent = Object.values(MATERIAL_INTENTS).includes(intent)
     ? intent
@@ -710,60 +859,62 @@ export async function analyzeUrlMaterial(
   const safeNote = safeIntent === MATERIAL_INTENTS.CUSTOM && intentNote
     ? String(intentNote).slice(0, 200)
     : null
+  const opts = { intent: safeIntent, intentNote: safeNote, projectId }
 
   // ── 1. parsing 단계 ──
-  await updateMaterialRow(materialId, {
+  await transitionMaterial(materialId, {
     processing_status: 'parsing',
     processing_error: null,
     intent: safeIntent,
     intent_note: safeNote,
-  })
-  await updateSystemAttachmentMessage(materialId, 'parsing')
+  }, 'parsing', projectId)
 
   const { text, unsupported, error } = await fetchUrlContent(url)
   if (unsupported || error) {
-    await updateMaterialRow(materialId, {
+    await transitionMaterial(materialId, {
       processing_status: 'failed',
       processing_error: `${E.URL_FETCH_FAILED}: ${error || '페이지 내용을 가져오지 못했습니다.'}`,
-    })
-    await updateSystemAttachmentMessage(materialId, 'failed')
+    }, 'failed', projectId)
     return
   }
 
-  await analyzeExtractedText(materialId, text, { intent: safeIntent, intentNote: safeNote })
+  await analyzeSource(materialId, { text }, opts)
 }
 
 /**
- * 추출된 평문을 분석하는 공통 단계 (analyzing → AI → 필터 → completed/failed).
+ * 소스(평문·PDF 원본·이미지)를 분석하는 공통 단계 (analyzing → AI → 필터 → completed/failed).
  * analyzeMaterial(파일)·analyzeUrlMaterial(URL)이 공유한다.
  * 호출 전에 parsing 단계가 이미 설정되어 있다고 가정한다.
  *
  * @param {string} materialId
- * @param {string} rawText — 추출된 평문 (truncate 이전)
- * @param {{intent: string, intentNote: string|null}} param2
+ * @param {{text?: string, pdfBuffer?: Buffer, imageBuffer?: Buffer, imageMediaType?: string}} source
+ * @param {{intent: string, intentNote: string|null, projectId?: string|null}} param2
  */
-async function analyzeExtractedText(materialId, rawText, { intent, intentNote }) {
+async function analyzeSource(materialId, source, { intent, intentNote, projectId = null }) {
+  const isVision = !!(source.pdfBuffer || source.imageBuffer)
+  const analysisMode = source.pdfBuffer ? 'vision_pdf' : source.imageBuffer ? 'vision_image' : 'text'
   try {
-    const truncated = (rawText || '').slice(0, TEXT_TRUNCATE)
-    if (truncated.trim().length === 0) {
-      await updateMaterialRow(materialId, {
+    const truncated = (source.text || '').slice(0, TEXT_TRUNCATE)
+    if (!isVision && truncated.trim().length === 0) {
+      await transitionMaterial(materialId, {
         processing_status: 'failed',
-        processing_error: `${E.PARSE_FAILED}: 추출된 텍스트가 비어 있습니다.`,
+        processing_error: `${E.PARSE_FAILED}: 추출된 텍스트가 비어 있습니다. 스캔·이미지 기반 문서라면 PDF 또는 이미지 파일로 올려주세요.`,
         extracted_text: '',
-      })
-      await updateSystemAttachmentMessage(materialId, 'failed')
+      }, 'failed', projectId)
       return
     }
 
     // ── 2. analyzing 단계 ──
-    await updateMaterialRow(materialId, {
+    await transitionMaterial(materialId, {
       processing_status: 'analyzing',
-      extracted_text: truncated,
-    })
+      extracted_text: isVision ? '' : truncated,
     // messages.processing_status CHECK 제약상 analyzing은 없으므로 parsing로 유지
-    await updateSystemAttachmentMessage(materialId, 'analyzing')
+    }, 'analyzing', projectId)
 
-    const aiRaw = await callClaudeAnalysis(truncated, { intent, intentNote })
+    const aiRaw = await callClaudeAnalysis(
+      isVision ? source : { text: truncated },
+      { intent, intentNote }
+    )
 
     // ── 3. 할루시네이션 필터 ──
     const { validated, rejected } = filterHallucinations(aiRaw.suggested_standard_codes || [])
@@ -783,31 +934,32 @@ async function analyzeExtractedText(materialId, rawText, { intent, intentNote })
       rejected_codes: rejected,
       meta: {
         model: ANALYZER_MODEL,
+        analysis_mode: analysisMode,
         rejected_ratio: rejected.length
           ? rejected.length / ((rejected.length + validated.length) || 1)
           : 0,
         intent,
         intent_note: intentNote,
-        prompt_version: '2025-04-a',
+        prompt_version: '2026-07-a',
       },
     }
 
     // ── 4. completed 상태로 마감 ──
-    await updateMaterialRow(materialId, {
+    await transitionMaterial(materialId, {
       processing_status: 'completed',
       processing_error: null,
       ai_summary: analysis.summary,
       ai_analysis: analysis,
       analyzed_at: new Date().toISOString(),
-    })
-    await updateSystemAttachmentMessage(materialId, 'completed')
+    }, 'completed', projectId)
   } catch (err) {
     // 구조화된 에러 코드 매핑 — processing_error 포맷: "CODE: message"
     // (materials.js GET /:id/analysis 핸들러가 접두 코드를 파싱해 error_code로 내려줌)
     const msg = err?.message || '알 수 없는 오류'
     let structured
     if (msg === 'AI_TIMEOUT') {
-      structured = `${E.AI_TIMEOUT}: AI 분석 타임아웃 (60s) — 재분석을 시도해주세요.`
+      const limit = isVision ? AI_TIMEOUT_VISION_MS : AI_TIMEOUT_MS
+      structured = `${E.AI_TIMEOUT}: AI 분석 타임아웃 (${Math.round(limit / 1000)}s) — 재분석을 시도해주세요.`
     } else if (msg === 'AI_SCHEMA_INVALID') {
       structured = `${E.AI_SCHEMA_INVALID}: AI 응답 스키마가 올바르지 않습니다. 재분석을 시도해주세요.`
     } else if (/timeout/i.test(msg)) {
@@ -816,11 +968,10 @@ async function analyzeExtractedText(materialId, rawText, { intent, intentNote })
       structured = `${E.INTERNAL}: ${msg}`
     }
     console.error('[materialAnalyzer] 실패:', msg)
-    await updateMaterialRow(materialId, {
+    await transitionMaterial(materialId, {
       processing_status: 'failed',
       processing_error: structured,
-    })
-    await updateSystemAttachmentMessage(materialId, 'failed')
+    }, 'failed', projectId)
   }
 }
 
@@ -829,6 +980,7 @@ export const _internal = {
   filterHallucinations,
   extractText,
   buildSystemPrompt,
+  buildAnalyzeTool,
   INTENT_PROMPT_FRAGMENTS,
   assertPublicUrl,
   htmlToText,

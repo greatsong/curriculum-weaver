@@ -179,12 +179,51 @@ describe('extractText — 확장자별 텍스트 추출', () => {
     expect(lines[49]).toBe('row49')
   })
 
-  it('hwp / hwpx는 unsupported=true 반환', async () => {
-    const r1 = await extractText(Buffer.from('hwp'), 'hwp')
-    const r2 = await extractText(Buffer.from('hwpx'), 'hwpx')
-    expect(r1.unsupported).toBe(true)
-    expect(r2.unsupported).toBe(true)
-    expect(r1.error).toMatch(/한글/)
+  it('hwp(바이너리)는 unsupported=true + hwpx 안내', async () => {
+    const r = await extractText(Buffer.from('hwp'), 'hwp')
+    expect(r.unsupported).toBe(true)
+    expect(r.error).toMatch(/hwpx|PDF/)
+  })
+
+  it('hwpx는 ZIP 내 section XML에서 <hp:t> 텍스트를 추출', async () => {
+    const JSZip = (await import('jszip')).default
+    const zip = new JSZip()
+    zip.file('Contents/content.hpf', '<manifest/>')
+    zip.file(
+      'Contents/section0.xml',
+      '<hs:sec xmlns:hp="x"><hp:p><hp:run><hp:t>융합 수업 설계안</hp:t></hp:run></hp:p>' +
+        '<hp:p><hp:run><hp:t>물질의 상태변화 &amp; 에너지</hp:t></hp:run></hp:p></hs:sec>'
+    )
+    zip.file(
+      'Contents/section1.xml',
+      '<hs:sec xmlns:hp="x"><hp:p><hp:run><hp:t>2차시: 입자 모형</hp:t></hp:run></hp:p></hs:sec>'
+    )
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    const r = await extractText(buffer, 'hwpx')
+    expect(r.unsupported).toBeFalsy()
+    expect(r.error).toBeFalsy()
+    expect(r.text).toContain('융합 수업 설계안')
+    expect(r.text).toContain('물질의 상태변화 & 에너지') // 엔티티 디코딩
+    expect(r.text).toContain('2차시: 입자 모형') // 섹션 순서 보존
+    // 문단 경계가 개행으로 유지된다
+    expect(r.text.indexOf('융합 수업 설계안')).toBeLessThan(r.text.indexOf('물질의 상태변화'))
+    expect(r.text).toMatch(/융합 수업 설계안\n/)
+  })
+
+  it('본문 섹션이 없는 zip은 hwpx 파싱 실패 안내', async () => {
+    const JSZip = (await import('jszip')).default
+    const zip = new JSZip()
+    zip.file('mimetype', 'application/hwp+zip')
+    const buffer = await zip.generateAsync({ type: 'nodebuffer' })
+
+    const r = await extractText(buffer, 'hwpx')
+    expect(r.error).toMatch(/hwpx 파싱 실패/)
+  })
+
+  it('zip이 아닌 hwpx는 파싱 실패 안내 (unsupported 아님 — 사유 노출)', async () => {
+    const r = await extractText(Buffer.from('이건 zip이 아님'), 'hwpx')
+    expect(r.error).toMatch(/hwpx 파싱 실패/)
   })
 
   it('doc / ppt는 레거시 OLE로 unsupported 반환', async () => {
@@ -193,15 +232,46 @@ describe('extractText — 확장자별 텍스트 추출', () => {
     expect(r.error).toMatch(/레거시|OLE/)
   })
 
-  it('이미지 확장자는 unsupported(Vision 예정)', async () => {
+  it('이미지 확장자는 Vision 경로 sentinel(visionImage)을 반환', async () => {
     const r = await extractText(Buffer.from('img'), 'png')
-    expect(r.unsupported).toBe(true)
-    expect(r.error).toMatch(/이미지|Vision/)
+    expect(r.visionImage).toBe(true)
+    expect(r.mediaType).toBe('image/png')
+    expect(r.unsupported).toBeFalsy()
+  })
+
+  it('jpg는 image/jpeg media type으로 매핑', async () => {
+    const r = await extractText(Buffer.from('img'), 'jpg')
+    expect(r.visionImage).toBe(true)
+    expect(r.mediaType).toBe('image/jpeg')
   })
 
   it('알 수 없는 확장자는 unsupported 반환', async () => {
     const r = await extractText(Buffer.from('?'), 'xyz')
     expect(r.unsupported).toBe(true)
     expect(r.error).toMatch(/지원하지 않는 확장자/)
+  })
+})
+
+describe('buildAnalyzeTool — intent별 동적 스키마 (출력 토큰 감량)', () => {
+  const { buildAnalyzeTool } = _internal
+
+  it('general intent는 intent_driven_summary를 required에서 제외 (요약 이중 생성 방지)', () => {
+    const tool = buildAnalyzeTool('general')
+    expect(tool.input_schema.required).not.toContain('intent_driven_summary')
+    // 속성 자체는 남아 있어 모델이 원하면 채울 수 있다
+    expect(tool.input_schema.properties.intent_driven_summary).toBeDefined()
+  })
+
+  it('general 외 intent는 intent_driven_summary가 required에 포함', () => {
+    for (const intent of ['learner_context', 'curriculum_doc', 'research', 'assessment', 'custom']) {
+      const tool = buildAnalyzeTool(intent)
+      expect(tool.input_schema.required).toContain('intent_driven_summary')
+    }
+  })
+
+  it('성취기준 후보는 최대 5개, reason은 100자 제한', () => {
+    const codes = buildAnalyzeTool('general').input_schema.properties.suggested_standard_codes
+    expect(codes.maxItems).toBe(5)
+    expect(codes.items.properties.reason.maxLength).toBe(100)
   })
 })
