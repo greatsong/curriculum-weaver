@@ -19,6 +19,7 @@ import {
   getMemberRole, logActivity, countMessagesByProject,
 } from '../lib/supabaseService.js'
 import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
+import { requireWritableProject } from '../lib/projectGuards.js'
 
 const router = Router()
 
@@ -204,7 +205,9 @@ router.get('/projects/:id', checkProjectAccess, async (req, res) => {
  * @body {{ title?: string, description?: string, current_procedure?: string, status?: string, learner_context?: object }}
  * @returns {object} 수정된 프로젝트
  */
-router.put('/projects/:id', checkProjectAccess, async (req, res) => {
+// requireWritableProject: simulation 프로젝트의 status를 active로 되돌려
+// 읽기 전용을 우회하는 것을 차단. 삭제(DELETE)는 정리 가능하도록 막지 않음.
+router.put('/projects/:id', checkProjectAccess, requireWritableProject, async (req, res) => {
   try {
     // viewer는 수정 불가
     if (req.memberRole === 'viewer') {

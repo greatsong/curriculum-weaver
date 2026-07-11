@@ -18,6 +18,7 @@ import {
   getMemberRole, logActivity,
 } from '../lib/supabaseService.js'
 import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
+import { requireWritableProject } from '../lib/projectGuards.js'
 
 const router = Router()
 
@@ -122,7 +123,7 @@ router.get('/projects/:projectId/designs/:procedureCode', checkDesignAccess, asy
  * @body {{ content: object }}
  * @returns {object} 저장된 설계 캔버스
  */
-router.put('/projects/:projectId/designs/:procedureCode', checkDesignAccess, async (req, res) => {
+router.put('/projects/:projectId/designs/:procedureCode', checkDesignAccess, requireWritableProject, async (req, res) => {
   try {
     const { projectId, procedureCode } = req.params
 
@@ -194,7 +195,7 @@ router.put('/projects/:projectId/designs/:procedureCode', checkDesignAccess, asy
  * @body {{ save_status: 'draft' | 'confirmed' | 'locked' }}
  * @returns {object} 수정된 설계 캔버스
  */
-router.put('/projects/:projectId/designs/:procedureCode/status', checkDesignAccess, async (req, res) => {
+router.put('/projects/:projectId/designs/:procedureCode/status', checkDesignAccess, requireWritableProject, async (req, res) => {
   try {
     const { projectId, procedureCode } = req.params
 

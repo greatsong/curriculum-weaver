@@ -15,6 +15,7 @@ import {
   getDesignById, getVersions, createVersion, getVersion,
   getProject, getMemberRole, logActivity,
 } from '../lib/supabaseService.js'
+import { requireWritableProject } from '../lib/projectGuards.js'
 
 const router = Router()
 
@@ -84,7 +85,7 @@ router.get('/designs/:designId/versions', checkVersionAccess, async (req, res) =
  * @body {{ trigger_type?: 'ai_accept' | 'manual_save' | 'step_complete', snapshot?: object }}
  * @returns {object} 생성된 버전
  */
-router.post('/designs/:designId/versions', checkVersionAccess, async (req, res) => {
+router.post('/designs/:designId/versions', checkVersionAccess, requireWritableProject, async (req, res) => {
   try {
     // viewer는 버전 생성 불가
     if (req.memberRole === 'viewer') {
