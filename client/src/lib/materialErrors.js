@@ -1,4 +1,8 @@
-import { MATERIAL_ERROR_CODES } from 'curriculum-weaver-shared/constants.js'
+import {
+  MATERIAL_ERROR_CODES,
+  VISION_IMAGE_EXTENSIONS,
+  MAX_VISION_IMAGE_BYTES,
+} from 'curriculum-weaver-shared/constants.js'
 
 /**
  * 자료 업로드/분석 에러 코드 → 한국어 메시지 매핑.
@@ -8,7 +12,7 @@ const MATERIAL_ERROR_MESSAGES = {
   [MATERIAL_ERROR_CODES.FILE_REQUIRED]: '파일을 선택해주세요.',
   [MATERIAL_ERROR_CODES.FILE_TOO_LARGE]: '파일이 너무 큽니다. 20MB 이하로 올려주세요.',
   [MATERIAL_ERROR_CODES.UNSUPPORTED_TYPE]:
-    '지원하지 않는 형식입니다. PDF, DOCX, PPTX, XLSX, TXT, CSV를 이용해주세요.',
+    '지원하지 않는 형식입니다. PDF, DOCX, HWPX, PPTX, XLSX, TXT, CSV 또는 이미지(PNG/JPG)를 이용해주세요.',
   [MATERIAL_ERROR_CODES.MAGIC_BYTE_MISMATCH]:
     '파일 내용이 확장자와 일치하지 않아요. 올바른 파일을 선택해주세요.',
   [MATERIAL_ERROR_CODES.PROJECT_ID_REQUIRED]: '프로젝트 정보가 필요합니다.',
@@ -70,5 +74,33 @@ export function validateMaterialFile(file, { maxBytes, allowedExts }) {
       message: `지원하지 않는 형식입니다. (${allowedExts.join(', ').toUpperCase()})`,
     }
   }
+  // 이미지는 Vision 분석 한도(5MB)를 업로드 전에 검증 — 올리고 나서 실패하는 것보다
+  // 선택 즉시 알려주는 게 낫다 (폰 카메라 원본이 자주 걸리는 지점).
+  if (VISION_IMAGE_EXTENSIONS.includes(ext) && file.size > MAX_VISION_IMAGE_BYTES) {
+    return {
+      code: MATERIAL_ERROR_CODES.FILE_TOO_LARGE,
+      message: `이미지가 너무 큽니다 (${(file.size / 1024 / 1024).toFixed(1)}MB). ${Math.round(MAX_VISION_IMAGE_BYTES / 1024 / 1024)}MB 이하로 줄여 올려주세요.`,
+    }
+  }
   return null
+}
+
+/**
+ * 분석 실패 자료의 사유를 사용자 문구로 변환.
+ * 서버 processing_error 포맷("CODE: 메시지")의 메시지 부분이 이미 한국어 안내문이라 우선 사용하고,
+ * 내부 오류(INTERNAL)처럼 기술적인 원문은 코드 매핑 문구로 대체한다.
+ */
+export function materialFailureMessage(material) {
+  const raw = material?.processing_error
+  if (!raw || typeof raw !== 'string') return MATERIAL_ERROR_MESSAGES[MATERIAL_ERROR_CODES.INTERNAL]
+  const match = raw.match(/^([A-Z_]+):\s*(.*)$/s)
+  const code = match?.[1] || material?.error_code || null
+  const detail = (match?.[2] || '').trim()
+  // 원문이 기술 메시지인 코드들은 매핑 문구가 더 낫다
+  if (code === MATERIAL_ERROR_CODES.INTERNAL || code === MATERIAL_ERROR_CODES.AI_SCHEMA_INVALID) {
+    return MATERIAL_ERROR_MESSAGES[code]
+  }
+  if (detail) return detail
+  if (code && MATERIAL_ERROR_MESSAGES[code]) return MATERIAL_ERROR_MESSAGES[code]
+  return MATERIAL_ERROR_MESSAGES[MATERIAL_ERROR_CODES.INTERNAL]
 }

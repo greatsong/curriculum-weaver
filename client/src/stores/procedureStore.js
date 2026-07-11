@@ -11,6 +11,7 @@ import {
 } from '../lib/api'
 import { socket } from '../lib/socket'
 import { pushToast } from './toastStore'
+import { materialFailureMessage } from '../lib/materialErrors'
 import {
   PROCEDURES,
   BOARD_TYPES,
@@ -730,6 +731,34 @@ export const useProcedureStore = create((set, get) => ({
   },
 
   /**
+   * 소켓(material_updated)으로 받은 자료 상태 패치를 반영.
+   * 폴링 tick과 동일한 종결 처리(폴링 중단 + 전이 시에만 토스트)를 공유한다.
+   */
+  applyMaterialUpdate: (patch) => {
+    const prev = get().materials.find((m) => m.id === patch.id)
+    // 목록에 없는 자료(협업자가 아직 목록을 안 연 경우 등)는 로딩/폴링 경로가 처리
+    if (!prev) return
+    set((state) => ({
+      materials: state.materials.map((m) => (m.id === patch.id ? { ...m, ...patch } : m)),
+    }))
+    const status = patch.processing_status
+    if (
+      status === MATERIAL_PROCESSING_STATUSES.COMPLETED ||
+      status === MATERIAL_PROCESSING_STATUSES.FAILED
+    ) {
+      _stopMaterialPolling(patch.id)
+      if (prev.processing_status !== status) {
+        const name = patch.file_name || prev.file_name || prev.title || '자료'
+        if (status === MATERIAL_PROCESSING_STATUSES.COMPLETED) {
+          pushToast({ kind: 'success', message: `'${name}' 분석이 완료됐어요. 자료 목록에서 요약을 확인할 수 있어요.` })
+        } else {
+          pushToast({ kind: 'error', message: `'${name}' 분석 실패 — ${materialFailureMessage(patch)}`, duration: 8_000 })
+        }
+      }
+    }
+  },
+
+  /**
    * 자료 분석 상태 폴링 시작. 3초 간격으로 completed/failed까지 폴링.
    * 동일 materialId에 대해 이미 폴링 중이면 무시.
    * 폴러는 컴포넌트가 아닌 스토어 수명으로 동작 — 다른 화면으로 이동해도
@@ -780,7 +809,7 @@ export const useProcedureStore = create((set, get) => ({
             if (status === MATERIAL_PROCESSING_STATUSES.COMPLETED) {
               pushToast({ kind: 'success', message: `'${name}' 분석이 완료됐어요. 자료 목록에서 요약을 확인할 수 있어요.` })
             } else {
-              pushToast({ kind: 'error', message: `'${name}' 분석에 실패했어요. 자료 목록에서 재분석해 보세요.`, duration: 8_000 })
+              pushToast({ kind: 'error', message: `'${name}' 분석 실패 — ${materialFailureMessage(material)}`, duration: 8_000 })
             }
           }
         }
