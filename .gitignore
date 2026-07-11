@@ -9,6 +9,8 @@ dist/
 
 # 대용량 임베딩 캐시 (Railway 빌드 시 자동 생성)
 server/data/openai-embeddings-cache.json
+server/data/openai-embeddings-cache.meta.json
+server/data/openai-embeddings-cache.f32
 server/data/embeddings-cache.json
 
 # 프로젝트 로컬 백업 (실제 교사 대화 포함 — 커밋 금지)
