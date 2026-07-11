@@ -13,6 +13,7 @@
  * 참고: _workspace/design/file-upload-redesign.md §3, §5
  */
 import Anthropic from '@anthropic-ai/sdk'
+import PQueue from 'p-queue'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { validateCode } from '../lib/standardsValidator.js'
 import { Materials, Messages } from '../lib/store.js'
@@ -761,15 +762,31 @@ async function transitionMaterial(materialId, patch, messageStatus, projectId) {
   broadcastMaterialUpdate(projectId, { id: materialId, ...patch })
 }
 
+// ── 분석 동시성 큐 ──
+// 업로드 분석은 fire-and-forget이라 유입 제어가 없으면 팀별 동시 업로드 수만큼
+// CPU 파싱(pdf-parse/mammoth/jszip) + Anthropic Vision 호출이 동시에 돌아
+// 메모리·이벤트 루프를 잠식한다. 동시 3개로 제한하고 나머지는 대기
+// (대기 중에도 상태는 pending/parsing으로 폴링·소켓 UI에 그대로 노출됨).
+// timeout 미설정 — 내부 AI 호출이 자체 타임아웃을 가진다.
+const analysisQueue = new PQueue({
+  concurrency: Number(process.env.MATERIAL_ANALYSIS_CONCURRENCY) || 3,
+})
+
 /**
  * 업로드된 자료 분석 (fire-and-forget 호출 대상)
+ *
+ * 동시성 큐를 거쳐 실행된다 — 반환 promise는 큐 대기를 포함한 전체 완료 시점.
  *
  * @param {string} materialId - materials.id
  * @param {Buffer} fileBuffer - 파일 원본 버퍼 (호출 직후 해제 권장)
  * @param {string} fileExt   - 확장자 (소문자, 점 없음)
  * @param {{intent?: string, intentNote?: string|null, projectId?: string|null}} [options]
  */
-export async function analyzeMaterial(
+export function analyzeMaterial(materialId, fileBuffer, fileExt, options = {}) {
+  return analysisQueue.add(() => analyzeMaterialNow(materialId, fileBuffer, fileExt, options))
+}
+
+async function analyzeMaterialNow(
   materialId,
   fileBuffer,
   fileExt,
@@ -844,11 +861,17 @@ export async function analyzeMaterial(
  * 참고사이트 URL 자료 분석 (fire-and-forget 호출 대상).
  * URL을 fetch → 평문 추출 → 파일과 동일한 Claude 분석 파이프라인을 태운다.
  *
+ * analyzeMaterial과 같은 동시성 큐를 공유한다.
+ *
  * @param {string} materialId
  * @param {string} url — 분석 대상 URL (materials.storage_path)
  * @param {{intent?: string, intentNote?: string|null}} [options]
  */
-export async function analyzeUrlMaterial(
+export function analyzeUrlMaterial(materialId, url, options = {}) {
+  return analysisQueue.add(() => analyzeUrlMaterialNow(materialId, url, options))
+}
+
+async function analyzeUrlMaterialNow(
   materialId,
   url,
   { intent = DEFAULT_MATERIAL_INTENT, intentNote = null, projectId = null } = {}

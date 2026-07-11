@@ -179,6 +179,18 @@ node scripts/promoteLinks.mjs --dry-run              # 승격 대상 확인 (qua
 SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/migrateLinksToDB.js
 ```
 
+## 동시 30명(3인×10팀) 하드닝 (2026-07-12)
+
+학교 NAT(전원 동일 공인 IP) + 수업 동시 사용 시나리오 대응. PR #42(인증 캐시·채팅 병렬화)·#45(그래프 메모이즈)·#46(임베딩 바이너리)에 이어 나머지 5건 적용.
+
+- **Rate limit 사용자 키** (`server/middleware/rateLimit.js`): limiter가 requireAuth보다 먼저 실행돼 IP 키로만 동작하던 문제(학급 전체가 분당 120/AI 10을 공유 → 수업 시작 429 폭탄) 수정. JWT sub를 서명 검증 없이 디코드해 버킷 키로 사용(`userKey`) + IP 백스톱 분당 3,000회(위조 sub 회전 방어). **새 limiter를 추가할 때 이 함정 주의 — `req.user`는 limiter 시점에 항상 비어 있다.**
+- **로그인 제한 완화**: 종전 IP당 5회/분이 `/api/auth` 전체에 걸려 30명 동시 로그인이 불가능했음 → IP+이메일 키 10회/분, `/api/auth/login`·`signup`에만 마운트
+- **AI 큐** (`aiAgent.js`): concurrency 5→12, timeout 60s→180s (p-queue timeout은 실행 시간에만 적용·초과 시 reject라 12k 토큰 장문 스트림이 중단되던 위험). env `AI_QUEUE_CONCURRENCY`/`AI_QUEUE_TIMEOUT_MS`
+- **자료 분석 큐** (`materialAnalyzer.js`): analyzeMaterial/analyzeUrlMaterial이 동시성 3의 `analysisQueue`(p-queue) 경유 — 종전 무제한 fire-and-forget은 동시 업로드 수만큼 20MB 버퍼+파싱+Vision 호출이 겹쳐 OOM 위험. 대기 중 상태는 pending/parsing으로 기존 폴링·소켓 UI에 노출. env `MATERIAL_ANALYSIS_CONCURRENCY`
+- **프로젝트 목록 캐시** (`routes/projects.js`): 워크스페이스별 10초 TTL(생성/수정/삭제 시 즉시 무효화, 단일 인스턴스 전제) — 목록 요청당 프로젝트별 메시지 count(N+1) 반복 흡수
+- **compression** (`index.js`, level 4): 그래프 실측 5.7MB→1.4MB. SSE(text/event-stream)는 filter로 제외 — 압축 버퍼링이 스트리밍을 깨뜨림
+- 주의: 캐시·rate limit 모두 인메모리 = **단일 인스턴스 전제**. 수평 확장 시 Redis store 필요
+
 ## 컨벤션
 - UI 텍스트/주석: 한국어
 - 코드(변수명, 함수명): 영어

@@ -31,8 +31,14 @@ import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrin
 const xmlProcToken = (code) => getProcedureDisplayCode(code) || code
 
 
-// 동시 AI 요청 5개로 제한 (Anthropic API rate limit 준수)
-const aiQueue = new PQueue({ concurrency: 5, timeout: 60000 })
+// 동시 AI 요청 제한 (Anthropic API rate limit 준수).
+// 3인×10팀 수업에서 "다음 절차로" 동시 전환 시 인트로 10건 + 채팅이 겹치므로
+// concurrency 12. timeout은 p-queue 특성상 "실행 시간"에만 적용되며 초과 시
+// reject로 스트림이 중단되므로, 12k 토큰 장문 응답을 죽이지 않게 180s로 설정.
+const aiQueue = new PQueue({
+  concurrency: Number(process.env.AI_QUEUE_CONCURRENCY) || 12,
+  timeout: Number(process.env.AI_QUEUE_TIMEOUT_MS) || 180000,
+})
 
 // AI 모델 매핑 (빠른 모드 / 정밀 모드)
 const MODEL_MAP = {
