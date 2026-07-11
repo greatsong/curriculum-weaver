@@ -16,6 +16,12 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
   const [editing, setEditing] = useState(false)
   const [skipBusy, setSkipBusy] = useState(false)
 
+  // 절차를 전환하면 편집 모드를 닫는다 — 이전 절차의 편집 초안(BoardEditor 내부 상태)이
+  // 새 절차의 보드에 그대로 저장되는 교차 유출을 차단한다.
+  useEffect(() => {
+    setEditing(false)
+  }, [procedureCode])
+
   const procInfo = PROCEDURES[procedureCode]
   const phase = procInfo ? PHASE_LIST.find((p) => p.id === procInfo.phase) : null
   const steps = PROCEDURE_STEPS[procedureCode] || []
@@ -295,8 +301,14 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
           setEditing={setEditing}
           readOnly={readOnly || isSkipped}
           onUpdate={async (content) => {
-            await updateBoard(projectId, procedureCode, content)
-            setEditing(false)
+            // 저장 실패(스킵 403, 잠금 423, 네트워크 등) 시 편집 모드를 유지해
+            // 작성 내용을 잃지 않게 하고, 서버 메시지를 그대로 안내한다.
+            try {
+              await updateBoard(projectId, procedureCode, content)
+              setEditing(false)
+            } catch (err) {
+              alert(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해주세요.')
+            }
           }}
           onRequestAI={() => {
             const label = BOARD_TYPE_LABELS[boardType]
