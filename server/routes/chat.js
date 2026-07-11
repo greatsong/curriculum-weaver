@@ -24,6 +24,7 @@ import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES } from 'curri
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
+import { isReadOnlyProject } from '../lib/projectGuards.js'
 import { PROCEDURE_GUIDE } from '../data/procedureGuide.js'
 import { resolveSelectedMaterialIds } from '../lib/materialSelection.js'
 
@@ -144,13 +145,6 @@ async function checkProjectAccess(req, res, next) {
     }
   }
   next()
-}
-
-function isReadOnlyProject(project) {
-  return project?.status === 'simulation' ||
-    project?.status === 'generating' ||
-    project?.status === 'failed' ||
-    project?.title?.startsWith('[시뮬레이션]')
 }
 
 // ──────────────────────────────────────────
