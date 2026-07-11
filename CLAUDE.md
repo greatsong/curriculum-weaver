@@ -46,8 +46,9 @@ curriculum-weaver/
 | `server/data/standards_full.js` | **레거시 ETL** (4,484 code) | 풍부한 메타(competencies/content_system/assessment_guide)의 원천이나 일부 content가 잘림 + 정본 외 10개 code. 더 이상 런타임 소스 아님 |
 | `server/data/standards_social.js` | 사회과 412개 (`SOCIAL_STANDARDS`) | 오프라인 링크생성 스크립트 전용. 검색 런타임 미사용(standards.js에 사회 145개 별도 포함) |
 
-- **검색**: `routes/standards.js`의 `/search`는 항상 `store.js`의 인메모리 `Standards`(= standards.js, 오염필터 후 4,711개)를 단일 소스로 사용. Supabase `searchStandards`는 미사용.
-- **reload()**: `store.js`의 `Standards.reload()`는 정본 standards.js만 로드(과거 standards_full.js 우선 → 4,484로 되돌아가던 버그 제거). initStore와 동일하게 4,711 반환.
+- **검색**: `routes/standards.js`의 `/search`는 항상 `store.js`의 인메모리 `Standards`(= standards.js, 4,856개 전체 — 오염 0)를 단일 소스로 사용. Supabase `searchStandards`는 미사용.
+- **reload()**: `store.js`의 `Standards.reload()`는 정본 standards.js만 로드(과거 standards_full.js 우선 → 4,484로 되돌아가던 버그 제거). initStore와 동일하게 4,856 반환.
+- **오염 복원 완료 (2026-07-11)**: xlsx 재파싱 때 유입된 content 오염 525건(해설체 혼입·개행 유실·푸터 혼입)을 전량 복원 — ① `scripts/restore-standards-from-backup.mjs`가 backup_20260327에서 475건 복원(해설은 explanation으로 이동) ② 잔여 25건은 교육부 고시 HWP 원문 리서치 후 `scripts/apply-manual-standard-fixes.mjs`로 적용(`scripts/results/restore-manual-20260711.json`, 출처 명기). Supabase·임베딩 캐시 동기화는 `scripts/sync-restored-standards.mjs`. 오염 탐지는 `server/lib/standardsQuality.js` 단일 소스(store.js·report 스크립트 공유), 품질 게이트: `node scripts/report-standards-quality.mjs --max-flagged 30` (현재 플래그 0). 과거 오염필터로 제거되던 145건까지 편입되어 4,711 → 4,856 전체 서빙.
 - **Supabase 재정합**: `scripts/seed-standards-from-canonical.mjs` — 정본 구동, `code` onConflict upsert, 기존 id·rich 메타·embedding 보존(비파괴). content는 정본 권위로 교체, 나머지는 빈 값만 채움.
 - **검증**: `scripts/verify-standards-supabase.mjs` — 검색 code 전부가 Supabase에서 resolve되는지 확인(현재 PASS).
 - `scripts/seed-standards-to-supabase.mjs`는 레거시(standards_full.json 시드) — **DEPRECATED**, 사용 금지.
@@ -66,6 +67,11 @@ curriculum-weaver/
 - OAuth 콜백: `/auth/callback` → `AuthCallback.jsx` → `/workspaces` 이동
 - 서버: 모든 라우트가 `requireAuth` 적용 (`server/routes/*.js`), JWT는 Supabase admin 클라이언트로 검증
 - 로컬 dev 모드: `VITE_SUPABASE_URL=placeholder`로 설정 시 더미 사용자로 바이패스 (개발 편의)
+
+**로컬 dev 서버 인증 바이패스 (QA ISSUE-001 해결, 2026-07-11)**:
+- 서버 `.env`에 `DEV_AUTH_BYPASS=true` 설정 시(단, `NODE_ENV !== 'production'`일 때만) JWT 없는/무효한 요청을 실제 Supabase의 dev 유저 `dev@curriculum-weaver.local`로 처리 — 클라 placeholder 모드 + 서버 실제 Supabase 조합에서도 401 없이 로컬 E2E 가능
+- dev 유저는 `server/middleware/auth.js`가 supabaseAdmin으로 idempotent 생성/조회 후 프로세스 캐시 (FK 안전). 생성 실패 시 바이패스 자동 비활성 + 경고 로그
+- 프로덕션에는 이 env를 절대 설정하지 말 것 (`NODE_ENV=production`이면 어차피 무시됨)
 
 **아직 손봐야 하는 부분**:
 - **레거시 `/api/sessions/*` 라우트**: 읽기는 `optionalAuth`, 쓰기는 `requireAuth`. 프로젝트 전환 완료 후 삭제 예정.
@@ -109,6 +115,7 @@ node scripts/promoteLinks.mjs --dry-run              # 승격 대상 확인 (qua
 - v1 2,021개 재판정: 통과 1,314 / 기각 460, quality<0.7 854개 candidate 강등
 - **게시 정책: quality_score ≥ 0.8 자동 승격, < 0.7 강등 — 게시 링크는 전부 0.7 이상**
 - 최종: published 2,938 / candidate 5,085. 전 링크 실측 semantic_score 보유. v1 스크립트(generateLinksAI/Mission)는 레거시.
+- 2026-07-11 성취기준 오염 복원 후속: 복원 코드가 낀 링크 1,258건을 `--rejudge --codes-file`(신규 옵션, rationale·theme·hook까지 새 판정으로 교체)로 재판정 → 통과 906 / 기각 353, 정책 적용(강등 182·승격 66). **현재: published 2,812 / candidate 5,202** (그래프 노드 4,856 — 복원으로 링크 해석 가능 성취기준 증가).
 
 ### 테이블: `curriculum_links` (`supabase/migrations/00015_curriculum_links.sql`)
 | 컬럼 | 설명 |

@@ -1,0 +1,244 @@
+[
+  {
+    "code": "[6도03-03]",
+    "subject": "도덕",
+    "types": [
+      "unterminated"
+    ],
+    "reason": "backup도 불완전",
+    "content": "통일과정과 통일 이후 사회의 여러 가지 상황을 예상하고 바람직한 통일과정과 통일 국가의 사회상을 제시한다"
+  },
+  {
+    "code": "[4사01-01]",
+    "subject": "사회(4학년)",
+    "types": [
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "4사01-01의 성취기준 내용"
+  },
+  {
+    "code": "[4사01-02]",
+    "subject": "사회(4학년)",
+    "types": [
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "4사01-02의 성취기준 내용"
+  },
+  {
+    "code": "[금일 04-03-04]",
+    "subject": "금융 일반",
+    "types": [
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "포털 사이트의 법령 정보란이나 국가법령정보센터 누리집을 통해 증권 관련 법"
+  },
+  {
+    "code": "[10공수2-03-03]",
+    "subject": "공통수학1, 공통수학2",
+    "types": [
+      "unterminated"
+    ],
+    "reason": "backup도 불완전",
+    "content": "역함수의 개념을 설명하고, 역함수를 구할 수 있다.   "
+  },
+  {
+    "code": "[10기수2-03-03]",
+    "subject": "기본수학1, 기본수학2",
+    "types": [
+      "unterminated"
+    ],
+    "reason": "backup도 불완전",
+    "content": "역함수의 개념을 이해하고, 역함수를 구할 수 있다. "
+  },
+  {
+    "code": "[10기수2-03-04]",
+    "subject": "기본수학1, 기본수학2",
+    "types": [
+      "unterminated"
+    ],
+    "reason": "backup도 불완전",
+    "content": "유리함수    의 그래프를 그릴 수 있고, 그 그래프의 성질을 탐구할 수 있다. "
+  },
+  {
+    "code": "[12영Ⅰ-01-03]",
+    "subject": "영어Ⅰ",
+    "types": [
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "의 화자의 심정이나 의도를 추론하는 성취기준과 [12영Ⅰ"
+  },
+  {
+    "code": "[12영Ⅰ-01-04]",
+    "subject": "영어Ⅰ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 말이나 글에 나타난 일이나 사건의 시간적 순서나 절차 또"
+  },
+  {
+    "code": "[12영Ⅰ-01-05]",
+    "subject": "영어Ⅰ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 말이나 글의 흐름을 바탕으로 문맥을 통해 어구나 문장 단"
+  },
+  {
+    "code": "[12영Ⅰ-01-06]",
+    "subject": "영어Ⅰ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 말과 글의 내용을 효과적으로 파악하기 위해 말이나 글을 구"
+  },
+  {
+    "code": "[12영Ⅰ-02-01]",
+    "subject": "영어Ⅰ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 그림, 사진, 도표 등의 시각 자료의 세부 내용에 대한 사실"
+  },
+  {
+    "code": "[12영Ⅰ-02-05]",
+    "subject": "영어Ⅰ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 글의 목적에 따라 필요한 형식과 구조를 갖추어 서식에 맞"
+  },
+  {
+    "code": "[12영Ⅰ-02-07]",
+    "subject": "영어Ⅰ",
+    "types": [
+      "headless_explanation",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "과 같이 전략 활용에 대한 성취기준을 적용하는 말하기 활동에서는 언어적"
+  },
+  {
+    "code": "[12영Ⅰ-02-08]",
+    "subject": "영어Ⅰ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 사회생활이나 학업 관련 등 일반적 주제에 관하여 묻고 답"
+  },
+  {
+    "code": "[12영Ⅱ-01-04]",
+    "subject": "영어Ⅱ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 말이나 글의 내용의 흐름에 초점을 두어 일이나 사건의 절"
+  },
+  {
+    "code": "[12영Ⅱ-01-05]",
+    "subject": "영어Ⅱ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 말이나 글에 사용된 표현과 문장에서 명시적인 의미로 파"
+  },
+  {
+    "code": "[12영Ⅱ-01-06]",
+    "subject": "영어Ⅱ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 다양한 유형 및 장르의 말이나 글에 사용되는 전개 방식과"
+  },
+  {
+    "code": "[12영Ⅱ-01-07]",
+    "subject": "영어Ⅱ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 다양한 매체의 특성과 목적에 대한 이해를 바탕으로 적절"
+  },
+  {
+    "code": "[12영Ⅱ-01-08]",
+    "subject": "영어Ⅱ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 말이나 글에 나타난 다양한 문화권의 언어적⋅비언어적 의"
+  },
+  {
+    "code": "[12영Ⅱ-02-03]",
+    "subject": "영어Ⅱ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 개인, 집단, 공동체의 사안이나 문제에 대해 의문점이나 해"
+  },
+  {
+    "code": "[12영Ⅱ-02-05]",
+    "subject": "영어Ⅱ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 다양한 주제에 관한 주장⋅연설이나 논설⋅사설 등과 같이"
+  },
+  {
+    "code": "[12영Ⅱ-02-08]",
+    "subject": "영어Ⅱ",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "이 성취기준은 전달 내용의 목적, 형식, 방법 등을 이해하고 다양한 매체"
+  },
+  {
+    "code": "[12연몸02-04]",
+    "subject": "연극과 몸",
+    "types": [
+      "headless_explanation",
+      "unterminated"
+    ],
+    "reason": "backup에 코드 없음",
+    "content": "는 감각, 감성, 감정을 이해하고, 평소에 의식하지 않았던 감각을 예민하"
+  },
+  {
+    "code": "[9생독02-03]",
+    "subject": "생활 독일어",
+    "types": [
+      "explanation_as_content",
+      "unterminated"
+    ],
+    "reason": "backup도 불완전",
+    "content": "이 성취기준은 상대방에 대한 존중을 바탕으로 타인과 상호 작용할 때 협력"
+  }
+]

@@ -54,6 +54,10 @@ const SAME_GROUP = flag('--same-group')
 // rejudge 모드: quality_score가 없는 기존 DB 링크(v1)를 동일 저지로 재판정해 점수 기록
 // (링크 생성이 아니라 기존 행 UPDATE — rationale 보존, 빈 theme/hook만 채움, 기각은 0.2)
 const REJUDGE = flag('--rejudge')
+// --codes-file <json>: 재판정 대상을 "해당 성취기준 코드가 낀 링크"로 제한.
+// 성취기준 content 복원(2026-07-11) 후 오염 텍스트 기반 판정을 갱신하는 용도 —
+// quality_score 유무와 무관하게 재판정하고, rationale/theme/hook도 새 판정으로 교체한다.
+const CODES_FILE = (() => { const i = args.indexOf('--codes-file'); return i >= 0 ? args[i + 1] : null })()
 // import-results 모드: 결과 파일(v2_links.jsonl)의 채택 링크를 DB에 멱등 upsert
 // (실행 말미 DB 적재가 네트워크 오류로 실패했을 때의 복구 경로)
 const IMPORT_RESULTS = flag('--import-results')
@@ -388,24 +392,31 @@ async function rejudgeExistingLinks(standards) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   const stdByCode = new Map(standards.map(s => [s.code, s]))
 
-  // 대상 조회: quality_score 없는 링크 (id 순 고정 → 배치 구성 결정적, resume 안전)
+  // codes-file 모드: 지정 코드가 낀 링크 전체 (quality_score 무관)
+  const targetCodes = CODES_FILE ? new Set(JSON.parse(fs.readFileSync(CODES_FILE, 'utf-8'))) : null
+  if (targetCodes) log(`🎯 --codes-file: ${targetCodes.size}개 코드가 낀 링크만 재판정`)
+
+  // 대상 조회 (id 순 고정 → 배치 구성 결정적, resume 안전)
   const rows = []
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await supabase.from('curriculum_links')
+    let query = supabase.from('curriculum_links')
       .select('id, source_code, target_code, integration_theme, lesson_hook')
-      .is('quality_score', null)
       .order('id', { ascending: true })
       .range(from, from + 999)
+    if (!targetCodes) query = query.is('quality_score', null)
+    const { data, error } = await query
     if (error) throw new Error(error.message)
-    rows.push(...data)
+    rows.push(...(targetCodes ? data.filter(r => targetCodes.has(r.source_code) || targetCodes.has(r.target_code)) : data))
     if (data.length < 1000) break
   }
   const judgeable = rows.filter(r => stdByCode.has(r.source_code) && stdByCode.has(r.target_code))
   log(`🔄 재판정 대상: ${rows.length}행 중 판정 가능 ${judgeable.length}행 (미등재 코드 ${rows.length - judgeable.length}개 제외)`)
 
+  // codes-file 모드는 별도 배치 네임스페이스 + 파일명 포함 (다른 코드파일 실행과 진행기록 충돌 방지)
+  const prefix = targetCodes ? `rjc-${path.basename(CODES_FILE).replace(/\.[^.]+$/, '')}` : 'rj'
   const batches = []
   for (let i = 0; i < judgeable.length; i += BATCH_SIZE) {
-    batches.push({ batchId: `rj-s${BATCH_SIZE}-b${Math.floor(i / BATCH_SIZE)}`, rows: judgeable.slice(i, i + BATCH_SIZE) })
+    batches.push({ batchId: `${prefix}-s${BATCH_SIZE}-b${Math.floor(i / BATCH_SIZE)}`, rows: judgeable.slice(i, i + BATCH_SIZE) })
   }
   const done = loadDoneBatches()
   const remaining = batches.filter(b => !done.has(b.batchId))
@@ -423,12 +434,21 @@ async function rejudgeExistingLinks(standards) {
       for (const r of results) {
         const row = batch.rows[r.idx]
         const patch = r.accept
-          ? {
-              quality_score: r.quality,
-              // rationale은 v1 원본 보존, 비어 있는 메타만 채움
-              ...(row.integration_theme ? {} : { integration_theme: r.integration_theme }),
-              ...(row.lesson_hook ? {} : { lesson_hook: r.lesson_hook }),
-            }
+          ? targetCodes
+            ? {
+                // codes-file 모드: 오염 텍스트 기반이던 판정 산출물 전부 갱신
+                quality_score: r.quality,
+                link_type: r.link_type,
+                rationale: r.rationale,
+                integration_theme: r.integration_theme,
+                lesson_hook: r.lesson_hook,
+              }
+            : {
+                quality_score: r.quality,
+                // rationale은 v1 원본 보존, 비어 있는 메타만 채움
+                ...(row.integration_theme ? {} : { integration_theme: r.integration_theme }),
+                ...(row.lesson_hook ? {} : { lesson_hook: r.lesson_hook }),
+              }
           : { quality_score: 0.2 } // 재판정 기각 표식 (어떤 게시 기준에도 미달)
         const { error } = await supabase.from('curriculum_links').update(patch).eq('id', row.id)
         if (error) { log(`  ⚠️ ${row.source_code}|${row.target_code} 업데이트 실패: ${error.message}`); continue }

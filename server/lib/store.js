@@ -12,6 +12,7 @@ import { GENERAL_PRINCIPLES } from '../data/generalPrinciples.js'
 import { ALL_STANDARDS } from '../data/standards.js'
 import { GENERATED_LINKS } from '../data/generatedLinks.js'
 import { SEED_SESSIONS } from '../data/seedSessions.js'
+import { shouldRemoveStandard, classifyStandardQuality } from './standardsQuality.js'
 
 const __storeDir = dirname(fileURLToPath(import.meta.url))
 
@@ -92,28 +93,28 @@ export function initStore() {
   }
 
   // 성취기준 로드 (오염 데이터 필터링 포함)
+  // 제거/플래그 기준은 standardsQuality.js가 단일 소스 (report-standards-quality.mjs와 공유)
   let filteredCount = 0
-  let flaggedCount = 0
+  const flagCounts = {} // quality flag -> count
   const seenCodes = new Set()
   for (const s of ALL_STANDARDS) {
     if (seenCodes.has(s.code)) continue
-    const c = (s.content || '').trim()
     // 완전히 제거: placeholder / 더미 / 빈 content
-    if (!c || c.length < 5) { filteredCount++; continue }
-    if (/^[\w가-힣\[\]-]+의\s*성취기준\s*(내용|해설|코드)/.test(c)) { filteredCount++; continue }
-    if (/^적용\s*시\s*고려|^성취기준\s*(내용|해설)/.test(c)) { filteredCount++; continue }
-    // 마킹만: 해설문이 content에 섞인 경우, 잘린 본문 — 제거하면 성취기준이 사라지므로 _quality 플래그로 표시
-    let quality = 'ok'
-    if (/^이\s*성취기준은\s/.test(c)) quality = 'explanation_as_content'
-    else if (/[을를의에서와과는은이가로]\s*$/.test(c) && c.length > 15) quality = 'truncated'
-    else if (/\d+\s*(공통|선택)\s*교육과정/.test(c)) quality = 'page_tag_mixed'
-    if (quality !== 'ok') flaggedCount++
+    if (shouldRemoveStandard(s.content)) { filteredCount++; continue }
+    // 마킹만: 문두 결손 해설체, 해설문 혼입, 푸터 혼입, 잘린 본문
+    // — 제거하면 성취기준이 사라지므로 _quality 플래그로 표시
+    const quality = classifyStandardQuality(s.content)
+    if (quality !== 'ok') flagCounts[quality] = (flagCounts[quality] || 0) + 1
     seenCodes.add(s.code)
     const id = uuid()
     standards.set(id, { id, ...s, _quality: quality, created_at: new Date().toISOString() })
   }
+  const flaggedCount = Object.values(flagCounts).reduce((a, b) => a + b, 0)
   if (filteredCount > 0 || flaggedCount > 0) {
-    console.log(`[initStore] 성취기준: ${filteredCount}개 제거, ${flaggedCount}개 품질 경고 플래그`)
+    const detail = Object.entries(flagCounts)
+      .map(([k, v]) => `${k} ${v}`)
+      .join(', ')
+    console.log(`[initStore] 성취기준: ${filteredCount}개 제거, ${flaggedCount}개 품질 경고 플래그${detail ? ` (${detail})` : ''}`)
   }
 
   // 성취기준 간 연결 로드 (코드→ID 맵으로 O(1) 조회)
