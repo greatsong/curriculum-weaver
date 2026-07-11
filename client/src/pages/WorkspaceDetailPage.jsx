@@ -27,7 +27,7 @@ function formatRelativeTime(iso) {
 export default function WorkspaceDetailPage() {
   const { workspaceId } = useParams()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { user } = useAuthStore()
   const { currentWorkspace, fetchWorkspace, updateWorkspace, deleteWorkspace, inviteMember } = useWorkspaceStore()
   const { projects, loading: projectsLoading, fetchProjects, createProject, deleteProject } = useProjectStore()
@@ -88,15 +88,16 @@ export default function WorkspaceDetailPage() {
   }, [currentWorkspace])
 
   // Feature 3: 셋업 위자드 표시 판단
+  // 그래프에서 담아온 생성 흐름(showCreateProject)이 진행 중이면 위자드가 모달을 덮지 않게 보류
   useEffect(() => {
-    if (!currentWorkspace || projectsLoading) return
+    if (!currentWorkspace || projectsLoading || showCreateProject) return
     const isSetup = searchParams.get('setup') === 'true'
     const noProjects = projects.length === 0
     const isOwnerOrHost = currentWorkspace.owner_id === user?.id || currentWorkspace.my_role === 'host'
     if ((isSetup || noProjects) && isOwnerOrHost && !localStorage.getItem(`cw_wizard_done_${workspaceId}`)) {
       setShowSetupWizard(true)
     }
-  }, [currentWorkspace, projects, projectsLoading, searchParams, workspaceId, user])
+  }, [currentWorkspace, projects, projectsLoading, searchParams, workspaceId, user, showCreateProject])
 
   // 시뮬레이션(데모·이어보기) 프로젝트는 별도 접이식 섹션으로 분리.
   // 이어보기 시뮬레이션은 생성자에게만 노출 (created_by 없는 과거 데모는 기존대로 전원 노출)
@@ -172,6 +173,18 @@ export default function WorkspaceDetailPage() {
       setLoadingRecommend(false)
     }
   }, [projectTitle])
+
+  // 그래프(설계/탐험)에서 넘어온 흐름 — ?createProject=1이면 생성 모달 자동 오픈.
+  // 쿼리는 즉시 제거해 새로고침/뒤로가기 시 모달이 다시 열리지 않게 한다.
+  useEffect(() => {
+    if (searchParams.get('createProject') !== '1') return
+    setShowCreateProject(true)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('createProject')
+      return next
+    }, { replace: true })
+  }, [searchParams, setSearchParams])
 
   // 생성 모달 열릴 때 설계 모드 장바구니 로드
   useEffect(() => {

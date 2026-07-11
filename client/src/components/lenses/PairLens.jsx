@@ -7,13 +7,14 @@ import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQualit
  *
  * props:
  *  - graph: { nodes, links } (published 또는 all)
- *  - subjects: 전체 과목명 목록
+ *  - subjects: 과목명 목록 (셸의 학교급 필터 적용 후)
+ *  - subjectGroups: [{ label: 학교급, subjects: [과목명] }] — 드롭다운 <optgroup> 용
  *  - pair: [subjectA, subjectB] (없으면 선택 안내)
  *  - onPickPair(nextPair)
  *  - basket: Set<code>, onToggleBasket(codes: string[])
  *  - onOpenNeighbor(code)
  */
-export default function PairLens({ graph, subjects, pair, onPickPair, basket, onToggleBasket, onOpenNeighbor }) {
+export default function PairLens({ graph, subjects, subjectGroups, pair, onPickPair, basket, onToggleBasket, onOpenNeighbor }) {
   const [selectedLink, setSelectedLink] = useState(null)
   const laneRef = useRef(null)
   const cardRefs = useRef(new Map()) // code -> element
@@ -95,7 +96,7 @@ export default function PairLens({ graph, subjects, pair, onPickPair, basket, on
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <p className="text-gray-600 font-medium mb-1">두 교과를 선택하면 성취기준 연결이 표시됩니다</p>
         <p className="text-sm text-gray-400 mb-6">직접 고르거나, 예시로 바로 체험해 보세요</p>
-        <PairPicker subjects={subjects} pair={pair} onPickPair={onPickPair} />
+        <PairPicker subjects={subjects} subjectGroups={subjectGroups} pair={pair} onPickPair={onPickPair} />
         <div className="flex gap-2 flex-wrap justify-center mt-5">
           {[
             ['데이터 과학(진로선택)', '인공지능 기초(진로선택)'],
@@ -119,7 +120,7 @@ export default function PairLens({ graph, subjects, pair, onPickPair, basket, on
     <div className="flex flex-col gap-4">
       {/* 선택 요약 */}
       <div className="flex items-center gap-2 flex-wrap">
-        <PairPicker subjects={subjects} pair={pair} onPickPair={onPickPair} compact />
+        <PairPicker subjects={subjects} subjectGroups={subjectGroups} pair={pair} onPickPair={onPickPair} compact />
         {data && (
           <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${data.links.length > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
             {data.links.length > 0
@@ -222,8 +223,8 @@ export default function PairLens({ graph, subjects, pair, onPickPair, basket, on
   )
 }
 
-/* ── 과목 선택 ── */
-function PairPicker({ subjects, pair, onPickPair, compact }) {
+/* ── 과목 선택 (학교급별 optgroup 그룹화) ── */
+function PairPicker({ subjects, subjectGroups, pair, onPickPair, compact }) {
   const [a, b] = pair || ['', '']
   const sel = (idx) => (e) => {
     const next = [...(pair || ['', ''])]
@@ -231,16 +232,25 @@ function PairPicker({ subjects, pair, onPickPair, compact }) {
     onPickPair(next)
   }
   const cls = 'border border-gray-300 rounded-lg text-sm text-gray-700 bg-white px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[220px]'
+  const renderOptions = (other) => (
+    subjectGroups?.length > 0
+      ? subjectGroups.map(g => (
+          <optgroup key={g.label} label={g.label}>
+            {g.subjects.map(s => <option key={`${g.label}:${s}`} value={s} disabled={s === other}>{s}</option>)}
+          </optgroup>
+        ))
+      : subjects.map(s => <option key={s} value={s} disabled={s === other}>{s}</option>)
+  )
   return (
     <div className={`flex items-center gap-2 ${compact ? '' : 'flex-col sm:flex-row'}`}>
       <select value={a || ''} onChange={sel(0)} className={cls}>
         <option value="">교과 A 선택…</option>
-        {subjects.map(s => <option key={s} value={s} disabled={s === b}>{s}</option>)}
+        {renderOptions(b)}
       </select>
       <span className="text-gray-400 text-sm font-bold">×</span>
       <select value={b || ''} onChange={sel(1)} className={cls}>
         <option value="">교과 B 선택…</option>
-        {subjects.map(s => <option key={s} value={s} disabled={s === a}>{s}</option>)}
+        {renderOptions(a)}
       </select>
     </div>
   )

@@ -19,7 +19,7 @@ import {
   getStandardsByProject, upsertDesign, getProjectSkips,
 } from '../lib/supabaseService.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
-import { Materials } from '../lib/store.js'
+import { Materials, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
@@ -405,6 +405,19 @@ chatRouter.post('/procedure-intro', async (req, res) => {
           const { getStandardsForSubjects } = await import('../lib/standardsValidator.js')
           const { standards: recommended } = getStandardsForSubjects(project.subjects, project.grade || '')
           if (recommended.length > 0) {
+            // 검증된 교과 연결이 많은(=융합 실적이 있는) 성취기준을 우선 추천
+            const candidateLinks = StandardLinks.getLinksAmongCodes(
+              recommended.map((s) => s.code),
+              { status: 'published', minQuality: 0.7, limit: 500 }
+            )
+            const linkDegree = new Map()
+            for (const l of candidateLinks) {
+              linkDegree.set(l.source_code, (linkDegree.get(l.source_code) || 0) + 1)
+              linkDegree.set(l.target_code, (linkDegree.get(l.target_code) || 0) + 1)
+            }
+            recommended.sort((a, b) =>
+              (linkDegree.get(b.code) || 0) - (linkDegree.get(a.code) || 0) || a.code.localeCompare(b.code)
+            )
             const perSubject = {}
             const topPicks = []
             for (const s of recommended) {
@@ -615,6 +628,25 @@ chatRouter.post('/message', async (req, res) => {
 
     const standards = await getStandardsByProject(session_id).catch(() => [])
 
+    // 선택 성취기준 간 검증된 교과 연결(curriculum_links) — 분석(A)·설계(Ds) 절차에서만 주입.
+    // 프로젝트 학교급(선택 성취기준 최빈값)으로 필터해 고교 프로젝트에 타 학교급 연결이 섞이지 않게 한다.
+    let standardLinks = []
+    if (/^(A|Ds)-/.test(activeProcedure) && standards.length >= 2) {
+      try {
+        const stds = standards.map((s) => s.curriculum_standards || s).filter((s) => s?.code)
+        const codes = stds.map((s) => s.code)
+        const levelCounts = new Map()
+        for (const s of stds) {
+          const lvl = resolveSchoolLevel(s)
+          if (lvl) levelCounts.set(lvl, (levelCounts.get(lvl) || 0) + 1)
+        }
+        const projectLevel = [...levelCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null
+        standardLinks = StandardLinks.getLinksAmongCodes(codes, { schoolLevel: projectLevel, limit: 15 })
+      } catch (e) {
+        console.warn('[chat/message] 링크 컨텍스트 조회 실패 (무시):', e.message)
+      }
+    }
+
     // 스킵된 절차 — AI의 절차 전환 제안·정합성 문구가 생략 절차를 건너뛰게 함
     const skippedCodes = await getProjectSkips(session_id)
       .then((rows) => rows.map((s) => s.procedure_code))
@@ -688,6 +720,7 @@ chatRouter.post('/message', async (req, res) => {
       mentionedMaterials,
       selectedMaterialIds,
       skippedCodes,
+      standardLinks,
     }
 
     // ── 진단 로그: 자료가 실제로 프롬프트에 흘러가는지 추적 (Railway 로그용) ──

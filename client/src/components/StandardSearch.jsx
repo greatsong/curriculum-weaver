@@ -52,6 +52,7 @@ export default function StandardSearch({ sessionId, onClose }) {
   const [searchMode, setSearchMode] = useState('keyword') // 'keyword' | 'semantic'
   const [aiActive, setAiActive] = useState(false)          // AI 융합 추천 결과 표시 중
   const [aiLoading, setAiLoading] = useState(false)
+  const [companions, setCompanions] = useState([])         // 융합 궁합 성취기준 (검증된 링크 기반)
 
   // 에러 메시지 자동 사라짐 (4초)
   useEffect(() => {
@@ -72,6 +73,19 @@ export default function StandardSearch({ sessionId, onClose }) {
     const data = await apiGet(`/api/standards/project/${sessionId}`)
     setSessionStandards(Array.isArray(data) ? data : (data?.standards ?? []))
   }
+
+  // 융합 궁합 성취기준 로드 — 프로젝트 성취기준과 검증된 링크로 연결된 상대들.
+  // 성취기준이 0개면 섹션 숨김, 로딩/에러도 조용히 처리(섹션 미표시).
+  useEffect(() => {
+    if (sessionStandards.length === 0) { setCompanions([]); return }
+    let cancelled = false
+    apiGet(`/api/standards/project/${sessionId}/companions`, { limit: 12 })
+      .then((data) => {
+        if (!cancelled) setCompanions(Array.isArray(data?.companions) ? data.companions : [])
+      })
+      .catch(() => { if (!cancelled) setCompanions([]) })
+    return () => { cancelled = true }
+  }, [sessionId, sessionStandards.length])
 
   // 검색 (디바운스) — 키워드 또는 의미(시맨틱) 모드
   const doSearch = useCallback(async () => {
@@ -180,6 +194,13 @@ export default function StandardSearch({ sessionId, onClose }) {
 
   const isAdded = (standardCode) =>
     sessionStandards.some((s) => (s.curriculum_standards?.code ?? s.code) === standardCode)
+
+  // code만 아는 경우(연결 보기 목록의 상대 성취기준 등)의 추가 —
+  // 저장 API는 standard_code만 필요하므로 최소 객체로 addStandard를 재사용한다.
+  const addStandardByCode = (code, stdLike = null) => {
+    if (!code || isAdded(code)) return
+    addStandard(stdLike || { id: `code-${code}`, code })
+  }
 
   // 연결 보기
   const viewLinks = async (standard) => {
@@ -325,6 +346,57 @@ export default function StandardSearch({ sessionId, onClose }) {
             </div>
           )}
 
+          {/* 융합 궁합이 좋은 성취기준 — 검색어가 없을 때, 검증된 링크 기반 추천 */}
+          {!query.trim() && !aiActive && (() => {
+            const visible = companions.filter((c) => c?.companion?.code && !isAdded(c.companion.code))
+            if (visible.length === 0) return null
+            return (
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-0.5">💞 융합 궁합이 좋은 성취기준</h3>
+                <p className="text-xs text-gray-400 mb-2">이 프로젝트의 성취기준과 검증된 교과간 연결이 있는 성취기준입니다</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {visible.map(({ companion, anchorCode, link }) => {
+                    const colorClass = getSubjectColor(companion)
+                    return (
+                      <div key={`${anchorCode}-${companion.code}`}
+                        className="p-3 rounded-lg border border-pink-100 bg-pink-50/30 hover:border-pink-200 transition">
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                              <span className={`px-2 py-0.5 rounded text-xs font-bold ${colorClass}`}>{companion.code}</span>
+                              <span className="text-xs text-gray-400">{companion.subject}{companion.grade_group ? ` · ${companion.grade_group}` : ''}</span>
+                            </div>
+                            <p className="text-sm text-gray-800 leading-relaxed line-clamp-2">{companion.content}</p>
+                            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                              {link?.integration_theme && (
+                                <span className="px-1.5 py-0.5 bg-violet-50 border border-violet-100 rounded text-xs text-violet-600">
+                                  🔗 {link.integration_theme}
+                                </span>
+                              )}
+                              <span className="px-1.5 py-0.5 bg-gray-100 rounded text-xs text-gray-500 font-mono">
+                                {anchorCode}와 연결
+                              </span>
+                            </div>
+                            {link?.lesson_hook && (
+                              <p className="text-xs text-gray-500 mt-1 line-clamp-1">📝 {link.lesson_hook}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => addStandard(companion)}
+                            className="shrink-0 p-2.5 sm:p-1.5 rounded-lg bg-gray-100 text-gray-400 hover:bg-blue-100 hover:text-blue-600 transition min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+                            title="프로젝트에 추가"
+                          >
+                            <Plus size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
+
           {/* 검색 결과 */}
           {loading ? (
             <div className="text-center py-8 text-gray-400 text-sm">검색 중...</div>
@@ -459,6 +531,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                 {links.map((link) => {
                   const isSource = link.source_id === selectedStandard.id
                   const otherCode = isSource ? link.target_code : link.source_code
+                  const otherAdded = isAdded(otherCode)
                   return (
                     <div key={link.id} className="flex items-center gap-2 text-xs">
                       <span className="px-1.5 py-0.5 bg-indigo-100 rounded font-medium text-indigo-700">
@@ -469,7 +542,19 @@ export default function StandardSearch({ sessionId, onClose }) {
                           : link.link_type}
                       </span>
                       <span className="font-mono text-indigo-600">{otherCode}</span>
-                      <span className="text-gray-500">{link.rationale}</span>
+                      <span className="text-gray-500 flex-1 min-w-0 truncate">{link.rationale}</span>
+                      <button
+                        onClick={() => addStandardByCode(otherCode)}
+                        disabled={otherAdded}
+                        className={`shrink-0 p-1 rounded transition flex items-center justify-center ${
+                          otherAdded
+                            ? 'text-green-500 cursor-default'
+                            : 'text-indigo-400 hover:bg-indigo-100 hover:text-indigo-700'
+                        }`}
+                        title={otherAdded ? '이미 프로젝트에 있음' : `${otherCode} 프로젝트에 추가`}
+                      >
+                        {otherAdded ? <Check size={13} /> : <Plus size={13} />}
+                      </button>
                     </div>
                   )
                 })}

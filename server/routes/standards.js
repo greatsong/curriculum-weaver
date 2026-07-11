@@ -27,7 +27,7 @@
  */
 import { Router } from 'express'
 import { getAnthropic } from '../lib/anthropicClient.js'
-import { Standards, StandardLinks } from '../lib/store.js'
+import { Standards, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
 import { validateCode, getStandardsForSubjects } from '../lib/standardsValidator.js'
 import { computeEmbedding3D, invalidateEmbeddingCache } from '../services/embeddings.js'
 import { semanticSearch, isSemanticSearchAvailable } from '../services/semanticSearch.js'
@@ -260,6 +260,66 @@ standardsRouter.get('/recommend', async (req, res) => {
   } catch (err) {
     console.error('[standards] 추천 오류:', err.message)
     res.status(500).json({ error: '성취기준 추천에 실패했습니다.' })
+  }
+})
+
+/**
+ * GET /api/standards/project/:projectId/companions
+ * 프로젝트에 이미 선택된 성취기준들과 "융합 궁합이 좋은" 성취기준 추천.
+ * 검증된 published 링크(quality ≥ 0.7)의 상대편을 quality 내림차순으로 반환 — LLM 호출 없음(무료·즉시).
+ * 프로젝트 학교급(선택 성취기준 최빈값)으로 필터해 고교 프로젝트에 타 학교급 추천이 섞이지 않게 한다.
+ *
+ * @query {number} [limit=12]
+ */
+standardsRouter.get('/project/:projectId/companions', requireAuth, async (req, res) => {
+  try {
+    const { projectId } = req.params
+    const limit = Math.min(Number(req.query.limit) || 12, 30)
+
+    const projectStandards = await getStandardsByProject(projectId).catch(() => [])
+    const stds = projectStandards.map((s) => s.curriculum_standards || s).filter((s) => s?.code)
+    if (stds.length === 0) return res.json({ companions: [] })
+
+    const codes = stds.map((s) => s.code)
+    const levelCounts = new Map()
+    for (const s of stds) {
+      const lvl = resolveSchoolLevel(s)
+      if (lvl) levelCounts.set(lvl, (levelCounts.get(lvl) || 0) + 1)
+    }
+    const projectLevel = [...levelCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null
+
+    const results = StandardLinks.getCompanionsForCodes(codes, {
+      status: 'published',
+      minQuality: 0.7,
+      limit,
+      schoolLevel: projectLevel,
+    })
+
+    res.json({
+      companions: results.map(({ link, anchorCode, companion }) => ({
+        anchorCode,
+        companion: {
+          id: companion.id,
+          code: companion.code,
+          subject: companion.subject,
+          subject_group: companion.subject_group || companion.subject,
+          school_level: companion.school_level || '',
+          grade_group: companion.grade_group || '',
+          content: companion.content,
+        },
+        link: {
+          link_type: link.link_type,
+          rationale: link.rationale || '',
+          integration_theme: link.integration_theme || null,
+          lesson_hook: link.lesson_hook || null,
+          quality_score: link.quality_score ?? null,
+        },
+      })),
+      projectLevel,
+    })
+  } catch (err) {
+    console.error('[standards] 궁합 추천 오류:', err.message)
+    res.status(500).json({ error: '궁합 성취기준 추천에 실패했습니다.' })
   }
 })
 
@@ -542,6 +602,23 @@ standardsRouter.post('/recommend-ai', requireAuth, async (req, res) => {
       `${s.code} [${s.subject}] ${s.content}`
     ).join('\n')
 
+    // 후보 간 검증된 교과 연결 — "서로 연결되는 기준 세트" 단위 추천을 유도
+    const gradeLevel = /고등|고교|고\s*[1-3]/.test(grade || '') ? '고등학교'
+      : /중학|중\s*[1-3]/.test(grade || '') ? '중학교'
+      : /초등/.test(grade || '') ? '초등학교' : null
+    const candidateLinks = StandardLinks.getLinksAmongCodes(
+      candidates.map(s => s.code),
+      { status: 'published', minQuality: 0.7, limit: 12, schoolLevel: gradeLevel }
+    )
+    const linkBoostText = candidateLinks.length > 0
+      ? `\n## 검증된 교과 간 연결 (선별 시 가중 참고)
+아래 쌍은 임베딩+AI 판정 파이프라인을 통과한 실제 연결입니다. 양끝 성취기준을 함께 선택하면 융합 설계가 유리하므로, 다른 기준이 비슷하다면 이 쌍을 우선하세요.
+${candidateLinks.map(l => {
+        const wrap = (c) => (String(c).startsWith('[') ? c : `[${c}]`)
+        return `- ${wrap(l.source_code)}↔${wrap(l.target_code)}${l.integration_theme ? ` 주제: ${l.integration_theme}` : ''}${l.quality_score != null ? ` (q${Number(l.quality_score).toFixed(2)})` : ''}`
+      }).join('\n')}\n`
+      : ''
+
     // 프로젝트 컨텍스트 구성
     const contextParts = []
     if (topic) contextParts.push(`주제: ${topic}`)
@@ -563,7 +640,7 @@ ${contextParts.join('\n')}
 3. **교과 간 시너지**: 교과 A의 산출이 교과 B의 입력이 되는 관계가 있는가
 4. **핵심 아이디어 연결**: 단원의 빅아이디어가 주제와 맞닿는가
 5. **학습 경험의 실제성**: 학생이 실제 프로젝트 활동으로 체험 가능한가
-
+${linkBoostText}
 ## 사용 가능한 성취기준 (${candidates.length}개) — 이 목록에서만 선택!
 ${candidateText}
 

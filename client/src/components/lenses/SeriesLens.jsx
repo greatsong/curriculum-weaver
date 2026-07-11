@@ -1,14 +1,14 @@
 import { useState, useMemo } from 'react'
 import { Search, Plus, Check } from 'lucide-react'
-import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, gradeBucket, linkQuality } from './lensCommon'
+import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, gradeBucket, linkQuality, nodeSchoolLevel } from './lensCommon'
 
 /**
  * 계열 렌즈 — 성취기준을 중심으로 연결된 항목을 학년군 타임라인 위에 배치
  * 방향은 학년 순서로 추론: 중심보다 낮은 학년 = 선수 후보, 높은 학년 = 심화 후보
  *
- * props: graph, focusCode, onFocus(code), basket, onToggleBasket
+ * props: graph, focusCode, onFocus(code), level(학교급 필터 — 검색 결과에 적용), basket, onToggleBasket
  */
-export default function SeriesLens({ graph, focusCode, onFocus, basket, onToggleBasket }) {
+export default function SeriesLens({ graph, focusCode, onFocus, level, basket, onToggleBasket }) {
   const [query, setQuery] = useState('')
 
   const nodeByCode = useMemo(() => new Map((graph?.nodes || []).map(n => [n.code, n])), [graph])
@@ -47,9 +47,10 @@ export default function SeriesLens({ graph, focusCode, onFocus, basket, onToggle
     const q = query.trim().toLowerCase()
     if (!q || !graph) return []
     return graph.nodes
+      .filter(n => { if (!level) return true; const lv = nodeSchoolLevel(n); return lv === level || lv === null })
       .filter(n => n.code.toLowerCase().includes(q) || n.content?.toLowerCase().includes(q) || n.subject?.toLowerCase().includes(q))
       .slice(0, 12)
-  }, [query, graph])
+  }, [query, graph, level])
 
   if (!center) {
     return (

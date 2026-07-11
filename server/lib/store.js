@@ -677,6 +677,27 @@ export const Standards = {
   },
 }
 
+/**
+ * 성취기준의 학교급 판별. school_level이 비어 있으면 grade_group 접두사로 추정.
+ * 판별 불가('기타' 등)는 null — 필터에서 배제하지 않기 위한 3상태.
+ * Supabase 행은 영문('high'/'middle'/'elementary'), 인메모리 정본은 한글('고등학교')을
+ * 쓰므로 반드시 한글 정규형으로 통일해 반환한다 (어휘 불일치 → 전량 필터 버그 방지).
+ */
+const SCHOOL_LEVEL_NORMALIZE = {
+  high: '고등학교', middle: '중학교', elementary: '초등학교',
+  고등학교: '고등학교', 중학교: '중학교', 초등학교: '초등학교',
+}
+export function resolveSchoolLevel(std) {
+  if (!std) return null
+  const normalized = SCHOOL_LEVEL_NORMALIZE[std.school_level]
+  if (normalized) return normalized
+  const gg = std.grade_group || ''
+  if (/^초/.test(gg)) return '초등학교'
+  if (/^중/.test(gg)) return '중학교'
+  if (/^고/.test(gg)) return '고등학교'
+  return null
+}
+
 // ─── 성취기준 연결(그래프) ───
 export const StandardLinks = {
   list: () => [...standardLinks.values()],
@@ -726,6 +747,67 @@ export const StandardLinks = {
     return [...standardLinks.values()].filter(
       (l) => l.source_id === standardId || l.target_id === standardId
     )
+  },
+
+  /**
+   * 코드 집합 "내부"의 링크 (양끝이 모두 codes에 포함).
+   * AI 공동설계자·정합성 점검이 선택 성취기준 간 검증된 연결을 인용할 때 사용.
+   * quality_score 내림차순 (null은 뒤로), 교과군 교차 링크 우선.
+   * schoolLevel 지정 시 다른 학교급으로 "확인된" 노드가 낀 링크는 제외
+   * (grade_group '기타' 등 학교급 미상은 배제하지 않음 — 고교 선택과목 누락 방지).
+   */
+  getLinksAmongCodes: (codes, { status = 'published', minQuality = 0.7, limit = 20, schoolLevel = null } = {}) => {
+    const codeSet = new Set(codes)
+    const codeToStd = new Map()
+    for (const [, s] of standards) if (codeSet.has(s.code)) codeToStd.set(s.code, s)
+    const levelOf = (code) => resolveSchoolLevel(codeToStd.get(code))
+    return [...standardLinks.values()]
+      .filter((l) => codeSet.has(l.source_code) && codeSet.has(l.target_code))
+      .filter((l) => !status || (l.status || 'candidate') === status)
+      .filter((l) => l.quality_score == null || l.quality_score >= minQuality)
+      .filter((l) => {
+        if (!schoolLevel) return true
+        const a = levelOf(l.source_code), b = levelOf(l.target_code)
+        return (a === schoolLevel || a === null) && (b === schoolLevel || b === null)
+      })
+      .sort((a, b) => {
+        const crossA = (codeToStd.get(a.source_code)?.subject_group) !== (codeToStd.get(a.target_code)?.subject_group) ? 1 : 0
+        const crossB = (codeToStd.get(b.source_code)?.subject_group) !== (codeToStd.get(b.target_code)?.subject_group) ? 1 : 0
+        if (crossA !== crossB) return crossB - crossA
+        return (b.quality_score ?? 0) - (a.quality_score ?? 0)
+      })
+      .slice(0, limit)
+  },
+
+  /**
+   * 코드 집합에서 "바깥"으로 나가는 링크 (한쪽만 codes에 포함).
+   * 궁합 성취기준 추천용 — 각 링크에 상대(companion) 성취기준을 함께 반환.
+   * @returns [{ link, anchorCode, companion }] quality 내림차순
+   */
+  getCompanionsForCodes: (codes, { status = 'published', minQuality = 0.7, limit = 20, schoolLevel = null } = {}) => {
+    const codeSet = new Set(codes)
+    const codeToStd = new Map()
+    for (const [, s] of standards) codeToStd.set(s.code, s)
+    const results = []
+    for (const l of standardLinks.values()) {
+      const srcIn = codeSet.has(l.source_code)
+      const tgtIn = codeSet.has(l.target_code)
+      if (srcIn === tgtIn) continue // 둘 다 안이거나 둘 다 밖
+      if (status && (l.status || 'candidate') !== status) continue
+      if (l.quality_score != null && l.quality_score < minQuality) continue
+      const anchorCode = srcIn ? l.source_code : l.target_code
+      const companionCode = srcIn ? l.target_code : l.source_code
+      const companion = codeToStd.get(companionCode)
+      if (!companion) continue
+      if (schoolLevel) {
+        const lvl = resolveSchoolLevel(companion)
+        if (lvl !== null && lvl !== schoolLevel) continue // 학교급 미상(null)은 배제하지 않음
+      }
+      results.push({ link: l, anchorCode, companion })
+    }
+    return results
+      .sort((a, b) => (b.link.quality_score ?? 0) - (a.link.quality_score ?? 0))
+      .slice(0, limit)
   },
 
   getGraph: () => {
