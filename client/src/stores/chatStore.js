@@ -4,6 +4,7 @@ import { socket } from '../lib/socket'
 import { useProcedureStore } from './procedureStore'
 import { useProjectStore } from './projectStore'
 import { useWorkspaceStore } from './workspaceStore'
+import { pushToast } from './toastStore'
 import { PROCEDURES, BOARD_TYPES } from 'curriculum-weaver-shared/constants.js'
 
 function isReadOnlyProject(project) {
@@ -482,7 +483,8 @@ export const useChatStore = create((set, get) => ({
   acceptSuggestion: async (suggestionId, projectId) => {
     const state = get()
     const suggestion = state.pendingSuggestions.find((s) => s.id === suggestionId)
-    if (!suggestion) return
+    // 이미 처리된 제안은 무시 — 빠른 연타/이중 렌더(채팅+캔버스)로 인한 중복 실행 방지
+    if (!suggestion || suggestion.status !== 'pending') return
 
     // 1) procedureStore에 보드 반영 (로컬)
     const procStore = useProcedureStore.getState()
@@ -499,31 +501,28 @@ export const useChatStore = create((set, get) => ({
       }
     }
 
-    // 2) 서버 영속 — 병합된 '전체' 보드 content를 권위본으로 저장
+    // 2) 낙관적 상태 업데이트 — 보드 반영은 이미 끝났으므로 UI는 즉시 '수락됨'으로 전환.
+    //    서버 영속을 기다리게 하면 수락 버튼이 라운드트립만큼 늦게 반응한다.
+    set({
+      pendingSuggestions: state.pendingSuggestions.map((s) =>
+        s.id === suggestionId ? { ...s, status: 'accepted' } : s
+      ),
+    })
+    // 클릭 즉시 눈에 보이는 확인 — 카드가 사라지는 것만으로는 반영 여부를 놓치기 쉽다
+    pushToast({ kind: 'success', message: 'AI 제안을 보드에 반영했어요.', duration: 3_000 })
+
+    // 3) 서버 영속 — 병합된 '전체' 보드 content를 권위본으로 저장
     // 서버 accept 라우트는 제안 원본(suggestion.content)만 replace 저장해, AI가 일부
     // 필드만 담은 제안을 수락하면 기존 필드가 DB에서 유실되던 문제가 있었다. 클라가
     // deep-merge한 전체 content를 updateBoard로 저장(권위본)해 유실을 막고, updateBoard가
     // design_updated를 emit하므로 협업자 보드도 함께 갱신된다.
+    // ※ 과거에 있던 /suggestion/:id/accept 사전 호출은 제거 — 서버가 제안 상태를 영속하지
+    //    않으면서 suggestion.content를 그대로 upsert해, updateBoard와 중복 저장·경합만
+    //    일으키는 순수 지연이었다.
     const boardType = BOARD_TYPES[suggestion.procedureCode]
     const mergedContent = boardType
       ? useProcedureStore.getState().boards[boardType]?.content
       : null
-
-    // (a) 제안 상태 추적용 accept 라우트 (best-effort). 보드 본문 저장은 아래 updateBoard가 권위.
-    const messageId = state._lastAiMessageId
-    if (messageId) {
-      const idx = state.pendingSuggestions.findIndex((s) => s.id === suggestionId)
-      try {
-        await apiPost(`/api/chat/suggestion/${messageId}/accept`, {
-          session_id: projectId,
-          procedure: suggestion.procedureCode,
-          suggestionIndex: idx >= 0 ? idx : 0,
-        })
-      } catch (err) {
-        console.error('제안 수락 상태 저장 실패:', err)
-      }
-    }
-    // (b) 병합 전체 content 영속 + 브로드캐스트 (유실 방지 핵심)
     if (mergedContent && suggestion.procedureCode) {
       try {
         await useProcedureStore.getState().updateBoard(projectId, suggestion.procedureCode, mergedContent)
@@ -532,12 +531,6 @@ export const useChatStore = create((set, get) => ({
       }
     }
 
-    // 3) 상태 업데이트
-    set({
-      pendingSuggestions: state.pendingSuggestions.map((s) =>
-        s.id === suggestionId ? { ...s, status: 'accepted' } : s
-      ),
-    })
     // 진행률/네비게이션 갱신
     useProcedureStore.getState().loadBoardSummaries(projectId)
   },
@@ -545,7 +538,8 @@ export const useChatStore = create((set, get) => ({
   editAcceptSuggestion: async (suggestionId, editedValue, projectId) => {
     const state = get()
     const suggestion = state.pendingSuggestions.find((s) => s.id === suggestionId)
-    if (!suggestion) return
+    // 이미 처리된 제안은 무시 (acceptSuggestion과 동일한 중복 실행 가드)
+    if (!suggestion || suggestion.status !== 'pending') return
 
     // 1) 편집된 값으로 보드 반영
     // board_update 편집은 editedValue가 JSON 문자열일 수 있으므로 파싱한다.
@@ -565,28 +559,20 @@ export const useChatStore = create((set, get) => ({
       }
     }
 
-    // 2) 서버 영속 — 병합된 '전체' 보드 content를 권위본으로 저장 (acceptSuggestion과 동일 원칙)
+    // 2) 낙관적 상태 업데이트 — acceptSuggestion과 동일하게 UI를 먼저 전환
+    set({
+      pendingSuggestions: state.pendingSuggestions.map((s) =>
+        s.id === suggestionId ? { ...s, status: 'accepted', value: editedValue } : s
+      ),
+    })
+    pushToast({ kind: 'success', message: '편집한 내용으로 보드에 반영했어요.', duration: 3_000 })
+
+    // 3) 서버 영속 — 병합된 '전체' 보드 content를 권위본으로 저장 (acceptSuggestion과 동일 원칙)
+    // ※ /suggestion/:id/edit-accept 사전 호출도 accept와 같은 이유(중복 upsert·경합)로 제거.
     const boardType = BOARD_TYPES[suggestion.procedureCode]
     const mergedContent = boardType
       ? useProcedureStore.getState().boards[boardType]?.content
       : null
-
-    // (a) 편집 수락 상태 추적용 라우트 (best-effort)
-    const messageId = state._lastAiMessageId
-    if (messageId) {
-      const idx = state.pendingSuggestions.findIndex((s) => s.id === suggestionId)
-      try {
-        await apiPost(`/api/chat/suggestion/${messageId}/edit-accept`, {
-          session_id: projectId,
-          procedure: suggestion.procedureCode,
-          suggestionIndex: idx >= 0 ? idx : 0,
-          editedContent: parsedEdited,
-        })
-      } catch (err) {
-        console.error('제안 편집 수락 상태 저장 실패:', err)
-      }
-    }
-    // (b) 병합 전체 content 영속 + 브로드캐스트 (유실 방지 핵심)
     if (mergedContent && suggestion.procedureCode) {
       try {
         await useProcedureStore.getState().updateBoard(projectId, suggestion.procedureCode, mergedContent)
@@ -595,38 +581,34 @@ export const useChatStore = create((set, get) => ({
       }
     }
 
-    // 3) 상태 업데이트
-    set({
-      pendingSuggestions: state.pendingSuggestions.map((s) =>
-        s.id === suggestionId ? { ...s, status: 'accepted', value: editedValue } : s
-      ),
-    })
     // 진행률/네비게이션 갱신
     useProcedureStore.getState().loadBoardSummaries(projectId)
   },
 
   rejectSuggestion: async (suggestionId, projectId) => {
     const state = get()
-    // 서버에 거부 저장
-    const messageId = state._lastAiMessageId
-    if (messageId) {
-      const idx = state.pendingSuggestions.findIndex((s) => s.id === suggestionId)
-      try {
-        await apiPost(`/api/chat/suggestion/${messageId}/reject`, {
-          session_id: projectId,
-          procedure: state.pendingSuggestions[idx]?.procedureCode,
-          suggestionIndex: idx >= 0 ? idx : 0,
-        })
-      } catch (err) {
-        console.error('제안 거부 서버 저장 실패:', err)
-      }
-    }
+    const idx = state.pendingSuggestions.findIndex((s) => s.id === suggestionId)
+    // 이미 처리된 제안은 무시 (accept와 동일한 중복 실행 가드)
+    if (idx < 0 || state.pendingSuggestions[idx]?.status !== 'pending') return
 
+    // 낙관적 상태 업데이트 — 거부 버튼도 클릭 즉시 카드가 사라져야 한다
     set({
       pendingSuggestions: state.pendingSuggestions.map((s) =>
         s.id === suggestionId ? { ...s, status: 'rejected' } : s
       ),
     })
+
+    // 서버 기록은 fire-and-forget — 라우트는 활동 로그만 남기므로 응답을 기다릴 이유가 없다
+    const messageId = state._lastAiMessageId
+    if (messageId) {
+      apiPost(`/api/chat/suggestion/${messageId}/reject`, {
+        session_id: projectId,
+        procedure: state.pendingSuggestions[idx]?.procedureCode,
+        suggestionIndex: idx >= 0 ? idx : 0,
+      }).catch((err) => {
+        console.error('제안 거부 서버 저장 실패:', err)
+      })
+    }
   },
 
   // ── 정리 ────

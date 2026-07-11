@@ -9,6 +9,7 @@ import {
   apiDeleteMaterial,
 } from '../lib/api'
 import { socket } from '../lib/socket'
+import { pushToast } from './toastStore'
 import {
   PROCEDURES,
   BOARD_TYPES,
@@ -22,7 +23,11 @@ import { createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
 // 동일 materialId에 대한 중복 폴링을 막기 위한 Set + 타이머 맵.
 const _pollingMaterialIds = new Set()
 const _pollingTimers = new Map() // materialId → intervalId
+const _pollingStartedAt = new Map() // materialId → epoch ms (무한 폴링 방지용)
 const MATERIAL_POLL_INTERVAL_MS = 3_000
+// 서버 분석 타임아웃(60초) + 파싱·재시도 여유를 넉넉히 잡은 상한.
+// 폴러가 컴포넌트가 아닌 스토어 수명으로 돌기 때문에 반드시 자체 종료 조건이 필요하다.
+const MATERIAL_POLL_MAX_AGE_MS = 10 * 60 * 1_000
 
 function _stopMaterialPolling(materialId) {
   const timer = _pollingTimers.get(materialId)
@@ -31,6 +36,7 @@ function _stopMaterialPolling(materialId) {
     _pollingTimers.delete(materialId)
   }
   _pollingMaterialIds.delete(materialId)
+  _pollingStartedAt.delete(materialId)
 }
 
 /**
@@ -659,13 +665,22 @@ export const useProcedureStore = create((set, get) => ({
   /**
    * 자료 분석 상태 폴링 시작. 3초 간격으로 completed/failed까지 폴링.
    * 동일 materialId에 대해 이미 폴링 중이면 무시.
+   * 폴러는 컴포넌트가 아닌 스토어 수명으로 동작 — 다른 화면으로 이동해도
+   * 완료/실패 시점에 전역 토스트로 알려준다.
    */
   startMaterialPolling: (materialId) => {
     if (!materialId) return
     if (_pollingMaterialIds.has(materialId)) return
     _pollingMaterialIds.add(materialId)
+    _pollingStartedAt.set(materialId, Date.now())
 
     const tick = async () => {
+      // 안전장치: 상한 초과 시 폴링 중단 (서버 행 등으로 종료 상태가 안 오는 경우)
+      const startedAt = _pollingStartedAt.get(materialId)
+      if (startedAt && Date.now() - startedAt > MATERIAL_POLL_MAX_AGE_MS) {
+        _stopMaterialPolling(materialId)
+        return
+      }
       try {
         const res = await apiGetMaterialAnalysis(materialId)
         const material = res?.material
@@ -674,6 +689,7 @@ export const useProcedureStore = create((set, get) => ({
           _stopMaterialPolling(materialId)
           return
         }
+        const prevStatus = get().materials.find((m) => m.id === materialId)?.processing_status
         set((state) => ({
           materials: state.materials.map((m) =>
             m.id === materialId
@@ -685,11 +701,21 @@ export const useProcedureStore = create((set, get) => ({
               : m,
           ),
         }))
+        const status = material.processing_status
         if (
-          material.processing_status === MATERIAL_PROCESSING_STATUSES.COMPLETED ||
-          material.processing_status === MATERIAL_PROCESSING_STATUSES.FAILED
+          status === MATERIAL_PROCESSING_STATUSES.COMPLETED ||
+          status === MATERIAL_PROCESSING_STATUSES.FAILED
         ) {
           _stopMaterialPolling(materialId)
+          // 상태가 실제로 '전이'된 경우에만 전역 토스트 (이미 완료였던 자료 재폴링 시 중복 방지)
+          if (prevStatus !== status) {
+            const name = material.file_name || material.title || '자료'
+            if (status === MATERIAL_PROCESSING_STATUSES.COMPLETED) {
+              pushToast({ kind: 'success', message: `'${name}' 분석이 완료됐어요. 자료 목록에서 요약을 확인할 수 있어요.` })
+            } else {
+              pushToast({ kind: 'error', message: `'${name}' 분석에 실패했어요. 자료 목록에서 재분석해 보세요.`, duration: 8_000 })
+            }
+          }
         }
       } catch {
         // 간헐적 실패는 무시하고 다음 주기까지 대기
@@ -759,10 +785,10 @@ export const useProcedureStore = create((set, get) => ({
   reset: () => {
     const handler = get()._boardHandler
     if (handler) socket.off('board_changed', handler)
-    // 모든 폴링 타이머 정리
-    for (const id of Array.from(_pollingMaterialIds)) {
-      _stopMaterialPolling(id)
-    }
+    // 자료 분석 폴링은 여기서 정리하지 않는다 — 프로젝트 화면을 벗어나도(ProjectPage
+    // unmount cleanup이 reset을 호출) 분석 완료/실패를 전역 토스트로 알리기 위함.
+    // 폴러는 completed/failed 또는 MATERIAL_POLL_MAX_AGE_MS(10분) 상한에서 자체 종료한다.
+    // 명시적으로 전부 멈춰야 하면 stopAllMaterialPolling()을 별도로 호출할 것.
     // currentProcedure/currentStep은 리셋하지 않는다.
     // 탭 복귀 시 reset()이 불려 절차가 'T-1-1'로 돌아가면, 복원 effect는
     // currentProject.current_procedure 값이 안 바뀌어 재실행되지 않아 복원에 실패한다
