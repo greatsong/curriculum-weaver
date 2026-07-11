@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   PROCEDURES, PHASES, PHASE_LIST, ACTION_TYPES, ACTOR_COLUMNS,
   BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_ACTIVITIES,
+  isProcedureSkippable, getProcedureLabel,
 } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { BOARD_SCHEMAS, getBoardSchemaForProcedure, createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
@@ -9,10 +10,11 @@ import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
 import ReadableValue from './ReadableValue'
 
-export default function ProcedureCanvas({ projectId, procedureCode, readOnly = false, loading = false }) {
-  const { boards, currentStep, setStep, updateBoard } = useProcedureStore()
+export default function ProcedureCanvas({ projectId, procedureCode, readOnly = false, loading = false, memberRole = null }) {
+  const { boards, currentStep, setStep, updateBoard, skippedProcedures, skipProcedure, unskipProcedure } = useProcedureStore()
   const { pendingSuggestions, coherenceCheckResult, acceptSuggestion, editAcceptSuggestion, rejectSuggestion, sendMessage } = useChatStore()
   const [editing, setEditing] = useState(false)
+  const [skipBusy, setSkipBusy] = useState(false)
 
   const procInfo = PROCEDURES[procedureCode]
   const phase = procInfo ? PHASE_LIST.find((p) => p.id === procInfo.phase) : null
@@ -21,6 +23,31 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
   const boardType = BOARD_TYPES[procedureCode]
   const schema = boardType ? BOARD_SCHEMAS[boardType] : null
   const board = boardType ? boards[boardType] : null
+
+  // 절차 스킵 상태 — 스킵되면 열람만 가능 (편집·저장·AI 제안 비활성)
+  const skipEntry = (skippedProcedures || []).find((s) => s.procedure_code === procedureCode)
+  const isSkipped = !!skipEntry
+  const canManageSkip = ['owner', 'host'].includes(memberRole) && !readOnly
+  const showSkipButton = canManageSkip && (isSkipped || isProcedureSkippable(procedureCode))
+
+  const handleSkipToggle = async () => {
+    if (skipBusy) return
+    setSkipBusy(true)
+    try {
+      if (isSkipped) {
+        await unskipProcedure(projectId, procedureCode)
+      } else {
+        const label = getProcedureLabel(procedureCode)
+        if (!window.confirm(`${label} 절차를 건너뛸까요?\n보드 내용은 지워지지 않으며, 언제든 해제할 수 있습니다.`)) return
+        const reason = window.prompt('생략 사유 (선택 — 보고서에 함께 표기됩니다):', '')
+        await skipProcedure(projectId, procedureCode, reason?.trim() || undefined)
+      }
+    } catch (err) {
+      alert(err?.message || '건너뛰기 처리에 실패했습니다.')
+    } finally {
+      setSkipBusy(false)
+    }
+  }
 
   const relevantSuggestions = pendingSuggestions.filter(
     (s) => s.procedureCode === procedureCode && s.status === 'pending'
@@ -59,8 +86,27 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
             </span>
           )}
           <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>{phase?.name}</span>
+          {showSkipButton && (
+            <button
+              onClick={handleSkipToggle}
+              disabled={skipBusy}
+              style={{
+                marginLeft: 'auto',
+                fontSize: 12,
+                padding: '4px 10px',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border)',
+                background: 'transparent',
+                color: 'var(--color-text-secondary)',
+                cursor: skipBusy ? 'wait' : 'pointer',
+                fontFamily: 'var(--font-sans)',
+              }}
+            >
+              {isSkipped ? '건너뛰기 해제' : '이 절차 건너뛰기'}
+            </button>
+          )}
         </div>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 4px' }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 4px', ...(isSkipped ? { textDecoration: 'line-through', opacity: 0.6 } : {}) }}>
           {procInfo.name}
         </h2>
         <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.5 }}>
@@ -68,8 +114,33 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
         </p>
       </div>
 
+      {/* 생략된 절차 안내 배너 — 열람만 가능 */}
+      {isSkipped && (
+        <div style={{
+          background: 'var(--color-bg-secondary)',
+          border: '1px dashed var(--color-border)',
+          borderRadius: 'var(--radius-lg)',
+          padding: 16,
+          display: 'flex',
+          gap: 12,
+          alignItems: 'flex-start',
+        }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+            <circle cx="12" cy="12" r="10"/><line x1="5" y1="19" x2="19" y2="5"/>
+          </svg>
+          <div>
+            <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 2px' }}>
+              팀 결정으로 생략된 절차입니다 — 열람만 가능
+            </h3>
+            <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.5 }}>
+              {skipEntry?.reason ? `사유: ${skipEntry.reason}` : '보드 내용은 보존되며, 호스트가 건너뛰기를 해제하면 다시 진행할 수 있습니다.'}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 활동 설명 배너 */}
-      {activity && (
+      {!isSkipped && activity && (
         <div style={{
           background: '#FFFBEB',
           border: '1px solid #FDE68A',
@@ -195,8 +266,8 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
         </div>
       )}
 
-      {/* AI 제안 카드 */}
-      {!readOnly && relevantSuggestions.length > 0 && (
+      {/* AI 제안 카드 — 생략된 절차에는 표시하지 않음 */}
+      {!readOnly && !isSkipped && relevantSuggestions.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {relevantSuggestions.map((suggestion) => (
             <SuggestionCard
@@ -222,7 +293,7 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
           loading={loading}
           editing={editing}
           setEditing={setEditing}
-          readOnly={readOnly}
+          readOnly={readOnly || isSkipped}
           onUpdate={async (content) => {
             await updateBoard(projectId, procedureCode, content)
             setEditing(false)

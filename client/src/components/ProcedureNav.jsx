@@ -11,6 +11,7 @@ export default function ProcedureNav({
   onProcedureChange,
   completedProcedures = [],
   boardStatuses = {},
+  skippedCodes = new Set(),
 }) {
   const [expandedPhase, setExpandedPhase] = useState(() => {
     const proc = PROCEDURES[currentProcedure]
@@ -35,8 +36,11 @@ export default function ProcedureNav({
           const procedures = getProceduresByPhase(phase.id)
           const isExpanded = expandedPhase === phase.id
           const hasCurrentProcedure = procedures.some((p) => p.code === currentProcedure)
-          const completedCount = procedures.filter((p) => completedProcedures.includes(p.code)).length
-          const allDone = completedCount > 0 && completedCount === procedures.length
+          // 스킵된 절차는 완료 분모에서 제외 — 하나만 스킵해도 단계가 영원히
+          // 미완료로 남는 문제 방지. 전부 스킵된 단계는 완료로 치지 않는다.
+          const activeProcs = procedures.filter((p) => !skippedCodes.has(p.code))
+          const completedCount = activeProcs.filter((p) => completedProcedures.includes(p.code)).length
+          const allDone = completedCount > 0 && completedCount === activeProcs.length
 
           return (
             <button
@@ -85,7 +89,7 @@ export default function ProcedureNav({
                   <polyline points="3.5 8.5 6.5 11.5 12.5 4.5"/>
                 </svg>
               ) : completedCount > 0 ? (
-                <span style={{ fontSize: 10, opacity: 0.6 }}>{completedCount}/{procedures.length}</span>
+                <span style={{ fontSize: 10, opacity: 0.6 }}>{completedCount}/{activeProcs.length}</span>
               ) : null}
               {/* Chevron */}
               <svg
@@ -124,6 +128,7 @@ export default function ProcedureNav({
           {getProceduresByPhase(expandedPhase).map((proc) => {
             const isActive = proc.code === currentProcedure
             const isCompleted = completedProcedures.includes(proc.code)
+            const isSkippedProc = skippedCodes.has(proc.code)
             const steps = PROCEDURE_STEPS[proc.code]
             const totalSteps = steps?.length || 0
             const status = boardStatuses[proc.code]
@@ -149,7 +154,10 @@ export default function ProcedureNav({
                   boxShadow: isActive ? 'var(--shadow-sm)' : 'none',
                   color: isActive ? 'var(--color-text-primary)' : isCompleted ? '#16A34A' : 'var(--color-text-secondary)',
                   fontWeight: isActive ? 600 : 400,
+                  // 생략된 절차: 취소선 + 반투명 (열람은 가능하므로 클릭은 막지 않음)
+                  ...(isSkippedProc ? { textDecoration: 'line-through', opacity: 0.45 } : {}),
                 }}
+                title={isSkippedProc ? '팀 결정으로 생략된 절차 (열람만 가능)' : undefined}
                 onMouseEnter={(e) => {
                   if (!isActive) {
                     e.currentTarget.style.background = 'var(--color-bg-secondary)'
