@@ -27,6 +27,10 @@ const ALL_CODES = [...PHASE1_CODES, ...PHASE2_CODES]
 const procedureNameMap = Object.fromEntries(PROCEDURE_LIST.map((p) => [p.code, p.name]))
 const MAX_DEMO_DESCRIPTION_LENGTH = 1500
 
+// 사용자별 일일 데모 생성 쿼터 (인메모리 — 서버 재시작 시 리셋)
+const DEMO_DAILY_LIMIT = 10
+const demoUsage = new Map() // userId -> { date: 'YYYY-MM-DD', count }
+
 // JSON 응답의 키(board/conversation 매핑용)는 내부 코드(Ds-1-1 등)를 그대로 써야 하지만,
 // conversation.message 자연어 텍스트에서는 사용자에게 노출되는 표시 코드(Ds-1)만 써야 한다.
 // AI가 대화 중 "이전 절차"를 언급할 때 내부 코드를 그대로 echo하지 않도록 매핑을 제공한다.
@@ -175,7 +179,7 @@ async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, lab
   // output-128k 베타 헤더는 Claude 4+ 모델에 기본 내장되어 제거
   const stream = await getAnthropic().messages.stream({
     model: 'claude-sonnet-5',
-    max_tokens: 64000,
+    max_tokens: 16000,
     system: systemPrompt,
     messages: [{ role: 'user', content: userPrompt }],
   })
@@ -268,6 +272,17 @@ function formatTeacherIntentBlock(text) {
 demoRouter.post('/generate', requireAuth, async (req, res) => {
   const { workspaceId, grade, subjects, topic, description } = req.body
   const userId = req.user.id
+
+  // 인메모리 일일 쿼터 — 재시작 시 리셋. 초과면 즉시 429 (카운트 증가는 검증 통과 후)
+  const today = new Date().toISOString().slice(0, 10)
+  const usage = demoUsage.get(userId)
+  if (!usage || usage.date !== today) {
+    demoUsage.set(userId, { date: today, count: 0 })
+  }
+  if (demoUsage.get(userId).count >= DEMO_DAILY_LIMIT) {
+    return res.status(429).json({ error: '오늘 데모 생성 한도(하루 10회)를 초과했습니다. 내일 다시 시도해주세요.' })
+  }
+
   const normalizedDescription = typeof description === 'string' ? description.trim() : ''
 
   if (!workspaceId) {
@@ -292,6 +307,9 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
   if (normalizedDescription.length > MAX_DEMO_DESCRIPTION_LENGTH) {
     return res.status(400).json({ error: `설계 의도/참고사항은 ${MAX_DEMO_DESCRIPTION_LENGTH.toLocaleString()}자 이내로 입력하세요.` })
   }
+
+  // 모든 검증 통과 — 실제 생성 진행이 확정된 시점에만 일일 쿼터 1 소모
+  demoUsage.get(userId).count += 1
 
   // SSE 헤더
   res.setHeader('Content-Type', 'text/event-stream')

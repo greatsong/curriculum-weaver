@@ -20,3 +20,6 @@ backups/
 # 링크 생성 파이프라인 실행 산출물 (진행상태/리포트)
 scripts/mission_output/
 scripts/mission_reports/
+
+# Supabase CLI 임시 디렉터리 (프로젝트 ref 등 노출 방지)
+supabase/.temp/

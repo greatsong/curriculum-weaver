@@ -1,14 +1,14 @@
 import { Router } from 'express'
-import { optionalAuth, requireAuth } from '../middleware/auth.js'
+import { requireAuth } from '../middleware/auth.js'
 // import { supabaseAdmin } from '../lib/supabaseAdmin.js'  // 나중에 다시 활성화
 import { Sessions, SessionStandards } from '../lib/store.js'
 
 export const sessionsRouter = Router()
 // LEGACY: 프로젝트 기반 전환 완료 후 제거 예정. 현재 데모/세션 호환용으로 유지.
-// 읽기는 optionalAuth, 쓰기는 requireAuth 개별 적용
+// 미인증 열거 차단 — 읽기/쓰기 모두 requireAuth 적용
 
 // 세션 목록 조회 (status 필터 지원)
-sessionsRouter.get('/', optionalAuth, async (req, res) => {
+sessionsRouter.get('/', requireAuth, async (req, res) => {
   const { status } = req.query
   let sessions = Sessions.list()
   if (status) {
@@ -18,7 +18,7 @@ sessionsRouter.get('/', optionalAuth, async (req, res) => {
 })
 
 // 세션 상세 조회
-sessionsRouter.get('/:id', optionalAuth, async (req, res) => {
+sessionsRouter.get('/:id', requireAuth, async (req, res) => {
   const session = Sessions.get(req.params.id)
   if (!session) return res.status(404).json({ error: '세션을 찾을 수 없습니다.' })
   res.json({ ...session, members: [], member_count: 1 })
@@ -77,7 +77,7 @@ sessionsRouter.delete('/:id', requireAuth, async (req, res) => {
 })
 
 // 세션에 연결된 성취기준 조회
-sessionsRouter.get('/:id/standards', optionalAuth, async (req, res) => {
+sessionsRouter.get('/:id/standards', requireAuth, async (req, res) => {
   const data = SessionStandards.list(req.params.id)
   res.json(data)
 })

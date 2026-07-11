@@ -28,7 +28,13 @@ reportRouter.use(async (req, res, next) => {
       const role = await getMemberRole(project.workspace_id, req.user.id)
       if (!role) return res.status(403).json({ error: '이 프로젝트의 보고서에 접근 권한이 없습니다.' })
     }
-  } catch { /* Supabase 연결 실패 시 통과 */ }
+  } catch {
+    // Supabase 미설정(로컬 dev) 시에만 통과.
+    // 프로덕션/스테이징에서 DB 조회가 예외를 던진 경우엔 fail-closed(503)로 접근을 막는다.
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(503).json({ error: '접근 권한 확인 중 일시적 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' })
+    }
+  }
   next()
 })
 

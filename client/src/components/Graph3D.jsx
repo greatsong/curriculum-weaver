@@ -716,7 +716,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
       setAddedLinks(prev => new Set([...prev, key]))
       await refreshGraph()
     } catch (e) {
-      const msg = e.status === 401 ? '로그인이 필요합니다' : '링크 추가에 실패했습니다'
+      const msg = e.status === 401 ? '로그인이 필요합니다' : e.status === 403 ? '관리자만 연결을 추가할 수 있습니다.' : '링크 추가에 실패했습니다'
       setLinkAddError(msg)
     }
   }
@@ -733,7 +733,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
       setAddedLinks(newAdded)
       await refreshGraph()
     } catch (e) {
-      const msg = e.status === 401 ? '로그인이 필요합니다' : '링크 추가에 실패했습니다'
+      const msg = e.status === 401 ? '로그인이 필요합니다' : e.status === 403 ? '관리자만 연결을 추가할 수 있습니다.' : '링크 추가에 실패했습니다'
       setLinkAddError(msg)
     }
   }
