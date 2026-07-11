@@ -13,6 +13,7 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 import helmet from 'helmet'
 import cors from 'cors'
+import compression from 'compression'
 import { initStore, Standards } from './lib/store.js'
 import { precomputeEmbeddings } from './services/embeddings.js'
 import { loadSemanticIndex, ensureEmbeddingsCache } from './services/semanticSearch.js'
@@ -21,7 +22,7 @@ import { verifyTokenCached } from './middleware/auth.js'
 import { hydrateLinksFromDB } from './lib/linkService.js'
 
 // ── Rate Limiter 임포트 ──
-import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter } from './middleware/rateLimit.js'
+import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter, ipBackstopLimiter } from './middleware/rateLimit.js'
 
 // ── 라우트 임포트 ──
 import authRouter from './routes/auth.js'
@@ -301,9 +302,27 @@ app.use(cors({
 }))
 app.use(express.json({ limit: '5mb' }))
 
+// ── 응답 압축 ──
+// 그래프(실측 5.7MB→1.4MB)·메시지 목록(최대 1,000행) 등 큰 JSON 응답의 전송량을 줄인다.
+// SSE(text/event-stream)는 압축 버퍼링이 스트리밍을 깨뜨리므로 제외.
+// level 4: 기본(6) 대비 압축률 손실은 몇 %인데 CPU는 크게 절감 — 대형 그래프
+// 응답을 30명이 동시에 받아도 이벤트 루프 점유를 줄인다.
+app.use(compression({
+  level: 4,
+  filter: (req, res) => {
+    const contentType = String(res.getHeader('Content-Type') || '')
+    if (contentType.includes('text/event-stream')) return false
+    return compression.filter(req, res)
+  },
+}))
+
 // ── Rate Limiter 적용 ──
-app.use('/api', apiLimiter)           // 일반 API: 분당 120회
-app.use('/api/auth', authLimiter)     // 인증: 분당 5회 (IP당)
+// 사용자별 한도(JWT sub 키) + IP 백스톱 2중 구조 — 학교 NAT(전원 동일 IP) 대응.
+app.use('/api', ipBackstopLimiter)    // IP 백스톱: 분당 3,000회 (IP당, 플러딩 차단)
+app.use('/api', apiLimiter)           // 일반 API: 분당 120회 (사용자당)
+// 로그인/가입만 brute force 제한 (IP+이메일당) — /me·/logout은 일반 한도로 충분
+app.use('/api/auth/login', authLimiter)
+app.use('/api/auth/signup', authLimiter)
 
 // AI 채팅 스트리밍 라우트: 분당 10회 (사용자당)
 app.use('/api/chat/message', aiChatLimiter)

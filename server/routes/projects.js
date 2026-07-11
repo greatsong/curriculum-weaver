@@ -26,6 +26,29 @@ const router = Router()
 // 모든 라우트에 인증 적용
 router.use(requireAuth)
 
+// ── 프로젝트 목록 캐시 (워크스페이스별, 10초 TTL) ──
+// 수업 시작에 학급 전원(30명)이 같은 워크스페이스 목록을 동시에 열면
+// 요청마다 목록 조회 + 프로젝트별 메시지 count(N+1)가 반복된다.
+// 목록은 사실상 같은 응답이므로 10초 캐시로 흡수하고, 이 프로세스에서
+// 발생하는 생성/수정/삭제 시 즉시 무효화한다 (단일 인스턴스 전제).
+// message_count가 최대 10초 뒤처질 수 있으나 목록 구분용이라 무해.
+const PROJECT_LIST_TTL_MS = 10_000
+const projectListCache = new Map() // workspaceId → { projects, expiresAt }
+
+function getCachedProjectList(workspaceId) {
+  const hit = projectListCache.get(workspaceId)
+  if (!hit) return null
+  if (Date.now() > hit.expiresAt) {
+    projectListCache.delete(workspaceId)
+    return null
+  }
+  return hit.projects
+}
+
+function bustProjectListCache(workspaceId) {
+  if (workspaceId) projectListCache.delete(workspaceId)
+}
+
 // ============================================================
 // 워크스페이스 내 프로젝트 라우트
 // ============================================================
@@ -50,23 +73,33 @@ router.get('/workspaces/:workspaceId/projects', async (req, res) => {
       return res.status(403).json({ error: '이 워크스페이스에 접근 권한이 없습니다.' })
     }
 
-    let projects = await getProjectsByWorkspace(workspaceId)
+    // 캐시 히트 시 DB 조회·count 전부 생략 (status 필터는 캐시 위에 적용)
+    let projects = getCachedProjectList(workspaceId)
+
+    if (!projects) {
+      projects = await getProjectsByWorkspace(workspaceId)
+
+      // 메시지 수 보강 — 동일 제목 프로젝트를 목록에서 구분할 수 있게 한다(best-effort).
+      // 실패해도 목록 조회 자체는 성공시킨다.
+      projects = await Promise.all(projects.map(async (p) => {
+        try {
+          return { ...p, message_count: await countMessagesByProject(p.id) }
+        } catch {
+          return { ...p, message_count: null }
+        }
+      }))
+
+      projectListCache.set(workspaceId, {
+        projects,
+        expiresAt: Date.now() + PROJECT_LIST_TTL_MS,
+      })
+    }
 
     // status 필터
     const { status } = req.query
     if (status) {
       projects = projects.filter(p => p.status === status)
     }
-
-    // 메시지 수 보강 — 동일 제목 프로젝트를 목록에서 구분할 수 있게 한다(best-effort).
-    // 실패해도 목록 조회 자체는 성공시킨다.
-    projects = await Promise.all(projects.map(async (p) => {
-      try {
-        return { ...p, message_count: await countMessagesByProject(p.id) }
-      } catch {
-        return { ...p, message_count: null }
-      }
-    }))
 
     res.json({ projects })
   } catch (err) {
@@ -131,6 +164,7 @@ router.post('/workspaces/:workspaceId/projects', async (req, res) => {
       subjects: subjects || [],
       learner_context: learner_context || {},
     })
+    bustProjectListCache(workspaceId)
 
     // 활동 로그 기록 (실패해도 본 작업에 영향 없음)
     try {
@@ -254,6 +288,7 @@ router.put('/projects/:id', checkProjectAccess, requireWritableProject, async (r
     if (!updated) {
       return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
     }
+    bustProjectListCache(req.project?.workspace_id)
 
     // 활동 로그: 절차 변경 시 별도 기록 (실패해도 본 작업에 영향 없음)
     if (current_procedure) {
@@ -294,6 +329,7 @@ router.delete('/projects/:id', checkProjectAccess, async (req, res) => {
     }
 
     await deleteProject(req.params.id)
+    bustProjectListCache(req.project?.workspace_id)
     res.json({ message: '프로젝트가 삭제되었습니다.' })
   } catch (err) {
     console.error('[projects] 삭제 오류:', err.message)
