@@ -33,6 +33,7 @@ export default function WorkspaceDetailPage() {
   const { projects, loading: projectsLoading, fetchProjects, createProject, deleteProject } = useProjectStore()
 
   const [activeTab, setActiveTab] = useState('projects')
+  const [showSimulations, setShowSimulations] = useState(false)
   const [showCreateProject, setShowCreateProject] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
   const [projectTitle, setProjectTitle] = useState('')
@@ -96,6 +97,13 @@ export default function WorkspaceDetailPage() {
       setShowSetupWizard(true)
     }
   }, [currentWorkspace, projects, projectsLoading, searchParams, workspaceId, user])
+
+  // 시뮬레이션(데모·이어보기) 프로젝트는 별도 접이식 섹션으로 분리.
+  // 이어보기 시뮬레이션은 생성자에게만 노출 (created_by 없는 과거 데모는 기존대로 전원 노출)
+  const isSimulationProject = (p) =>
+    p.status === 'simulation' || p.status === 'generating' || p.status === 'failed' || p.title?.startsWith('[시뮬레이션')
+  const regularProjects = projects.filter((p) => !isSimulationProject(p))
+  const simulations = projects.filter((p) => isSimulationProject(p) && (!p.created_by || p.created_by === user?.id))
 
   const isOwner = currentWorkspace?.owner_id === user?.id
   const isHostOrOwner = isOwner || currentWorkspace?.my_role === 'host'
@@ -414,7 +422,7 @@ export default function WorkspaceDetailPage() {
                 <div style={{ width: 24, height: 24, border: '3px solid var(--color-border)', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
                 <span style={{ fontSize: 13 }}>로딩 중...</span>
               </div>
-            ) : projects.length === 0 ? (
+            ) : regularProjects.length === 0 ? (
               <div style={{
                 textAlign: 'center',
                 padding: '64px 24px',
@@ -430,7 +438,7 @@ export default function WorkspaceDetailPage() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {projects.map((project, idx) => {
+                {regularProjects.map((project, idx) => {
                   const proc = PROCEDURES[project.current_procedure] || PROCEDURES['T-1-1']
                   const phase = Object.values(PHASES).find((p) => p.id === proc?.phase)
                   return (
@@ -517,6 +525,121 @@ export default function WorkspaceDetailPage() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+
+            {/* 시뮬레이션 섹션 — AI 생성 참고용(읽기 전용), 접이식 */}
+            {!projectsLoading && simulations.length > 0 && (
+              <div style={{ marginTop: 28 }}>
+                <button
+                  onClick={() => setShowSimulations((v) => !v)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    width: '100%',
+                    padding: '10px 4px',
+                    background: 'none',
+                    border: 'none',
+                    borderTop: '1px solid var(--color-border)',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: 'var(--color-text-secondary)',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-sans)',
+                  }}
+                >
+                  <svg
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                    style={{ transform: showSimulations ? 'rotate(90deg)' : 'none', transition: 'transform var(--transition-fast)' }}
+                  >
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  시뮬레이션 ({simulations.length})
+                  <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--color-text-tertiary)' }}>
+                    AI 생성 참고용 · 읽기 전용
+                  </span>
+                </button>
+                {showSimulations && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+                    {simulations.map((project) => {
+                      const meta = project.learner_context?.simulation_meta
+                      const dateStr = (meta?.generated_at || project.created_at || '').slice(0, 10)
+                      const isGen = project.status === 'generating'
+                      const isFail = project.status === 'failed'
+                      const badge = isGen
+                        ? { label: '생성 중', color: '#D97706', bg: '#FEF3C7' }
+                        : isFail
+                          ? { label: '실패', color: '#DC2626', bg: '#FEE2E2' }
+                          : { label: '시뮬레이션', color: '#8B5CF6', bg: '#EDE9FE' }
+                      return (
+                        <div
+                          key={project.id}
+                          onClick={() => navigate(`/workspaces/${workspaceId}/projects/${project.id}`)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/workspaces/${workspaceId}/projects/${project.id}`) }}
+                          className="card"
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            padding: '12px 16px',
+                            cursor: 'pointer',
+                            width: '100%',
+                            opacity: isFail ? 0.7 : 1,
+                          }}
+                        >
+                          <span style={{
+                            flexShrink: 0,
+                            padding: '3px 8px',
+                            borderRadius: 'var(--radius-md)',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: badge.color,
+                            background: badge.bg,
+                          }}>
+                            {badge.label}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <h3 style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {project.title}
+                            </h3>
+                            <p style={{ fontSize: 11.5, color: 'var(--color-text-tertiary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {meta?.base_procedure_display ? `${meta.base_procedure_display}까지 작성 기준 · ` : ''}{dateStr}
+                            </p>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (confirm(`이 시뮬레이션을 삭제하시겠습니까?\n\n"${project.title}"\n참고용 복제본이므로 원본 프로젝트에는 영향이 없습니다.`)) deleteProject(project.id)
+                            }}
+                            title="시뮬레이션 삭제"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 30,
+                              height: 30,
+                              borderRadius: 'var(--radius-md)',
+                              border: 'none',
+                              background: 'none',
+                              color: 'var(--color-text-tertiary)',
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                              transition: 'all var(--transition-fast)',
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#FEE2E2'; e.currentTarget.style.color = '#DC2626' }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
