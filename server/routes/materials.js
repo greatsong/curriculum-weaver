@@ -250,8 +250,17 @@ async function assertProjectAccess(projectId, userId) {
     }
     return { ok: true, project }
   } catch {
-    // Supabase 미연결 — 개발 모드 바이패스
-    return { ok: true, project: null }
+    // Supabase 미설정(로컬 dev) 시에만 바이패스로 통과.
+    // 프로덕션/스테이징에서 DB 조회가 예외를 던진 경우엔 fail-closed(503)로 접근을 막는다.
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return { ok: true, project: null }
+    }
+    return {
+      ok: false,
+      status: 503,
+      code: 'ACCESS_CHECK_UNAVAILABLE',
+      message: '접근 권한 확인 중 일시적 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+    }
   }
 }
 

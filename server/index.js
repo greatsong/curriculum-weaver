@@ -311,6 +311,7 @@ app.use('/api/chat/stage-intro', aiChatLimiter)
 // AI 비용 큰 공개 엔드포인트 보호
 app.use('/api/demo/generate', aiChatLimiter)
 app.use('/api/standards/graph/chat', aiChatLimiter)
+app.use('/api/standards/recommend-ai', aiChatLimiter)
 
 // 파일 업로드: 분당 5회 (사용자당)
 app.use('/api/materials/upload', uploadLimiter)

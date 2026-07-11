@@ -1177,7 +1177,14 @@ export async function searchStandards(query, filters = {}) {
   if (filters.subject) dbQuery = dbQuery.eq('subject', filters.subject)
   if (filters.grade_group) dbQuery = dbQuery.eq('grade_group', filters.grade_group)
   if (filters.school_level) dbQuery = dbQuery.eq('school_level', filters.school_level)
-  if (query) dbQuery = dbQuery.or(`content.ilike.%${query}%,code.ilike.%${query}%,area.ilike.%${query}%`)
+  if (query) {
+    // PostgREST .or() 필터 주입 방어: or 문법 구분자(, . () :)와 와일드카드(*)를 제거해
+    // 검색어가 필터 조건을 위조하지 못하게 한다. (or 문자열 API는 값 바인딩이 없어 수동 정규화 필요)
+    const safeQuery = String(query).replace(/[,.()*:%\\]/g, ' ').trim()
+    if (safeQuery) {
+      dbQuery = dbQuery.or(`content.ilike.%${safeQuery}%,code.ilike.%${safeQuery}%,area.ilike.%${safeQuery}%`)
+    }
+  }
   dbQuery = dbQuery.limit(50)
   return handleResult(await dbQuery, '성취기준 검색 실패')
 }

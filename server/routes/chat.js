@@ -137,7 +137,11 @@ async function checkProjectAccess(req, res, next) {
     }
     req.project = project
   } catch {
-    // Supabase 연결 실패 시 통과 (폴백 모드)
+    // Supabase 미설정(로컬 dev) 시에만 통과(폴백 모드).
+    // 프로덕션/스테이징에서 DB 조회가 예외를 던진 경우엔 fail-closed(503)로 접근을 막는다.
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(503).json({ error: '접근 권한 확인 중 일시적 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' })
+    }
   }
   next()
 }

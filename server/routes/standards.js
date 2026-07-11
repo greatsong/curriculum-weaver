@@ -768,10 +768,11 @@ ${overviewSection}`
     console.log(`[graph/chat] 프롬프트 크기: ${systemPrompt.length}자, 포커스: ${[...focusSubjectGroups].join(',') || '전체'}, 연결: ${graph.links.length}개`)
 
     const messages = []
+    // history 각 항목의 content를 5000자로 캡 (최근 6개 × 5000자 상한)
     for (const msg of history.slice(-6)) {
       messages.push({
         role: msg.role === 'user' ? 'user' : 'assistant',
-        content: msg.content,
+        content: String(msg.content || '').slice(0, 5000),
       })
     }
     messages.push({ role: 'user', content: message })
@@ -820,8 +821,8 @@ ${overviewSection}`
   }
 })
 
-// AI가 추천한 링크를 실제로 추가하는 엔드포인트 (인증 필수)
-standardsRouter.post('/graph/add-links', requireAuth, async (req, res) => {
+// AI가 추천한 링크를 실제로 추가하는 엔드포인트 (관리자 전용)
+standardsRouter.post('/graph/add-links', requireAuth, requireAdmin, async (req, res) => {
   const { links } = req.body
   if (!Array.isArray(links) || links.length === 0) {
     return res.status(400).json({ error: '추가할 링크 배열이 필요합니다.' })
