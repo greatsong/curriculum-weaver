@@ -719,7 +719,7 @@ function renderSectionsHTML(sections) {
         }
         html += `<tr>`
         for (const col of sec.columns) {
-          html += `<td>${esc(String(row[col.name] || row[col.label] || row[col.key] || ''))}</td>`
+          html += `<td>${esc(String(lookupCell(row, col)))}</td>`
         }
         html += `</tr>`
       }
@@ -991,7 +991,7 @@ function renderSectionsMD(sections) {
           md += `| ${cells.join(' | ')} |\n`
           continue
         }
-        const cells = sec.columns.map(c => safeCell(row[c.name] || row[c.label] || row[c.key] || ''))
+        const cells = sec.columns.map(c => safeCell(lookupCell(row, c)))
         md += `| ${cells.join(' | ')} |\n`
       }
       md += `\n`
@@ -1079,6 +1079,24 @@ function itemToText(item) {
     return JSON.stringify(item)
   }
   return String(item)
+}
+
+/**
+ * 테이블 행에서 컬럼 값 조회 — 키 이름(name)·라벨(label)·key 순으로 찾되,
+ * AI가 라벨을 공백 없이 키로 쓰는 경우('제안 근거' → '제안근거')까지 흡수한다.
+ * (보드 저장 키와 스키마 라벨의 공백 차이로 보고서 표가 통째로 비던 버그 방지)
+ */
+function lookupCell(row, col) {
+  const direct = row[col.name] ?? row[col.label] ?? row[col.key]
+  if (direct != null && direct !== '') return direct
+  const candidates = [col.name, col.label, col.key].filter(Boolean)
+  for (const cand of candidates) {
+    const compact = String(cand).replace(/\s+/g, '')
+    for (const [k, v] of Object.entries(row)) {
+      if (String(k).replace(/\s+/g, '') === compact && v != null && v !== '') return v
+    }
+  }
+  return ''
 }
 
 function esc(str) {
