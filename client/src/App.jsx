@@ -7,6 +7,7 @@ import { useAuthStore } from './stores/authStore'
 
 // 즉시 로드 (핵심 페이지)
 import LoginPage from './pages/LoginPage'
+import ToastContainer from './components/ToastContainer'
 import WorkspacesPage from './pages/WorkspacesPage'
 import WorkspaceDetailPage from './pages/WorkspaceDetailPage'
 import ProjectPage from './pages/ProjectPage'
@@ -186,6 +187,8 @@ export default function App() {
         </div>
       }
     >
+      {/* 전역 토스트 — 라우트와 무관하게 항상 마운트 (자료 분석 완료 알림 등) */}
+      <ToastContainer />
       <Routes>
         {/* 홈 */}
         <Route path="/" element={<HomeRoute />} />

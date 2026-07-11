@@ -29,6 +29,7 @@ vi.mock('../../lib/socket', () => ({
 }))
 
 import { useProcedureStore } from '../procedureStore.js'
+import { useToastStore } from '../toastStore.js'
 import {
   apiUploadFile,
   apiGetMaterialAnalysis,
@@ -175,6 +176,74 @@ describe('startMaterialPolling — 종료 조건과 중복 방지', () => {
 
     // stopAll로 정리
     store.stopAllMaterialPolling()
+    vi.useRealTimers()
+  })
+})
+
+describe('startMaterialPolling — 완료/실패 전역 토스트', () => {
+  beforeEach(() => {
+    useToastStore.setState({ toasts: [] })
+  })
+
+  // 즉시 실행되는 1회차 tick만 검증한다 — 타이머를 진전시키지 않고 마이크로태스크만
+  // 흘려보내면, 토스트 자동 소멸 setTimeout(6초)이 실행되지 않아 push 직후 상태를 볼 수 있다.
+  const flushMicrotasks = async () => {
+    for (let i = 0; i < 10; i += 1) await Promise.resolve()
+  }
+
+  it('analyzing → completed 전이 시 success 토스트를 띄운다', async () => {
+    vi.useFakeTimers()
+    useProcedureStore.setState({
+      materials: [{ id: 't1', file_name: 'plan.pdf', processing_status: 'analyzing' }],
+    })
+    apiGetMaterialAnalysis.mockResolvedValue({
+      material: { id: 't1', file_name: 'plan.pdf', processing_status: 'completed' },
+      analysis: { summary: 'done' },
+    })
+
+    useProcedureStore.getState().startMaterialPolling('t1')
+    await flushMicrotasks()
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0].kind).toBe('success')
+    expect(toasts[0].message).toContain('plan.pdf')
+    vi.useRealTimers()
+  })
+
+  it('parsing → failed 전이 시 error 토스트를 띄운다', async () => {
+    vi.useFakeTimers()
+    useProcedureStore.setState({
+      materials: [{ id: 't2', file_name: 'bad.pdf', processing_status: 'parsing' }],
+    })
+    apiGetMaterialAnalysis.mockResolvedValue({
+      material: { id: 't2', file_name: 'bad.pdf', processing_status: 'failed' },
+      analysis: null,
+    })
+
+    useProcedureStore.getState().startMaterialPolling('t2')
+    await flushMicrotasks()
+
+    const toasts = useToastStore.getState().toasts
+    expect(toasts).toHaveLength(1)
+    expect(toasts[0].kind).toBe('error')
+    vi.useRealTimers()
+  })
+
+  it('이미 completed였던 자료를 다시 폴링해도 토스트가 중복되지 않는다', async () => {
+    vi.useFakeTimers()
+    useProcedureStore.setState({
+      materials: [{ id: 't3', file_name: 'done.pdf', processing_status: 'completed' }],
+    })
+    apiGetMaterialAnalysis.mockResolvedValue({
+      material: { id: 't3', file_name: 'done.pdf', processing_status: 'completed' },
+      analysis: { summary: 'done' },
+    })
+
+    useProcedureStore.getState().startMaterialPolling('t3')
+    await flushMicrotasks()
+
+    expect(useToastStore.getState().toasts).toHaveLength(0)
     vi.useRealTimers()
   })
 })

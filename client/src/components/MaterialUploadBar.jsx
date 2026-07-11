@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useState, useRef, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import {
   MATERIAL_CATEGORIES,
@@ -52,7 +52,6 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId 
     setMaterialContextIncluded,
     selectAllMaterials,
     deselectAllMaterials,
-    stopAllMaterialPolling,
   } = useProcedureStore()
 
   const [expanded, setExpanded] = useState(false)
@@ -71,12 +70,8 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId 
   const fileInputRef = useRef(null)
   const dropRef = useRef(null)
 
-  // 언마운트 시 폴링 정리
-  useEffect(() => {
-    return () => {
-      stopAllMaterialPolling()
-    }
-  }, [stopAllMaterialPolling])
+  // 폴링은 언마운트해도 유지한다 — 다른 화면으로 이동한 뒤에도 분석 완료/실패를
+  // 전역 토스트로 알리기 위함. 폴러는 완료/실패 또는 상한 시간에 자체 종료한다.
 
   const pushBanner = useCallback((kind, message) => {
     const id = `b-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
@@ -882,16 +877,19 @@ function StatusBadge({ status }) {
       label: '대기',
       className: 'bg-gray-100 text-gray-600',
       icon: <Clock size={10} />,
+      title: '분석 순서를 기다리고 있어요',
     },
     [PARSING]: {
-      label: '파싱 중',
+      label: '텍스트 추출 중',
       className: 'bg-blue-50 text-blue-700',
       icon: <Loader2 size={10} className="animate-spin" />,
+      title: '문서에서 텍스트를 읽어내는 중이에요',
     },
     [ANALYZING]: {
-      label: 'AI 분석',
-      className: 'bg-purple-50 text-purple-700',
+      label: 'AI 분석 중',
+      className: 'bg-purple-50 text-purple-700 animate-pulse',
       icon: <Sparkles size={10} />,
+      title: 'AI가 내용을 요약하고 있어요 — 보통 30초~1분 정도 걸려요',
     },
     [COMPLETED]: {
       label: '완료',
@@ -909,6 +907,7 @@ function StatusBadge({ status }) {
   return (
     <span
       className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${entry.className}`}
+      title={entry.title}
     >
       {entry.icon}
       {entry.label}
