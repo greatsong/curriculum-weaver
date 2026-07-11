@@ -68,9 +68,10 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
           if (parsed.type === 'started') {
             safeSet(() => setProgress({ phase: '복제', saved: 0, total: parsed.remaining?.length || 0 }))
           } else if (parsed.type === 'clone_complete') {
-            safeSet(() => setProgress((p) => ({ ...(p || {}), phase: 'AI 설계' })))
+            safeSet(() => setProgress((p) => ({ ...(p || {}), phase: 'AI 시뮬레이션' })))
           } else if (parsed.type === 'heartbeat') {
-            safeSet(() => setProgress((p) => ({ ...(p || {}), phase: parsed.phase || p?.phase || 'AI 설계' })))
+            // 서버 내부 라벨('이어서1차' 등)은 노출하지 않고 복제/AI 시뮬레이션 두 단계로만 표시
+            safeSet(() => setProgress((p) => ({ ...(p || {}), phase: parsed.phase === '복제' ? '복제' : 'AI 시뮬레이션' })))
           } else if (parsed.type === 'phase_complete') {
             safeSet(() => setProgress((p) => ({ ...(p || {}), saved: parsed.saved, total: parsed.total })))
           } else if (parsed.type === 'complete') {
@@ -100,23 +101,35 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
-          padding: '6px 10px',
-          borderRadius: 'var(--radius-md)',
+          gap: 7,
+          padding: '7px 14px',
+          margin: '0 4px',
+          borderRadius: 999,
           fontSize: 12.5,
-          color: '#8B5CF6',
-          background: '#8B5CF608',
-          minHeight: 44,
+          fontWeight: 500,
+          letterSpacing: '-0.01em',
+          color: '#fff',
+          background: 'linear-gradient(90deg, #8B5CF6, #3B82F6)',
+          boxShadow: '0 1px 8px rgba(139, 92, 246, 0.35)',
         }}
       >
-        <div style={{
-          width: 13, height: 13, flexShrink: 0,
-          border: '2px solid #DDD6FE', borderTopColor: '#8B5CF6',
-          borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+        <span style={{
+          width: 7, height: 7, flexShrink: 0,
+          borderRadius: '50%', background: '#fff',
+          animation: 'pulseSoft 1.2s ease-in-out infinite',
         }} />
-        <span className="hidden sm:inline">
-          {progress?.phase || '생성'} 중{progress?.total > 0 ? ` ${progress.saved}/${progress.total}` : ''}…
-        </span>
+        <span className="hidden sm:inline">{progress?.phase || '생성'} 중</span>
+        {progress?.total > 0 && (
+          <span style={{
+            padding: '1px 7px',
+            borderRadius: 999,
+            fontSize: 11,
+            fontWeight: 700,
+            background: 'rgba(255, 255, 255, 0.22)',
+          }}>
+            {progress.saved}/{progress.total}
+          </span>
+        )}
       </div>
     )
   }
