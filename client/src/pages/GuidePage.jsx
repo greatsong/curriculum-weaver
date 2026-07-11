@@ -196,7 +196,7 @@ function MockThreePanel() {
         </div>
         {/* 중: 보드 */}
         <div className="flex-1 bg-white rounded-lg border border-slate-200 p-3">
-          <div className="text-[11px] font-bold text-blue-700 mb-2">A-1-2 주제선정</div>
+          <div className="text-[11px] font-bold text-blue-700 mb-2">{getProcedureDisplayCode('A-1-2')} {PROCEDURES['A-1-2'].name}</div>
           <div className="space-y-1.5">
             <div className="text-[10px] bg-blue-50 text-blue-800 px-2 py-1.5 rounded-md">주제: 기후변화와 데이터 리터러시</div>
             <div className="text-[10px] bg-blue-50 text-blue-800 px-2 py-1.5 rounded-md">교과: 과학, 수학, 사회</div>

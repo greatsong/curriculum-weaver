@@ -14,7 +14,7 @@ import {
 import {
   PHASES, PHASE_LIST, PROCEDURES, PROCEDURE_LIST,
   BOARD_TYPES, BOARD_TYPE_LABELS, getProceduresByPhase, getProcedureDisplayCode,
-  getActiveProcedures,
+  getActiveProcedures, replaceInternalProcedureCodes,
 } from '../../shared/constants.js'
 import { BOARD_SCHEMAS } from '../../shared/boardSchemas.js'
 
@@ -675,7 +675,8 @@ export function generateHTML(data) {
 </body>
 </html>`
 
-  return html
+  // 심층 방어: 보드/대화 원문에 내부 절차 코드가 남아 있어도 최종 문서에는 표시 코드만
+  return replaceInternalProcedureCodes(html)
 }
 
 /**
@@ -970,7 +971,8 @@ export function generateMarkdown(data) {
   md += `*커리큘럼 위버 — TADDs-DIE 기반 AI 협력 수업 설계 플랫폼*\n`
   md += `*보고서 자동 생성일: ${now}*\n`
 
-  return md
+  // 심층 방어: 보드/대화 원문에 내부 절차 코드가 남아 있어도 최종 문서에는 표시 코드만
+  return replaceInternalProcedureCodes(md)
 }
 
 function renderSectionsMD(sections) {
