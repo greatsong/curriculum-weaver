@@ -4,8 +4,76 @@
  * JWT 토큰 검증 + 역할 기반 접근 제어.
  * Supabase Auth와 연동하여 사용자 인증 처리.
  */
+import crypto from 'node:crypto'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { getMemberRole } from '../lib/supabaseService.js'
+
+// ── 토큰 검증 캐시 (성능) ─────────────────────────────────────────
+// auth.getUser는 Supabase Auth로의 네트워크 왕복이라 모든 보호 요청의 고정 비용이었다
+// (2026-07-12 성능 점검: Railway↔Supabase 왕복이 요청당 수백 ms).
+// 검증 "성공" 결과만 토큰 해시 기준 60초 TTL로 캐시해 왕복을 제거한다.
+// 트레이드오프: 로그아웃·비밀번호 변경 등 토큰 폐기의 반영이 최대 60초 지연됨(수용 결정).
+// 실패 결과는 캐시하지 않는다 — 갱신 직후 토큰이 계속 거부되는 상황 방지.
+const TOKEN_CACHE_TTL_MS = 60_000
+const TOKEN_CACHE_MAX = 2_000
+const tokenCache = new Map() // sha256(token) → { user, expiresAt }
+
+function pruneTokenCache() {
+  if (tokenCache.size <= TOKEN_CACHE_MAX) return
+  const now = Date.now()
+  for (const [k, v] of tokenCache) {
+    if (v.expiresAt <= now) tokenCache.delete(k)
+  }
+  while (tokenCache.size > TOKEN_CACHE_MAX) {
+    tokenCache.delete(tokenCache.keys().next().value) // 삽입 오래된 순 제거
+  }
+}
+
+/**
+ * 토큰을 검증하고 사용자 반환 (60초 캐시). 무효 토큰이면 null, 네트워크 예외는 throw.
+ * requireAuth/optionalAuth/Socket.IO 인증이 공유한다.
+ * @param {string} token
+ * @returns {Promise<object|null>}
+ */
+export async function verifyTokenCached(token) {
+  const key = crypto.createHash('sha256').update(token).digest('base64')
+  const hit = tokenCache.get(key)
+  if (hit && hit.expiresAt > Date.now()) return hit.user
+  const { data, error } = await supabaseAdmin.auth.getUser(token)
+  const user = data?.user || null
+  if (error || !user) return null
+  tokenCache.set(key, { user, expiresAt: Date.now() + TOKEN_CACHE_TTL_MS })
+  pruneTokenCache()
+  return user
+}
+
+// ── users 프로필 upsert 스로틀 (성능) ─────────────────────────────
+// 기존엔 매 요청 동일 값을 다시 쓰는 upsert(쓰기 왕복)였다.
+// 같은 내용이면 10분에 1회만 쓰고, 프로필(이름·학교·과목)이 바뀌면 즉시 반영한다
+// (users 테이블을 읽는 소비처가 있어 신선도 보장이 필요).
+const PROFILE_TTL_MS = 10 * 60_000
+const profileCache = new Map() // userId → { sig, expiresAt }
+
+async function upsertProfileThrottled(user) {
+  const displayName = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || '교사'
+  const profile = {
+    id: user.id,
+    email: user.email,
+    display_name: displayName,
+    school_name: user.user_metadata?.school_name || '',
+    subject: user.user_metadata?.subject || '',
+  }
+  const sig = `${profile.email}|${profile.display_name}|${profile.school_name}|${profile.subject}`
+  const hit = profileCache.get(user.id)
+  if (hit && hit.sig === sig && hit.expiresAt > Date.now()) return
+  try {
+    await supabaseAdmin.from('users').upsert(profile, { onConflict: 'id', ignoreDuplicates: false })
+    profileCache.set(user.id, { sig, expiresAt: Date.now() + PROFILE_TTL_MS })
+    if (profileCache.size > 5_000) profileCache.clear() // 폭주 방지 (드묾)
+  } catch {
+    // 프로필 upsert 실패는 무시 (인증 자체는 성공) — 캐시하지 않아 다음 요청에서 재시도
+  }
+}
 
 // ── 로컬 dev 인증 바이패스 ─────────────────────────────────────────
 // 활성 조건: DEV_AUTH_BYPASS=true **그리고** NODE_ENV !== 'production' (둘 다 필수).
@@ -135,26 +203,15 @@ export async function requireAuth(req, res, next) {
   const token = authHeader.slice(7)
 
   try {
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-    if (error || !user) {
+    const user = await verifyTokenCached(token)
+    if (!user) {
       // 로컬 dev 바이패스: 더미/만료 토큰도 dev 유저로 처리
       if (await tryDevBypass(req)) return next()
       return res.status(401).json({ error: '유효하지 않은 토큰입니다.' })
     }
 
-    // users 테이블에 프로필 자동 생성 (없으면 upsert)
-    try {
-      const displayName = user.user_metadata?.display_name || user.user_metadata?.full_name || user.email?.split('@')[0] || '교사'
-      await supabaseAdmin.from('users').upsert({
-        id: user.id,
-        email: user.email,
-        display_name: displayName,
-        school_name: user.user_metadata?.school_name || '',
-        subject: user.user_metadata?.subject || '',
-      }, { onConflict: 'id', ignoreDuplicates: false })
-    } catch {
-      // 프로필 upsert 실패는 무시 (인증 자체는 성공)
-    }
+    // users 테이블에 프로필 자동 생성 — 내용이 같으면 10분 스로틀
+    await upsertProfileThrottled(user)
 
     req.user = user
     req.token = token
@@ -188,10 +245,10 @@ export async function optionalAuth(req, res, next) {
   const token = authHeader.slice(7)
 
   try {
-    const { data: { user }, error } = await supabaseAdmin.auth.getUser(token)
-    if ((error || !user) && await tryDevBypass(req)) return next()
-    req.user = error ? null : user
-    req.token = error ? null : token
+    const user = await verifyTokenCached(token)
+    if (!user && await tryDevBypass(req)) return next()
+    req.user = user
+    req.token = user ? token : null
   } catch {
     if (await tryDevBypass(req)) return next()
     req.user = null

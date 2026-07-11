@@ -606,10 +606,37 @@ chatRouter.post('/message', async (req, res) => {
 
   try {
     // 컨텍스트 로드 (Supabase 영속 저장소)
-    const designs = await getDesignsByProject(session_id).catch(() => [])
-    // '최근' 메시지를 컨텍스트로 로드. getMessages는 오름차순 range라 긴 프로젝트에서
-    // 가장 오래된 메시지만 줘서 AI가 최근 결정·제약(예: "SUNO 안 씀")을 못 보던 버그가 있었다.
-    const allMessages = await getRecentMessages(session_id, 60)
+    // 서로 독립인 6개 조회를 병렬 실행 — 직렬 왕복 누적으로 AI 첫 토큰이 늦어지던 것을 단축.
+    // 개별 실패 처리(catch)는 직렬 시절과 동일하게 유지한다:
+    // designs/standards/skips/materials는 빈 값 폴백, recentMessages/mentions 실패는 외부 catch로 전파.
+    const loadProjectMaterials = async () => {
+      try {
+        const { data: matsData, error: matsErr } = await supabaseAdmin
+          .from('materials')
+          .select('*')
+          .eq('project_id', session_id)
+          .order('created_at', { ascending: false })
+        if (matsErr) throw matsErr
+        return matsData || []
+      } catch {
+        return Materials.list(session_id) || []
+      }
+    }
+    const [designs, allMessages, standards, skippedCodes, materials, mentionedResolved] = await Promise.all([
+      getDesignsByProject(session_id).catch(() => []),
+      // '최근' 메시지를 컨텍스트로 로드. getMessages는 오름차순 range라 긴 프로젝트에서
+      // 가장 오래된 메시지만 줘서 AI가 최근 결정·제약(예: "SUNO 안 씀")을 못 보던 버그가 있었다.
+      getRecentMessages(session_id, 60),
+      getStandardsByProject(session_id).catch(() => []),
+      // 스킵된 절차 — AI의 절차 전환 제안·정합성 문구가 생략 절차를 건너뛰게 함
+      getProjectSkips(session_id)
+        .then((rows) => rows.map((sk) => sk.procedure_code))
+        .catch(() => []),
+      // 프로젝트 소속 자료 (분석 완료 + 진행 중 포함) — 멘션 자료는 mentionedResolved로 별도
+      loadProjectMaterials(),
+      // @멘션 교차 검증 (project_id 일치 항목만 통과)
+      resolveMentionedMaterials(mentionedRaw, session_id),
+    ])
 
     // 현재 절차의 대화를 우선 포함 + 최근 전체 대화도 포함.
     // (더 오래된 이전 절차의 확정 내용은 보드 요약으로 별도 주입되므로 여기선 최근성에 집중.)
@@ -625,8 +652,6 @@ chatRouter.post('/message', async (req, res) => {
     for (const m of recentGlobalMessages) mergedMap.set(m.id, m)
     const recentMessages = [...mergedMap.values()]
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-
-    const standards = await getStandardsByProject(session_id).catch(() => [])
 
     // 선택 성취기준 간 검증된 교과 연결(curriculum_links) — 분석(A)·설계(Ds) 절차에서만 주입.
     // 프로젝트 학교급(선택 성취기준 최빈값)으로 필터해 고교 프로젝트에 타 학교급 연결이 섞이지 않게 한다.
@@ -647,29 +672,7 @@ chatRouter.post('/message', async (req, res) => {
       }
     }
 
-    // 스킵된 절차 — AI의 절차 전환 제안·정합성 문구가 생략 절차를 건너뛰게 함
-    const skippedCodes = await getProjectSkips(session_id)
-      .then((rows) => rows.map((s) => s.procedure_code))
-      .catch(() => [])
-
-    // 프로젝트 소속 자료 로드 (분석 완료 + 진행 중 포함)
-    // 일반 컨텍스트 주입용 — 멘션된 자료는 mentionedMaterials로 별도 관리
-    let materials = []
-    try {
-      const { data: matsData, error: matsErr } = await supabaseAdmin
-        .from('materials')
-        .select('*')
-        .eq('project_id', session_id)
-        .order('created_at', { ascending: false })
-      if (matsErr) throw matsErr
-      materials = matsData || []
-    } catch {
-      materials = Materials.list(session_id) || []
-    }
-
-    // @멘션 교차 검증 (project_id 일치 항목만 통과)
-    let { validIds: mentionedIds, materials: mentionedMaterials } =
-      await resolveMentionedMaterials(mentionedRaw, session_id)
+    let { validIds: mentionedIds, materials: mentionedMaterials } = mentionedResolved
 
     // ── 텍스트 스캔 폴백 ──
     // 교사가 드롭다운 없이 "@파일명"을 직접 타이핑한 경우에도 멘션으로 인식.
