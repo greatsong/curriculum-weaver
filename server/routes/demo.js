@@ -16,6 +16,7 @@ import {
   createProject, updateProject, upsertDesign, createMessage, getMemberRole, addStandardToProject, resolveStandardId,
   getProject, getDesignsByProject, getMessages, getStandardsByProject,
   getSimulationsBySource, getMaterialRowsByProject, createMaterialRowsBulk, createMessagesBulk,
+  getProjectSkips,
 } from '../lib/supabaseService.js'
 import { isReadOnlyProject } from '../lib/projectGuards.js'
 import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_LIST, getProcedureDisplayCode } from 'curriculum-weaver-shared/constants.js'
@@ -920,6 +921,14 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
   const siblings = await getSimulationsBySource(sourceProjectId)
   if (siblings.some((s) => s.status === 'generating')) {
     return res.status(409).json({ error: '이 프로젝트의 시뮬레이션이 이미 생성 중입니다. 완료 후 다시 시도해주세요.' })
+  }
+
+  // 스킵 프로젝트 차단 가드 — 쿼터 소모 전에 확인.
+  // 잔여 판정·복제·생성 프롬프트가 스킵을 인식하지 못해, 팀이 생략한 절차를
+  // AI가 되살려 채우게 된다. 전면 지원은 3곳 수정이 필요한 별도 작업 (v1은 차단).
+  const skips = await getProjectSkips(sourceProjectId)
+  if (skips.length > 0) {
+    return res.status(400).json({ error: '생략된 절차가 있는 프로젝트는 이어서 시뮬레이션을 지원하지 않습니다. 건너뛰기를 해제한 뒤 다시 시도해주세요.' })
   }
 
   // 잔여 절차 판정 — 쿼터 소모 전에 확인

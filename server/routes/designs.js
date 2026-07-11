@@ -9,15 +9,21 @@
  * - GET /api/projects/:projectId/designs/:procedureCode            — 특정 절차 설계 조회
  * - PUT /api/projects/:projectId/designs/:procedureCode            — 설계 upsert (내용 저장)
  * - PUT /api/projects/:projectId/designs/:procedureCode/status     — save_status 변경
+ * - POST /api/projects/:projectId/procedures/:procedureCode/skip   — 절차 건너뛰기 (host/owner)
+ * - DELETE /api/projects/:projectId/procedures/:procedureCode/skip — 건너뛰기 해제 (host/owner)
  */
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth.js'
 import {
   getProject, getDesignsByProject, getDesign,
   upsertDesign, updateDesignStatus,
+  getProjectSkips, addProjectSkip, removeProjectSkip, updateProject,
   getMemberRole, logActivity,
 } from '../lib/supabaseService.js'
-import { PROCEDURES } from 'curriculum-weaver-shared/constants.js'
+import {
+  PROCEDURES, isProcedureSkippable, getActiveProcedures,
+  getNextActiveProcedure, getProcedureLabel,
+} from 'curriculum-weaver-shared/constants.js'
 import { requireWritableProject } from '../lib/projectGuards.js'
 
 const router = Router()
@@ -257,6 +263,144 @@ router.put('/projects/:projectId/designs/:procedureCode/status', checkDesignAcce
   } catch (err) {
     console.error('[designs] 상태 변경 오류:', err.message)
     res.status(500).json({ error: '설계 상태 변경에 실패했습니다.' })
+  }
+})
+
+// ── 절차 스킵 (건너뛰기) ──
+// 팀 결정으로 절차를 생략 표시한다. 보드 내용은 절대 건드리지 않는다.
+// 스킵/해제 대칭으로 host/owner 전용 — locked 정책(위 status 라우트)과 동일.
+
+/**
+ * 스킵 후 팀 커서 보정값 계산 (순수 함수 — 테스트 대상).
+ * 커서가 스킵된 절차 위에 있을 때만 보정: 다음 활성 절차,
+ * 없으면(뒤가 전부 스킵/끝) 앞쪽의 마지막 활성 절차.
+ * @param {string} currentProcedure - 현재 팀 커서
+ * @param {string} skippedProcedure - 방금 스킵된 절차
+ * @param {string[]} skippedCodes - 전체 스킵 코드 (방금 것 포함)
+ * @returns {string|null} 보정할 커서 코드 (보정 불필요/불가면 null)
+ */
+export function computeSkipCursorCorrection(currentProcedure, skippedProcedure, skippedCodes) {
+  if (currentProcedure !== skippedProcedure) return null
+  const next = getNextActiveProcedure(skippedProcedure, skippedCodes)
+  if (next) return next.code
+  const baseOrder = PROCEDURES[skippedProcedure]?.order
+  if (baseOrder === undefined) return null
+  const prev = [...getActiveProcedures(skippedCodes)].reverse().find((p) => p.order < baseOrder)
+  return prev ? prev.code : null
+}
+
+/**
+ * 스킵 변경 공통 후처리: 활동 로그 + 소켓 브로드캐스트 + 응답.
+ * 이벤트에 전체 스킵 목록과 (보정됐을 수 있는) 커서를 실어 클라 상태를 원샷 동기화한다.
+ */
+async function finishSkipChange(req, res, { actionType, procedureCode, currentProcedure }) {
+  const { projectId } = req.params
+  const skips = await getProjectSkips(projectId)
+  const skippedCodes = skips.map((s) => s.procedure_code)
+
+  try {
+    await logActivity({
+      project_id: projectId,
+      user_id: req.user.id,
+      action_type: actionType,
+      procedure_code: procedureCode,
+      after_data: { skipped_procedures: skippedCodes },
+    })
+  } catch (logErr) {
+    console.warn('[designs] 스킵 활동 로그 기록 실패 (본 작업은 성공):', logErr.message)
+  }
+
+  const io = req.app.get('io')
+  if (io) {
+    io.to(projectId).emit('procedure_skips_changed', {
+      projectId,
+      skips,
+      current_procedure: currentProcedure,
+      changedBy: req.user.id,
+    })
+  }
+
+  res.json({ skips, current_procedure: currentProcedure })
+}
+
+/**
+ * POST /api/projects/:projectId/procedures/:procedureCode/skip
+ * 절차 건너뛰기. 이미 스킵돼 있으면 no-op (멱등).
+ *
+ * - 코어 절차(UNSKIPPABLE_PROCEDURES)·prep은 403
+ * - 스킵 대상이 팀 커서(current_procedure)면 다음 활성 절차로 자동 보정
+ *
+ * @body {{ reason?: string }} 생략 사유 (선택, 보고서에 병기)
+ * @returns {{ skips: object[], current_procedure: string }}
+ */
+router.post('/projects/:projectId/procedures/:procedureCode/skip', checkDesignAccess, requireWritableProject, async (req, res) => {
+  try {
+    const { projectId, procedureCode } = req.params
+
+    if (!['owner', 'host'].includes(req.memberRole)) {
+      return res.status(403).json({ error: '절차 건너뛰기는 host 또는 owner만 가능합니다.' })
+    }
+    if (!PROCEDURES[procedureCode]) {
+      return res.status(400).json({ error: '유효하지 않은 절차 코드입니다.' })
+    }
+    if (!isProcedureSkippable(procedureCode)) {
+      return res.status(403).json({
+        error: `${getProcedureLabel(procedureCode)} 절차는 수업 설계의 핵심 절차라 건너뛸 수 없습니다.`,
+      })
+    }
+
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 500) : null
+    await addProjectSkip(projectId, procedureCode, req.user.id, reason || null)
+
+    // 팀 커서가 스킵된 절차 위에 있으면 다음 활성 절차로 보정
+    let currentProcedure = req.project.current_procedure
+    if (currentProcedure === procedureCode) {
+      const skips = await getProjectSkips(projectId)
+      const corrected = computeSkipCursorCorrection(
+        currentProcedure, procedureCode, skips.map((s) => s.procedure_code)
+      )
+      if (corrected) {
+        await updateProject(projectId, { current_procedure: corrected })
+        currentProcedure = corrected
+      }
+    }
+
+    await finishSkipChange(req, res, {
+      actionType: 'procedure_skipped', procedureCode, currentProcedure,
+    })
+  } catch (err) {
+    console.error('[designs] 절차 스킵 오류:', err.message)
+    res.status(500).json({ error: '절차 건너뛰기에 실패했습니다.' })
+  }
+})
+
+/**
+ * DELETE /api/projects/:projectId/procedures/:procedureCode/skip
+ * 건너뛰기 해제. 스킵돼 있지 않으면 no-op (멱등). 커서는 건드리지 않는다.
+ *
+ * @returns {{ skips: object[], current_procedure: string }}
+ */
+router.delete('/projects/:projectId/procedures/:procedureCode/skip', checkDesignAccess, requireWritableProject, async (req, res) => {
+  try {
+    const { projectId, procedureCode } = req.params
+
+    if (!['owner', 'host'].includes(req.memberRole)) {
+      return res.status(403).json({ error: '건너뛰기 해제는 host 또는 owner만 가능합니다.' })
+    }
+    if (!PROCEDURES[procedureCode]) {
+      return res.status(400).json({ error: '유효하지 않은 절차 코드입니다.' })
+    }
+
+    await removeProjectSkip(projectId, procedureCode)
+
+    await finishSkipChange(req, res, {
+      actionType: 'procedure_unskipped',
+      procedureCode,
+      currentProcedure: req.project.current_procedure,
+    })
+  } catch (err) {
+    console.error('[designs] 스킵 해제 오류:', err.message)
+    res.status(500).json({ error: '건너뛰기 해제에 실패했습니다.' })
   }
 })
 

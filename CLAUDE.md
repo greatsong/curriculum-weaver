@@ -35,6 +35,21 @@ curriculum-weaver/
 - `scripts/migrateLinksToDB.js` — generatedLinks.js → curriculum_links 테이블 마이그레이션
 - `supabase/migrations/` — 15개 테이블 스키마 + RLS + Realtime
 
+## 절차 스킵(건너뛰기) 시스템 (2026-07-11)
+
+팀이 불필요한 절차를 생략 표시하는 기능. **보드 내용은 절대 건드리지 않는다** — 스킵은 표시일 뿐, 해제하면 원상복구.
+
+- **저장**: `project_procedure_skips` 테이블(00023) — 스킵=INSERT, 해제=DELETE (행 단위 원자성, 감사 이력 내장)
+- **관문 함수** (`shared/constants.js`): `UNSKIPPABLE_PROCEDURES`(코어 5: T-1-1·T-2-1·A-1-2·A-2-1·A-2-2 — 보고서·AI가 하드코딩 참조), `isProcedureSkippable`, `getActiveProcedures`, `getNextActiveProcedure`. **스킵 인식이 필요한 곳은 `PROCEDURE_LIST` 직접 순회 금지, 반드시 관문 함수 경유** (직접 순회 grep으로 감사 가능)
+- **API**: `POST/DELETE /api/projects/:id/procedures/:code/skip` (host/owner 전용, 코어 403, 멱등). 스킵 대상이 팀 커서면 다음 활성 절차로 자동 보정. `GET /projects/:id` 응답에 `skipped_procedures` 포함
+- **실시간**: `procedure_skips_changed` 소켓 이벤트 (서버 브로드캐스트, designs.js) → procedureStore가 구독
+- **AI**: `buildSystemPrompt({ skippedCodes })` — procedure_advance가 생략 절차를 건너뜀, [생략된 절차] 섹션 주입, 정합성 점검은 "(팀 결정으로 생략됨)" 표기. procedure-intro는 스킵 절차 400
+- **보고서**: procedureStatus 'skipped' 분기, 진행률 분모=활성 절차 수, 본문에 "팀 합의로 생략(사유)" 블록
+- **데모**: 스킵 프로젝트는 이어서 시뮬레이션 400 차단 (잔여판정·복제·프롬프트가 스킵 미인식 — 전면 지원은 별도 작업)
+- **UI**: ProcedureCanvas 헤더 버튼(host) + 생략 배너 + 읽기전용, ProcedureNav 취소선·분모 제외, 스킵 절차 클릭=로컬 열람만(커서 PATCH 안 함). 진행률·stale 체인에서 스킵 제외
+- **명칭 규칙**: 사용자 노출 문구는 반드시 displayCode(`getProcedureLabel`/`getProcedureDisplayCode`) — 내부 코드(T-1-1)는 DB·API 전용
+- 주의: DesignBoard.jsx·StageNav.jsx는 **미사용 레거시**(import 0건)라 스킵 미반영. WorkspaceDetailPage·HostSetupWizard의 `hiddenProcedures` 설정 UI는 **소비처 없는 유령 설정**(별도 정리 필요, 스킵과 다른 개념)
+
 ## 성취기준 데이터 정본 (2026-06-12 일원화)
 
 성취기준 데이터는 **`server/data/standards.js` (`ALL_STANDARDS`, 4,856개 code)** 가 **정본**이다.

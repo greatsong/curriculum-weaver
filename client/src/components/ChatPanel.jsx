@@ -111,7 +111,7 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
   const clearStageAdvance = useChatStore((s) => s.clearStageAdvance)
   const openIntroModal = useChatStore((s) => s.openIntroModal)
   const closeIntroModal = useChatStore((s) => s.closeIntroModal)
-  const { currentStep, getCurrentStep, materials, uploadMaterial, getSelectedMaterialIds } = useProcedureStore()
+  const { currentStep, getCurrentStep, materials, uploadMaterial, getSelectedMaterialIds, skippedProcedures } = useProcedureStore()
   const [input, setInput] = useState('')
   const [aiModel, setAiModel] = useState(() => localStorage.getItem('cw_ai_model') || 'fast')
   const scrollRef = useRef(null)
@@ -401,10 +401,13 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
   const advance = procedureAdvanceSuggestion || stageAdvanceSuggestion
   // 이동 버튼 표시 안전망: 다음 절차 코드를 확정하고, 실제 존재하는 절차일 때만 카드를 노출한다.
   // (코드/이름이 비면 "(으)로 이동"만 남는 '제목 없는 오류' 버튼이 되므로 아예 렌더하지 않는다.)
+  // 생략(스킵)된 절차로의 이동 제안도 차단 — 서버가 스킵을 건너뛰어 제안하지만,
+  // 과거 대화에 남은 옛 제안 카드가 스킵 이후에도 살아 있을 수 있다 (심층 방어).
   const advanceCode = advance ? (advance.next_procedure || advance.next_code || advance.next_stage || '') : ''
   const advanceProc = advanceCode ? PROCEDURES[advanceCode] : null
+  const advanceIsSkipped = (skippedProcedures || []).some((s) => s.procedure_code === advanceCode)
   const advanceName = advanceProc?.name || advance?.next_name || ''
-  const canAdvance = !!advanceProc
+  const canAdvance = !!advanceProc && !advanceIsSkipped
 
   return (
     <div
