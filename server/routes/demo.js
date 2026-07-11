@@ -907,7 +907,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
     return res.status(404).json({ error: '원본 프로젝트를 찾을 수 없습니다.' })
   }
   if (isReadOnlyProject(original)) {
-    return res.status(400).json({ error: '시뮬레이션·생성 중·실패 프로젝트에서는 이어보기를 시작할 수 없습니다.' })
+    return res.status(400).json({ error: '시뮬레이션·생성 중·실패 프로젝트에서는 시뮬레이션을 시작할 수 없습니다.' })
   }
 
   // 멤버십 검증 (IDOR 방지)
@@ -919,7 +919,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
   // 동시 생성 가드: 원본당 generating 1개
   const siblings = await getSimulationsBySource(sourceProjectId)
   if (siblings.some((s) => s.status === 'generating')) {
-    return res.status(409).json({ error: '이 프로젝트의 이어보기 시뮬레이션이 이미 생성 중입니다. 완료 후 다시 시도해주세요.' })
+    return res.status(409).json({ error: '이 프로젝트의 시뮬레이션이 이미 생성 중입니다. 완료 후 다시 시도해주세요.' })
   }
 
   // 잔여 절차 판정 — 쿼터 소모 전에 확인
@@ -972,7 +972,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
     const nowIso = new Date().toISOString()
     const clonePayload = {
       title: `[시뮬레이션 #${seq}] ${original.title}`.slice(0, 150),
-      description: `원본 "${original.title}" — ${baseDisplay} 시점 기준 이어보기 시뮬레이션 (${nowIso.slice(0, 10)})`,
+      description: `원본 "${original.title}" — ${baseDisplay} 시점부터 이어간 시뮬레이션 (${nowIso.slice(0, 10)})`,
       grade: original.grade || null,
       subjects: original.subjects || null,
       learner_context: {

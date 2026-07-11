@@ -27,7 +27,7 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
   const start = async () => {
     if (runningRef.current) return
     const ok = confirm(
-      '현재 상태를 복제한 뒤, 남은 절차를 AI가 이어서 설계한 참고용 시뮬레이션을 만듭니다.\n' +
+      '지금까지 작성된 내용을 복제한 뒤, 남은 절차를 AI가 이어서 설계한 참고용 시뮬레이션을 만듭니다.\n' +
       '원본 프로젝트는 변경되지 않습니다. (일일 데모 한도 1회 차감)\n\n시작할까요?'
     )
     if (!ok) return
@@ -75,7 +75,7 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
             safeSet(() => setProgress((p) => ({ ...(p || {}), saved: parsed.saved, total: parsed.total })))
           } else if (parsed.type === 'complete') {
             terminal = true
-            pushToast({ kind: 'success', message: '이어보기 시뮬레이션이 완성됐어요. 새 시뮬레이션으로 이동합니다.' })
+            pushToast({ kind: 'success', message: '시뮬레이션이 완성됐어요. 새 시뮬레이션으로 이동합니다.' })
             navigate(`/workspaces/${parsed.workspaceId || workspaceId}/projects/${parsed.projectId}`)
           } else if (parsed.type === 'partial_failure') {
             terminal = true
@@ -86,7 +86,7 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
         }
       }
     } catch (err) {
-      pushToast({ kind: 'error', message: err.message || '이어서 시뮬레이션 생성 중 오류가 발생했습니다.' })
+      pushToast({ kind: 'error', message: err.message || '시뮬레이션 생성 중 오류가 발생했습니다.' })
     } finally {
       runningRef.current = false
       safeSet(() => { setRunning(false); setProgress(null) })
@@ -96,7 +96,7 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
   if (running) {
     return (
       <div
-        title="이어보기 시뮬레이션 생성 중 — 다른 작업을 계속하셔도 됩니다"
+        title="시뮬레이션 생성 중 — 다른 작업을 계속하셔도 됩니다"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -124,7 +124,7 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
   return (
     <button
       onClick={start}
-      title="이어보기 시뮬레이션 — 현재 상태를 복제한 뒤 남은 절차를 AI가 이어서 설계 (원본은 변경되지 않음)"
+      title="여기부터 시뮬레이션 — 지금까지의 내용을 복제한 뒤 남은 절차를 AI가 이어서 설계 (원본은 변경되지 않음)"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -148,7 +148,7 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polygon points="5 3 19 12 5 21 5 3" />
       </svg>
-      <span className="hidden sm:inline">이어보기</span>
+      <span className="hidden sm:inline">여기부터 시뮬레이션</span>
     </button>
   )
 }
