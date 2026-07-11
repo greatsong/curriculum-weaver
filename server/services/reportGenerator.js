@@ -597,7 +597,7 @@ export function generateHTML(data) {
       <span class="proc-status status-empty">수업 후 예정</span>
     </div>
     <div class="proc-desc">${esc(proc.description)}</div>
-    <p style="color:#9b9a97;font-size:13px;margin:8px 0 0;">실제 수업(2026-07-10) 이후에 작성 예정입니다.</p>
+    <p style="color:#9b9a97;font-size:13px;margin:8px 0 0;">실제 수업 이후에 작성 예정입니다.</p>
   </div>`
         }
         continue
@@ -900,7 +900,7 @@ export function generateMarkdown(data) {
       // 빈 절차는 건너뛰되, E-1-1(수업 성찰)만 '수업 후 예정' 자리표시로 남긴다.
       if (!sections) {
         if (proc.code === 'E-1-1') {
-          md += `### ${getProcedureDisplayCode(proc.code) || proc.code}: ${proc.name} [수업 후 예정]\n\n> ${proc.description}\n\n실제 수업(2026-07-10) 이후에 작성 예정입니다.\n\n`
+          md += `### ${getProcedureDisplayCode(proc.code) || proc.code}: ${proc.name} [수업 후 예정]\n\n> ${proc.description}\n\n실제 수업 이후에 작성 예정입니다.\n\n`
         }
         continue
       }
