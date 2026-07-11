@@ -53,6 +53,7 @@ const mem = {
   invites: new Map(),     // token -> invite
   standards: new Map(),
   projectStandards: new Map(), // projectId -> [{ standard_id, is_primary, added_by, added_at }]
+  skips: new Map(),       // projectId -> [{ procedure_code, reason, skipped_by, created_at }]
 }
 
 function uuid() { return crypto.randomUUID() }
@@ -554,6 +555,84 @@ export async function updateDesignStatus(projectId, procedureCode, saveStatus) {
       .single(),
     '설계 상태 변경 실패'
   )
+}
+
+// ── 절차 스킵 (project_procedure_skips) ──
+// 스킵 = INSERT, 해제 = DELETE. 행 단위 원자성이라 동시 변경 경합 없음.
+// 보드 내용(designs)은 절대 건드리지 않는다 — 스킵은 표시일 뿐.
+
+/**
+ * 프로젝트의 스킵 목록 조회
+ * @param {string} projectId
+ * @returns {Promise<Array<{procedure_code: string, reason: string|null, skipped_by: string|null, created_at: string}>>}
+ */
+export async function getProjectSkips(projectId) {
+  const sb = getSupabase()
+  if (!sb) {
+    return mem.skips.get(projectId) || []
+  }
+  const result = await sb.from('project_procedure_skips')
+    .select('procedure_code, reason, skipped_by, created_at')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: true })
+  return handleResult(result, '스킵 목록 조회 실패') || []
+}
+
+/**
+ * 절차 스킵 추가 — 이미 스킵돼 있으면 기존 행 반환 (멱등).
+ * 코어 절차 금지 검증은 라우트에서 수행 (isProcedureSkippable).
+ * @param {string} projectId
+ * @param {string} procedureCode - 내부 절차 코드
+ * @param {string} userId - 스킵한 사용자
+ * @param {string} [reason] - 생략 사유 (선택)
+ * @returns {Promise<object>}
+ */
+export async function addProjectSkip(projectId, procedureCode, userId, reason) {
+  const sb = getSupabase()
+  if (!sb) {
+    const list = mem.skips.get(projectId) || []
+    const existing = list.find((s) => s.procedure_code === procedureCode)
+    if (existing) return existing
+    const row = { procedure_code: procedureCode, reason: reason || null, skipped_by: userId, created_at: now() }
+    mem.skips.set(projectId, [...list, row])
+    return row
+  }
+  // UNIQUE(project_id, procedure_code) 충돌 시 기존 행 유지 (멱등) — reason은 최초 스킵 사유를 보존
+  const result = await sb.from('project_procedure_skips')
+    .upsert(
+      { project_id: projectId, procedure_code: procedureCode, reason: reason || null, skipped_by: userId },
+      { onConflict: 'project_id,procedure_code', ignoreDuplicates: true }
+    )
+    .select()
+    .maybeSingle()
+  const row = handleResult(result, '절차 스킵 실패')
+  if (row) return row
+  // ignoreDuplicates로 기존 행이 반환되지 않은 경우 조회로 보완
+  const skips = await getProjectSkips(projectId)
+  return skips.find((s) => s.procedure_code === procedureCode)
+}
+
+/**
+ * 절차 스킵 해제 — 스킵돼 있지 않으면 no-op (멱등).
+ * @param {string} projectId
+ * @param {string} procedureCode - 내부 절차 코드
+ * @returns {Promise<boolean>} 실제로 삭제됐는지
+ */
+export async function removeProjectSkip(projectId, procedureCode) {
+  const sb = getSupabase()
+  if (!sb) {
+    const list = mem.skips.get(projectId) || []
+    const next = list.filter((s) => s.procedure_code !== procedureCode)
+    mem.skips.set(projectId, next)
+    return next.length !== list.length
+  }
+  const result = await sb.from('project_procedure_skips')
+    .delete()
+    .eq('project_id', projectId)
+    .eq('procedure_code', procedureCode)
+    .select()
+  const rows = handleResult(result, '절차 스킵 해제 실패')
+  return Array.isArray(rows) && rows.length > 0
 }
 
 /**

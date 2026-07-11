@@ -188,6 +188,50 @@ export const PROCEDURE_LIST = Object.entries(PROCEDURES)
   .sort((a, b) => a.order - b.order)
 
 /**
+ * 스킵(건너뜀) 금지 절차 — 보고서·AI 파이프라인이 하드코딩 참조하는 코어.
+ * T-1-1(T-1 비전)·T-2-1(T-3 역할)·A-1-2(A-2 주제)·A-2-1(A-3 성취기준)·A-2-2(A-4 목표).
+ * 이 목록을 줄이려면 reportGenerator designMap·supabaseService A-2-1 게이트키퍼 동반 수정 필요.
+ * @type {string[]}
+ */
+export const UNSKIPPABLE_PROCEDURES = ['T-1-1', 'T-2-1', 'A-1-2', 'A-2-1', 'A-2-2']
+
+/**
+ * 해당 절차를 스킵할 수 있는지 — 코어 절차와 prep(준비)은 스킵 불가.
+ * @param {string} code - 내부 절차 코드
+ * @returns {boolean}
+ */
+export function isProcedureSkippable(code) {
+  if (!PROCEDURES[code]) return false
+  if (code === 'prep') return false
+  return !UNSKIPPABLE_PROCEDURES.includes(code)
+}
+
+/**
+ * 활성(스킵되지 않은) 절차 목록 — 진행률 분모·네비게이션·AI 절차 계산의 단일 관문.
+ * PROCEDURE_LIST를 직접 순회하지 말고 스킵 인식이 필요한 곳은 반드시 이 함수를 쓸 것.
+ * @param {string[]} [skippedCodes] - 스킵된 내부 절차 코드 배열
+ * @returns {Array<{code: string, phase: string, name: string, description: string, order: number}>}
+ */
+export function getActiveProcedures(skippedCodes = []) {
+  if (!skippedCodes || skippedCodes.length === 0) return PROCEDURE_LIST
+  const skipped = new Set(skippedCodes)
+  return PROCEDURE_LIST.filter((p) => !skipped.has(p.code))
+}
+
+/**
+ * 주어진 절차의 다음 활성(스킵되지 않은) 절차 — AI 절차 전환 제안·커서 자동 보정용.
+ * @param {string} code - 기준 내부 절차 코드
+ * @param {string[]} [skippedCodes] - 스킵된 내부 절차 코드 배열
+ * @returns {{code: string, phase: string, name: string, order: number} | null} 다음 활성 절차 (없으면 null)
+ */
+export function getNextActiveProcedure(code, skippedCodes = []) {
+  const baseOrder = PROCEDURES[code]?.order
+  if (baseOrder === undefined) return null
+  const skipped = new Set(skippedCodes || [])
+  return PROCEDURE_LIST.find((p) => p.order > baseOrder && !skipped.has(p.code)) || null
+}
+
+/**
  * UI 표시용 절차 코드 반환 — 내부 코드(T-1-1)는 노출하지 않고 displayCode(T-1)만.
  * displayCode 없는 절차(prep)는 빈 문자열 (이름만 표시).
  * @param {string} code - 내부 절차 코드
