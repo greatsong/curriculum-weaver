@@ -699,7 +699,14 @@ export function resolveSchoolLevel(std) {
 }
 
 // ─── 성취기준 연결(그래프) ───
+// 그래프 응답 캐시 무효화용 버전 카운터 — 링크 컬렉션이 바뀔 때마다 증가
+let _linksVersion = 1
+
 export const StandardLinks = {
+  /** 링크 컬렉션 버전 (변경 시 증가) — routes/standards.js의 /graph 메모이즈 키 */
+  version: () => _linksVersion,
+  bumpVersion: () => { _linksVersion += 1 },
+
   list: () => [...standardLinks.values()],
 
   /**
@@ -709,6 +716,7 @@ export const StandardLinks = {
    * @returns {{ loaded: number, skipped: number }}
    */
   replaceAll: (rows) => {
+    _linksVersion += 1
     const codeToStd = new Map()
     for (const [, s] of standards) codeToStd.set(s.code, s)
     const typeSim = { same_concept: 0.9, prerequisite: 0.85, cross_subject: 0.7 }
@@ -840,6 +848,7 @@ export const StandardLinks = {
   },
 
   addBulk: (items) => {
+    _linksVersion += 1
     // 기존 링크 인덱스 생성 (양방향 중복 방지)
     const existingEdges = new Set()
     for (const [, l] of standardLinks) {

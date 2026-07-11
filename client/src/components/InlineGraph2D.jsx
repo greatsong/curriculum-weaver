@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ForceGraph2D from 'react-force-graph-2d'
 import { X, ChevronRight, RotateCcw } from 'lucide-react'
 import { apiGet } from '../lib/api'
+import { fetchGraphData } from '../lib/graphDataCache'
 
 const SUBJECT_COLORS = {
   '과학': '#16a34a', '수학': '#2563eb', '국어': '#dc2626',
@@ -57,7 +58,7 @@ export default function InlineGraph2D({ subjects = [], showAllLinks = false }) {
   useEffect(() => {
     let cancelled = false
     const statusParam = showAllLinks ? 'all' : 'published'
-    apiGet(`/api/standards/graph?status=${statusParam}`).then(data => {
+    fetchGraphData(statusParam).then(data => {
       if (!cancelled) { setGraphData(data); setLoading(false) }
     }).catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }

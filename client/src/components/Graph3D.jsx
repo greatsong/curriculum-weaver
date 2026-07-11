@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
 import { Search, X, RotateCcw, ChevronLeft, ChevronRight, Link2, Send, MessageCircle, List, Plus, Check, Crosshair, HelpCircle, Sparkles } from 'lucide-react'
 import { apiGet, apiPost, API_BASE, getHeaders } from '../lib/api'
+import { fetchGraphData, invalidateGraphCache } from '../lib/graphDataCache'
 import { fixEmphasisFlanking } from '../lib/markdownFix'
 import Logo from './Logo'
 
@@ -142,16 +143,12 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
   // 그래프 데이터 로드 (cold start 대비 재시도)
   useEffect(() => {
     let cancelled = false
-    const load = async (retries = 2) => {
+    const load = async () => {
       try {
-        const data = await apiGet('/api/standards/graph')
+        // 공유 캐시 사용 (콜드스타트 재시도 2회 내장) — 모드 전환·재방문 시 재다운로드 방지
+        const data = await fetchGraphData('published')
         if (!cancelled) setGraphData(data)
       } catch (e) {
-        if (!cancelled && retries > 0) {
-          console.warn(`그래프 로드 재시도 (남은 ${retries}회)...`)
-          await new Promise(r => setTimeout(r, 2000))
-          return load(retries - 1)
-        }
         console.error('그래프 로드 실패:', e)
       }
       if (!cancelled) setLoading(false)
@@ -716,6 +713,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
     setLinkAddError('')
     try {
       await apiPost('/api/standards/graph/add-links', { links: [link] })
+      invalidateGraphCache()
       setAddedLinks(prev => new Set([...prev, key]))
       await refreshGraph()
     } catch (e) {
@@ -731,6 +729,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
     setLinkAddError('')
     try {
       await apiPost('/api/standards/graph/add-links', { links: toAdd })
+      invalidateGraphCache()
       const newAdded = new Set(addedLinks)
       toAdd.forEach(l => newAdded.add(`${l.source}-${l.target}`))
       setAddedLinks(newAdded)

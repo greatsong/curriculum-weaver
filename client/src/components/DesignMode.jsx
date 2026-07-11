@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { X, HelpCircle } from 'lucide-react'
 import { apiGet } from '../lib/api'
+import { fetchGraphData } from '../lib/graphDataCache'
 import Logo from './Logo'
 import DesignModeCoach from './DesignModeCoach'
 import PairLens from './lenses/PairLens'
@@ -68,7 +69,7 @@ export default function DesignMode() {
     let cancelled = false
     setLoading(true)
     const status = showAllLinks ? 'all' : 'published'
-    apiGet(`/api/standards/graph?status=${status}`)
+    fetchGraphData(status)
       .then(data => { if (!cancelled) setGraphData(data) })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false) })
