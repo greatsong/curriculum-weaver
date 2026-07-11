@@ -127,15 +127,17 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
   }, [chatMessages, chatStreamingText])
 
   // 컨테이너 크기 감지
+  // loading 중에는 컨테이너가 렌더되지 않으므로, 로딩 완료 후 다시 실행해 observer를 부착
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
+    setDimensions({ width: el.clientWidth || 800, height: Math.max(el.clientHeight, 400) })
     const observer = new ResizeObserver(([entry]) => {
       setDimensions({ width: entry.contentRect.width, height: Math.max(entry.contentRect.height, 400) })
     })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [])
+  }, [loading])
 
   // 그래프 데이터 로드 (cold start 대비 재시도)
   useEffect(() => {
@@ -841,8 +843,8 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
           </div>
         </div>
 
-        {/* 교과 범례 (멀티 셀렉트) */}
-        <div className="flex gap-x-1 gap-y-0.5 px-3 py-1.5 bg-gray-800/80 border-b border-gray-700/50 text-[11px] z-10 shrink-0 overflow-x-auto">
+        {/* 교과 범례 (멀티 셀렉트) — 데스크톱은 줄바꿈으로 전체 표시, 모바일은 가로 스크롤 */}
+        <div className="flex sm:flex-wrap gap-x-1 gap-y-0.5 px-3 py-1.5 bg-gray-800/80 border-b border-gray-700/50 text-[11px] z-10 shrink-0 overflow-x-auto sm:overflow-x-visible">
           {subjects.map(s => {
             const isActive = selectedSubjects.has(s)
             return (
