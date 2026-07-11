@@ -482,7 +482,7 @@ export default function WorkspaceDetailPage() {
                         </h3>
                         <p style={{ fontSize: 12, color: 'var(--color-text-tertiary)', margin: 0, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                          <span>{proc?.name || '공동 비전 설정'}</span>
+                          <span>{proc?.name || PROCEDURES['T-1-1']?.name || ''}</span>
                           {typeof project.message_count === 'number' && (
                             <span>· 💬 {project.message_count}개</span>
                           )}

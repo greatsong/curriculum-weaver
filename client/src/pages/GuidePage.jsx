@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Logo from '../components/Logo'
-import { PHASE_LIST, PROCEDURES } from 'curriculum-weaver-shared/constants.js'
+import { PHASE_LIST, PROCEDURES, getProcedureDisplayCode } from 'curriculum-weaver-shared/constants.js'
 
 /* ───────────────────────── 유틸 ───────────────────────── */
 
@@ -265,7 +265,7 @@ function MockBoard() {
     <BrowserFrame title="T-1 팀 비전 보드">
       <div className="space-y-3">
         <div className="flex items-center gap-2 mb-1">
-          <PhaseBadge code="T-1" label="공동 비전 설정" color="violet" />
+          <PhaseBadge code={getProcedureDisplayCode('T-1-1')} label={PROCEDURES['T-1-1'].name} color="violet" />
           <span className="text-xs text-slate-400">|</span>
           <span className="text-xs text-slate-500">AI 제안 반영됨</span>
         </div>

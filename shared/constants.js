@@ -284,6 +284,48 @@ export function normalizeProcedureCode(code) {
  * @param {string} [nameOverride] - 이름을 외부 값(SSE 이벤트 등)으로 대체할 때
  * @returns {string}
  */
+/**
+ * 절차 축약명 — 랜딩·온보딩 등 좁은 UI에서 쓰는 curated 짧은 이름.
+ * ⚠️ 문구 수정 시 여기 한 곳만 고치면 IntroPage·Tutorial 등 소비처에 자동 반영된다.
+ *    (풀네임은 PROCEDURES[code].name — 별도 수정)
+ * @type {Record<string, string>}
+ */
+export const PROCEDURE_SHORT_NAMES = {
+  'T-1-1': '비전',
+  'T-1-2': '방향',
+  'T-2-1': '역할',
+  'T-2-2': '규칙',
+  'T-2-3': '일정',
+  'A-1-1': '주제 기준',
+  'A-1-2': '주제 선정',
+  'A-2-1': '성취기준 분석',
+  'A-2-2': '통합 목표',
+  'Ds-1-1': '평가',
+  'Ds-1-2': '문제 상황',
+  'Ds-1-3': '학습활동',
+  'Ds-2-1': '자료와 도구',
+  'Ds-2-2': '스캐폴딩',
+  'DI-1-1': '자료 개발',
+  'DI-2-1': '수업 실행·기록',
+  'E-1-1': '수업 개선',
+  'E-2-1': '협력 성찰',
+}
+
+/**
+ * 단계(phase)별 절차 요약 — 축약명 목록과 표시 코드 범위(T-1~T-5).
+ * 랜딩·온보딩 카피를 정의 파일에서 파생하기 위한 헬퍼 (절차 추가·개명 시 자동 갱신).
+ * @param {string} phaseId - PHASES의 id ('T', 'A' 등)
+ * @returns {{ names: string[], range: string }}
+ */
+export function getPhaseProcedureSummary(phaseId) {
+  const procs = PROCEDURE_LIST.filter((p) => p.phase === phaseId && p.displayCode)
+  const names = procs.map((p) => PROCEDURE_SHORT_NAMES[p.code] || p.name)
+  const range = procs.length > 1
+    ? `${procs[0].displayCode}~${procs[procs.length - 1].displayCode}`
+    : (procs[0]?.displayCode || '')
+  return { names, range }
+}
+
 export function getProcedureLabel(code, nameOverride) {
   const proc = PROCEDURES[code]
   const name = nameOverride || proc?.name || ''

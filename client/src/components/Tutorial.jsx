@@ -8,6 +8,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronLeft, ChevronRight, Sparkles, X } from 'lucide-react'
+import { getPhaseProcedureSummary } from 'curriculum-weaver-shared/constants.js'
+
+// 단계별 절차 요약 라인 — 정의 파일(PROCEDURE_SHORT_NAMES)에서 파생 (문구 수정 시 자동 반영)
+const phaseLine = (phaseId) => {
+  const { names, range } = getPhaseProcedureSummary(phaseId)
+  return `   ${names.join(' · ')} (${range})`
+}
 
 // ============================================================
 // 튜토리얼 스텝 정의
@@ -81,19 +88,19 @@ const STEPS = [
       { text: '분산인지 기반 협력적 수업 설계 모형이에요.', highlight: true },
       { text: '' },
       { text: 'T  팀 준비하기', icon: 'team', color: '#8b5cf6' },
-      { text: '   비전 · 방향 · 역할 · 규칙 · 일정 (T-1~T-5)' },
+      { text: phaseLine('T') },
       { text: '' },
       { text: 'A  분석하기', icon: 'search', color: '#3b82f6' },
-      { text: '   주제 기준 · 주제 선정 · 성취기준 분석 · 통합 목표 (A-1~A-4)' },
+      { text: phaseLine('A') },
       { text: '' },
       { text: 'Ds 설계하기', icon: 'build', color: '#22c55e' },
-      { text: '   평가 · 문제 상황 · 학습활동 · 자료와 도구 · 스캐폴딩 (Ds-1~Ds-5)' },
+      { text: phaseLine('Ds') },
       { text: '' },
       { text: 'DI 개발·실행', icon: 'rocket', color: '#f59e0b' },
-      { text: '   자료 개발 · 수업 실행·기록 (DI-1~DI-2)' },
+      { text: phaseLine('DI') },
       { text: '' },
       { text: 'E  성찰·평가', icon: 'refresh', color: '#ef4444' },
-      { text: '   수업 개선 · 협력 성찰 (E-1~E-2)' },
+      { text: phaseLine('E') },
       { text: '' },
       { text: '상단 네비게이션에서 단계를 자유롭게 이동해요.', icon: 'bulb' },
     ],
