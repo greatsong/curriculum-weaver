@@ -1351,6 +1351,105 @@ export async function updateUser(id, data) {
   )
 }
 
+// ============================================================
+// 시뮬레이션 복제 지원 ("이어서 데모 시뮬레이션")
+// ============================================================
+
+/**
+ * 원본 프로젝트를 참조하는 시뮬레이션 복제본 목록 (넘버링·동시 생성 가드용)
+ * 00022 마이그레이션 미적용 DB에서는 빈 목록을 반환한다(기능 비활성과 동일).
+ */
+export async function getSimulationsBySource(sourceProjectId) {
+  const sb = getSupabase()
+  if (!sb) {
+    return [...mem.projects.values()].filter((p) => p.source_project_id === sourceProjectId)
+  }
+  try {
+    return handleResult(
+      await sb.from('projects')
+        .select('id, status, title, created_at')
+        .eq('source_project_id', sourceProjectId)
+        .order('created_at', { ascending: true }),
+      '시뮬레이션 목록 조회 실패'
+    ) || []
+  } catch (err) {
+    if (/does not exist|Could not find|schema cache/i.test(String(err?.message || ''))) {
+      console.warn('[supabaseService] source_project_id 컬럼 없음 — 00022 마이그레이션 적용 필요')
+      return []
+    }
+    throw err
+  }
+}
+
+/**
+ * 자료 행 전체 조회 (복제용 — extracted_text·ai_analysis 포함).
+ * 인메모리 모드의 자료는 store.js Materials 소관이므로 여기서는 빈 배열.
+ */
+export async function getMaterialRowsByProject(projectId) {
+  const sb = getSupabase()
+  if (!sb) return []
+  return handleResult(
+    await sb.from('materials').select('*').eq('project_id', projectId)
+      .order('created_at', { ascending: true }),
+    '자료 목록 조회 실패'
+  ) || []
+}
+
+/**
+ * 자료 행 일괄 insert (복제용). 반환 순서는 입력 순서와 동일 — 인덱스로 ID 매핑 가능.
+ */
+export async function createMaterialRowsBulk(rows) {
+  if (!rows?.length) return []
+  const sb = getSupabase()
+  if (!sb) return []
+  return handleResult(
+    await sb.from('materials').insert(rows).select('id'),
+    '자료 복제 실패'
+  ) || []
+}
+
+/**
+ * 메시지 일괄 insert (복제용, created_at 보존). 200건 단위로 나눠 insert.
+ * 00020 미적용 DB에서는 멘션 필드를 제거하고 재시도한다.
+ */
+export async function createMessagesBulk(rows) {
+  if (!rows?.length) return 0
+  const sb = getSupabase()
+  if (!sb) {
+    for (const row of rows) {
+      const pid = row.project_id
+      if (!mem.messages.has(pid)) mem.messages.set(pid, [])
+      mem.messages.get(pid).push({ id: uuid(), created_at: now(), ...row })
+    }
+    return rows.length
+  }
+  const BATCH = 200
+  let inserted = 0
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const batch = rows.slice(i, i + BATCH)
+    try {
+      const result = handleResult(
+        await sb.from('messages').insert(batch).select('id'),
+        '메시지 복제 실패'
+      )
+      inserted += result?.length || 0
+    } catch (err) {
+      const msgText = String(err?.message || '')
+      if (/does not exist|Could not find|schema cache/i.test(msgText)) {
+        const stripped = batch.map(({ mentioned_material_ids, attached_material_id, processing_status, ...rest }) => rest)
+        const result = handleResult(
+          await sb.from('messages').insert(stripped).select('id'),
+          '메시지 복제 실패(폴백)'
+        )
+        inserted += result?.length || 0
+      } else {
+        throw err
+      }
+    }
+  }
+  return inserted
+}
+
 // ── 서비스 객체로 일괄 내보내기 ──
 const supabaseService = {
   // 워크스페이스

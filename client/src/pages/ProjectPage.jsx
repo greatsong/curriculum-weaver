@@ -20,6 +20,7 @@ import ReportDownload from '../components/ReportDownload'
 import MaterialUploadBar from '../components/MaterialUploadBar'
 import Tutorial from '../components/Tutorial'
 import InteractiveTour from '../components/InteractiveTour'
+import ContinueSimulationButton from '../components/ContinueSimulationButton'
 
 // Error Boundary — ChatPanel 등 하위 컴포넌트 크래시 시 전체 페이지 보호
 class ErrorBoundary extends Component {
@@ -584,6 +585,9 @@ export default function ProjectPage() {
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
           <MemberList />
+          {!isReadOnlyProject && (
+            <ContinueSimulationButton projectId={projectId} workspaceId={workspaceId} />
+          )}
           {[
             { onClick: () => setShowReport(true), color: '#7C3AED', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>, label: '보고서', title: '결과 보고서' },
             { onClick: () => setShowStandardSearch(true), color: '#16A34A', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>, label: '성취기준', title: '성취기준 탐색' },
