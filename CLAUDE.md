@@ -35,6 +35,18 @@ curriculum-weaver/
 - `scripts/migrateLinksToDB.js` — generatedLinks.js → curriculum_links 테이블 마이그레이션
 - `supabase/migrations/` — 15개 테이블 스키마 + RLS + Realtime
 
+## 자료 업로드 분석 파이프라인 (2026-07-12 성능 개선)
+
+실측 p50 35s·최대 51s(타임아웃 60s와 마진 9s)였던 분석 지연을 점검·개선. 지배 요인은 **AI 출력 토큰 수**(출력 1,909tok=21s 실측).
+
+- **출력 감량**: intent=general이면 `intent_driven_summary`를 required에서 제외(`buildAnalyzeTool(intent)` 동적 스키마, 서버가 summary로 폴백), 성취기준 후보 10→5개·reason 200→100자. 출력 1,909→1,334tok. prompt_version `2026-07-a`
+- **Vision 분석**: 텍스트 추출이 안 되는 스캔본 PDF는 base64 document 블록으로 자동 폴백(600페이지 상한), 이미지(png/jpg/jpeg/webp/gif, 5MB 이하)는 image 블록으로 직접 분석 — 과거 실패 25%("추출된 텍스트가 비어 있습니다")가 전부 이 케이스. 타임아웃: 텍스트 90s / Vision 150s
+- **hwpx 지원**: OWPML ZIP의 `Contents/section*.xml`에서 `<hp:t>` 런 추출(`extractHwpxText`, jszip). 정규식 태그명은 정확히 `t`로 고정할 것 — `hp:t[^>]*`는 hp:tbl·hp:tc까지 잡아 XML이 본문에 샘(실파일 검증에서 발견). 바이너리 .hwp는 미지원(hwpx/PDF 변환 안내)
+- **실패 안내**: 서버 processing_error("CODE: 메시지")의 메시지가 목록·토스트에 그대로 노출(`materialFailureMessage`, INTERNAL류는 매핑 문구로 대체). 확장자·20MB·이미지 5MB는 업로드 전 클라 검증(`validateMaterialFile`)
+- **업로드 응답 병렬화**: Storage 업로드를 DB insert·응답과 병렬 실행(낙관적 insert, 실패 시 행 보정), 분석은 첨부 시스템 메시지 생성 직후(Storage 완료 전) 시작. E2E 실측 응답 621ms
+- **실시간 상태**: analyzer가 parsing/analyzing/completed/failed 전이마다 `material_updated` 소켓 브로드캐스트(`transitionMaterial` 헬퍼) → procedureStore `applyMaterialUpdate`가 즉시 반영+폴링 조기 종료. 3초 폴링은 소켓 유실 대비 안전망으로 유지
+- E2E(업로드→소켓 감지→completed) 13.1s 실측. 검증 기법: 자체 서버 4207 + 테스트 유저/JWT + socket.io-client, 데이터 완전 정리
+
 ## 절차 스킵(건너뛰기) 시스템 (2026-07-11)
 
 팀이 불필요한 절차를 생략 표시하는 기능. **보드 내용은 절대 건드리지 않는다** — 스킵은 표시일 뿐, 해제하면 원상복구.

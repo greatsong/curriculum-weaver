@@ -683,12 +683,23 @@ export const MAX_FILE_SIZE = 10 * 1024 * 1024
 export const MAX_MATERIAL_SIZE_BYTES = 20 * 1024 * 1024
 
 /**
- * 파싱 가능한 자료 확장자 (실제 text 추출이 동작하는 것만)
- * - hwp/hwpx: 파서 신뢰도가 낮아 현재 unsupported로 분류
- * - doc/ppt/xls: OLE 레거시 형식 — 거부
- * - 이미지: Vision 연동 전까지 플레이스홀더
+ * 파싱 가능한 자료 확장자
+ * - pdf/docx/txt/md/csv/pptx/xlsx: 텍스트 추출 후 분석
+ * - hwpx: OWPML ZIP — section XML에서 텍스트 추출 (바이너리 .hwp는 미지원)
+ * - png/jpg/jpeg/webp/gif: Claude Vision 직접 분석 (5MB 이하)
+ *   (텍스트 추출이 안 되는 스캔본 PDF도 Vision으로 자동 폴백)
+ * - hwp/doc/ppt/xls: 바이너리·OLE 레거시 형식 — 거부
  */
-export const SUPPORTED_MATERIAL_EXTENSIONS = ['pdf', 'docx', 'txt', 'md', 'csv', 'pptx', 'xlsx']
+export const SUPPORTED_MATERIAL_EXTENSIONS = [
+  'pdf', 'docx', 'txt', 'md', 'csv', 'pptx', 'xlsx', 'hwpx',
+  'png', 'jpg', 'jpeg', 'webp', 'gif',
+]
+
+/** Vision 직접 분석 대상 이미지 확장자 (클라 사전 검증·서버 분기 공용) */
+export const VISION_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp', 'gif']
+
+/** Vision 이미지 파일 크기 상한 (Claude API 이미지 한도 기준) */
+export const MAX_VISION_IMAGE_BYTES = 5 * 1024 * 1024
 
 /** 세션 상태 */
 export const SESSION_STATUS = {

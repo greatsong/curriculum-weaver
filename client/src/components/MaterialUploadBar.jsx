@@ -11,7 +11,7 @@ import {
   DEFAULT_MATERIAL_INTENT,
 } from 'curriculum-weaver-shared/constants.js'
 import { useProcedureStore } from '../stores/procedureStore'
-import { materialErrorMessage, validateMaterialFile } from '../lib/materialErrors'
+import { materialErrorMessage, materialFailureMessage, validateMaterialFile } from '../lib/materialErrors'
 import {
   Upload,
   Link as LinkIcon,
@@ -854,9 +854,11 @@ function MaterialRow({ material: m, included = true, onToggleIncluded, onReanaly
         </div>
       )}
 
-      {/* 실패 사유 */}
-      {status === FAILED && m._error && (
-        <div className="text-[11px] text-red-600 pl-4">{m._error}</div>
+      {/* 실패 사유 — 재분석 로컬 오류(_error) 우선, 없으면 서버 processing_error 기반 안내 */}
+      {status === FAILED && (
+        <div className="text-[11px] text-red-600 pl-4">
+          {m._error || materialFailureMessage(m)}
+        </div>
       )}
     </li>
   )
