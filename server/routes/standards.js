@@ -150,7 +150,18 @@ standardsRouter.get('/all', async (req, res) => {
 
 // 성취기준 간 그래프 데이터 (임베딩 3D 좌표 포함)
 // ?status=published (기본) | ?status=all | ?status=candidate,reviewed
+// /graph 응답 메모이즈 — 노드 4,856+링크 수천 개를 매 요청 재구성하던 것을
+// 링크 버전이 같으면 재사용. 링크 변경(add-links·상태 변경·하이드레이션) 시 버전이 올라 자동 무효화.
+const graphResponseCache = new Map() // statusParam → { version, body }
+const GRAPH_CACHE_MAX_KEYS = 8
+
 standardsRouter.get('/graph', async (req, res) => {
+  const statusKey = String(req.query.status || 'published')
+  const cached = graphResponseCache.get(statusKey)
+  if (cached && cached.version === StandardLinks.version()) {
+    return res.json(cached.body)
+  }
+  const versionAtBuild = StandardLinks.version()
   const graph = StandardLinks.getGraph()
   // 임베딩 기반 3D 좌표 계산
   const allStandards = Standards.list()
@@ -173,11 +184,13 @@ standardsRouter.get('/graph', async (req, res) => {
     return Math.abs(srcLevel - tgtLevel) <= 1 // 인접 학교급만 허용
   })
   // 링크 상태 필터링 (기본: published만)
-  const statusParam = req.query.status || 'published'
+  const statusParam = statusKey
   if (statusParam !== 'all') {
     const allowedStatuses = new Set(statusParam.split(','))
     graph.links = graph.links.filter(l => allowedStatuses.has(l.status))
   }
+  if (graphResponseCache.size >= GRAPH_CACHE_MAX_KEYS) graphResponseCache.clear()
+  graphResponseCache.set(statusKey, { version: versionAtBuild, body: graph })
   res.json(graph)
 })
 
@@ -198,6 +211,7 @@ standardsRouter.patch('/links/:linkId/status', requireAuth, requireAdmin, async 
   if (status === 'reviewed' || status === 'published') {
     link.reviewed_at = new Date().toISOString()
   }
+  StandardLinks.bumpVersion() // 그래프 응답 캐시 무효화
   // DB 영속화 (서버 재시작 시 상태 리셋 방지)
   const persistResult = await persistLinkStatus(link.source_code, link.target_code, status)
   if (!persistResult.persisted && persistResult.error !== 'not_configured') {
@@ -530,6 +544,7 @@ standardsRouter.post('/upload', requireAuth, requireAdmin, async (req, res) => {
   }
 
   const addedStandards = Standards.addBulk(items)
+  StandardLinks.bumpVersion() // 노드 집합 변경 — 그래프 응답 캐시 무효화
   let addedLinks = []
   if (Array.isArray(links) && links.length > 0) {
     addedLinks = StandardLinks.addBulk(links)
