@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Sparkles, X, Loader2, Check, ArrowRight } from 'lucide-react'
 import { apiPost } from '../../lib/api'
@@ -11,26 +11,39 @@ import { apiPost } from '../../lib/api'
  * <ScenarioPanel>: 시나리오 표시 + "두 성취기준 담기"·"프로젝트 시작" 액션.
  */
 export function useScenario() {
-  const [scenario, setScenario] = useState(null) // { pairKey, loading, data|error, cached }
+  const [scenario, _setScenario] = useState(null) // { pairKey, loading, data|error, cached }
+  // 상태 미러 — setState 업데이터 바깥에서 최신 상태를 동기 판독하기 위함
+  const stateRef = useRef(null)
+  const setScenario = useCallback((v) => { stateRef.current = v; _setScenario(v) }, [])
+  const inflightRef = useRef(new Set()) // 요청 진행 중인 pairKey (중복 클릭 차단)
 
   const openScenario = useCallback(async (conceptCode, contextCodes) => {
     const contexts = Array.isArray(contextCodes) ? contextCodes : [contextCodes]
     const pairKey = [conceptCode, ...contexts].sort().join('|')
-    setScenario(prev => {
-      if (prev?.pairKey === pairKey && !prev.error) return prev // 이미 열림
-      return { pairKey, loading: true }
-    })
+    // 같은 조합이 이미 요청 중이거나 성공적으로 열려 있으면 아무것도 안 함
+    // (중복 클릭이 두 번째 요청을 쏘고, 그쪽이 실패하면 성공 화면을 에러로 덮던 버그)
+    if (inflightRef.current.has(pairKey)) return
+    if (stateRef.current?.pairKey === pairKey && stateRef.current.data) return
+
+    setScenario({ pairKey, loading: true })
+    inflightRef.current.add(pairKey)
     try {
       const { scenario: data, cached } = await apiPost('/api/standards/links/scenario', {
         concept_code: conceptCode, context_codes: contexts,
       })
-      setScenario({ pairKey, data, cached })
+      // 사용자가 그 사이 다른 조합을 열었으면 이 응답은 버림
+      if (stateRef.current?.pairKey === pairKey) setScenario({ pairKey, data, cached })
     } catch (err) {
-      setScenario({ pairKey, error: err.message || '생성에 실패했습니다' })
+      // 이 조합이 이미 성공 화면을 띄웠다면 에러로 덮지 않음
+      if (stateRef.current?.pairKey === pairKey && !stateRef.current.data) {
+        setScenario({ pairKey, error: err.message || '생성에 실패했습니다' })
+      }
+    } finally {
+      inflightRef.current.delete(pairKey)
     }
-  }, [])
+  }, [setScenario])
 
-  const closeScenario = useCallback(() => setScenario(null), [])
+  const closeScenario = useCallback(() => setScenario(null), [setScenario])
   return { scenario, openScenario, closeScenario }
 }
 
