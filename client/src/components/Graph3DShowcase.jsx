@@ -85,6 +85,9 @@ export default function Graph3DShowcase() {
   const [tour, setTour] = useState({ active: false, idx: 0, paused: false })
   const [legendPref, setLegendPref] = useState(true) // 사용자의 레전드 펼침 선호
   const visitedRef = useRef(new Set())
+  // 연결 여행 궤적 — 연속 선택(여행·카드 클릭)의 방문 순서. 선택 해제 시 리셋
+  const journeyRef = useRef([])
+  const selectedRef = useRef(null)
   // URL focus는 마운트 직후 URL 기록 effect가 지우기 전에 캡처해 둔다
   const initialFocusRef = useRef(null)
   if (initialFocusRef.current === null) initialFocusRef.current = searchParams.get('focus') || ''
@@ -271,9 +274,21 @@ export default function Graph3DShowcase() {
     const scene = sceneRef.current
     if (!scene) return
     scene.clearLabels('node:')
-    if (!selected) { scene.setHighlight(null); return }
+    selectedRef.current = selected
+    if (!selected) {
+      scene.setHighlight(null)
+      journeyRef.current = [] // 여정 종료 — 궤적 소멸
+      scene.setTrail(null)
+      return
+    }
     const neighborSet = new Set(connections.map(c => c.other.code))
     scene.setHighlight(selected, neighborSet)
+    // 방문한 별을 잇는 별자리 궤적 (2개 이상부터)
+    const trailPoints = journeyRef.current
+      .map(code => scene.getNode(code))
+      .filter(Boolean)
+      .map(n => [n.x, n.y, n.z])
+    scene.setTrail(trailPoints.length >= 2 ? trailPoints : null)
     // 카드(우측 패널/바텀 시트)가 가리지 않는 가시 영역의 중앙에 노드 배치
     const screenShift = isMobile
       ? { x: 0, y: Math.round((window.innerHeight || 700) * 0.26) }
@@ -295,6 +310,10 @@ export default function Graph3DShowcase() {
 
   const selectNode = useCallback((code) => {
     visitedRef.current.add(code)
+    // 여행 궤적: 선택이 이어지면 연장, 처음이면 새 여정 시작
+    const journey = journeyRef.current
+    if (selectedRef.current === null) journeyRef.current = [code]
+    else if (journey[journey.length - 1] !== code) journeyRef.current = [...journey.slice(-19), code]
     setTour(t => (t.active ? { active: false, idx: 0, paused: false } : t))
     setSelected(code)
   }, [])
@@ -493,6 +512,9 @@ export default function Graph3DShowcase() {
         <button onClick={travelNext}
           className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-sky-500/90 hover:bg-sky-400 shadow-[0_0_24px_rgba(56,189,248,0.25)] transition-colors duration-150">
           <Rocket size={14} /> 다음 연결로 여행
+          {journeyRef.current.length >= 2 && (
+            <span className="text-[11px] font-normal text-sky-100/70 tabular-nums">{journeyRef.current.length}번째 별</span>
+          )}
         </button>
       </div>
     </>
