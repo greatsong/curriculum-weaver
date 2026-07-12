@@ -28,15 +28,33 @@ export function useScenario() {
     setScenario({ pairKey, loading: true })
     inflightRef.current.add(pairKey)
     try {
-      const { scenario: data, cached } = await apiPost('/api/standards/links/scenario', {
-        concept_code: conceptCode, context_codes: contexts,
-      })
+      // 생성은 20~50초 걸릴 수 있어 넉넉히 대기. 그래도 초과하면 1회 자동 재시도 —
+      // 서버는 끊겨도 생성을 이어가 캐시에 넣으므로, 재요청은 진행 중 생성에 합류하거나 캐시를 받는다.
+      let data, cached
+      for (let attempt = 0; ; attempt++) {
+        try {
+          ;({ scenario: data, cached } = await apiPost('/api/standards/links/scenario', {
+            concept_code: conceptCode, context_codes: contexts,
+          }, { timeoutMs: 180_000 }))
+          break
+        } catch (err) {
+          const isTimeout = /초과/.test(err.message || '')
+          if (!isTimeout || attempt >= 1) throw err
+          await new Promise(r => setTimeout(r, 2000))
+        }
+      }
       // 사용자가 그 사이 다른 조합을 열었으면 이 응답은 버림
       if (stateRef.current?.pairKey === pairKey) setScenario({ pairKey, data, cached })
     } catch (err) {
       // 이 조합이 이미 성공 화면을 띄웠다면 에러로 덮지 않음
       if (stateRef.current?.pairKey === pairKey && !stateRef.current.data) {
-        setScenario({ pairKey, error: err.message || '생성에 실패했습니다' })
+        const isTimeout = /초과/.test(err.message || '')
+        setScenario({
+          pairKey,
+          error: isTimeout
+            ? '생성이 오래 걸리고 있어요 — 잠시 후 같은 버튼을 다시 누르면 완성된 시나리오가 바로 열립니다.'
+            : (err.message || '생성에 실패했습니다'),
+        })
       }
     } finally {
       inflightRef.current.delete(pairKey)

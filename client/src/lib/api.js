@@ -79,13 +79,13 @@ export async function apiGet(path, params = {}) {
   return res.json()
 }
 
-export async function apiPost(path, body = {}) {
+export async function apiPost(path, body = {}, { timeoutMs } = {}) {
   const headers = await getHeaders()
   const res = await fetchWithTimeout(`${API_BASE}${path}`, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
-  })
+  }, timeoutMs ?? DEFAULT_TIMEOUT_MS)
   return res.json()
 }
 
