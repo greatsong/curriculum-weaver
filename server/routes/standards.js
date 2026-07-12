@@ -37,6 +37,7 @@ import { validateCode, getStandardsForSubjects } from '../lib/standardsValidator
 import { computeEmbedding3D, invalidateEmbeddingCache } from '../services/embeddings.js'
 import { semanticSearch, isSemanticSearchAvailable } from '../services/semanticSearch.js'
 import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js'
+import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { persistLinks, persistLinkStatus } from '../lib/linkService.js'
 import { startPairExploration, getPairJob } from '../services/pairExplorer.js'
 import {
@@ -292,6 +293,7 @@ standardsRouter.get('/graph3d', async (req, res) => {
     type: l.link_type,
     theme: l.integration_theme || null,
     hook: l.lesson_hook || null,
+    r: l.rationale || null,
   }))
 
   const body = JSON.stringify({
@@ -304,6 +306,42 @@ standardsRouter.get('/graph3d', async (req, res) => {
   })
   graph3dResponseCache = { body, version }
   res.type('application/json').send(body)
+})
+
+/**
+ * POST /api/standards/links/report
+ * "이 연결이 이상해요" 신고 — 검토 큐(link_reports)에 기록만 하고
+ * 링크 자체는 절대 건드리지 않는다 (자동 강등 없음, 관리자 검토 후 결정).
+ * 같은 사용자의 같은 링크 중복 신고는 멱등 처리.
+ */
+standardsRouter.post('/links/report', requireAuth, async (req, res) => {
+  try {
+    const { source_code, target_code, reason } = req.body || {}
+    const src = validateCode(source_code)
+    const tgt = validateCode(target_code)
+    if (!src.valid || !tgt.valid) {
+      return res.status(400).json({ error: '유효하지 않은 성취기준 코드입니다.' })
+    }
+    const a = src.matched.code
+    const b = tgt.matched.code
+    if (a === b) return res.status(400).json({ error: '같은 성취기준끼리는 신고할 수 없습니다.' })
+    // curriculum_links와 동일한 정규화 (source < target)
+    const [sourceCode, targetCode] = a < b ? [a, b] : [b, a]
+
+    const { error } = await supabaseAdmin.from('link_reports').upsert({
+      source_code: sourceCode,
+      target_code: targetCode,
+      reporter_id: req.user.id,
+      reason: typeof reason === 'string' ? reason.slice(0, 500) : null,
+    }, { onConflict: 'source_code,target_code,reporter_id', ignoreDuplicates: true })
+    if (error) throw new Error(error.message)
+
+    console.log(`[standards] 링크 신고: ${sourceCode} ↔ ${targetCode} (by ${req.user.id})`)
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('[standards] 링크 신고 오류:', err.message)
+    res.status(500).json({ error: '신고 접수에 실패했습니다.' })
+  }
 })
 
 // 링크 상태 변경 (관리자 전용 — 인증+권한 필수)
