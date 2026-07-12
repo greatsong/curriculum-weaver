@@ -8,8 +8,8 @@
  */
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Play, Compass, X, Rocket, ChevronDown, ChevronUp, List, HelpCircle } from 'lucide-react'
-import { apiGet } from '../lib/api'
+import { Play, Compass, X, Rocket, ChevronDown, ChevronUp, List, HelpCircle, Flag } from 'lucide-react'
+import { apiGet, apiPost } from '../lib/api'
 import Logo from './Logo'
 import { createNebulaScene } from '../lib/nebulaScene'
 import {
@@ -18,6 +18,10 @@ import {
 } from '../lib/nebulaTheme'
 
 const groupColor = (g) => SUBJECT_COLORS_DARK[g] || FALLBACK_NODE_COLOR
+
+// 담기 트레이 — 설계 모드(DesignMode)와 같은 sessionStorage 키를 공유해
+// 탐험에서 담은 성취기준이 프로젝트 생성 모달에 그대로 이어진다
+const BASKET_KEY = 'cw_design_basket'
 
 // 연결수 로그 스케일 노드 크기 (스펙 §6-1)
 function nodeSize(degree, maxDegree) {
@@ -46,7 +50,8 @@ function useCountUp(target, start, duration = 1200) {
 }
 
 // 투어 스토리 문장 (교과군 통계 기반 — 절제된 플라네타리움 내레이션)
-function buildStory(group, topPartner) {
+// topThemes: 이 교과군 링크들의 실제 융합 주제 상위 빈도 — 템플릿을 데이터로 구체화
+function buildStory(group, topPartner, topThemes = []) {
   const lines = [
     `${group}의 별들은 ${topPartner}와 가장 많이 이어져 있습니다 — 두 성단이 만나는 곳마다 융합 수업이 시작됩니다.`,
     `${group} 성단에서 뻗어 나간 빛의 실은 ${topPartner}에 가장 많이 닿습니다. 교과의 경계는 생각보다 얇습니다.`,
@@ -55,7 +60,11 @@ function buildStory(group, topPartner) {
   // 교과군명 기반 결정적 선택 (렌더마다 바뀌지 않게)
   let h = 0
   for (const ch of group) h = (h * 31 + ch.charCodeAt(0)) | 0
-  return lines[Math.abs(h) % lines.length]
+  const base = lines[Math.abs(h) % lines.length]
+  const themes = topThemes.filter(Boolean).slice(0, 2)
+  return themes.length > 0
+    ? `${base} 이 성단의 대표 융합 주제는 '${themes.join("'과 '")}'입니다.`
+    : base
 }
 
 export default function Graph3DShowcase() {
@@ -87,6 +96,22 @@ export default function Graph3DShowcase() {
   const [browseOpen, setBrowseOpen] = useState(false) // 텍스트 탐색 패널
   const [browseSubject, setBrowseSubject] = useState('')
   const [helpOpen, setHelpOpen] = useState(false)
+  const [themeQuery, setThemeQuery] = useState('') // 주제 스포트라이트 검색어
+  // 담기 트레이 — DesignMode와 sessionStorage 공유
+  const [basket, setBasket] = useState(() => {
+    try { return new Set(JSON.parse(sessionStorage.getItem(BASKET_KEY) || '[]')) } catch { return new Set() }
+  })
+  const toggleBasket = useCallback((code) => {
+    setBasket(prev => {
+      const next = new Set(prev)
+      if (next.has(code)) next.delete(code); else next.add(code)
+      sessionStorage.setItem(BASKET_KEY, JSON.stringify([...next]))
+      return next
+    })
+  }, [])
+  // 링크 신고 상태 ("a|b" 정렬 키 → 요청됨/완료)
+  const [reportedLinks, setReportedLinks] = useState(() => new Set())
+  const [reportingKey, setReportingKey] = useState(null)
   const visitedRef = useRef(new Set())
   // 연결 여행 궤적 — 연속 선택(여행·카드 클릭)의 방문 순서. 선택 해제 시 리셋
   const journeyRef = useRef([])
@@ -129,8 +154,8 @@ export default function Graph3DShowcase() {
       if (!sn || !tn) continue
       if (!adjacency.has(l.s)) adjacency.set(l.s, [])
       if (!adjacency.has(l.t)) adjacency.set(l.t, [])
-      adjacency.get(l.s).push({ other: tn, type: l.type, theme: l.theme, hook: l.hook })
-      adjacency.get(l.t).push({ other: sn, type: l.type, theme: l.theme, hook: l.hook })
+      adjacency.get(l.s).push({ other: tn, type: l.type, theme: l.theme, hook: l.hook, rationale: l.r })
+      adjacency.get(l.t).push({ other: sn, type: l.type, theme: l.theme, hook: l.hook, rationale: l.r })
     }
     const maxDegree = Math.max(...degree.values(), 1)
 
@@ -138,7 +163,7 @@ export default function Graph3DShowcase() {
     const groupMap = new Map()
     for (const n of data.nodes) {
       const g = n.subject_group
-      if (!groupMap.has(g)) groupMap.set(g, { name: g, color: groupColor(g), count: 0, cx: 0, cy: 0, cz: 0, links: 0, partners: new Map() })
+      if (!groupMap.has(g)) groupMap.set(g, { name: g, color: groupColor(g), count: 0, cx: 0, cy: 0, cz: 0, links: 0, partners: new Map(), themes: new Map() })
       const gm = groupMap.get(g)
       gm.count++; gm.cx += n.x; gm.cy += n.y; gm.cz += n.z
     }
@@ -149,11 +174,16 @@ export default function Graph3DShowcase() {
       gs.links++; gt.links++
       gs.partners.set(tg, (gs.partners.get(tg) || 0) + 1)
       gt.partners.set(sg, (gt.partners.get(sg) || 0) + 1)
+      if (l.theme) {
+        gs.themes.set(l.theme, (gs.themes.get(l.theme) || 0) + 1)
+        gt.themes.set(l.theme, (gt.themes.get(l.theme) || 0) + 1)
+      }
     }
     const groups = [...groupMap.values()].map(g => ({
       ...g,
       centroid: [g.cx / g.count, g.cy / g.count, g.cz / g.count],
       topPartner: [...g.partners.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null,
+      topThemes: [...g.themes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(e => e[0]),
     })).sort((a, b) => b.count - a.count)
 
     const levels = [...new Set(data.nodes.map(n => n.school_level).filter(Boolean))]
@@ -251,6 +281,8 @@ export default function Graph3DShowcase() {
     if (subjects.length > 0) setActiveGroups(new Set(subjects))
     const levels = (searchParams.get('levels') || '').split(',').filter(Boolean)
     if (levels.length > 0) setActiveLevels(new Set(levels))
+    const theme = searchParams.get('theme')
+    if (theme) setThemeQuery(theme)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -264,24 +296,39 @@ export default function Graph3DShowcase() {
     else next.delete('levels')
     if (selected) next.set('focus', selected); else next.delete('focus')
     if (tour.active) next.set('tour', '1'); else next.delete('tour')
+    if (themeQuery.trim()) next.set('theme', themeQuery.trim()); else next.delete('theme')
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeGroups, activeLevels, selected, tour.active, derived])
+  }, [activeGroups, activeLevels, selected, tour.active, themeQuery, derived])
 
-  // ── 필터(조명 스위치) → 씬 감광 ──
+  // ── 주제 스포트라이트: theme/hook/rationale 텍스트 매칭 링크의 양끝 별만 점등 ──
+  const themeMatch = useMemo(() => {
+    const q = themeQuery.trim().toLowerCase()
+    if (!data || !q) return null
+    const codes = new Set()
+    let linkCount = 0
+    for (const l of data.links) {
+      const hay = `${l.theme || ''} ${l.hook || ''} ${l.r || ''}`.toLowerCase()
+      if (hay.includes(q)) { codes.add(l.s); codes.add(l.t); linkCount++ }
+    }
+    return { codes, linkCount }
+  }, [data, themeQuery])
+
+  // ── 필터(조명 스위치) + 주제 스포트라이트 → 씬 감광 ──
   useEffect(() => {
     const scene = sceneRef.current
     if (!scene || !data) return
-    if (!activeGroups && !activeLevels) { scene.setDim(null); return }
+    if (!activeGroups && !activeLevels && !themeMatch) { scene.setDim(null); return }
     const dim = new Map()
     for (const n of data.nodes) {
       // 학교급 미상(빈값)은 배제하지 않음 — /graph 필터와 동일한 관용 원칙
       const on = (!activeGroups || activeGroups.has(n.subject_group)) &&
-                 (!activeLevels || !n.school_level || activeLevels.has(n.school_level))
+                 (!activeLevels || !n.school_level || activeLevels.has(n.school_level)) &&
+                 (!themeMatch || themeMatch.codes.has(n.code))
       dim.set(n.code, on ? 1 : 0)
     }
     scene.setDim(dim)
-  }, [activeGroups, activeLevels, data, sceneEpoch])
+  }, [activeGroups, activeLevels, themeMatch, data, sceneEpoch])
 
   // ── 선택 → 하이라이트 + 플라이투 + 라벨 ──
   const selectedNode = selected && derived ? derived.nodesByCode.get(selected) : null
@@ -363,7 +410,7 @@ export default function Graph3DShowcase() {
     const stops = derived.groups.filter(g => g.count >= 40).slice(0, 8).map(g => ({
       group: g.name, color: g.color, centroid: g.centroid,
       stats: { nodes: g.count, links: g.links, topPartner: g.topPartner },
-      story: buildStory(g.name, g.topPartner || '이웃 교과'),
+      story: buildStory(g.name, g.topPartner || '이웃 교과', g.topThemes),
     }))
     stops.push({
       finale: true, group: '교육과정 성운', color: '#60A5FA', centroid: [0, 0, 0],
@@ -463,16 +510,37 @@ export default function Graph3DShowcase() {
       return next.size === all.size ? null : next
     })
   }
-  const resetAll = () => { setActiveGroups(null); setActiveLevels(null) }
+  const resetAll = () => { setActiveGroups(null); setActiveLevels(null); setThemeQuery('') }
   const toDesign = () => {
     const next = new URLSearchParams()
     next.set('mode', 'design')
     setSearchParams(next)
   }
+  // 탐험→설계 컨텍스트 이월: 보고 있던 별을 이웃 렌즈 포커스로 열기
+  const openInDesign = () => {
+    if (!selected) return
+    const next = new URLSearchParams()
+    next.set('mode', 'design')
+    next.set('lens', 'neighbor')
+    next.set('focus', selected)
+    setSearchParams(next)
+  }
+  // "이 연결이 이상해요" — 검토 큐로 신고 (링크 자체는 변경되지 않음)
+  const reportLink = async (otherCode) => {
+    if (!selected) return
+    const key = [selected, otherCode].sort().join('|')
+    if (reportedLinks.has(key) || reportingKey === key) return
+    setReportingKey(key)
+    try {
+      await apiPost('/api/standards/links/report', { source_code: selected, target_code: otherCode })
+      setReportedLinks(prev => new Set(prev).add(key))
+    } catch { /* 실패 시 버튼이 다시 활성화됨 — 재시도 가능 */ }
+    setReportingKey(null)
+  }
 
   const nodeCount = useCountUp(data?.nodes.length || 0, uiReady)
   const linkCount = useCountUp(data?.links.length || 0, uiReady)
-  const hasAnyDim = activeGroups !== null || activeLevels !== null
+  const hasAnyDim = activeGroups !== null || activeLevels !== null || themeMatch !== null
   const loading = !data && !loadFailed
   const currentStop = tour.active ? tourStops[tour.idx] : null
 
@@ -513,9 +581,13 @@ export default function Graph3DShowcase() {
       <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3 space-y-2">
         {connections.map((c, i) => {
           const t = typeInfo(c.type)
+          const reportKey = [selectedNode.code, c.other.code].sort().join('|')
+          const isReported = reportedLinks.has(reportKey)
           return (
-            <button key={`${c.other.code}-${i}`} onClick={() => selectNode(c.other.code)}
-              className="w-full text-left p-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/[0.06] hover:border-white/[0.14] transition-colors duration-150">
+            <div key={`${c.other.code}-${i}`} role="button" tabIndex={0}
+              onClick={() => selectNode(c.other.code)}
+              onKeyDown={(e) => { if (e.key === 'Enter') selectNode(c.other.code) }}
+              className="w-full text-left p-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/[0.06] hover:border-white/[0.14] transition-colors duration-150 cursor-pointer">
               <div className="flex items-center gap-1.5 mb-1">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
                 <span className="text-[11px] font-semibold shrink-0" style={{ color: t.color }}>{t.label}</span>
@@ -525,11 +597,24 @@ export default function Graph3DShowcase() {
               <p className="text-[13px] leading-relaxed text-slate-300/90 line-clamp-2">{c.other.content}</p>
               {c.theme && <p className="mt-1.5 text-[11px] text-slate-400/70">🔗 {c.theme}</p>}
               {c.hook && <p className="mt-0.5 text-[11px] text-slate-400/70 line-clamp-1">📝 {c.hook}</p>}
-            </button>
+              {c.rationale && <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400/70 line-clamp-3">💡 {c.rationale}</p>}
+              <div className="mt-1.5 flex justify-end">
+                {isReported ? (
+                  <span className="text-[10.5px] text-slate-500/70">검토 요청됨 ✓</span>
+                ) : (
+                  <button title="이 연결이 이상해요 — 검토 요청"
+                    onClick={(e) => { e.stopPropagation(); reportLink(c.other.code) }}
+                    disabled={reportingKey === reportKey}
+                    className="flex items-center gap-1 text-[10.5px] text-slate-500/60 hover:text-amber-300/90 transition-colors disabled:opacity-40">
+                    <Flag size={10} /> 이상해요
+                  </button>
+                )}
+              </div>
+            </div>
           )
         })}
       </div>
-      <div className="p-3 border-t border-white/[0.08]">
+      <div className="p-3 border-t border-white/[0.08] space-y-2">
         <button onClick={travelNext}
           className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white bg-sky-500/90 hover:bg-sky-400 shadow-[0_0_24px_rgba(56,189,248,0.25)] transition-colors duration-150">
           <Rocket size={14} /> 다음 연결로 여행
@@ -537,6 +622,19 @@ export default function Graph3DShowcase() {
             <span className="text-[11px] font-normal text-sky-100/70 tabular-nums">{journeyRef.current.length}번째 별</span>
           )}
         </button>
+        <div className="flex gap-2">
+          <button onClick={() => toggleBasket(selectedNode.code)}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold border transition-colors duration-150 ${
+              basket.has(selectedNode.code)
+                ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-300'
+                : 'bg-white/[0.06] hover:bg-white/[0.12] border-white/[0.08] text-slate-300/90 hover:text-slate-100'}`}>
+            🧺 {basket.has(selectedNode.code) ? '담김 ✓' : '담기'}
+          </button>
+          <button onClick={openInDesign} title="이 성취기준을 설계 모드 이웃 렌즈에서 열기"
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-slate-300/90 hover:text-slate-100 transition-colors duration-150">
+            <Compass size={13} /> 설계에서 열기
+          </button>
+        </div>
       </div>
     </>
   )
@@ -602,6 +700,13 @@ export default function Graph3DShowcase() {
             </div>
           </div>
           <div className="pointer-events-auto flex items-center gap-2 animate-ui-in" style={{ animationDelay: '80ms' }}>
+            {!tour.active && basket.size > 0 && (
+              <button onClick={() => navigate('/workspaces?createProject=1')}
+                title="담은 성취기준으로 프로젝트 시작"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 transition-colors duration-150">
+                🧺 <b className="tabular-nums">{basket.size}</b> <span className="hidden sm:inline font-medium">프로젝트 시작</span>
+              </button>
+            )}
             {!tour.active && (
               <button onClick={() => setBrowseOpen(v => !v)}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium border transition-colors duration-150 ${
@@ -661,6 +766,15 @@ export default function Graph3DShowcase() {
                   <li>· 칩 더블클릭 — 그 교과군만 남기고 나머지 끄기</li>
                   <li>· 모두 끄기 — 전부 끄고 원하는 교과군만 직접 선택</li>
                   <li>· 모두 켜기 — 필터를 처음 상태로 되돌리기</li>
+                  <li>· 주제 스포트라이트 — "기후"처럼 입력하면 그 주제의 연결만 점등</li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-slate-400/80 uppercase tracking-wide mb-2">별 상세 카드</p>
+                <ul className="space-y-1.5 text-[13px] text-slate-300/90 leading-relaxed">
+                  <li>· 🧺 담기 — 성취기준을 담아 두면 프로젝트 만들 때 자동 포함</li>
+                  <li>· 설계에서 열기 — 이 별을 설계 모드 이웃 렌즈로 이어서 보기</li>
+                  <li>· 이상해요 — 억지스러운 연결을 발견하면 검토 요청</li>
                 </ul>
               </div>
               <div>
@@ -808,6 +922,23 @@ export default function Graph3DShowcase() {
                     모두 켜기
                   </button>
                 </>
+              )}
+            </div>
+            {/* 주제 스포트라이트: 융합 주제·수업 아이디어·근거 텍스트 매칭 별만 점등 */}
+            <div className="mt-2 pt-2 border-t border-white/[0.08]">
+              <input
+                value={themeQuery}
+                onChange={(e) => setThemeQuery(e.target.value)}
+                placeholder="✨ 주제 스포트라이트 (예: 기후)"
+                className="w-full px-2.5 py-1.5 rounded-lg text-[12px] bg-white/[0.06] border border-white/[0.1] text-slate-100 placeholder:text-slate-500/70 focus:outline-none focus:ring-2 focus:ring-sky-400/60"
+              />
+              {themeMatch && (
+                <p className="mt-1 text-[11px] text-slate-400/70">
+                  {themeMatch.linkCount > 0
+                    ? <>연결 <b className="text-sky-300 tabular-nums">{themeMatch.linkCount}</b>개의 별이 켜져 있습니다</>
+                    : '일치하는 연결이 없습니다'}
+                  <button onClick={() => setThemeQuery('')} className="ml-2 text-sky-400/80 hover:text-sky-300 transition-colors">지우기</button>
+                </p>
               )}
             </div>
           </div>
