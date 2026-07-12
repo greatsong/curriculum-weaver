@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { X, HelpCircle } from 'lucide-react'
-import { apiGet } from '../lib/api'
-import { fetchGraphData } from '../lib/graphDataCache'
+import { fetchGraphData, invalidateGraphCache } from '../lib/graphDataCache'
 import Logo from './Logo'
 import DesignModeCoach from './DesignModeCoach'
 import PairLens from './lenses/PairLens'
@@ -64,17 +63,48 @@ export default function DesignMode() {
     })
   }, [])
 
-  // ── 그래프 데이터 (published | all) ──
+  // ── 그래프 데이터 ──
+  // 항상 status=all로 한 번만 받고 렌즈별로 클라이언트 필터링:
+  // - 과목쌍 렌즈는 candidate(AI 제안)를 점선으로 항상 노출 (빈 쌍 문제 완화)
+  // - 나머지 렌즈는 "AI 제안 포함" 토글을 따름 (기존 동작 유지)
+  // refreshTick은 온디맨드 AI 탐색 완료 후 재조회 트리거
+  const [refreshTick, setRefreshTick] = useState(0)
+  const refreshGraph = useCallback(() => {
+    invalidateGraphCache() // 탐색으로 링크가 추가됐으므로 공유 캐시 무효화
+    setRefreshTick(t => t + 1)
+  }, [])
   useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    const status = showAllLinks ? 'all' : 'published'
-    fetchGraphData(status)
+    if (refreshTick === 0) setLoading(true) // 백그라운드 갱신은 로딩 화면 없이
+    fetchGraphData('all')
       .then(data => { if (!cancelled) setGraphData(data) })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [showAllLinks])
+  }, [refreshTick])
+
+  // published만 남긴 그래프 (계열·이웃 렌즈의 기본 뷰)
+  const publishedGraph = useMemo(() => {
+    if (!graphData) return null
+    return { ...graphData, links: graphData.links.filter(l => (l.status || 'published') === 'published') }
+  }, [graphData])
+
+  // 과목별 published 교과 간 연결 수 (과목 선택 드롭다운 표기용 —
+  // 어떤 과목이 연결이 풍부한지 고르기 전에 보이게 한다)
+  const subjectLinkCounts = useMemo(() => {
+    if (!graphData) return new Map()
+    const subjById = new Map(graphData.nodes.map(n => [n.id, n.subject]))
+    const counts = new Map()
+    for (const l of graphData.links) {
+      if ((l.status || 'published') !== 'published') continue
+      const sa = subjById.get(typeof l.source === 'object' ? l.source?.id : l.source)
+      const sb = subjById.get(typeof l.target === 'object' ? l.target?.id : l.target)
+      if (!sa || !sb || sa === sb) continue
+      counts.set(sa, (counts.get(sa) || 0) + 1)
+      counts.set(sb, (counts.get(sb) || 0) + 1)
+    }
+    return counts
+  }, [graphData])
 
   // 학교급 필터가 적용된 과목 목록 (고교 교사가 106개 평면 목록에서 헤매지 않도록)
   // 학교급 미상(null) 노드는 배제하지 않음 — 고교 선택과목 누락 방지
@@ -208,19 +238,20 @@ export default function DesignMode() {
             {lens === 'pair' && (
               <PairLens graph={graphData} subjects={subjects} subjectGroups={subjectGroups} pair={pair}
                 onPickPair={(p) => patchParams({ a: p[0], b: p[1] })}
-                basket={basket} onToggleBasket={toggleBasket} onOpenNeighbor={openNeighbor} />
+                basket={basket} onToggleBasket={toggleBasket} onOpenNeighbor={openNeighbor}
+                subjectLinkCounts={subjectLinkCounts} onGraphRefresh={refreshGraph} />
             )}
             {lens === 'theme' && (
               <ThemeLens query={query} onQuery={(q) => patchParams({ q })} level={level}
                 basket={basket} onToggleBasket={toggleBasket} onOpenNeighbor={openNeighbor} />
             )}
             {lens === 'series' && (
-              <SeriesLens graph={graphData} focusCode={focusCode} level={level}
+              <SeriesLens graph={showAllLinks ? graphData : publishedGraph} focusCode={focusCode} level={level}
                 onFocus={(code) => patchParams({ focus: code })}
                 basket={basket} onToggleBasket={toggleBasket} />
             )}
             {lens === 'neighbor' && (
-              <NeighborLens graph={graphData} focusCode={focusCode} level={level}
+              <NeighborLens graph={showAllLinks ? graphData : publishedGraph} focusCode={focusCode} level={level}
                 onFocus={(code) => patchParams({ focus: code })}
                 basket={basket} onToggleBasket={toggleBasket} />
             )}

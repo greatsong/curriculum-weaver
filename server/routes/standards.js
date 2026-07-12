@@ -24,6 +24,8 @@
  * - DELETE /api/standards/all                           — 전체 초기화
  * - POST /api/standards/graph/chat                      — AI 그래프 채팅 (SSE)
  * - POST /api/standards/graph/add-links                 — AI 추천 링크 추가
+ * - POST /api/standards/pairs/explore                   — 과목쌍 온디맨드 AI 탐색 시작
+ * - GET  /api/standards/pairs/jobs/:jobId               — 탐색 잡 상태 폴링
  */
 import { Router } from 'express'
 import { getAnthropic } from '../lib/anthropicClient.js'
@@ -33,6 +35,7 @@ import { computeEmbedding3D, invalidateEmbeddingCache } from '../services/embedd
 import { semanticSearch, isSemanticSearchAvailable } from '../services/semanticSearch.js'
 import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js'
 import { persistLinks, persistLinkStatus } from '../lib/linkService.js'
+import { startPairExploration, getPairJob } from '../services/pairExplorer.js'
 import {
   searchStandards, getStandardsByProject,
   addStandardToProject, removeStandardFromProject, resolveStandardId,
@@ -219,6 +222,49 @@ standardsRouter.patch('/links/:linkId/status', requireAuth, requireAdmin, async 
     console.warn('[standards] 링크 상태 DB 영속화 실패:', persistResult.error)
   }
   res.json({ ok: true, link, persisted: persistResult.persisted })
+})
+
+// ============================================================
+// 과목쌍 온디맨드 AI 탐색 (설계 모드 PairLens)
+// ============================================================
+
+/**
+ * POST /api/standards/pairs/explore
+ * 두 과목 사이의 링크 후보를 즉석 생성 (임베딩 순위 상위 후보 → LLM 판정 → candidate 적재).
+ *
+ * 인증 필수. requireAdmin이 아닌 이유: 결과가 항상 candidate라 published 그래프를
+ * 오염시키지 않고, 사용자 일일 쿼터·전역 동시 실행 상한으로 비용이 방어된다.
+ * (published 승격은 기존 관리자 검토 경로 유지)
+ *
+ * @body {{ subjectA: string, subjectB: string }}
+ * @returns 202 { job } — 잡 시작(또는 진행 중 잡에 합류)
+ * @returns 200 { alreadyExplored } — 최근 탐색 쿨다운 (재판정 불필요)
+ */
+standardsRouter.post('/pairs/explore', requireAuth, async (req, res) => {
+  try {
+    const { subjectA, subjectB } = req.body || {}
+    const result = startPairExploration({ subjectA, subjectB, userId: req.user.id })
+    if (result.alreadyExplored) {
+      return res.json({ alreadyExplored: result.alreadyExplored })
+    }
+    res.status(202).json({ job: result.job, joined: result.joined || false })
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.message, code: err.code })
+    }
+    console.error('[standards] 과목쌍 탐색 시작 오류:', err.message)
+    res.status(500).json({ error: 'AI 탐색을 시작하지 못했습니다.' })
+  }
+})
+
+/**
+ * GET /api/standards/pairs/jobs/:jobId
+ * 탐색 잡 상태 폴링. 완료 시 클라이언트가 그래프를 다시 불러온다.
+ */
+standardsRouter.get('/pairs/jobs/:jobId', requireAuth, async (req, res) => {
+  const job = getPairJob(req.params.jobId)
+  if (!job) return res.status(404).json({ error: '탐색 작업을 찾을 수 없습니다. (만료되었을 수 있습니다)' })
+  res.json({ job })
 })
 
 // 특정 성취기준의 연결 조회
