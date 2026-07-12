@@ -124,6 +124,7 @@ export function createNebulaScene(container, {
   // 러프 대상 (per-frame 지수 러프: current → target)
   let targetSize, targetAlpha, curSize, curAlpha
   let targetLinkRGB, curLinkRGB // per-link rgb (밝기 포함, 3 floats/link)
+  let linkHighlightMask = null  // 선택 노드에 닿는 링크 (shimmer 대상)
   let lerpActive = false
 
   // 표시 상태
@@ -144,16 +145,56 @@ export function createNebulaScene(container, {
     Object.entries(LINK_TYPE_COLORS_DARK).map(([k, v]) => [k, new THREE.Color(v)])
   )
 
-  // 선택 링 (펄스 빌보드)
-  const ringGeo = new THREE.RingGeometry(1, 1.16, 48)
-  const ringMat = new THREE.MeshBasicMaterial({
-    color: '#ffffff', transparent: true, opacity: 0.7,
-    side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+  // 선택 헤일로 — 딱딱한 링 대신 부드러운 글로우 고리 스프라이트 (성운 테마)
+  // 교과군 색으로 틴트되고 잔잔하게 호흡한다. 은은함이 목표 — 화면을 압도하지 않게.
+  function makeHaloTexture() {
+    const size = 256
+    const canvas = document.createElement('canvas')
+    canvas.width = size; canvas.height = size
+    const ctx = canvas.getContext('2d')
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+    ctx.shadowColor = 'rgba(255,255,255,0.9)'
+    ctx.lineWidth = 7
+    // 블러 강도를 달리해 두 번 그려 심을 살리고 가장자리는 안개처럼
+    for (const blur of [10, 26]) {
+      ctx.shadowBlur = blur
+      ctx.beginPath()
+      ctx.arc(size / 2, size / 2, size * 0.34, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+    return new THREE.CanvasTexture(canvas)
+  }
+  const haloTexture = makeHaloTexture()
+  const haloMat = new THREE.SpriteMaterial({
+    map: haloTexture, transparent: true, opacity: 0.45,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
   })
-  const selectionRing = new THREE.Mesh(ringGeo, ringMat)
-  selectionRing.visible = false
-  scene.add(selectionRing)
-  let ringBaseScale = 6
+  const selectionHalo = new THREE.Sprite(haloMat)
+  selectionHalo.visible = false
+  scene.add(selectionHalo)
+  let haloBaseScale = 12
+
+  // 연결 여행 궤적 — 방문한 별을 잇는 희미한 별자리 선
+  let trailLine = null
+  function setTrail(points) {
+    if (trailLine) {
+      scene.remove(trailLine)
+      trailLine.geometry.dispose()
+      trailLine.material.dispose()
+      trailLine = null
+    }
+    if (!points || points.length < 2) return
+    const positions = new Float32Array(points.length * 3)
+    points.forEach((p, i) => { positions[i * 3] = p[0]; positions[i * 3 + 1] = p[1]; positions[i * 3 + 2] = p[2] })
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    const mat = new THREE.LineBasicMaterial({
+      color: '#9DB8FF', transparent: true, opacity: 0.4,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    })
+    trailLine = new THREE.Line(geo, mat)
+    scene.add(trailLine)
+  }
 
   function setData(data) {
     if (nodePoints) { scene.remove(nodePoints); nodePoints.geometry.dispose(); nodePoints.material.dispose() }
@@ -192,6 +233,7 @@ export function createNebulaScene(container, {
     const m = links.length
     const linkPositions = new Float32Array(m * 6)
     targetLinkRGB = new Float32Array(m * 3); curLinkRGB = new Float32Array(m * 3)
+    linkHighlightMask = new Uint8Array(m)
     nodeIndexByLink = []
     links.forEach((l, i) => {
       const si = codeToIndex.get(l.s), ti = codeToIndex.get(l.t)
@@ -256,6 +298,7 @@ export function createNebulaScene(container, {
       let rgb = LINK_BASE_RGB
       let a
       const touchesSelection = hasSelection && (l.s === selectedCode || l.t === selectedCode)
+      if (linkHighlightMask) linkHighlightMask[i] = touchesSelection ? 1 : 0
       if (touchesSelection) {
         rgb = LINK_TYPE_RGB[l.type] || LINK_BASE_RGB
         a = ALPHA.linkHi
@@ -287,12 +330,12 @@ export function createNebulaScene(container, {
     neighborCodes = neighbors || new Set()
     if (code !== null && codeToIndex.has(code)) {
       const node = nodes[codeToIndex.get(code)]
-      selectionRing.position.set(node.x, node.y, node.z)
-      // 근접 카메라(nodeFocus)에서 화면을 압도하지 않는 크기
-      ringBaseScale = Math.max(2.5, node.size * 1.15)
-      selectionRing.visible = true
+      selectionHalo.position.set(node.x, node.y, node.z)
+      haloBaseScale = Math.max(9, node.size * 2.6) // 소프트 텍스처라 여유 있게
+      haloMat.color.set(node.color)                // 교과군 색 틴트
+      selectionHalo.visible = true
     } else {
-      selectionRing.visible = false
+      selectionHalo.visible = false
     }
     computeTargets()
   }
@@ -543,9 +586,13 @@ export function createNebulaScene(container, {
         linkEntryF = clamp01((entryElapsed - TIMING.entryLinkStart) / TIMING.entryLinkFade)
       }
       for (let i = 0; i < links.length; i++) {
+        // 선택 연결선의 은은한 빛 흐름 (링크별 위상차 — '지식이 흐른다')
+        const shimmer = (selectedCode !== null && linkHighlightMask && linkHighlightMask[i])
+          ? 1 + Math.sin(now * 0.0026 + i * 1.7) * 0.18
+          : 1
         for (let c = 0; c < 3; c++) {
           curLinkRGB[i * 3 + c] += (targetLinkRGB[i * 3 + c] - curLinkRGB[i * 3 + c]) * k
-          const v = curLinkRGB[i * 3 + c] * linkEntryF
+          const v = curLinkRGB[i * 3 + c] * linkEntryF * shimmer
           linkColorAttr.array[i * 6 + c] = v
           linkColorAttr.array[i * 6 + 3 + c] = v
         }
@@ -554,12 +601,11 @@ export function createNebulaScene(container, {
       if (maxDelta < 0.002 && entryDone && selectedCode === null) lerpActive = false
     }
 
-    // 선택 링 펄스 + 빌보드
-    if (selectionRing.visible) {
-      const pulse = 1 + Math.sin(now * 0.004) * 0.12
-      selectionRing.scale.setScalar(ringBaseScale * pulse)
-      selectionRing.quaternion.copy(camera.quaternion)
-      ringMat.opacity = 0.5 + Math.sin(now * 0.004) * 0.2
+    // 선택 헤일로 — 3초 주기의 잔잔한 호흡 (스프라이트라 빌보드 불필요)
+    if (selectionHalo.visible) {
+      const breath = Math.sin(now * (Math.PI * 2 / 3000))
+      selectionHalo.scale.setScalar(haloBaseScale * (1 + breath * 0.05))
+      haloMat.opacity = 0.4 + breath * 0.12
     }
 
     // 오토로테이트: 투어 강제 > idle (8초 무입력 + 선택 없음), 2초 램프
@@ -604,7 +650,7 @@ export function createNebulaScene(container, {
   }
 
   return {
-    setData, setDim, setHighlight, setTourFocus, playEntry,
+    setData, setDim, setHighlight, setTourFocus, playEntry, setTrail,
     flyToNode, flyToPoint, overview, introFly,
     addLabel, addLabelAt, removeLabel, clearLabels,
     setIdleAutoRotate: (v) => { idleEnabled = v; markInteraction() },
