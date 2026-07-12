@@ -26,6 +26,14 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
   const [query, setQuery] = useState('')
   const [pickSubject, setPickSubject] = useState('') // 빈 상태의 "내 교과 선택" 진입로
   const { scenario, openScenario, closeScenario } = useScenario()
+  // 1:N 시나리오 — 맥락 카드 다중 선택 (최대 4)
+  const [picked, setPicked] = useState(() => new Set())
+  const togglePick = (code) => setPicked(prev => {
+    const next = new Set(prev)
+    if (next.has(code)) next.delete(code)
+    else if (next.size < 4) next.add(code)
+    return next
+  })
 
   const nodeByCode = useMemo(() => new Map((graph?.nodes || []).map(n => [n.code, n])), [graph])
   const nodeById = useMemo(() => new Map((graph?.nodes || []).map(n => [n.id, n])), [graph])
@@ -61,6 +69,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
   const walk = (code) => {
     setTrail(prev => [...prev.filter(c => c !== code && c !== focusCode), focusCode].filter(Boolean).slice(-6))
     closeScenario()
+    setPicked(new Set())
     onFocus(code)
   }
 
@@ -173,8 +182,17 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
           <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">📝 {link.lesson_hook}</p>
         )}
         {withScenario && (
-          <ScenarioButton isOpen={isOpen} className="mt-1.5"
-            onClick={(e) => { e.stopPropagation(); openScenario(center.code, node.code) }} />
+          <div className="mt-1.5 flex items-center gap-3">
+            <ScenarioButton isOpen={isOpen}
+              onClick={(e) => { e.stopPropagation(); openScenario(center.code, node.code) }} />
+            <button
+              onClick={(e) => { e.stopPropagation(); togglePick(node.code) }}
+              title="여러 맥락을 골라 하나의 시나리오로 묶기 (최대 4개)"
+              className={`flex items-center gap-1 text-[11px] font-semibold transition ${
+                picked.has(node.code) ? 'text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}>
+              {picked.has(node.code) ? <><Check size={11} /> 묶임</> : <><Plus size={11} /> 함께 묶기</>}
+            </button>
+          </div>
         )}
       </div>
     )
@@ -224,7 +242,20 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
         <div>
           <div className="mb-2">
             <h3 className="text-[13px] font-bold text-gray-700">🌍 실생활·융합 맥락 <span className="font-normal text-gray-400">({contextNeighbors.length})</span></h3>
-            <p className="text-[11px] text-gray-400 mt-0.5">이 성취기준이 다른 교과 수업에서 실제로 쓰이는 장면들이에요</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">이 성취기준이 다른 교과 수업에서 실제로 쓰이는 장면들이에요 — 여러 개를 묶어 하나의 시나리오로 만들 수도 있어요</p>
+            {picked.size > 0 && (
+              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => openScenario(center.code, [...picked])}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 transition">
+                  ✨ 묶은 맥락 {picked.size}개로 시나리오 만들기
+                </button>
+                {[...picked].map(code => (
+                  <span key={code} className="font-mono text-[10.5px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">{code}</span>
+                ))}
+                <button onClick={() => setPicked(new Set())} className="text-[11px] text-gray-400 hover:text-gray-600 underline underline-offset-2">비우기</button>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
             {contextNeighbors.map(({ link, node }) => (

@@ -13,15 +13,16 @@ import { apiPost } from '../../lib/api'
 export function useScenario() {
   const [scenario, setScenario] = useState(null) // { pairKey, loading, data|error, cached }
 
-  const openScenario = useCallback(async (conceptCode, contextCode) => {
-    const pairKey = [conceptCode, contextCode].sort().join('|')
+  const openScenario = useCallback(async (conceptCode, contextCodes) => {
+    const contexts = Array.isArray(contextCodes) ? contextCodes : [contextCodes]
+    const pairKey = [conceptCode, ...contexts].sort().join('|')
     setScenario(prev => {
       if (prev?.pairKey === pairKey && !prev.error) return prev // 이미 열림
       return { pairKey, loading: true }
     })
     try {
       const { scenario: data, cached } = await apiPost('/api/standards/links/scenario', {
-        source_code: conceptCode, target_code: contextCode, focus_code: conceptCode,
+        concept_code: conceptCode, context_codes: contexts,
       })
       setScenario({ pairKey, data, cached })
     } catch (err) {
@@ -57,7 +58,8 @@ export function ScenarioPanel({ scenario, onClose, subjectOf, basket, onToggleBa
   const navigate = useNavigate()
   if (!scenario) return null
   const sc = scenario.data
-  const pairCodes = sc ? [sc.concept_code, sc.context_code].filter(Boolean) : []
+  const contextCodes = sc ? (Array.isArray(sc.context_codes) ? sc.context_codes : [sc.context_code].filter(Boolean)) : []
+  const pairCodes = sc ? [sc.concept_code, ...contextCodes].filter(Boolean) : []
   const allInBasket = pairCodes.length > 0 && pairCodes.every(c => basket.has(c))
 
   // 프로젝트 시작: 두 성취기준이 담겨 있게 보장한 뒤 워크스페이스로
@@ -111,7 +113,7 @@ export function ScenarioPanel({ scenario, onClose, subjectOf, basket, onToggleBa
                 allInBasket
                   ? 'bg-emerald-100 text-emerald-700'
                   : 'bg-white border border-gray-300 text-gray-700 hover:border-violet-400'}`}>
-              {allInBasket ? <><Check size={12} /> 두 성취기준 담김</> : <>🧺 두 성취기준 담기</>}
+              {allInBasket ? <><Check size={12} /> 성취기준 {pairCodes.length}개 담김</> : <>🧺 성취기준 {pairCodes.length}개 담기</>}
             </button>
             <button
               onClick={startProject}
@@ -119,7 +121,7 @@ export function ScenarioPanel({ scenario, onClose, subjectOf, basket, onToggleBa
               이 시나리오로 프로젝트 시작 <ArrowRight size={12} />
             </button>
             <span className="basis-full sm:basis-auto sm:ml-auto text-[10.5px] text-gray-400">
-              AI가 만든 초안이에요 — {subjectOf?.(sc.context_code) || '상대 교과'} 선생님과 함께 다듬어 보세요.
+              AI가 만든 초안이에요 — {[...new Set(contextCodes.map(c => subjectOf?.(c)).filter(Boolean))].join('·') || '상대 교과'} 선생님과 함께 다듬어 보세요.
               {scenario.cached && ' (캐시된 시나리오)'}
             </span>
           </div>
