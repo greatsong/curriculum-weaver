@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Sparkles, X, Loader2, Check, ArrowRight } from 'lucide-react'
 import { apiPost } from '../../lib/api'
@@ -65,6 +65,30 @@ export function useScenario() {
   return { scenario, openScenario, closeScenario }
 }
 
+// 로딩 안내 — 요리하듯 단계가 바뀌는 메시지 (생성 ~30초, 마지막 단계에서 유지)
+const LOADING_STEPS = [
+  '🧺 성취기준 재료를 꺼내고 있어요',
+  '🔍 진짜 문제가 있는 수업 장면을 찾고 있어요',
+  '🧑‍🍳 교과들을 알맞게 버무리고 있어요',
+  '📊 학생이 직접 구할 수 있는 데이터를 고르고 있어요',
+  '✨ 핵심 질문을 다듬고 있어요',
+  '🍳 수업 한 상이 거의 완성됐어요 — 잠시만 기다려 주세요',
+]
+
+function ScenarioLoading() {
+  const [step, setStep] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setStep(prev => Math.min(prev + 1, LOADING_STEPS.length - 1)), 4500)
+    return () => clearInterval(t)
+  }, [])
+  return (
+    <div className="flex items-center gap-2 text-sm text-violet-600 py-2">
+      <Loader2 size={15} className="animate-spin shrink-0" />
+      <span key={step} className="animate-fade-in">{LOADING_STEPS[step]}…</span>
+    </div>
+  )
+}
+
 /** 시나리오 트리거 버튼 (카드 안에서 쓰는 작은 버튼) */
 export function ScenarioButton({ onClick, isOpen, className = '' }) {
   return (
@@ -104,10 +128,7 @@ export function ScenarioPanel({ scenario, onClose, subjectOf, basket, onToggleBa
   return (
     <div className="border border-violet-200 bg-violet-50/40 rounded-xl px-4 py-3.5">
       {scenario.loading ? (
-        <div className="flex items-center gap-2 text-sm text-violet-600 py-2">
-          <Loader2 size={15} className="animate-spin" />
-          두 성취기준을 연결하는 수업 시나리오를 만들고 있어요… 10초 정도 걸려요
-        </div>
+        <ScenarioLoading />
       ) : scenario.error ? (
         <div className="flex items-center justify-between text-sm text-red-500">
           <span>{scenario.error}</span>
