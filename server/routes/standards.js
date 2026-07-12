@@ -397,6 +397,10 @@ standardsRouter.get('/links/reports', requireAuth, requireAdmin, async (req, res
   }
 })
 
+// 시나리오 단일 비행: 같은 키의 동시 요청은 첫 생성을 함께 기다린다
+// (중복 클릭이 병렬 생성 2개를 만들고, 진 쪽 실패가 클라이언트의 성공 화면을 덮던 버그)
+const scenarioInflight = new Map() // key → Promise<scenario>
+
 /**
  * POST /api/standards/links/scenario
  * 실생활 문제 시나리오 — 개념 성취기준 1개 × 맥락 성취기준 1~4개를 연결해
@@ -485,28 +489,54 @@ ${multi ? '5' : '4'}. "철수가 사과를…" 식 가짜 인물·가짜 수치 
   "assessment_idea": "과정 중심 평가 아이디어 1~2문장"
 }`
 
-    const response = await getAnthropic().messages.create({
-      model: 'claude-sonnet-5',
-      max_tokens: 3000,
-      messages: [{ role: 'user', content: prompt }],
-    })
-    const text = response.content?.find(bl => bl.type === 'text')?.text || ''
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      console.error(`[standards] 시나리오 JSON 추출 실패 (stop=${response.stop_reason}, 응답 앞부분): ${text.slice(0, 200)}`)
-      throw new Error('AI 응답에서 JSON을 찾지 못했습니다')
+    // 3. 생성 — 같은 키의 동시 요청은 첫 생성 프라미스를 공유 (비용 1회, 경쟁 실패 없음)
+    let inflight = scenarioInflight.get(key)
+    let firstFlight = false
+    if (!inflight) {
+      firstFlight = true
+      inflight = (async () => {
+        // JSON 추출 실패는 모델 편차일 수 있어 1회 재시도
+        let lastErr
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const response = await getAnthropic().messages.create({
+            model: 'claude-sonnet-5',
+            max_tokens: 3000,
+            messages: [{ role: 'user', content: prompt }],
+          })
+          const text = response.content?.find(bl => bl.type === 'text')?.text || ''
+          const jsonMatch = text.match(/\{[\s\S]*\}/)
+          if (!jsonMatch) {
+            console.error(`[standards] 시나리오 JSON 추출 실패 (시도 ${attempt + 1}, stop=${response.stop_reason}): ${text.slice(0, 200)}`)
+            lastErr = new Error('AI 응답에서 JSON을 찾지 못했습니다')
+            continue
+          }
+          try {
+            const scenario = JSON.parse(jsonMatch[0])
+            scenario.concept_code = concept.code
+            scenario.context_codes = contexts.map(c => c.code)
+            scenario.context_code = contexts[0].code // 구버전 클라이언트 호환
+            await supabaseAdmin.from('scenario_cache').upsert({
+              key, codes: [concept.code, ...contexts.map(c => c.code)], scenario, model: 'claude-sonnet-5',
+            }, { onConflict: 'key', ignoreDuplicates: true })
+            return scenario
+          } catch (e) { lastErr = e }
+        }
+        throw lastErr
+      })()
+      scenarioInflight.set(key, inflight)
+      inflight.finally(() => scenarioInflight.delete(key))
     }
-    const scenario = JSON.parse(jsonMatch[0])
-    scenario.concept_code = concept.code
-    scenario.context_codes = contexts.map(c => c.code)
-    scenario.context_code = contexts[0].code // 구버전 클라이언트 호환
 
-    // 3. 캐시 저장 (경합 시 무시 — 먼저 저장된 쪽이 정본)
-    await supabaseAdmin.from('scenario_cache').upsert({
-      key, codes: [concept.code, ...contexts.map(c => c.code)], scenario, model: 'claude-sonnet-5',
-    }, { onConflict: 'key', ignoreDuplicates: true })
-
-    res.json({ scenario, cached: false })
+    try {
+      const scenario = await inflight
+      return res.json({ scenario, cached: !firstFlight })
+    } catch (genErr) {
+      // 생성이 실패해도 다른 경로로 캐시가 생겼을 수 있으니 마지막으로 재확인
+      const { data: late } = await supabaseAdmin
+        .from('scenario_cache').select('scenario').eq('key', key).maybeSingle()
+      if (late?.scenario) return res.json({ scenario: late.scenario, cached: true })
+      throw genErr
+    }
   } catch (err) {
     console.error('[standards] 시나리오 생성 오류:', err.message)
     res.status(500).json({ error: '시나리오 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.' })
