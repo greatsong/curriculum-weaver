@@ -229,7 +229,7 @@ export default function WorkspacesPage() {
               데모 체험
             </button>
             <button
-              onClick={() => navigate('/graph')}
+              onClick={() => navigate('/graph?mode=explore')}
               className="btn"
               style={{
                 padding: '8px 16px',
