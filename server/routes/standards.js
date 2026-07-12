@@ -398,6 +398,98 @@ standardsRouter.get('/links/reports', requireAuth, requireAdmin, async (req, res
 })
 
 /**
+ * POST /api/standards/links/scenario
+ * 실생활 문제 시나리오 — 연결 쌍(개념 성취기준 × 맥락 성취기준)으로
+ * "그 개념 없이는 답할 수 없는" 진짜 문제 상황을 생성한다.
+ * 쌍당 1개 캐시(link_scenarios) — 같은 쌍의 재요청은 즉시 반환.
+ * body: { source_code, target_code, focus_code? } (focus_code = 교사가 보고 있던 '내 교과' 성취기준)
+ */
+standardsRouter.post('/links/scenario', requireAuth, async (req, res) => {
+  try {
+    const { source_code, target_code, focus_code } = req.body || {}
+    const src = validateCode(source_code)
+    const tgt = validateCode(target_code)
+    if (!src.valid || !tgt.valid) {
+      return res.status(400).json({ error: '유효하지 않은 성취기준 코드입니다.' })
+    }
+    const [a, b] = src.matched.code < tgt.matched.code
+      ? [src.matched.code, tgt.matched.code] : [tgt.matched.code, src.matched.code]
+
+    // 1. 캐시 조회 — 같은 쌍은 같은 시나리오 (팀 간 공유, 비용 1회)
+    const { data: cached } = await supabaseAdmin
+      .from('link_scenarios').select('scenario, created_at')
+      .eq('source_code', a).eq('target_code', b).maybeSingle()
+    if (cached?.scenario) {
+      return res.json({ scenario: cached.scenario, cached: true })
+    }
+
+    // 2. 링크 메타(근거·주제·아이디어)로 프롬프트 강화
+    const link = StandardLinks.list().find(l => {
+      const [x, y] = l.source_code < l.target_code ? [l.source_code, l.target_code] : [l.target_code, l.source_code]
+      return x === a && y === b
+    })
+    // 요청의 source_code가 '개념'(교사가 보고 있던 내 교과), target_code가 '맥락'.
+    // focus_code가 오면 그것을 개념으로 확정 (UI가 중심 성취기준을 넘겨줌)
+    const focusNorm = focus_code ? validateCode(focus_code).matched?.code : null
+    let concept = src.matched
+    let context = tgt.matched
+    if (focusNorm && focusNorm === tgt.matched.code) { concept = tgt.matched; context = src.matched }
+
+    const prompt = `당신은 융합 수업 설계 전문가입니다. 아래 두 성취기준을 잇는 "실생활 문제 시나리오"를 만드세요.
+
+## 개념 성취기준 (학생이 배워야 할 도구·개념)
+${concept.code} [${concept.subject}] ${concept.content}
+
+## 맥락 성취기준 (문제가 발생하는 진짜 상황 — 이 교과의 실제 탐구 맥락)
+${context.code} [${context.subject}] ${context.content}
+${link?.rationale ? `\n## 검증된 연결 근거\n${link.rationale}` : ''}${link?.integration_theme ? `\n융합 주제: ${link.integration_theme}` : ''}${link?.lesson_hook ? `\n수업 아이디어 씨앗: ${link.lesson_hook}` : ''}
+
+## 작위성 방지 원칙 (가장 중요 — 위반 시 실패작)
+1. 개념을 숨겨둔 문제 금지 — "${concept.subject}의 이 개념 없이는 답할 수 없는 질문"이어야 한다.
+   학생이 "어차피 이걸 쓰라는 거군"을 간파하는 순간 실패다. 질문이 먼저 진짜여야 한다.
+2. 맥락은 발명하지 말 것 — 맥락 성취기준(${context.code})이 실제로 다루는 내용 요소·자료·활동만 사용한다.
+3. 데이터는 학생이 실제로 구하거나 만들 수 있는 것만 (공공데이터, 교실 측정, 뉴스 통계 등 출처를 구체적으로).
+4. "철수가 사과를…" 식 가짜 인물·가짜 수치 금지.
+
+## 응답 형식 — 아래 JSON만 출력 (다른 텍스트 금지)
+{
+  "title": "시나리오 제목 (한 줄)",
+  "situation": "문제 상황 3~4문장 — 맥락 교과의 실제 탐구 장면에서 시작",
+  "data_sources": ["학생이 실제 접근 가능한 데이터·자료 출처 2~3개 (구체적으로)"],
+  "driving_question": "핵심 질문 한 문장 — 개념 없이는 답할 수 없는 질문",
+  "why_needed": "왜 이 지점에서 ${concept.subject}의 이 개념이 필연적으로 필요해지는지 2~3문장",
+  "activity_steps": ["차시 흐름 3~4단계 (각 한 줄)"],
+  "assessment_idea": "과정 중심 평가 아이디어 1~2문장"
+}`
+
+    const response = await getAnthropic().messages.create({
+      model: 'claude-sonnet-5',
+      max_tokens: 3000,
+      messages: [{ role: 'user', content: prompt }],
+    })
+    const text = response.content?.find(bl => bl.type === 'text')?.text || ''
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) {
+      console.error(`[standards] 시나리오 JSON 추출 실패 (stop=${response.stop_reason}, 응답 앞부분): ${text.slice(0, 200)}`)
+      throw new Error('AI 응답에서 JSON을 찾지 못했습니다')
+    }
+    const scenario = JSON.parse(jsonMatch[0])
+    scenario.concept_code = concept.code
+    scenario.context_code = context.code
+
+    // 3. 캐시 저장 (경합 시 무시 — 먼저 저장된 쪽이 정본)
+    await supabaseAdmin.from('link_scenarios').upsert({
+      source_code: a, target_code: b, scenario, model: 'claude-sonnet-5',
+    }, { onConflict: 'source_code,target_code', ignoreDuplicates: true })
+
+    res.json({ scenario, cached: false })
+  } catch (err) {
+    console.error('[standards] 시나리오 생성 오류:', err.message)
+    res.status(500).json({ error: '시나리오 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.' })
+  }
+})
+
+/**
  * PATCH /api/standards/links/reports/resolve
  * 신고 쌍 처리 (관리자 전용) — body { source_code, target_code, action }
  *  - action 'demote':  링크를 candidate로 강등(그래프에서 내려감) + 해당 쌍 신고 전체 처리 표시
