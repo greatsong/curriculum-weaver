@@ -478,7 +478,7 @@ ${contextBlocks}
 ${multi ? '4' : '3'}. 데이터는 학생이 실제로 구하거나 만들 수 있는 것만 (공공데이터, 교실 측정, 뉴스 통계 등 출처를 구체적으로).
 ${multi ? '5' : '4'}. "철수가 사과를…" 식 가짜 인물·가짜 수치 금지.
 
-## 응답 형식 — 아래 JSON만 출력 (다른 텍스트 금지)
+## 응답 형식 — 아래 JSON만 출력 (다른 텍스트·코드펜스 금지, 전체 1,300자 이내로 간결하게)
 {
   "title": "시나리오 제목 (한 줄)",
   "situation": "문제 상황 3~5문장 — 맥락 교과의 실제 탐구 장면에서 시작",
@@ -500,7 +500,7 @@ ${multi ? '5' : '4'}. "철수가 사과를…" 식 가짜 인물·가짜 수치 
         for (let attempt = 0; attempt < 2; attempt++) {
           const response = await getAnthropic().messages.create({
             model: 'claude-sonnet-5',
-            max_tokens: 3000,
+            max_tokens: 5000,
             messages: [{ role: 'user', content: prompt }],
           })
           const text = response.content?.find(bl => bl.type === 'text')?.text || ''
