@@ -399,66 +399,89 @@ standardsRouter.get('/links/reports', requireAuth, requireAdmin, async (req, res
 
 /**
  * POST /api/standards/links/scenario
- * 실생활 문제 시나리오 — 연결 쌍(개념 성취기준 × 맥락 성취기준)으로
+ * 실생활 문제 시나리오 — 개념 성취기준 1개 × 맥락 성취기준 1~4개를 연결해
  * "그 개념 없이는 답할 수 없는" 진짜 문제 상황을 생성한다.
- * 쌍당 1개 캐시(link_scenarios) — 같은 쌍의 재요청은 즉시 반환.
- * body: { source_code, target_code, focus_code? } (focus_code = 교사가 보고 있던 '내 교과' 성취기준)
+ * 코드 집합당 1개 캐시(scenario_cache) — 같은 조합의 재요청은 즉시 반환.
+ * body: { concept_code, context_codes: string[] }
+ *       (구버전 호환: { source_code, target_code, focus_code } — 1:1로 매핑)
  */
 standardsRouter.post('/links/scenario', requireAuth, async (req, res) => {
   try {
-    const { source_code, target_code, focus_code } = req.body || {}
-    const src = validateCode(source_code)
-    const tgt = validateCode(target_code)
-    if (!src.valid || !tgt.valid) {
-      return res.status(400).json({ error: '유효하지 않은 성취기준 코드입니다.' })
+    const body = req.body || {}
+    // 구버전 파라미터(1:1) → 신버전(1:N) 매핑
+    let conceptRaw = body.concept_code
+    let contextRaws = Array.isArray(body.context_codes) ? body.context_codes : []
+    if (!conceptRaw && body.source_code && body.target_code) {
+      const focus = body.focus_code || body.source_code
+      conceptRaw = focus
+      contextRaws = [body.source_code, body.target_code].filter(c => c !== focus)
     }
-    const [a, b] = src.matched.code < tgt.matched.code
-      ? [src.matched.code, tgt.matched.code] : [tgt.matched.code, src.matched.code]
 
-    // 1. 캐시 조회 — 같은 쌍은 같은 시나리오 (팀 간 공유, 비용 1회)
+    const conceptV = validateCode(conceptRaw)
+    if (!conceptV.valid) return res.status(400).json({ error: '유효하지 않은 개념 성취기준 코드입니다.' })
+    const concept = conceptV.matched
+
+    const contexts = []
+    for (const raw of contextRaws.slice(0, 4)) {
+      const v = validateCode(raw)
+      if (!v.valid) return res.status(400).json({ error: `유효하지 않은 맥락 성취기준 코드: ${raw}` })
+      if (v.matched.code === concept.code) continue
+      if (contexts.some(c => c.code === v.matched.code)) continue
+      contexts.push(v.matched)
+    }
+    if (contexts.length === 0) return res.status(400).json({ error: '맥락 성취기준이 1개 이상 필요합니다.' })
+
+    // 1. 캐시 조회 — 같은 조합은 같은 시나리오 (팀 간 공유, 비용 1회)
+    const key = [concept.code, ...contexts.map(c => c.code)].sort().join('|')
     const { data: cached } = await supabaseAdmin
-      .from('link_scenarios').select('scenario, created_at')
-      .eq('source_code', a).eq('target_code', b).maybeSingle()
+      .from('scenario_cache').select('scenario')
+      .eq('key', key).maybeSingle()
     if (cached?.scenario) {
       return res.json({ scenario: cached.scenario, cached: true })
     }
 
-    // 2. 링크 메타(근거·주제·아이디어)로 프롬프트 강화
-    const link = StandardLinks.list().find(l => {
+    // 2. 개념↔각 맥락의 검증된 링크 메타(근거·주제·아이디어)로 프롬프트 강화
+    const linkByPair = new Map(StandardLinks.list().map(l => {
       const [x, y] = l.source_code < l.target_code ? [l.source_code, l.target_code] : [l.target_code, l.source_code]
-      return x === a && y === b
-    })
-    // 요청의 source_code가 '개념'(교사가 보고 있던 내 교과), target_code가 '맥락'.
-    // focus_code가 오면 그것을 개념으로 확정 (UI가 중심 성취기준을 넘겨줌)
-    const focusNorm = focus_code ? validateCode(focus_code).matched?.code : null
-    let concept = src.matched
-    let context = tgt.matched
-    if (focusNorm && focusNorm === tgt.matched.code) { concept = tgt.matched; context = src.matched }
+      return [`${x}|${y}`, l]
+    }))
+    const contextBlocks = contexts.map((ctx, i) => {
+      const pk = [concept.code, ctx.code].sort().join('|')
+      const link = linkByPair.get(pk)
+      const meta = [
+        link?.rationale ? `  · 검증된 연결 근거: ${link.rationale}` : '',
+        link?.integration_theme ? `  · 융합 주제: ${link.integration_theme}` : '',
+        link?.lesson_hook ? `  · 수업 아이디어 씨앗: ${link.lesson_hook}` : '',
+      ].filter(Boolean).join('\n')
+      return `${i + 1}. ${ctx.code} [${ctx.subject}] ${ctx.content}${meta ? '\n' + meta : ''}`
+    }).join('\n')
 
-    const prompt = `당신은 융합 수업 설계 전문가입니다. 아래 두 성취기준을 잇는 "실생활 문제 시나리오"를 만드세요.
+    const multi = contexts.length > 1
+    const prompt = `당신은 융합 수업 설계 전문가입니다. 아래 성취기준들을 연결하는 "실생활 문제 시나리오" 하나를 만드세요.
 
 ## 개념 성취기준 (학생이 배워야 할 도구·개념)
 ${concept.code} [${concept.subject}] ${concept.content}
 
-## 맥락 성취기준 (문제가 발생하는 진짜 상황 — 이 교과의 실제 탐구 맥락)
-${context.code} [${context.subject}] ${context.content}
-${link?.rationale ? `\n## 검증된 연결 근거\n${link.rationale}` : ''}${link?.integration_theme ? `\n융합 주제: ${link.integration_theme}` : ''}${link?.lesson_hook ? `\n수업 아이디어 씨앗: ${link.lesson_hook}` : ''}
+## 맥락 성취기준 ${contexts.length}개 (문제가 발생하는 진짜 상황 — 각 교과의 실제 탐구 맥락)
+${contextBlocks}
 
 ## 작위성 방지 원칙 (가장 중요 — 위반 시 실패작)
 1. 개념을 숨겨둔 문제 금지 — "${concept.subject}의 이 개념 없이는 답할 수 없는 질문"이어야 한다.
    학생이 "어차피 이걸 쓰라는 거군"을 간파하는 순간 실패다. 질문이 먼저 진짜여야 한다.
-2. 맥락은 발명하지 말 것 — 맥락 성취기준(${context.code})이 실제로 다루는 내용 요소·자료·활동만 사용한다.
-3. 데이터는 학생이 실제로 구하거나 만들 수 있는 것만 (공공데이터, 교실 측정, 뉴스 통계 등 출처를 구체적으로).
-4. "철수가 사과를…" 식 가짜 인물·가짜 수치 금지.
+2. 맥락은 발명하지 말 것 — 맥락 성취기준들이 실제로 다루는 내용 요소·자료·활동만 사용한다.${multi ? `
+3. 하나의 문제 상황이 맥락 ${contexts.length}개를 자연스럽게 관통해야 한다 — 맥락별로 따로 노는 짜깁기 금지.
+   억지로 전부 넣기보다, 상황이 진짜라면 각 맥락이 문제의 다른 단계에서 자연스럽게 등장한다.` : ''}
+${multi ? '4' : '3'}. 데이터는 학생이 실제로 구하거나 만들 수 있는 것만 (공공데이터, 교실 측정, 뉴스 통계 등 출처를 구체적으로).
+${multi ? '5' : '4'}. "철수가 사과를…" 식 가짜 인물·가짜 수치 금지.
 
 ## 응답 형식 — 아래 JSON만 출력 (다른 텍스트 금지)
 {
   "title": "시나리오 제목 (한 줄)",
-  "situation": "문제 상황 3~4문장 — 맥락 교과의 실제 탐구 장면에서 시작",
+  "situation": "문제 상황 3~5문장 — 맥락 교과의 실제 탐구 장면에서 시작",
   "data_sources": ["학생이 실제 접근 가능한 데이터·자료 출처 2~3개 (구체적으로)"],
   "driving_question": "핵심 질문 한 문장 — 개념 없이는 답할 수 없는 질문",
   "why_needed": "왜 이 지점에서 ${concept.subject}의 이 개념이 필연적으로 필요해지는지 2~3문장",
-  "activity_steps": ["차시 흐름 3~4단계 (각 한 줄)"],
+  "activity_steps": ["차시 흐름 ${multi ? '4~5' : '3~4'}단계 (각 한 줄${multi ? ', 각 맥락 교과가 어느 단계에 등장하는지 드러나게' : ''})"],
   "assessment_idea": "과정 중심 평가 아이디어 1~2문장"
 }`
 
@@ -475,12 +498,13 @@ ${link?.rationale ? `\n## 검증된 연결 근거\n${link.rationale}` : ''}${lin
     }
     const scenario = JSON.parse(jsonMatch[0])
     scenario.concept_code = concept.code
-    scenario.context_code = context.code
+    scenario.context_codes = contexts.map(c => c.code)
+    scenario.context_code = contexts[0].code // 구버전 클라이언트 호환
 
     // 3. 캐시 저장 (경합 시 무시 — 먼저 저장된 쪽이 정본)
-    await supabaseAdmin.from('link_scenarios').upsert({
-      source_code: a, target_code: b, scenario, model: 'claude-sonnet-5',
-    }, { onConflict: 'source_code,target_code', ignoreDuplicates: true })
+    await supabaseAdmin.from('scenario_cache').upsert({
+      key, codes: [concept.code, ...contexts.map(c => c.code)], scenario, model: 'claude-sonnet-5',
+    }, { onConflict: 'key', ignoreDuplicates: true })
 
     res.json({ scenario, cached: false })
   } catch (err) {
