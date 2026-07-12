@@ -275,7 +275,9 @@ standardsRouter.get('/graph3d', async (req, res) => {
       code: n.code,
       subject: n.subject,
       subject_group: n.subject_group || n.subject,
-      school_level: n.school_level || '',
+      // school_level 빈값(수학·국어·정보 등 다수)은 grade_group으로 유추 보강
+      // (빈값이면 클라 학교급 필터에서 전부 감광되는 버그의 원인)
+      school_level: n.school_level || resolveSchoolLevel(n) || '',
       grade_group: n.grade_group || '',
       area: n.area || '',
       content: n.content || '',
