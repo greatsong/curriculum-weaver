@@ -8,7 +8,7 @@
  */
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Play, Compass, X, Rocket, ChevronDown, ChevronUp } from 'lucide-react'
+import { Play, Compass, X, Rocket, ChevronDown, ChevronUp, List } from 'lucide-react'
 import { apiGet } from '../lib/api'
 import Logo from './Logo'
 import { createNebulaScene } from '../lib/nebulaScene'
@@ -84,6 +84,8 @@ export default function Graph3DShowcase() {
   const [activeLevels, setActiveLevels] = useState(null)
   const [tour, setTour] = useState({ active: false, idx: 0, paused: false })
   const [legendPref, setLegendPref] = useState(true) // 사용자의 레전드 펼침 선호
+  const [browseOpen, setBrowseOpen] = useState(false) // 텍스트 탐색 패널
+  const [browseSubject, setBrowseSubject] = useState('')
   const visitedRef = useRef(new Set())
   // 연결 여행 궤적 — 연속 선택(여행·카드 클릭)의 방문 순서. 선택 해제 시 리셋
   const journeyRef = useRef([])
@@ -156,7 +158,23 @@ export default function Graph3DShowcase() {
     const levels = [...new Set(data.nodes.map(n => n.school_level).filter(Boolean))]
       .sort((a, b) => ({ '초등학교': 0, '중학교': 1, '고등학교': 2 }[a] ?? 9) - ({ '초등학교': 0, '중학교': 1, '고등학교': 2 }[b] ?? 9))
 
-    return { nodesByCode, degree, maxDegree, adjacency, groups, levels }
+    // 텍스트 탐색용: 세부 과목 → 성취기준 목록 (코드순)
+    const subjectIndex = new Map()
+    for (const n of data.nodes) {
+      if (!subjectIndex.has(n.subject)) subjectIndex.set(n.subject, { group: n.subject_group, nodes: [] })
+      subjectIndex.get(n.subject).nodes.push(n)
+    }
+    subjectIndex.forEach(v => v.nodes.sort((a, b) => a.code.localeCompare(b.code)))
+    // 교과군 순서대로 과목 묶음 (select optgroup용, 과목은 성취기준 수 내림차순)
+    const subjectsByGroup = groups.map(g => ({
+      group: g.name,
+      subjects: [...subjectIndex.entries()]
+        .filter(([, v]) => v.group === g.name)
+        .map(([name, v]) => ({ name, count: v.nodes.length }))
+        .sort((a, b) => b.count - a.count),
+    })).filter(g => g.subjects.length > 0)
+
+    return { nodesByCode, degree, maxDegree, adjacency, groups, levels, subjectIndex, subjectsByGroup }
   }, [data])
 
   // ── 씬 생성/파괴 ──
@@ -256,8 +274,9 @@ export default function Graph3DShowcase() {
     if (!activeGroups && !activeLevels) { scene.setDim(null); return }
     const dim = new Map()
     for (const n of data.nodes) {
+      // 학교급 미상(빈값)은 배제하지 않음 — /graph 필터와 동일한 관용 원칙
       const on = (!activeGroups || activeGroups.has(n.subject_group)) &&
-                 (!activeLevels || activeLevels.has(n.school_level))
+                 (!activeLevels || !n.school_level || activeLevels.has(n.school_level))
       dim.set(n.code, on ? 1 : 0)
     }
     scene.setDim(dim)
@@ -582,6 +601,15 @@ export default function Graph3DShowcase() {
           </div>
           <div className="pointer-events-auto flex items-center gap-2 animate-ui-in" style={{ animationDelay: '80ms' }}>
             {!tour.active && (
+              <button onClick={() => setBrowseOpen(v => !v)}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium border transition-colors duration-150 ${
+                  browseOpen
+                    ? 'bg-white/[0.14] border-white/[0.16] text-slate-100'
+                    : 'bg-white/[0.06] hover:bg-white/[0.12] border-white/[0.08] text-slate-300/90 hover:text-slate-100'}`}>
+                <List size={14} /> <span className="hidden sm:inline">별 목록</span>
+              </button>
+            )}
+            {!tour.active && (
               <button onClick={startTour}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold bg-sky-500/90 hover:bg-sky-400 text-white shadow-[0_0_24px_rgba(56,189,248,0.35)] transition-colors duration-150">
                 <Play size={14} /> <span className="hidden sm:inline">우주 여행</span>
@@ -595,8 +623,64 @@ export default function Graph3DShowcase() {
         </div>
       )}
 
-      {/* 레전드: 조명 스위치 (스펙 §4-2) — 데스크톱 좌하단 / 모바일 하단 스트립 */}
-      {uiReady && !tour.active && derived && (
+      {/* 텍스트 탐색: 과목 선택 → 성취기준 스크롤 목록 (클릭 = 해당 별로 비행) */}
+      {uiReady && !tour.active && derived && browseOpen && (
+        <div className={isMobile
+          ? 'fixed inset-x-3 top-16 bottom-3 z-30 flex flex-col bg-[#0B1228]/90 backdrop-blur-2xl border border-white/[0.1] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)]'
+          : 'absolute left-4 top-[72px] bottom-4 z-20 w-[290px] flex flex-col bg-[#0B1228]/75 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] animate-ui-in'}>
+          <div className="flex items-center gap-2 p-3 pb-2">
+            <select
+              value={browseSubject}
+              onChange={(e) => setBrowseSubject(e.target.value)}
+              className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg text-[12px] font-medium bg-white/[0.08] border border-white/[0.1] text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-400/60 [&>optgroup]:bg-[#0E1633] [&>option]:bg-[#0E1633]">
+              <option value="">과목 선택…</option>
+              {derived.subjectsByGroup.map(g => (
+                <optgroup key={g.group} label={g.group}>
+                  {g.subjects.map(s => (
+                    <option key={s.name} value={s.name}>{s.name} ({s.count})</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <button onClick={() => setBrowseOpen(false)}
+              className="shrink-0 p-1.5 rounded-lg text-slate-400/70 hover:text-slate-100 hover:bg-white/[0.08] transition-colors">
+              <X size={15} />
+            </button>
+          </div>
+          <div className="h-px bg-white/[0.08] mx-3" />
+          <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1.5">
+            {!browseSubject ? (
+              <p className="px-2 py-6 text-center text-[12px] leading-relaxed text-slate-400/70">
+                과목을 선택하면 성취기준 목록이 나타납니다.<br />항목을 누르면 그 별로 날아갑니다 ✨
+              </p>
+            ) : (
+              (derived.subjectIndex.get(browseSubject)?.nodes || []).map(n => {
+                const isCurrent = selected === n.code
+                const color = groupColor(n.subject_group)
+                return (
+                  <button key={n.code} onClick={() => selectNode(n.code)}
+                    className={`w-full text-left p-2.5 rounded-xl border transition-colors duration-150 ${
+                      isCurrent
+                        ? 'bg-sky-500/15 border-sky-400/40'
+                        : 'bg-white/[0.03] hover:bg-white/[0.08] border-white/[0.05] hover:border-white/[0.12]'}`}>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="px-1.5 py-px rounded font-mono text-[10.5px] font-semibold tracking-tight border"
+                        style={{ color, borderColor: `${color}44`, backgroundColor: `${color}14` }}>
+                        {n.code}
+                      </span>
+                      {n.grade_group && <span className="text-[10.5px] text-slate-400/70">{n.grade_group}</span>}
+                    </div>
+                    <p className="text-[12px] leading-snug text-slate-300/90 line-clamp-2">{n.content}</p>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 레전드: 조명 스위치 (스펙 §4-2) — 데스크톱 좌하단 / 모바일 하단 스트립 (탐색 패널 열림 시 숨김) */}
+      {uiReady && !tour.active && derived && !browseOpen && (
         isMobile ? (
           !selected && (
             <div className="absolute bottom-0 inset-x-0 z-20 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-6 flex gap-1.5 overflow-x-auto bg-gradient-to-t from-[#04060F] to-transparent">
