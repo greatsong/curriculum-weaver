@@ -1,6 +1,13 @@
 import { lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
+const Graph3DShowcase = lazy(() =>
+  import('../components/Graph3DShowcase').catch(() => {
+    window.location.reload()
+    return { default: () => null }
+  })
+)
+// 구 3D 화면 (검증 기간 유지 — ?mode=explore-legacy)
 const Graph3D = lazy(() =>
   import('../components/Graph3D').catch(() => {
     window.location.reload()
@@ -45,6 +52,8 @@ export default function GraphPage() {
         </div>
       }>
         {mode === 'explore' ? (
+          <Graph3DShowcase />
+        ) : mode === 'explore-legacy' ? (
           <div className="relative h-full">
             <Graph3D initialSubjects={initialSubjects.length > 0 ? initialSubjects : null} />
             {/* 설계 모드 복귀 토글 */}

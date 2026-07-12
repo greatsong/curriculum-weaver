@@ -16,6 +16,7 @@
  * - GET  /api/standards/categories                      — 교육과정 구분 목록
  * - GET  /api/standards/all                             — 전체 목록
  * - GET  /api/standards/graph                           — 그래프 데이터 (로컬)
+ * - GET  /api/standards/graph3d                         — 3D 쇼케이스 경량 그래프 (사전계산 좌표)
  * - GET  /api/standards/:id/links                       — 연결 조회
  * - POST /api/standards/project/:projectId              — 프로젝트에 성취기준 추가
  * - DELETE /api/standards/project/:projectId/:standardId — 프로젝트에서 제거
@@ -26,6 +27,8 @@
  * - POST /api/standards/graph/add-links                 — AI 추천 링크 추가
  */
 import { Router } from 'express'
+import { readFileSync } from 'fs'
+import { fileURLToPath } from 'url'
 import { getAnthropic } from '../lib/anthropicClient.js'
 import { Standards, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
 import { validateCode, getStandardsForSubjects } from '../lib/standardsValidator.js'
@@ -193,6 +196,109 @@ standardsRouter.get('/graph', async (req, res) => {
   if (graphResponseCache.size >= GRAPH_CACHE_MAX_KEYS) graphResponseCache.clear()
   graphResponseCache.set(statusKey, { version: versionAtBuild, body: graph })
   res.json(graph)
+})
+
+// ── 3D 쇼케이스 경량 그래프 ──
+// 사전계산 좌표(scripts/compute-graph3d-layout.mjs → server/data/graph3dLayout.json)를
+// 포함한 경량 페이로드. 클라이언트 force 시뮬레이션 불필요 — 접속 즉시 결정적 성운.
+// 쇼케이스 정의: published + 교과군 간(cross subject_group) 연결 + 연결된 노드만.
+let graph3dLayoutCache = null // { coords, computedAt } | 'missing'
+function loadGraph3dLayout() {
+  if (graph3dLayoutCache) return graph3dLayoutCache
+  try {
+    const path = fileURLToPath(new URL('../data/graph3dLayout.json', import.meta.url))
+    const parsed = JSON.parse(readFileSync(path, 'utf-8'))
+    graph3dLayoutCache = { coords: parsed.coords || {}, computedAt: parsed.computedAt }
+    console.log(`✅ graph3d 레이아웃 로드: 노드 ${Object.keys(graph3dLayoutCache.coords).length} (${parsed.computedAt})`)
+  } catch {
+    console.warn('⚠️ graph3dLayout.json 없음 — graph3d는 임베딩 좌표 폴백으로 동작')
+    graph3dLayoutCache = 'missing'
+  }
+  return graph3dLayoutCache
+}
+
+// code 기반 결정적 지터 (레이아웃에 없는 신규 노드 배치용 — Math.random 금지: 결정성 유지)
+function codeJitter(code, salt) {
+  let h = 2166136261
+  const s = code + salt
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) }
+  return ((h >>> 0) / 4294967295 - 0.5) * 2 // -1 ~ 1
+}
+
+let graph3dResponseCache = null // { body, version }
+
+standardsRouter.get('/graph3d', async (req, res) => {
+  const version = StandardLinks.version()
+  if (graph3dResponseCache && graph3dResponseCache.version === version) {
+    return res.type('application/json').send(graph3dResponseCache.body)
+  }
+
+  const graph = StandardLinks.getGraph()
+  const nodeById = new Map(graph.nodes.map(n => [n.id, n]))
+
+  // published + 인접 학교급 + 교과군 간 연결만
+  const schoolLevelOrder = { '초등학교': 0, '중학교': 1, '고등학교': 2 }
+  const links = graph.links.filter(l => {
+    if (l.status !== 'published') return false
+    const src = nodeById.get(l.source)
+    const tgt = nodeById.get(l.target)
+    if (!src || !tgt) return false
+    if ((src.subject_group || src.subject) === (tgt.subject_group || tgt.subject)) return false
+    const srcLevel = schoolLevelOrder[src.school_level]
+    const tgtLevel = schoolLevelOrder[tgt.school_level]
+    if (srcLevel !== undefined && tgtLevel !== undefined && Math.abs(srcLevel - tgtLevel) > 1) return false
+    return true
+  })
+
+  const linkedIds = new Set()
+  links.forEach(l => { linkedIds.add(l.source); linkedIds.add(l.target) })
+
+  const layout = loadGraph3dLayout()
+  const layoutCoords = layout === 'missing' ? {} : layout.coords
+  // 레이아웃에 없는 노드 폴백용 임베딩 좌표 (기존 캐시 재사용, prod 캐시 미스 시 빈 Map)
+  const embeddingCoords = computeEmbedding3D(Standards.list())
+
+  const nodes = []
+  for (const n of graph.nodes) {
+    if (!linkedIds.has(n.id)) continue
+    let pos = layoutCoords[n.code]
+    if (!pos) {
+      const emb = embeddingCoords.get(n.id)
+      pos = emb
+        ? [emb.x, emb.y, emb.z]
+        : [codeJitter(n.code, 'x') * 150, codeJitter(n.code, 'y') * 150, codeJitter(n.code, 'z') * 150]
+    }
+    nodes.push({
+      code: n.code,
+      subject: n.subject,
+      subject_group: n.subject_group || n.subject,
+      school_level: n.school_level || '',
+      grade_group: n.grade_group || '',
+      area: n.area || '',
+      content: n.content || '',
+      x: pos[0], y: pos[1], z: pos[2],
+    })
+  }
+
+  const idToCode = new Map(graph.nodes.map(n => [n.id, n.code]))
+  const outLinks = links.map(l => ({
+    s: idToCode.get(l.source),
+    t: idToCode.get(l.target),
+    type: l.link_type,
+    theme: l.integration_theme || null,
+    hook: l.lesson_hook || null,
+  }))
+
+  const body = JSON.stringify({
+    nodes,
+    links: outLinks,
+    meta: {
+      layout: layout === 'missing' ? 'embedding-fallback' : 'precomputed',
+      computedAt: layout === 'missing' ? null : layout.computedAt,
+    },
+  })
+  graph3dResponseCache = { body, version }
+  res.type('application/json').send(body)
 })
 
 // 링크 상태 변경 (관리자 전용 — 인증+권한 필수)
