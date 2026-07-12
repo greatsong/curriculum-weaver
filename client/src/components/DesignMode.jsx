@@ -12,7 +12,7 @@ import SeriesLens from './lenses/SeriesLens'
 
 const LENSES = [
   { id: 'neighbor', label: '이웃', hint: '이 성취기준과 연결된 것' },
-  { id: 'theme', label: '주제', hint: '이 주제로 어떤 교과가 엮이는지' },
+  { id: 'theme', label: '주제', hint: '이 주제로 어떤 교과가 연결되는지' },
   { id: 'series', label: '계열', hint: '앞뒤 학습 계열은 무엇인지' },
   { id: 'pair', label: '과목쌍', hint: '두 교과의 성취기준이 어떻게 붙는지' },
 ]
@@ -242,7 +242,7 @@ export default function DesignMode() {
                 subjectLinkCounts={subjectLinkCounts} onGraphRefresh={refreshGraph} />
             )}
             {lens === 'theme' && (
-              <ThemeLens query={query} onQuery={(q) => patchParams({ q })} level={level}
+              <ThemeLens graph={graphData} query={query} onQuery={(q) => patchParams({ q })} level={level}
                 basket={basket} onToggleBasket={toggleBasket} onOpenNeighbor={openNeighbor} />
             )}
             {lens === 'series' && (

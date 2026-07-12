@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import { Sparkles, Plus, Check, Loader2 } from 'lucide-react'
 import { apiGet, apiPost } from '../../lib/api'
+import { useScenario, ScenarioPanel } from './scenarioShared'
 import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, linkPriority, isSameGrade, gradeBucket } from './lensCommon'
 
 // 탐색 버튼을 보여줄 연결 수 임계 — 이보다 적으면 "더 찾기"가 의미 있다
@@ -26,6 +27,7 @@ const SPARSE_LINK_THRESHOLD = 3
  */
 export default function PairLens({ graph, subjects, subjectGroups, pair, onPickPair, basket, onToggleBasket, onOpenNeighbor, subjectLinkCounts, onGraphRefresh }) {
   const [selectedLink, setSelectedLink] = useState(null)
+  const { scenario, openScenario, closeScenario } = useScenario()
   const laneRef = useRef(null)
   const cardRefs = useRef(new Map()) // code -> element
   const [lines, setLines] = useState([])
@@ -373,11 +375,16 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
             {selectedLink.integration_theme && <span>🔗 융합 주제 — {selectedLink.integration_theme}</span>}
             {selectedLink.lesson_hook && <span>📝 수업 아이디어 — {selectedLink.lesson_hook}</span>}
           </div>
-          <div className="flex gap-2 mt-1">
+          <div className="flex gap-2 mt-1 flex-wrap">
             <button
               onClick={() => onToggleBasket([selectedLink.a.code, selectedLink.b.code])}
               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition">
               ＋ 이 연결 담기
+            </button>
+            <button
+              onClick={() => openScenario(selectedLink.a.code, selectedLink.b.code)}
+              className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-bold transition">
+              ✨ 실생활 문제 시나리오
             </button>
             <button
               onClick={() => onOpenNeighbor(selectedLink.a.code)}
@@ -386,6 +393,13 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
             </button>
           </div>
         </div>
+      )}
+
+      {/* 실생활 문제 시나리오 (연결 상세에서 생성) */}
+      {scenario && (
+        <ScenarioPanel scenario={scenario} onClose={closeScenario}
+          subjectOf={(code) => (selectedLink && [selectedLink.a, selectedLink.b].find(n => n.code === code)?.subject)}
+          basket={basket} onToggleBasket={onToggleBasket} />
       )}
     </div>
   )
