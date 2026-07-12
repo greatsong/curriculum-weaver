@@ -12,10 +12,10 @@ const STEPS = [
   {
     title: '질문으로 시작하세요',
     subtitle: '렌즈 4개',
-    content: '상단의 렌즈가 교사의 질문에 하나씩 대응합니다 — 과목쌍(두 교과가 어떻게 붙나), 주제(어떤 교과가 엮이나), 계열(앞뒤 학습 흐름), 이웃(이 성취기준의 연결). 각 렌즈의 예시 버튼으로 바로 체험할 수 있어요.',
+    content: '상단의 렌즈가 교사의 질문에 하나씩 대응합니다 — 이웃(이 성취기준의 연결), 주제(어떤 교과가 엮이나), 계열(앞뒤 학습 흐름), 과목쌍(두 교과가 어떻게 붙나). 각 렌즈의 예시 버튼으로 바로 체험할 수 있어요.',
     visual: (
       <div className="flex gap-2 justify-center py-2">
-        {['과목쌍', '주제', '계열', '이웃'].map((l, i) => (
+        {['이웃', '주제', '계열', '과목쌍'].map((l, i) => (
           <span key={l} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
             i === 0 ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-gray-200 text-gray-500'}`}>
             {l}

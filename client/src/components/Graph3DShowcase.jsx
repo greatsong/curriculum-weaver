@@ -654,7 +654,8 @@ export default function Graph3DShowcase() {
   )
 
   return (
-    <div className="relative h-full w-full overflow-hidden select-none">
+    <div className="relative h-full w-full overflow-hidden select-none"
+      style={{ fontFamily: "'Gowun Dodum', var(--font-sans)" }}>
       {/* 배경: 딥네이비 래디얼 + 비네트 (스펙 §1) */}
       <div className="absolute inset-0 z-0"
         style={{ background: `radial-gradient(ellipse 120% 90% at 50% 35%, ${NEBULA_BG.inner} 0%, ${NEBULA_BG.mid} 45%, ${NEBULA_BG.outer} 100%)` }} />

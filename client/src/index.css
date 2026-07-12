@@ -1,3 +1,5 @@
+/* 3D 성운 전용 소프트 폰트 (둥근 획 — 발표 화면의 부드러운 인상) */
+@import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -107,19 +109,22 @@ html, body {
   box-shadow: var(--shadow-md);
 }
 
-/* Input styling */
-input, textarea, select {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  font-size: 14px;
-  font-family: var(--font-sans);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
-}
-input:focus, textarea:focus, select:focus {
-  outline: none;
-  border-color: #3B82F6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+/* Input styling — base 레이어: Tailwind 유틸리티(pl-9 등)가 우선하도록.
+   무레이어로 두면 padding이 유틸리티를 덮어 검색 아이콘과 글자가 겹친다. */
+@layer base {
+  input, textarea, select {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    font-size: 14px;
+    font-family: var(--font-sans);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: #3B82F6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
 }
 
 /* Button base */
@@ -307,9 +312,9 @@ input:focus, textarea:focus, select:focus {
 
 /* 성운 씬 위 교과군 라벨 (CSS2D) */
 .nebula-group-label {
-  font-family: var(--font-sans);
-  font-weight: 700;
-  font-size: 15px;
+  font-family: 'Gowun Dodum', var(--font-sans);
+  font-weight: 400;
+  font-size: 16px;
   letter-spacing: -0.01em;
   opacity: 0.78;
   text-shadow: 0 0 6px currentColor, 0 1px 8px rgba(0,0,0,0.6);

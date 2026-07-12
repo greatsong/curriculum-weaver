@@ -407,9 +407,9 @@ function MockLensPair() {
   return (
     <BrowserFrame title="교과 연결 — 설계 모드 · 과목쌍 렌즈">
       <div className="flex gap-1.5 mb-3">
-        {['과목쌍', '주제', '계열', '이웃'].map((l, i) => (
+        {['이웃', '주제', '계열', '과목쌍'].map((l) => (
           <span key={l} className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border ${
-            i === 0 ? 'bg-blue-50 border-blue-400 text-blue-700' : 'border-slate-200 text-slate-400'}`}>
+            l === '과목쌍' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'border-slate-200 text-slate-400'}`}>
             {l}
           </span>
         ))}
