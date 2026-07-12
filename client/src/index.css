@@ -1,5 +1,5 @@
-/* 3D 성운 전용 소프트 폰트 (둥근 획 — 발표 화면의 부드러운 인상) */
-@import url('https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap');
+/* 3D 성운 전용 소프트 폰트 — 나눔고딕 (발표 화면의 부드러운 인상) */
+@import url('https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -312,9 +312,9 @@ html, body {
 
 /* 성운 씬 위 교과군 라벨 (CSS2D) */
 .nebula-group-label {
-  font-family: 'Gowun Dodum', var(--font-sans);
-  font-weight: 400;
-  font-size: 16px;
+  font-family: 'Nanum Gothic', var(--font-sans);
+  font-weight: 700;
+  font-size: 15px;
   letter-spacing: -0.01em;
   opacity: 0.78;
   text-shadow: 0 0 6px currentColor, 0 1px 8px rgba(0,0,0,0.6);

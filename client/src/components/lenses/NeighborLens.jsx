@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
-import { Search, ChevronRight, Plus, Check, Sparkles, X, Loader2 } from 'lucide-react'
-import { apiPost } from '../../lib/api'
+import { Search, ChevronRight, Plus, Check } from 'lucide-react'
 import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, isSameGrade, nodeSchoolLevel } from './lensCommon'
+import { useScenario, ScenarioButton, ScenarioPanel } from './scenarioShared'
 
 // 실생활·융합 맥락으로 묶는 연결 유형 (계열 연결과 구분)
 const CONTEXT_TYPES = new Set(['cross_subject', 'application', 'same_concept'])
@@ -25,8 +25,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
   const [trail, setTrail] = useState([]) // 방문 경로 (code[])
   const [query, setQuery] = useState('')
   const [pickSubject, setPickSubject] = useState('') // 빈 상태의 "내 교과 선택" 진입로
-  // 실생활 문제 시나리오 — { pairKey, loading, data|error }
-  const [scenario, setScenario] = useState(null)
+  const { scenario, openScenario, closeScenario } = useScenario()
 
   const nodeByCode = useMemo(() => new Map((graph?.nodes || []).map(n => [n.code, n])), [graph])
   const nodeById = useMemo(() => new Map((graph?.nodes || []).map(n => [n.id, n])), [graph])
@@ -61,24 +60,10 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
 
   const walk = (code) => {
     setTrail(prev => [...prev.filter(c => c !== code && c !== focusCode), focusCode].filter(Boolean).slice(-6))
-    setScenario(null)
+    closeScenario()
     onFocus(code)
   }
 
-  // 시나리오 생성/조회 — 쌍당 1회 생성 후 서버 캐시
-  const openScenario = async (otherCode) => {
-    const pairKey = [center.code, otherCode].sort().join('|')
-    if (scenario?.pairKey === pairKey && !scenario.error) return // 이미 열림
-    setScenario({ pairKey, loading: true })
-    try {
-      const { scenario: data, cached } = await apiPost('/api/standards/links/scenario', {
-        source_code: center.code, target_code: otherCode, focus_code: center.code,
-      })
-      setScenario({ pairKey, data, cached })
-    } catch (err) {
-      setScenario({ pairKey, error: err.message || '생성에 실패했습니다' })
-    }
-  }
 
   // 검색 (코드/내용/과목 단순 매칭 — 셸 학교급 필터 적용)
   const searchResults = useMemo(() => {
@@ -188,18 +173,13 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
           <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">📝 {link.lesson_hook}</p>
         )}
         {withScenario && (
-          <button
-            onClick={(e) => { e.stopPropagation(); openScenario(node.code) }}
-            className={`mt-1.5 flex items-center gap-1 text-[11px] font-semibold transition ${
-              isOpen ? 'text-violet-700' : 'text-violet-500 hover:text-violet-700'}`}>
-            <Sparkles size={11} /> {isOpen ? '시나리오 열림' : '실생활 문제 시나리오'}
-          </button>
+          <ScenarioButton isOpen={isOpen} className="mt-1.5"
+            onClick={(e) => { e.stopPropagation(); openScenario(center.code, node.code) }} />
         )}
       </div>
     )
   }
 
-  const sc = scenario?.data
 
   return (
     <div className="flex flex-col gap-4">
@@ -213,7 +193,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
           </span>
         ))}
         <span className="font-mono font-bold text-blue-700">{center.code}</span>
-        <button onClick={() => { setTrail([]); setScenario(null); onFocus('') }}
+        <button onClick={() => { setTrail([]); closeScenario(); onFocus('') }}
           className="ml-2 text-gray-400 hover:text-gray-600 underline underline-offset-2">다른 성취기준 찾기</button>
       </div>
 
@@ -234,47 +214,9 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
 
       {/* 실생활 문제 시나리오 패널 */}
       {scenario && (
-        <div className="border border-violet-200 bg-violet-50/40 rounded-xl px-4 py-3.5">
-          {scenario.loading ? (
-            <div className="flex items-center gap-2 text-sm text-violet-600 py-2">
-              <Loader2 size={15} className="animate-spin" />
-              두 성취기준을 엮은 수업 시나리오를 만들고 있어요… 10초 정도 걸려요
-            </div>
-          ) : scenario.error ? (
-            <div className="flex items-center justify-between text-sm text-red-500">
-              <span>{scenario.error}</span>
-              <button onClick={() => setScenario(null)} className="p-1 text-gray-400 hover:text-gray-600"><X size={14} /></button>
-            </div>
-          ) : sc ? (
-            <div className="space-y-2.5">
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="text-sm font-bold text-violet-900">🌍 {sc.title}</h3>
-                <button onClick={() => setScenario(null)} className="shrink-0 p-1 text-gray-400 hover:text-gray-600"><X size={14} /></button>
-              </div>
-              <p className="text-[13px] text-gray-700 leading-relaxed">{sc.situation}</p>
-              <div className="rounded-lg bg-white border border-violet-100 px-3 py-2">
-                <p className="text-[11px] font-bold text-violet-500 mb-0.5">핵심 질문</p>
-                <p className="text-[13px] font-semibold text-gray-800">{sc.driving_question}</p>
-              </div>
-              <p className="text-[12px] text-gray-600 leading-relaxed"><b className="text-violet-700">왜 이 개념이 필요한가 —</b> {sc.why_needed}</p>
-              {Array.isArray(sc.data_sources) && sc.data_sources.length > 0 && (
-                <p className="text-[12px] text-gray-600">📊 <b>데이터:</b> {sc.data_sources.join(' · ')}</p>
-              )}
-              {Array.isArray(sc.activity_steps) && sc.activity_steps.length > 0 && (
-                <ol className="text-[12px] text-gray-600 space-y-0.5 list-decimal list-inside">
-                  {sc.activity_steps.map((s, i) => <li key={i}>{s}</li>)}
-                </ol>
-              )}
-              {sc.assessment_idea && (
-                <p className="text-[12px] text-gray-500">✅ <b>평가:</b> {sc.assessment_idea}</p>
-              )}
-              <p className="text-[10.5px] text-gray-400">
-                AI가 만든 초안이에요 — {nodeByCode.get(sc.context_code)?.subject || '상대 교과'} 선생님과 함께 다듬어 보세요.
-                {scenario.cached && ' (캐시된 시나리오)'}
-              </p>
-            </div>
-          ) : null}
-        </div>
+        <ScenarioPanel scenario={scenario} onClose={closeScenario}
+          subjectOf={(code) => nodeByCode.get(code)?.subject}
+          basket={basket} onToggleBasket={onToggleBasket} />
       )}
 
       {/* 실생활·융합 맥락 — 타 교과의 진짜 탐구 상황 */}

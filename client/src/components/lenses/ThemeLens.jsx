@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { Search, Plus, Check } from 'lucide-react'
 import { apiGet } from '../../lib/api'
-import { subjectColor, simBadge, nodeSchoolLevel } from './lensCommon'
+import { subjectColor, simBadge, nodeSchoolLevel, getLinkId, linkQuality, LINK_TYPE_LABELS, LINK_TYPE_COLORS } from './lensCommon'
+import { useScenario, ScenarioButton, ScenarioPanel } from './scenarioShared'
 
 /**
  * 주제 렌즈 — 시맨틱 검색 결과를 교과군별 컬럼으로 배열
- * "이 주제로 어떤 교과들이 엮이나"에 답하는 화면
+ * "이 주제로 어떤 교과들이 연결되나"에 답하는 화면
  *
  * props:
  *  - query, onQuery(q)
@@ -13,7 +14,7 @@ import { subjectColor, simBadge, nodeSchoolLevel } from './lensCommon'
  *  - basket, onToggleBasket
  *  - onOpenNeighbor(code)
  */
-export default function ThemeLens({ query, onQuery, level, basket, onToggleBasket, onOpenNeighbor }) {
+export default function ThemeLens({ graph, query, onQuery, level, basket, onToggleBasket, onOpenNeighbor }) {
   // 입력창은 로컬 state로 관리한다. query/onQuery는 URL(searchParams)에 바로
   // 연결되어 있어서, 매 키 입력마다 onQuery를 호출해 <input value={query}>로
   // 되돌리면 그 라운드트립이 한글 IME 조합을 깨뜨린다("안녕" → "ㅇ안ㄴㅕㅇ").
@@ -53,6 +54,28 @@ export default function ThemeLens({ query, onQuery, level, basket, onToggleBaske
   const filtered = useMemo(() => (
     level ? results.filter(r => { const lv = nodeSchoolLevel(r); return lv === level || lv === null }) : results
   ), [results, level])
+
+  const { scenario, openScenario, closeScenario } = useScenario()
+
+  // 주제 매칭 성취기준 사이의 검증된 교과군 간 연결 — 시나리오 생성의 좋은 출발점
+  const themePairs = useMemo(() => {
+    if (!graph || filtered.length < 2) return []
+    const matchedCodes = new Set(filtered.map(r => r.code))
+    const nodeById = new Map(graph.nodes.map(n => [n.id, n]))
+    const pairs = []
+    const seen = new Set()
+    for (const l of graph.links) {
+      const a = nodeById.get(getLinkId(l, 'source'))
+      const b = nodeById.get(getLinkId(l, 'target'))
+      if (!a || !b || !matchedCodes.has(a.code) || !matchedCodes.has(b.code)) continue
+      if ((a.subject_group || a.subject) === (b.subject_group || b.subject)) continue
+      const key = [a.code, b.code].sort().join('|')
+      if (seen.has(key)) continue
+      seen.add(key)
+      pairs.push({ link: l, a, b })
+    }
+    return pairs.sort((x, y) => linkQuality(y.link) - linkQuality(x.link)).slice(0, 6)
+  }, [graph, filtered])
 
   // 교과군별 컬럼 (컬럼 순서 = 최고 유사도순)
   const columns = useMemo(() => {
@@ -98,6 +121,40 @@ export default function ThemeLens({ query, onQuery, level, basket, onToggleBaske
         <p className="text-[11px] text-gray-400">
           {level} 필터 적용 중 — 전체 {results.length}개 중 {filtered.length}개 표시 (상단 토글로 변경)
         </p>
+      )}
+
+      {themePairs.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-gray-500">
+            🔗 <b className="text-gray-700">이 주제로 검증된 교과 간 연결 {themePairs.length}개</b> — 융합 수업의 출발점으로 좋아요
+          </p>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {themePairs.map(({ link, a, b }) => {
+              const key = [a.code, b.code].sort().join('|')
+              const isOpen = scenario?.pairKey === key
+              return (
+                <div key={key} className="w-[260px] shrink-0 border border-gray-200 rounded-xl px-3 py-2.5 bg-white hover:shadow-sm transition">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="px-1.5 py-0.5 rounded text-white text-[10px] font-bold"
+                      style={{ backgroundColor: LINK_TYPE_COLORS[link.link_type] || '#6b7280' }}>
+                      {LINK_TYPE_LABELS[link.link_type] || link.link_type}
+                    </span>
+                    <span className="text-[10px] text-gray-400">{a.subject} ↔ {b.subject}</span>
+                  </div>
+                  <p className="font-mono text-[10.5px] font-bold text-blue-600">{a.code} ↔ {b.code}</p>
+                  {link.integration_theme && <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">🔗 {link.integration_theme}</p>}
+                  <ScenarioButton isOpen={isOpen} className="mt-1.5"
+                    onClick={() => openScenario(a.code, b.code)} />
+                </div>
+              )
+            })}
+          </div>
+          {scenario && (
+            <ScenarioPanel scenario={scenario} onClose={closeScenario}
+              subjectOf={(code) => filtered.find(r => r.code === code)?.subject}
+              basket={basket} onToggleBasket={onToggleBasket} />
+          )}
+        </div>
       )}
 
       {columns.length > 0 && (
