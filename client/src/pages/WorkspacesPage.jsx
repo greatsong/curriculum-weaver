@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import { apiGet } from '../lib/api'
 import Logo from '../components/Logo'
 
 export default function WorkspacesPage() {
@@ -23,6 +24,16 @@ export default function WorkspacesPage() {
     try { return JSON.parse(sessionStorage.getItem('cw_design_basket') || '[]').length } catch { return 0 }
   })
   const detailPath = (wsId) => `/workspaces/${wsId}${wantsCreateProject ? '?createProject=1' : ''}`
+
+  // '교육과정 데이터' 관리 도구는 사이트 관리자 전용 — role 확인 전엔 숨김
+  const [isSiteAdmin, setIsSiteAdmin] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    apiGet('/api/auth/me').then((profile) => {
+      if (!cancelled && profile?.role === 'admin') setIsSiteAdmin(true)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => { fetchWorkspaces() }, [fetchWorkspaces])
 
@@ -191,14 +202,16 @@ export default function WorkspacesPage() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
               초대 링크로 참여
             </button>
-            <button
-              onClick={() => navigate('/data')}
-              className="btn btn-secondary"
-              style={{ padding: '8px 16px', fontSize: 13 }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-              교육과정 데이터
-            </button>
+            {isSiteAdmin && (
+              <button
+                onClick={() => navigate('/data')}
+                className="btn btn-secondary"
+                style={{ padding: '8px 16px', fontSize: 13 }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                교육과정 데이터
+              </button>
+            )}
             <button
               onClick={() => navigate('/demo')}
               className="btn"

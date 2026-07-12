@@ -8,7 +8,7 @@
  */
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Play, Compass, X, Rocket, ChevronDown, ChevronUp, List } from 'lucide-react'
+import { Play, Compass, X, Rocket, ChevronDown, ChevronUp, List, HelpCircle } from 'lucide-react'
 import { apiGet } from '../lib/api'
 import Logo from './Logo'
 import { createNebulaScene } from '../lib/nebulaScene'
@@ -86,6 +86,7 @@ export default function Graph3DShowcase() {
   const [legendPref, setLegendPref] = useState(true) // 사용자의 레전드 펼침 선호
   const [browseOpen, setBrowseOpen] = useState(false) // 텍스트 탐색 패널
   const [browseSubject, setBrowseSubject] = useState('')
+  const [helpOpen, setHelpOpen] = useState(false)
   const visitedRef = useRef(new Set())
   // 연결 여행 궤적 — 연속 선택(여행·카드 클릭)의 방문 순서. 선택 해제 시 리셋
   const journeyRef = useRef([])
@@ -451,6 +452,7 @@ export default function Graph3DShowcase() {
     })
   }
   const soloGroup = (name) => setActiveGroups(new Set([name]))
+  const clearGroups = () => setActiveGroups(new Set())
   const toggleLevel = (lv) => {
     if (!derived) return
     setActiveLevels(prev => {
@@ -619,6 +621,60 @@ export default function Graph3DShowcase() {
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-slate-300/90 hover:text-slate-100 transition-colors duration-150">
               <Compass size={14} /> <span className="hidden sm:inline">설계 모드</span>
             </button>
+            {!tour.active && (
+              <button onClick={() => setHelpOpen(true)} title="탐험 가이드"
+                className="flex items-center justify-center w-9 h-9 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-slate-300/90 hover:text-slate-100 transition-colors duration-150">
+                <HelpCircle size={15} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 탐험 가이드 모달 */}
+      {helpOpen && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={() => setHelpOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-[420px] max-h-[80dvh] overflow-y-auto bg-[#0E1633]/95 backdrop-blur-2xl border border-white/[0.12] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] animate-card-in">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <h2 className="text-[15px] font-bold text-slate-100">교육과정 성운 탐험 가이드</h2>
+              <button onClick={() => setHelpOpen(false)}
+                className="shrink-0 p-1.5 rounded-lg text-slate-400/70 hover:text-slate-100 hover:bg-white/[0.08] transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="px-5 pb-5 space-y-4">
+              <div>
+                <p className="text-[11px] font-semibold text-slate-400/80 uppercase tracking-wide mb-2">화면 조작</p>
+                <ul className="space-y-1.5 text-[13px] text-slate-300/90 leading-relaxed">
+                  <li>· 드래그 — 성운 회전</li>
+                  <li>· 스크롤 / 핀치 — 확대·축소</li>
+                  <li>· 별(성취기준) 클릭 — 상세 정보와 연결 목록 보기</li>
+                  <li>· 빈 우주 클릭 — 선택 해제</li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-slate-400/80 uppercase tracking-wide mb-2">교과군 필터 (좌하단)</p>
+                <ul className="space-y-1.5 text-[13px] text-slate-300/90 leading-relaxed">
+                  <li>· 칩 클릭 — 해당 교과군 켜기·끄기</li>
+                  <li>· 칩 더블클릭 — 그 교과군만 남기고 나머지 끄기</li>
+                  <li>· 모두 끄기 — 전부 끄고 원하는 교과군만 직접 선택</li>
+                  <li>· 모두 켜기 — 필터를 처음 상태로 되돌리기</li>
+                </ul>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-slate-400/80 uppercase tracking-wide mb-2">상단 도구</p>
+                <ul className="space-y-1.5 text-[13px] text-slate-300/90 leading-relaxed">
+                  <li>· 별 목록 — 과목을 골라 성취기준을 텍스트로 찾고, 클릭해 그 별로 이동</li>
+                  <li>· 우주 여행 — 교과군을 순회하는 자동 투어 시작 (Esc 또는 빈 우주 클릭으로 종료)</li>
+                  <li>· 설계 모드 — 성취기준을 실제로 연결·편집하는 화면으로 이동</li>
+                </ul>
+              </div>
+              <p className="text-[11.5px] text-slate-400/60 leading-relaxed pt-1 border-t border-white/[0.08]">
+                이 화면은 발표·감상 전용입니다. 연결을 직접 추가하거나 수정하려면 설계 모드를 이용하세요.
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -741,11 +797,19 @@ export default function Graph3DShowcase() {
                 )
               })}
             </div>
-            {hasAnyDim && (
-              <button onClick={resetAll} className="mt-1.5 text-[11px] text-sky-400/80 hover:text-sky-300 transition-colors">
-                모두 켜기
+            <div className="mt-1.5 flex items-center gap-2">
+              <button onClick={clearGroups} className="text-[11px] text-slate-400/70 hover:text-slate-200 transition-colors">
+                모두 끄기
               </button>
-            )}
+              {hasAnyDim && (
+                <>
+                  <span className="text-slate-600 text-[11px]">·</span>
+                  <button onClick={resetAll} className="text-[11px] text-sky-400/80 hover:text-sky-300 transition-colors">
+                    모두 켜기
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         ) : (
           /* 접힌 레전드: 작은 알약 — 노드 선택 중이거나 사용자가 접었을 때 */
