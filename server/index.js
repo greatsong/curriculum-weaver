@@ -333,6 +333,8 @@ app.use('/api/chat/stage-intro', aiChatLimiter)
 app.use('/api/demo/generate', aiChatLimiter)
 app.use('/api/standards/graph/chat', aiChatLimiter)
 app.use('/api/standards/recommend-ai', aiChatLimiter)
+// 과목쌍 탐색 시작만 제한 — 상태 폴링(/pairs/jobs)은 일반 API 한도로 충분
+app.use('/api/standards/pairs/explore', aiChatLimiter)
 
 // 파일 업로드: 분당 5회 (사용자당)
 app.use('/api/materials/upload', uploadLimiter)

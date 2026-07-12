@@ -1,20 +1,30 @@
-import { useState, useMemo, useRef, useLayoutEffect, useCallback } from 'react'
-import { Sparkles, Plus, Check } from 'lucide-react'
+import { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import { Sparkles, Plus, Check, Loader2 } from 'lucide-react'
+import { apiGet, apiPost } from '../../lib/api'
 import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, linkPriority, isSameGrade, gradeBucket } from './lensCommon'
+
+// 탐색 버튼을 보여줄 연결 수 임계 — 이보다 적으면 "더 찾기"가 의미 있다
+const SPARSE_LINK_THRESHOLD = 3
 
 /**
  * 과목쌍 렌즈 — 두 교과 성취기준을 좌우 2열로 놓고 연결을 이분 다이어그램으로 표시
  *
+ * candidate(AI 제안) 링크는 이 렌즈에서 항상 점선으로 노출한다 —
+ * 2열 집중 뷰라 노이즈 부담이 적고, 빈 쌍 화면이 막다른 길이 되지 않게 한다.
+ * 연결이 없거나 적은 쌍은 온디맨드 AI 탐색으로 그 자리에서 후보를 생성할 수 있다.
+ *
  * props:
- *  - graph: { nodes, links } (published 또는 all)
+ *  - graph: { nodes, links } (status=all — published+candidate 전체)
  *  - subjects: 과목명 목록 (셸의 학교급 필터 적용 후)
  *  - subjectGroups: [{ label: 학교급, subjects: [과목명] }] — 드롭다운 <optgroup> 용
  *  - pair: [subjectA, subjectB] (없으면 선택 안내)
  *  - onPickPair(nextPair)
  *  - basket: Set<code>, onToggleBasket(codes: string[])
  *  - onOpenNeighbor(code)
+ *  - subjectLinkCounts: Map<과목명, published 연결 수> — 드롭다운 표기용
+ *  - onGraphRefresh(): AI 탐색 완료 후 그래프 재조회
  */
-export default function PairLens({ graph, subjects, subjectGroups, pair, onPickPair, basket, onToggleBasket, onOpenNeighbor }) {
+export default function PairLens({ graph, subjects, subjectGroups, pair, onPickPair, basket, onToggleBasket, onOpenNeighbor, subjectLinkCounts, onGraphRefresh }) {
   const [selectedLink, setSelectedLink] = useState(null)
   const laneRef = useRef(null)
   const cardRefs = useRef(new Map()) // code -> element
@@ -41,8 +51,12 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
         const b = idsA.has(s) ? nodeById.get(t) : nodeById.get(s)
         return { ...l, a, b }
       })
-      // 같은 학년군 우선, 그 안에서 품질순 (융합 수업 기본 = 같은 학년군)
-      .sort((x, y) => linkPriority(y, y.a, y.b) - linkPriority(x, x.a, x.b))
+      // published 우선 → 같은 학년군 우선 → 품질순 (융합 수업 기본 = 같은 학년군)
+      .sort((x, y) => {
+        const pubX = (x.status || 'published') === 'published' ? 100 : 0
+        const pubY = (y.status || 'published') === 'published' ? 100 : 0
+        return (pubY + linkPriority(y, y.a, y.b)) - (pubX + linkPriority(x, x.a, x.b))
+      })
 
     // 연결된 코드 → 정렬: 같은 학년군 연결 카드 먼저, 그다음 교차 학년, 미연결은 뒤에 흐리게
     const connectedA = new Map(), connectedB = new Map() // code -> best priority
@@ -55,12 +69,102 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
       const qx = connected.get(x.code) ?? -1, qy = connected.get(y.code) ?? -1
       return qy - qx || x.code.localeCompare(y.code)
     })
+    const publishedCount = links.filter(l => (l.status || 'published') === 'published').length
     return {
       links,
+      publishedCount,
+      candidateCount: links.length - publishedCount,
       colA: sortCol(stdsA, connectedA), colB: sortCol(stdsB, connectedB),
       connectedA, connectedB,
       avgQuality: links.length ? links.reduce((s, l) => s + linkQuality(l), 0) / links.length : 0,
     }
+  }, [graph, subjA, subjB])
+
+  // ── 온디맨드 AI 탐색 상태 ──
+  // idle → starting → running(폴링) → done | already | error
+  const [explore, setExplore] = useState({ phase: 'idle' })
+  useEffect(() => { setExplore({ phase: 'idle' }) }, [subjA, subjB])
+
+  const startExplore = useCallback(async () => {
+    setExplore({ phase: 'starting' })
+    try {
+      const resp = await apiPost('/api/standards/pairs/explore', { subjectA: subjA, subjectB: subjB })
+      if (resp.alreadyExplored) {
+        // 다른 사용자가 이미 탐색한 쌍 — 결과가 이미 그래프에 있으므로 재조회만
+        onGraphRefresh?.()
+        setExplore({ phase: 'already', accepted: resp.alreadyExplored.accepted })
+        return
+      }
+      setExplore({ phase: 'running', jobId: resp.job.id, progress: resp.job.progress })
+    } catch (e) {
+      const message = e?.status === 401
+        ? '로그인 후 사용할 수 있는 기능이에요.'
+        : (e?.message || 'AI 탐색을 시작하지 못했습니다.')
+      setExplore({ phase: 'error', message })
+    }
+  }, [subjA, subjB, onGraphRefresh])
+
+  // 잡 상태 폴링 (3초 간격, 최대 3분 — 서버 판정은 통상 30~60초)
+  useEffect(() => {
+    if (explore.phase !== 'running' || !explore.jobId) return
+    let cancelled = false
+    let timer = null
+    let tries = 0
+    const tick = async () => {
+      if (cancelled) return
+      tries += 1
+      try {
+        const { job } = await apiGet(`/api/standards/pairs/jobs/${explore.jobId}`)
+        if (cancelled) return
+        if (job.status === 'completed') {
+          onGraphRefresh?.()
+          setExplore({ phase: 'done', result: job.result })
+          return
+        }
+        if (job.status === 'failed') {
+          setExplore({ phase: 'error', message: job.error || 'AI 탐색에 실패했습니다.' })
+          return
+        }
+        setExplore(prev => ({ ...prev, progress: job.progress }))
+      } catch {
+        // 일시적 네트워크 오류 — 다음 폴링에서 재시도
+      }
+      if (tries >= 60) {
+        setExplore({ phase: 'error', message: '탐색이 예상보다 오래 걸립니다. 잠시 후 페이지를 새로고침해 주세요.' })
+        return
+      }
+      timer = setTimeout(tick, 3000)
+    }
+    timer = setTimeout(tick, 2500)
+    return () => { cancelled = true; if (timer) clearTimeout(timer) }
+  }, [explore.phase, explore.jobId, onGraphRefresh])
+
+  // ── 연결이 풍부한 상대 과목 추천 (published 링크 수 기준) ──
+  // 95%의 과목쌍이 비어 있는 데이터 현실에서, 교사가 운으로 헤매지 않게 한다
+  const partnerSuggestions = useMemo(() => {
+    if (!graph || !subjA || !subjB) return null
+    const subjById = new Map(graph.nodes.map(n => [n.id, n.subject]))
+    const pairCounts = new Map()
+    for (const l of graph.links) {
+      if ((l.status || 'published') !== 'published') continue
+      const sa = subjById.get(getLinkId(l, 'source'))
+      const sb = subjById.get(getLinkId(l, 'target'))
+      if (!sa || !sb || sa === sb) continue
+      const k = sa < sb ? `${sa}|${sb}` : `${sb}|${sa}`
+      pairCounts.set(k, (pairCounts.get(k) || 0) + 1)
+    }
+    const topFor = (subj, exclude) => {
+      const rows = []
+      for (const [k, n] of pairCounts) {
+        const [x, y] = k.split('|')
+        if (x !== subj && y !== subj) continue
+        const other = x === subj ? y : x
+        if (other === exclude) continue
+        rows.push({ other, n })
+      }
+      return rows.sort((p, q) => q.n - p.n).slice(0, 4)
+    }
+    return { forA: topFor(subjA, subjB), forB: topFor(subjB, subjA) }
   }, [graph, subjA, subjB])
 
   // 카드 위치 측정 → 연결선 좌표 계산
@@ -96,7 +200,7 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <p className="text-gray-600 font-medium mb-1">두 교과를 선택하면 성취기준 연결이 표시됩니다</p>
         <p className="text-sm text-gray-400 mb-6">직접 고르거나, 예시로 바로 체험해 보세요</p>
-        <PairPicker subjects={subjects} subjectGroups={subjectGroups} pair={pair} onPickPair={onPickPair} />
+        <PairPicker subjects={subjects} subjectGroups={subjectGroups} pair={pair} onPickPair={onPickPair} subjectLinkCounts={subjectLinkCounts} />
         <div className="flex gap-2 flex-wrap justify-center mt-5">
           {[
             ['데이터 과학(진로선택)', '인공지능 기초(진로선택)'],
@@ -120,15 +224,79 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
     <div className="flex flex-col gap-4">
       {/* 선택 요약 */}
       <div className="flex items-center gap-2 flex-wrap">
-        <PairPicker subjects={subjects} subjectGroups={subjectGroups} pair={pair} onPickPair={onPickPair} compact />
-        {data && (
-          <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${data.links.length > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-            {data.links.length > 0
-              ? `${data.links.length}개 연결 · 평균 품질 ${data.avgQuality.toFixed(2)}`
-              : '아직 검증된 연결이 없습니다'}
+        <PairPicker subjects={subjects} subjectGroups={subjectGroups} pair={pair} onPickPair={onPickPair} compact subjectLinkCounts={subjectLinkCounts} />
+        {data && data.links.length > 0 && (
+          <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700">
+            검증된 연결 {data.publishedCount}
+            {data.candidateCount > 0 && <span className="text-gray-500 font-medium"> · AI 제안 {data.candidateCount} (점선)</span>}
           </span>
         )}
+        {data && data.links.length === 0 && (
+          <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700">
+            아직 아무도 탐색하지 않은 조합이에요
+          </span>
+        )}
+        {/* 온디맨드 AI 탐색 — 연결이 없거나 적은 쌍에서 그 자리에서 후보 생성 */}
+        {data && data.links.length < SPARSE_LINK_THRESHOLD && (explore.phase === 'idle' || explore.phase === 'error') && (
+          <button onClick={startExplore}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition">
+            <Sparkles size={13} />
+            {data.links.length === 0 ? 'AI로 이 조합 첫 탐색하기' : 'AI로 연결 더 찾기'}
+          </button>
+        )}
       </div>
+
+      {/* AI 탐색 진행/결과 배너 */}
+      {explore.phase === 'starting' && (
+        <ExploreBanner tone="progress" icon={<Loader2 size={14} className="animate-spin" />}
+          text="AI 탐색을 시작하는 중…" />
+      )}
+      {explore.phase === 'running' && (
+        <ExploreBanner tone="progress" icon={<Loader2 size={14} className="animate-spin" />}
+          text={`AI가 두 과목의 성취기준 조합을 검토하고 있어요 (${explore.progress?.done ?? 0}/${explore.progress?.total ?? '…'}쌍) — 보통 1분 안에 끝나요`} />
+      )}
+      {explore.phase === 'done' && (
+        <ExploreBanner tone={explore.result?.accepted > 0 ? 'success' : 'neutral'}
+          text={explore.result?.accepted > 0
+            ? `AI가 새 연결 제안 ${explore.result.accepted}개를 찾았어요 — 점선으로 표시됩니다. 좋은 제안은 "담기"로 수업 설계에 바로 쓸 수 있어요.`
+            : `AI가 ${explore.result?.judged ?? 0}개 조합을 검토했지만 교육적으로 확실한 연결을 찾지 못했어요. 이 조합은 다른 렌즈(주제 검색)로 접근해 보세요.`} />
+      )}
+      {explore.phase === 'already' && (
+        <ExploreBanner tone="neutral"
+          text={`이 조합은 최근에 이미 AI 탐색을 마쳤어요${explore.accepted > 0 ? ` (제안 ${explore.accepted}개 — 점선으로 표시)` : ' (새 제안 없음)'}.`} />
+      )}
+      {explore.phase === 'error' && (
+        <ExploreBanner tone="error" text={explore.message} />
+      )}
+
+      {/* 연결이 적은 쌍 → 연결이 풍부한 상대 과목 추천 */}
+      {data && data.links.length < SPARSE_LINK_THRESHOLD && partnerSuggestions
+        && (partnerSuggestions.forA.length > 0 || partnerSuggestions.forB.length > 0) && (
+        <div className="flex flex-col gap-1.5 text-xs text-gray-500">
+          {partnerSuggestions.forA.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="shrink-0"><b className="text-gray-700">{subjA}</b>와(과) 연결이 풍부한 과목:</span>
+              {partnerSuggestions.forA.map(({ other, n }) => (
+                <button key={other} onClick={() => onPickPair([subjA, other])}
+                  className="px-2 py-0.5 rounded-full border border-gray-200 bg-white hover:border-blue-400 hover:text-blue-700 transition">
+                  {other} <span className="text-gray-400">{n}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {partnerSuggestions.forB.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="shrink-0"><b className="text-gray-700">{subjB}</b>와(과) 연결이 풍부한 과목:</span>
+              {partnerSuggestions.forB.map(({ other, n }) => (
+                <button key={other} onClick={() => onPickPair([other, subjB])}
+                  className="px-2 py-0.5 rounded-full border border-gray-200 bg-white hover:border-blue-400 hover:text-blue-700 transition">
+                  {other} <span className="text-gray-400">{n}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {data && (
         <div className="grid gap-0 overflow-x-auto" style={{ gridTemplateColumns: `minmax(250px,1fr) ${laneW}px minmax(250px,1fr)` }}>
@@ -223,8 +391,24 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
   )
 }
 
-/* ── 과목 선택 (학교급별 optgroup 그룹화) ── */
-function PairPicker({ subjects, subjectGroups, pair, onPickPair, compact }) {
+/* ── AI 탐색 상태 배너 ── */
+function ExploreBanner({ tone, icon, text }) {
+  const cls = {
+    progress: 'border-violet-200 bg-violet-50/70 text-violet-800',
+    success: 'border-emerald-200 bg-emerald-50/70 text-emerald-800',
+    neutral: 'border-gray-200 bg-gray-50 text-gray-600',
+    error: 'border-red-200 bg-red-50/70 text-red-700',
+  }[tone] || 'border-gray-200 bg-gray-50 text-gray-600'
+  return (
+    <div className={`flex items-center gap-2 border rounded-xl px-3.5 py-2.5 text-xs font-medium ${cls}`}>
+      {icon}
+      <span className="leading-relaxed">{text}</span>
+    </div>
+  )
+}
+
+/* ── 과목 선택 (학교급별 optgroup 그룹화, 과목별 연결 수 표기) ── */
+function PairPicker({ subjects, subjectGroups, pair, onPickPair, compact, subjectLinkCounts }) {
   const [a, b] = pair || ['', '']
   const sel = (idx) => (e) => {
     const next = [...(pair || ['', ''])]
@@ -232,14 +416,19 @@ function PairPicker({ subjects, subjectGroups, pair, onPickPair, compact }) {
     onPickPair(next)
   }
   const cls = 'border border-gray-300 rounded-lg text-sm text-gray-700 bg-white px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[220px]'
+  // 연결 수를 라벨에 표기 — 고르기 전에 어디가 풍성한지 보이게 (option value는 과목명 그대로)
+  const label = (s) => {
+    const n = subjectLinkCounts?.get(s)
+    return n ? `${s} · 연결 ${n}` : s
+  }
   const renderOptions = (other) => (
     subjectGroups?.length > 0
       ? subjectGroups.map(g => (
           <optgroup key={g.label} label={g.label}>
-            {g.subjects.map(s => <option key={`${g.label}:${s}`} value={s} disabled={s === other}>{s}</option>)}
+            {g.subjects.map(s => <option key={`${g.label}:${s}`} value={s} disabled={s === other}>{label(s)}</option>)}
           </optgroup>
         ))
-      : subjects.map(s => <option key={s} value={s} disabled={s === other}>{s}</option>)
+      : subjects.map(s => <option key={s} value={s} disabled={s === other}>{label(s)}</option>)
   )
   return (
     <div className={`flex items-center gap-2 ${compact ? '' : 'flex-col sm:flex-row'}`}>
@@ -291,7 +480,7 @@ function Column({ title, stds, connected, side, registerCard, selectedLink, bask
               <p className="text-xs text-gray-600 leading-relaxed mt-0.5 line-clamp-2">{std.content}</p>
               {!isConnected && (
                 <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-gray-400 bg-gray-50 rounded px-1.5 py-0.5">
-                  <Sparkles size={9} /> 연결 없음 — AI 탐색에서 제안받기
+                  <Sparkles size={9} /> 아직 연결 없음
                 </span>
               )}
             </div>

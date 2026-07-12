@@ -13,6 +13,7 @@
  *   node scripts/generateLinksV2.mjs --limit 2 --no-db      # 스모크: 2배치 판정, 파일만 출력
  *   node scripts/generateLinksV2.mjs                        # 전체 실행 + DB(candidate) 적재
  *   node scripts/generateLinksV2.mjs --backfill-semantic    # 기존 DB 링크의 semantic_score 채우기
+ *   node scripts/generateLinksV2.mjs --cross-method --dry-run # 방법×대상 융합쌍 후보 통계
  *
  * 옵션: --top-k 6  --min-cos 0.45  --concurrency 3  --batch-size 25
  * 필요 env (server/.env에서 자동 로드): OPENAI 임베딩 캐시(파일), ANTHROPIC_API_KEY,
@@ -51,6 +52,27 @@ const BACKFILL = flag('--backfill-semantic')
 // 같은 교과군 내부(단, 다른 과목) 쌍만 대상 — 선수학습/심화 계열 연결 생성용
 // (예: 정보군의 인공지능 기초 ↔ 데이터 과학. 같은 과목 내 쌍은 여전히 제외)
 const SAME_GROUP = flag('--same-group')
+// cross-method 모드: "방법·도구 과목 × 다른 교과군 과목" 쌍을 코사인 임계값 없이
+// 과목쌍별 top-N 보장으로 판정에 올린다.
+// 배경: 성취기준 문장 임베딩 유사도는 "통계로 사회 현상 분석"처럼 방법을 대상에
+// 적용하는 융합쌍을 원천 배제한다 (문장이 의미적으로 겹치지 않으므로).
+// 실측(2026-07-12): 확률과 통계의 연결 상대가 전부 수학·과학 계열, 사회 계열 0건.
+// 품질 판정은 LLM이 하므로, 이 모드는 "후보 공급"의 사각지대만 보정한다.
+const CROSS_METHOD = flag('--cross-method')
+// 방법·도구 성격 과목 기본 목록 (--tools "과목1,과목2"로 교체 가능)
+const DEFAULT_TOOL_SUBJECTS = [
+  '확률과 통계', '실용 통계', '인공지능 수학', '경제 수학',
+  '정보(고등 일반선택)', '데이터 과학(진로선택)', '인공지능 기초(진로선택)',
+  '정보(중학교 공통)', '수학과제 탐구',
+]
+const TOOL_SUBJECTS = (() => {
+  const i = args.indexOf('--tools')
+  return i >= 0 && args[i + 1]
+    ? args[i + 1].split(',').map((t) => t.trim()).filter(Boolean)
+    : DEFAULT_TOOL_SUBJECTS
+})()
+// cross-method는 MIN_COS를 적용하지 않되, 완전 무관 쌍 판정 낭비를 막는 최소 바닥값만 사용
+const CROSS_METHOD_COS_FLOOR = 0.15
 // rejudge 모드: quality_score가 없는 기존 DB 링크(v1)를 동일 저지로 재판정해 점수 기록
 // (링크 생성이 아니라 기존 행 UPDATE — rationale 보존, 빈 theme/hook만 채움, 기각은 0.2)
 const REJUDGE = flag('--rejudge')
@@ -64,7 +86,7 @@ const IMPORT_RESULTS = flag('--import-results')
 const LIMIT_BATCHES = opt('--limit', Infinity)
 const TOP_K = opt('--top-k', 6)
 const MIN_COS = opt('--min-cos', 0.45)
-// same-group 모드: 과목쌍별 top-N 보장 (전역 임계값이 아니라 과목쌍마다 상위 N쌍 선발)
+// same-group/cross-method 모드: 과목쌍별 top-N 보장 (전역 임계값이 아니라 과목쌍마다 상위 N쌍 선발)
 // → 상호보완적이라 코사인이 중간대인 과목쌍(예: 데이터 과학↔인공지능 기초)도 커버
 const PAIR_TOP = opt('--pair-top', 4)
 const CONCURRENCY = opt('--concurrency', 3)
@@ -154,11 +176,23 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
   const noEmbedding = standards.length - items.length
   log(`\n🔍 1단계: 후보쌍 추출 — 대상 ${items.length}개 (임베딩 없음 ${noEmbedding}개 제외)`)
 
-  const stats = { compared: 0, belowMinCos: 0, sameGroup: 0, levelGap: 0, existing: 0 }
+  const stats = { compared: 0, belowMinCos: 0, sameGroup: 0, levelGap: 0, existing: 0, notToolPair: 0 }
   // 각 성취기준별 top-K (교과군 밖, 학교급 인접) 후보 수집
   const perStandard = new Map() // code -> [{code, cos}]
-  const perSubjectPair = new Map() // "subjA|subjB" -> [{a, b, cos}] (same-group 모드)
+  const perSubjectPair = new Map() // "subjA|subjB" -> [{a, b, cos}] (same-group/cross-method 모드)
   for (const s of items) perStandard.set(s.code, [])
+
+  // cross-method: 도구 과목 목록 검증 (오타·데이터에 없는 과목명 조기 경고)
+  const toolSet = new Set(TOOL_SUBJECTS)
+  if (CROSS_METHOD) {
+    const knownSubjects = new Set(items.map((s) => s.subject))
+    const unknown = TOOL_SUBJECTS.filter((t) => !knownSubjects.has(t))
+    if (unknown.length > 0) log(`  ⚠️ 데이터에 없는 도구 과목명 (무시됨): ${unknown.join(', ')}`)
+    log(`  🧰 도구 과목: ${TOOL_SUBJECTS.filter((t) => knownSubjects.has(t)).join(', ')}`)
+  }
+
+  // 모드별 코사인 하한 — cross-method는 임계 필터가 존재 이유상 없어야 하므로 최소 바닥값만
+  const cosFloor = CROSS_METHOD ? CROSS_METHOD_COS_FLOOR : MIN_COS
 
   for (let i = 0; i < items.length; i++) {
     const a = items[i]
@@ -166,7 +200,11 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
       const b = items[j]
       const groupA = a.subject_group || a.subject
       const groupB = b.subject_group || b.subject
-      if (SAME_GROUP) {
+      if (CROSS_METHOD) {
+        // 도구 과목이 최소 한쪽 + 교과군 교차 쌍만
+        if (groupA === groupB) { stats.sameGroup++; continue }
+        if (!toolSet.has(a.subject) && !toolSet.has(b.subject)) { stats.notToolPair++; continue }
+      } else if (SAME_GROUP) {
         // 같은 교과군 내 "다른 과목" 쌍만 (같은 과목 내부는 제외)
         if (groupA !== groupB || a.subject === b.subject) { stats.sameGroup++; continue }
       } else {
@@ -178,8 +216,8 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
       let cos = 0
       const va = a.vec, vb = b.vec
       for (let k = 0; k < va.length; k++) cos += va[k] * vb[k]
-      if (cos < MIN_COS) { stats.belowMinCos++; continue }
-      if (SAME_GROUP) {
+      if (cos < cosFloor) { stats.belowMinCos++; continue }
+      if (SAME_GROUP || CROSS_METHOD) {
         // 과목쌍별 수집 (뒤에서 top-N 선발)
         const pairKey = a.subject < b.subject ? `${a.subject}|${b.subject}` : `${b.subject}|${a.subject}`
         if (!perSubjectPair.has(pairKey)) perSubjectPair.set(pairKey, [])
@@ -193,7 +231,7 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
   }
 
   const pairMap = new Map() // "a|b" -> cos
-  if (SAME_GROUP) {
+  if (SAME_GROUP || CROSS_METHOD) {
     // 과목쌍별 top-N 보장 선발 + 기존 링크 제외
     for (const [, candidates] of perSubjectPair) {
       candidates.sort((x, y) => y.cos - x.cos)
@@ -223,7 +261,7 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
     .map(([key, cos]) => { const [a, b] = key.split('|'); return { a, b, cos } })
     .sort((x, y) => y.cos - x.cos)
 
-  log(`  비교 ${stats.compared.toLocaleString()}쌍 | 임계값(${MIN_COS}) 미달 ${stats.belowMinCos.toLocaleString()} | 동일교과군 제외 ${stats.sameGroup.toLocaleString()} | 학교급 격차 제외 ${stats.levelGap.toLocaleString()}`)
+  log(`  비교 ${stats.compared.toLocaleString()}쌍 | 임계값(${CROSS_METHOD ? `바닥 ${CROSS_METHOD_COS_FLOOR}` : MIN_COS}) 미달 ${stats.belowMinCos.toLocaleString()} | 동일교과군 제외 ${stats.sameGroup.toLocaleString()} | 학교급 격차 제외 ${stats.levelGap.toLocaleString()}${CROSS_METHOD ? ` | 비도구쌍 제외 ${stats.notToolPair.toLocaleString()}` : ''}`)
   log(`  기존 링크와 중복 제외 ${stats.existing}쌍 → 신규 후보 ${pairs.length}쌍`)
   return pairs
 }
@@ -237,11 +275,18 @@ A: ${A.code} [${A.subject} · ${A.grade_group || A.school_level || ''}] ${A.cont
 B: ${B.code} [${B.subject} · ${B.grade_group || B.school_level || ''}] ${B.content}`
   }).join('\n\n')
 
+  // cross-method 모드: 방법×대상 융합(application)을 적극 검토하라는 지시 추가.
+  // 품질 임계(0.5 미만 reject)는 그대로 — recall만 보강하고 정확도 기준은 낮추지 않는다.
+  const crossMethodGuide = CROSS_METHOD ? `
+- 두 과목의 문장이 서로 달라 보여도, 한 과목의 방법·기능(예: 통계 분석, 데이터 처리, 프로그래밍)을
+  다른 과목의 탐구 대상·제재에 적용하는 수업이 성립하면 application 유형으로 적극 검토하세요.
+  (예: 확률·통계의 자료 분석 기능으로 사회 현상 탐구하기)` : ''
+
   return `당신은 한국 2022 개정 교육과정 기반 융합 수업 설계 전문가입니다.
 아래 성취기준 후보 쌍들이 "실제 수업에서 함께 다루면 시너지가 나는 교육적 연결"인지 판정하세요.
 
 ## 판정 기준
-- 표면적 단어 일치가 아닌 개념적·교육적 연결만 accept. 애매하면 reject.
+- 표면적 단어 일치가 아닌 개념적·교육적 연결만 accept. 애매하면 reject.${crossMethodGuide}
 - accept 시 반드시: link_type, quality(0.0~1.0), rationale(교사용 2~3문장, 어떤 수업 활동으로 연결되는지 구체적으로), integration_theme(융합 주제 한 구절), lesson_hook(수업 아이디어 한 문장)
 - link_type: cross_subject(같은 현상을 다른 관점으로) | same_concept(본질적으로 동일 개념) | prerequisite(선수학습 관계) | application(한쪽 개념을 다른 쪽에서 적용) | extension(심화·확장)
 - quality: 0.9+=바로 수업 가능한 강한 연결, 0.7~0.8=좋은 연결, 0.5~0.6=쓸만함, 그 미만이면 reject하세요.
@@ -523,7 +568,7 @@ async function main() {
   // 배치 구성 (결정적: 코사인 내림차순 정렬 기준)
   // batchId에 파라미터를 포함 — top-k/min-cos가 바뀌면 후보 목록이 달라지므로
   // 다른 파라미터의 진행 기록과 섞여 잘못 스킵되는 것을 방지
-  const runKey = `${SAME_GROUP ? 'sg-' : ''}k${TOP_K}c${MIN_COS}s${BATCH_SIZE}`
+  const runKey = `${CROSS_METHOD ? `xm-p${PAIR_TOP}-` : SAME_GROUP ? 'sg-' : ''}k${TOP_K}c${MIN_COS}s${BATCH_SIZE}`
   const batches = []
   for (let i = 0; i < pairs.length; i += BATCH_SIZE) {
     batches.push({ batchId: `${runKey}-b${Math.floor(i / BATCH_SIZE)}`, pairs: pairs.slice(i, i + BATCH_SIZE) })
