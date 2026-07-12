@@ -19,7 +19,7 @@ import {
   getProjectSkips,
 } from '../lib/supabaseService.js'
 import { isReadOnlyProject } from '../lib/projectGuards.js'
-import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_LIST, getProcedureDisplayCode } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_LIST, getProcedureDisplayCode, replaceInternalProcedureCodes } from 'curriculum-weaver-shared/constants.js'
 import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
 import { getStandardsForSubjects } from '../lib/standardsValidator.js'
 
@@ -289,7 +289,10 @@ async function saveGeneratedProcedures(projectId, data, userId, label) {
   let saved = 0
   for (const [code, entry] of Object.entries(data)) {
     if (!BOARD_TYPES[code] || !entry) continue
-    const boardContent = entry.board || entry
+    // LLM 출력에 내부 절차 코드(T-1-1 등)가 섞여도 사용자 노출 데이터에는 표시 코드만 저장
+    // (보드는 클라이언트 렌더에 재정화 단계가 없어 이 지점이 최종 방어선)
+    const rawBoard = entry.board || entry
+    const boardContent = JSON.parse(replaceInternalProcedureCodes(JSON.stringify(rawBoard)))
     const conversation = entry.conversation || []
     try {
       await upsertDesign(projectId, code, boardContent, userId)
@@ -300,7 +303,7 @@ async function saveGeneratedProcedures(projectId, data, userId, label) {
         await createMessage({
           project_id: projectId,
           sender_type: isAI ? 'ai' : 'teacher',
-          content: turn.message,
+          content: replaceInternalProcedureCodes(turn.message),
           procedure_context: code,
           sender_name: turn.speaker?.replace(/\(.*\)/, '').trim() || null,
           sender_subject: turn.speaker?.match(/\((.+)\)/)?.[1] || null,

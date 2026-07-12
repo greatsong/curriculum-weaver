@@ -14,7 +14,7 @@ import {
 import {
   PHASES, PHASE_LIST, PROCEDURES, PROCEDURE_LIST,
   BOARD_TYPES, BOARD_TYPE_LABELS, getProceduresByPhase, getProcedureDisplayCode,
-  getActiveProcedures,
+  getActiveProcedures, replaceInternalProcedureCodes,
 } from '../../shared/constants.js'
 import { BOARD_SCHEMAS } from '../../shared/boardSchemas.js'
 
@@ -675,7 +675,8 @@ export function generateHTML(data) {
 </body>
 </html>`
 
-  return html
+  // 심층 방어: 보드/대화 원문에 내부 절차 코드가 남아 있어도 최종 문서에는 표시 코드만
+  return replaceInternalProcedureCodes(html)
 }
 
 /**
@@ -718,7 +719,7 @@ function renderSectionsHTML(sections) {
         }
         html += `<tr>`
         for (const col of sec.columns) {
-          html += `<td>${esc(String(row[col.name] || row[col.label] || row[col.key] || ''))}</td>`
+          html += `<td>${esc(String(lookupCell(row, col)))}</td>`
         }
         html += `</tr>`
       }
@@ -970,7 +971,8 @@ export function generateMarkdown(data) {
   md += `*커리큘럼 위버 — TADDs-DIE 기반 AI 협력 수업 설계 플랫폼*\n`
   md += `*보고서 자동 생성일: ${now}*\n`
 
-  return md
+  // 심층 방어: 보드/대화 원문에 내부 절차 코드가 남아 있어도 최종 문서에는 표시 코드만
+  return replaceInternalProcedureCodes(md)
 }
 
 function renderSectionsMD(sections) {
@@ -989,7 +991,7 @@ function renderSectionsMD(sections) {
           md += `| ${cells.join(' | ')} |\n`
           continue
         }
-        const cells = sec.columns.map(c => safeCell(row[c.name] || row[c.label] || row[c.key] || ''))
+        const cells = sec.columns.map(c => safeCell(lookupCell(row, c)))
         md += `| ${cells.join(' | ')} |\n`
       }
       md += `\n`
@@ -1077,6 +1079,24 @@ function itemToText(item) {
     return JSON.stringify(item)
   }
   return String(item)
+}
+
+/**
+ * 테이블 행에서 컬럼 값 조회 — 키 이름(name)·라벨(label)·key 순으로 찾되,
+ * AI가 라벨을 공백 없이 키로 쓰는 경우('제안 근거' → '제안근거')까지 흡수한다.
+ * (보드 저장 키와 스키마 라벨의 공백 차이로 보고서 표가 통째로 비던 버그 방지)
+ */
+function lookupCell(row, col) {
+  const direct = row[col.name] ?? row[col.label] ?? row[col.key]
+  if (direct != null && direct !== '') return direct
+  const candidates = [col.name, col.label, col.key].filter(Boolean)
+  for (const cand of candidates) {
+    const compact = String(cand).replace(/\s+/g, '')
+    for (const [k, v] of Object.entries(row)) {
+      if (String(k).replace(/\s+/g, '') === compact && v != null && v !== '') return v
+    }
+  }
+  return ''
 }
 
 function esc(str) {

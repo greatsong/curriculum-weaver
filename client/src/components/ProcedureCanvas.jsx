@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   PROCEDURES, PHASES, PHASE_LIST, ACTION_TYPES, ACTOR_COLUMNS,
   BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_ACTIVITIES,
-  isProcedureSkippable, getProcedureLabel,
+  isProcedureSkippable, getProcedureLabel, replaceInternalProcedureCodes,
 } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { BOARD_SCHEMAS, getBoardSchemaForProcedure, createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
@@ -572,7 +572,17 @@ const FIELD_COLORS = [
 ]
 
 // ── 스키마 기반 렌더러 ──
-function BoardRenderer({ schema, content }) {
+function BoardRenderer({ schema, content: rawContent }) {
+  // 최종 방어선: 보드 텍스트에 내부 절차 코드(T-1-1 등)가 섞여 있어도 표시 코드로 정화해 렌더
+  // (채팅은 ChatPanel이 동일 정화를 거치는데 보드는 이 지점이 유일한 렌더 경로)
+  const content = useMemo(() => {
+    if (!rawContent) return rawContent
+    try {
+      return JSON.parse(replaceInternalProcedureCodes(JSON.stringify(rawContent)))
+    } catch {
+      return rawContent
+    }
+  }, [rawContent])
   if (!schema || !content) return null
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
