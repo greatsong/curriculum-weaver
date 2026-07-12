@@ -8,7 +8,7 @@
  */
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Play, Pause, Compass, X, Rocket } from 'lucide-react'
+import { Play, Compass, X, Rocket, ChevronDown, ChevronUp } from 'lucide-react'
 import { apiGet } from '../lib/api'
 import Logo from './Logo'
 import { createNebulaScene } from '../lib/nebulaScene'
@@ -83,6 +83,7 @@ export default function Graph3DShowcase() {
   const [activeGroups, setActiveGroups] = useState(null) // Set | null(전체)
   const [activeLevels, setActiveLevels] = useState(null)
   const [tour, setTour] = useState({ active: false, idx: 0, paused: false })
+  const [legendPref, setLegendPref] = useState(true) // 사용자의 레전드 펼침 선호
   const visitedRef = useRef(new Set())
   // URL focus는 마운트 직후 URL 기록 effect가 지우기 전에 캡처해 둔다
   const initialFocusRef = useRef(null)
@@ -273,7 +274,11 @@ export default function Graph3DShowcase() {
     if (!selected) { scene.setHighlight(null); return }
     const neighborSet = new Set(connections.map(c => c.other.code))
     scene.setHighlight(selected, neighborSet)
-    scene.flyToNode(selected)
+    // 카드(우측 패널/바텀 시트)가 가리지 않는 가시 영역의 중앙에 노드 배치
+    const screenShift = isMobile
+      ? { x: 0, y: Math.round((window.innerHeight || 700) * 0.26) }
+      : { x: 175, y: 0 }
+    scene.flyToNode(selected, { screenShift })
 
     // 라벨: 선택 노드 + 이웃 최대 10개 (스펙 §6-4)
     const selEl = document.createElement('div')
@@ -286,7 +291,7 @@ export default function Graph3DShowcase() {
       el.textContent = c.other.code
       scene.addLabel(c.other.code, el)
     })
-  }, [selected, connections, sceneEpoch])
+  }, [selected, connections, sceneEpoch, isMobile])
 
   const selectNode = useCallback((code) => {
     visitedRef.current.add(code)
@@ -305,7 +310,11 @@ export default function Graph3DShowcase() {
     onSelect: (node) => selectNode(node.code),
     onBackgroundClick: () => {
       if (tour.active) endTour()
-      else setSelected(null)
+      else if (selected) {
+        // 명시적 '나가기' — 선택 해제 + 전체 뷰 복귀 (선택 없을 땐 카메라 유지)
+        setSelected(null)
+        sceneRef.current?.overview(1500)
+      }
     },
   }
 
@@ -369,7 +378,12 @@ export default function Graph3DShowcase() {
     const onKey = (e) => {
       if (e.key !== 'Escape') return
       if (tour.active) endTour()
-      else setSelected(null)
+      else {
+        setSelected(prev => {
+          if (prev) sceneRef.current?.overview(1500)
+          return null
+        })
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -444,7 +458,7 @@ export default function Graph3DShowcase() {
             {selectedNode.subject}{selectedNode.grade_group ? ` · ${selectedNode.grade_group}` : ''}
           </p>
         </div>
-        <button onClick={() => setSelected(null)}
+        <button onClick={() => { setSelected(null); sceneRef.current?.overview(1500) }}
           className="shrink-0 p-1 -m-1 rounded-lg text-slate-400/70 hover:text-slate-100 hover:bg-white/[0.08] transition-colors">
           <X size={16} />
         </button>
@@ -587,43 +601,62 @@ export default function Graph3DShowcase() {
               })}
             </div>
           )
-        ) : (
-          <div className="absolute left-4 bottom-4 z-20 max-w-[400px] bg-[#0B1228]/70 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] p-3 animate-ui-in" style={{ animationDelay: '160ms' }}>
-            <div className="flex gap-1 mb-2.5">
+        ) : (legendPref && !selected) ? (
+          <div className="absolute left-4 bottom-4 z-20 max-w-[340px] bg-[#0B1228]/70 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] p-2.5 animate-ui-in" style={{ animationDelay: '160ms' }}>
+            <div className="flex items-center gap-1 mb-2">
               {derived.levels.map(lv => {
                 const active = !activeLevels || activeLevels.has(lv)
                 return (
                   <button key={lv} onClick={() => toggleLevel(lv)}
-                    className={`flex-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all duration-200 ${
+                    className={`flex-1 px-2 py-0.5 rounded-lg text-[11px] font-semibold transition-all duration-200 ${
                       active ? 'bg-white/[0.14] text-slate-100' : 'text-slate-400/70 hover:text-slate-300 hover:bg-white/[0.06]'}`}>
                     {lv.replace('학교', '')}
                   </button>
                 )
               })}
+              <button onClick={() => setLegendPref(false)} title="레전드 접기"
+                className="shrink-0 p-1 rounded-lg text-slate-400/70 hover:text-slate-100 hover:bg-white/[0.08] transition-colors">
+                <ChevronDown size={13} />
+              </button>
             </div>
-            <div className="h-px bg-white/[0.08] mb-2.5" />
-            <div className="flex flex-wrap gap-1.5">
+            <div className="h-px bg-white/[0.08] mb-2" />
+            <div className="flex flex-wrap gap-1">
               {derived.groups.map(g => {
                 const active = !activeGroups || activeGroups.has(g.name)
                 return (
                   <button key={g.name} onClick={() => toggleGroup(g.name)} onDoubleClick={() => soloGroup(g.name)}
                     title="더블클릭: 이 교과군만 보기"
-                    className={`flex items-center gap-1.5 pl-2 pr-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all duration-200 ${
+                    className={`flex items-center gap-1 pl-1.5 pr-2 py-0.5 rounded-full text-[11px] font-semibold border transition-all duration-200 ${
                       active ? 'border-white/[0.14] bg-white/[0.08] text-slate-100' : 'border-transparent bg-transparent text-slate-500/60 hover:text-slate-400'}`}>
                     <span className="w-2 h-2 rounded-full transition-all duration-200"
                       style={{ backgroundColor: g.color, boxShadow: active ? `0 0 8px ${g.color}` : 'none', opacity: active ? 1 : 0.3 }} />
                     {g.name}
-                    <span className="tabular-nums font-normal opacity-60">{g.count}</span>
                   </button>
                 )
               })}
             </div>
             {hasAnyDim && (
-              <button onClick={resetAll} className="mt-2 text-[11px] text-sky-400/80 hover:text-sky-300 transition-colors">
+              <button onClick={resetAll} className="mt-1.5 text-[11px] text-sky-400/80 hover:text-sky-300 transition-colors">
                 모두 켜기
               </button>
             )}
           </div>
+        ) : (
+          /* 접힌 레전드: 작은 알약 — 노드 선택 중이거나 사용자가 접었을 때 */
+          <button onClick={() => { setLegendPref(true); if (selected) { setSelected(null); sceneRef.current?.overview(1500) } }}
+            title="교과군·학교급 필터 펼치기"
+            className="absolute left-4 bottom-4 z-20 flex items-center gap-2 pl-3 pr-3.5 py-2 bg-[#0B1228]/70 backdrop-blur-xl border border-white/[0.08] rounded-full shadow-[0_8px_32px_rgba(0,0,0,0.45)] hover:bg-[#0E1633]/80 transition-colors">
+            <span className="flex items-center -space-x-0.5">
+              {derived.groups.slice(0, 6).map(g => {
+                const active = !activeGroups || activeGroups.has(g.name)
+                return <span key={g.name} className="w-2 h-2 rounded-full ring-1 ring-[#0B1228]"
+                  style={{ backgroundColor: g.color, opacity: active ? 1 : 0.25 }} />
+              })}
+            </span>
+            <span className="text-[11px] font-semibold text-slate-300/90">교과군 필터</span>
+            {hasAnyDim && <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.8)]" />}
+            <ChevronUp size={13} className="text-slate-400/70" />
+          </button>
         )
       )}
 
@@ -635,7 +668,7 @@ export default function Graph3DShowcase() {
             {cardBody}
           </aside>
         ) : (
-          <aside className="absolute right-4 top-[72px] bottom-4 z-20 w-[360px] max-w-[calc(100vw-32px)] flex flex-col bg-[#0E1633]/80 backdrop-blur-2xl border border-white/[0.12] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] animate-card-in">
+          <aside className="absolute right-4 top-[72px] max-h-[calc(100dvh-96px)] z-20 w-[330px] max-w-[calc(100vw-32px)] flex flex-col bg-[#0E1633]/80 backdrop-blur-2xl border border-white/[0.12] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] animate-card-in">
             {cardBody}
           </aside>
         )
