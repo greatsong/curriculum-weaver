@@ -8,7 +8,7 @@
  */
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Play, Compass, X, Rocket, ChevronDown, ChevronUp, List, HelpCircle, Flag } from 'lucide-react'
+import { Play, Pause, Compass, X, Rocket, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, List, HelpCircle, Flag } from 'lucide-react'
 import { apiGet, apiPost } from '../lib/api'
 import Logo from './Logo'
 import { createNebulaScene } from '../lib/nebulaScene'
@@ -414,7 +414,7 @@ export default function Graph3DShowcase() {
   // ── 투어 ──
   const tourStops = useMemo(() => {
     if (!derived) return []
-    const stops = derived.groups.filter(g => g.count >= 40).slice(0, 8).map(g => ({
+    const stops = derived.groups.map(g => ({
       group: g.name, color: g.color, centroid: g.centroid,
       stats: { nodes: g.count, links: g.links, topPartner: g.topPartner },
       story: buildStory(g.name, g.topPartner || '이웃 교과', g.topThemes),
@@ -795,7 +795,7 @@ export default function Graph3DShowcase() {
                 <p className="text-[11px] font-semibold text-slate-400/80 uppercase tracking-wide mb-2">상단 도구</p>
                 <ul className="space-y-1.5 text-[13px] text-slate-300/90 leading-relaxed">
                   <li>· 별 목록 — 과목을 골라 성취기준을 텍스트로 찾고, 클릭해 그 별로 이동</li>
-                  <li>· 우주 여행 — 교과군을 순회하는 자동 투어 시작 (Esc 또는 빈 우주 클릭으로 종료)</li>
+                  <li>· 우주 여행 — 전 교과군을 차례로 도는 가이드 투어. 이전·다음 버튼으로 직접 넘기거나 일시정지 가능 (Esc로 종료)</li>
                   <li>· 설계 모드 — 성취기준을 실제로 연결·편집하는 화면으로 이동</li>
                 </ul>
               </div>
@@ -1015,19 +1015,40 @@ export default function Graph3DShowcase() {
       {tour.active && currentStop && (
         <>
           <div className={`absolute inset-x-0 z-30 flex justify-center ${isMobile ? 'bottom-[calc(env(safe-area-inset-bottom)+180px)]' : 'bottom-[168px]'}`}>
-            <div className="flex items-center gap-3 px-3 py-1.5 rounded-full bg-[#0B1228]/70 backdrop-blur-xl border border-white/[0.08]">
-              <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-[#0B1228]/70 backdrop-blur-xl border border-white/[0.08]">
+              {/* 튜토리얼 내비게이션: 이전 · n/N · 다음 — 발표자가 자기 속도로 넘긴다 */}
+              <button onClick={() => setTour(t => ({ ...t, idx: Math.max(0, t.idx - 1), paused: false }))}
+                disabled={tour.idx === 0} title="이전 교과군"
+                className="p-1 -m-0.5 rounded-full text-slate-300/90 hover:text-slate-100 hover:bg-white/[0.08] disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-[11px] font-semibold tabular-nums text-slate-200">
+                {tour.idx + 1}<span className="font-normal text-slate-500">/{tourStops.length}</span>
+              </span>
+              <button onClick={() => setTour(t => t.idx >= tourStops.length - 1 ? t : ({ ...t, idx: t.idx + 1, paused: false }))}
+                disabled={tour.idx >= tourStops.length - 1} title="다음 교과군"
+                className="p-1 -m-0.5 rounded-full text-slate-300/90 hover:text-slate-100 hover:bg-white/[0.08] disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
+                <ChevronRight size={14} />
+              </button>
+              <span className="w-px h-3 bg-white/[0.12]" />
+              <div className="hidden sm:flex items-center gap-1.5">
                 {tourStops.map((s, i) => (
                   <button key={s.group} onClick={() => setTour(t => ({ ...t, idx: i, paused: false }))}
+                    title={s.group}
                     className={`rounded-full transition-all duration-300 ${i === tour.idx ? 'w-5 h-1.5' : 'w-1.5 h-1.5 hover:scale-125'}`}
                     style={{ backgroundColor: i === tour.idx ? s.color : 'rgba(255,255,255,0.25)' }} />
                 ))}
               </div>
-              <span className="w-px h-3 bg-white/[0.12]" />
-              {tour.paused && (
+              <span className="hidden sm:block w-px h-3 bg-white/[0.12]" />
+              {tour.paused ? (
                 <button onClick={() => setTour(t => ({ ...t, paused: false }))}
                   className="flex items-center gap-1 text-[11px] font-medium text-sky-300 hover:text-sky-200 transition-colors">
                   <Play size={12} /> 재개
+                </button>
+              ) : (
+                <button onClick={() => setTour(t => ({ ...t, paused: true }))} title="자동 진행 멈추고 천천히 보기"
+                  className="flex items-center gap-1 text-[11px] font-medium text-slate-300/90 hover:text-slate-100 transition-colors">
+                  <Pause size={12} /> 일시정지
                 </button>
               )}
               <button onClick={endTour}
