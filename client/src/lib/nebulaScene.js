@@ -288,7 +288,8 @@ export function createNebulaScene(container, {
     if (code !== null && codeToIndex.has(code)) {
       const node = nodes[codeToIndex.get(code)]
       selectionRing.position.set(node.x, node.y, node.z)
-      ringBaseScale = Math.max(4, node.size * 1.7)
+      // 근접 카메라(nodeFocus)에서 화면을 압도하지 않는 크기
+      ringBaseScale = Math.max(2.5, node.size * 1.15)
       selectionRing.visible = true
     } else {
       selectionRing.visible = false
@@ -325,7 +326,12 @@ export function createNebulaScene(container, {
     }
   }
 
-  function flyToNode(code, { distance, duration = TIMING.flyTo } = {}) {
+  /**
+   * 노드로 플라이투.
+   * screenShift: 노드를 화면 중앙에서 {x}px 왼쪽 / {y}px 위로 비껴 배치 —
+   * 상세 카드(우측)·바텀 시트가 노드를 가리지 않도록 가시 영역 중앙에 놓는 용도.
+   */
+  function flyToNode(code, { distance, duration = TIMING.flyTo, screenShift } = {}) {
     const i = codeToIndex.get(code)
     if (i === undefined) return false
     const dist = distance ?? (isMobile ? CAMERA.mobileNodeFocus : CAMERA.nodeFocus)
@@ -334,7 +340,22 @@ export function createNebulaScene(container, {
     const dir = camera.position.clone().sub(controls.target)
     if (dir.lengthSq() < 1) dir.set(0, 0.2, 1)
     dir.normalize()
-    flyTo(p.clone().add(dir.multiplyScalar(dist)), p, duration)
+    const camPos = p.clone().add(dir.clone().multiplyScalar(dist))
+    const lookAt = p.clone()
+    if (screenShift && (screenShift.x || screenShift.y)) {
+      // 목표 거리에서의 px→월드 변환 (수직 FOV 기준)
+      const h = container.clientHeight || 800
+      const worldPerPx = (2 * dist * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))) / h
+      const viewDir = p.clone().sub(camPos).normalize()
+      const right = new THREE.Vector3().crossVectors(viewDir, camera.up).normalize()
+      const upv = new THREE.Vector3().crossVectors(right, viewDir).normalize()
+      // 카메라와 시선을 함께 이동 → 노드가 화면에서 반대 방향으로 비껴 보임
+      const offset = right.multiplyScalar((screenShift.x || 0) * worldPerPx)
+        .add(upv.multiplyScalar(-(screenShift.y || 0) * worldPerPx))
+      camPos.add(offset)
+      lookAt.add(offset)
+    }
+    flyTo(camPos, lookAt, duration)
     return true
   }
 
