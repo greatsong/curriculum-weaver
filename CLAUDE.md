@@ -31,9 +31,22 @@ curriculum-weaver/
 - `server/lib/store.js` — 인메모리 데이터 스토어 (성취기준, 링크, 세션 관리)
 - `server/routes/standards.js` — 성취기준/그래프/링크 API 엔드포인트
 - `client/src/components/InlineGraph2D.jsx` — 2D 교과 연결 그래프 시각화
-- `client/src/components/DesignMode.jsx` + `lenses/` — /graph 설계 모드 (과목쌍·주제·계열·이웃 렌즈, URL이 상태 기록). 기본 진입=설계, ?mode=explore가 기존 3D
+- `client/src/components/DesignMode.jsx` + `lenses/` — /graph 설계 모드 (과목쌍·주제·계열·이웃 렌즈, URL이 상태 기록). 기본 진입=설계, ?mode=explore가 3D 쇼케이스
+- `client/src/components/Graph3DShowcase.jsx` — "교육과정 성운" 3D 쇼케이스 (아래 섹션 참조)
 - `scripts/migrateLinksToDB.js` — generatedLinks.js → curriculum_links 테이블 마이그레이션
 - `supabase/migrations/` — 15개 테이블 스키마 + RLS + Realtime
+
+## 교육과정 성운 — 3D 쇼케이스 재구축 (2026-07-12)
+
+`?mode=explore`를 발표·감상 전용 "교육과정 성운"으로 전면 재구축. 구 Graph3D(1,717줄, react-force-graph-3d)는 `?mode=explore-legacy`로 검증 기간 유지 후 삭제 예정.
+
+- **역할 선언**: 읽기 전용 프레젠테이션. AI 채팅·링크 추가·복잡 필터는 전부 제거(설계는 DesignMode 렌즈 담당). published + 교과군 간 연결 + 연결 노드만 표시(1,476노드/1,636링크)
+- **레이아웃 사전계산**: `scripts/compute-graph3d-layout.mjs` — /graph에서 published 그래프를 받아 d3-force-3d를 오프라인 실행(UMAP 임베딩 좌표 시드 + 약한 복원력으로 의미 지형 보존, 결정적), `server/data/graph3dLayout.json`(46KB) 출력. **링크 대량 변경 시 재실행 후 JSON 커밋 필요**
+- **API**: `GET /api/standards/graph3d` — 좌표 포함 경량 페이로드 867KB(기존 /graph 5.7MB 대비 -85%), 링크 버전 캐시. 레이아웃 없는 신규 노드는 임베딩 좌표 → code 해시 지터 폴백
+- **렌더러**: `client/src/lib/nebulaScene.js` — three.js 커스텀. 노드 전체=Points 1드로우콜(글로우 셰이더, gl_PointSize에 pixelRatio 곱 필수), 링크 전체=LineSegments 1드로우콜(additive라 색 밝기=알파). 상태 전환은 타깃 배열+프레임당 지수 러프 — **오브젝트 재생성 0**. force 시뮬레이션 없음
+- **디자인 단일 소스**: `client/src/lib/nebulaTheme.js` (다크 보정 팔레트·알파·타이밍·카메라). 원 스펙: `_workspace/design/graph3d-showcase-spec.md`. 절제 원칙: 기본 링크는 단일색 안개(#7C89B8 @0.08), 타입 5색은 선택 하이라이트에만
+- **기능**: 첫 진입 카메라 다이브+교과군 스태거 점등, 노드 선택(펄스 링·이웃 하이라이트·상세 카드·"다음 연결로 여행"), 자동 투어(교과군 스톱별 캡션+궤도 선회), 칩=조명 스위치(끄면 감광, 더블클릭=솔로), idle 오토로테이트. URL이 상태 기록: `?subjects=&levels=&focus=&tour=1` — DesignMode의 toExplore 이월과 호환
+- **QA 주의**: 헤드리스/백그라운드 탭은 rAF 정지 + 뷰포트 0×0(모바일 오인) — dev 한정 `window.__nebula.frame(t)` 수동 펌프로 검증(프로덕션 제외). 씬 재생성 시 sceneEpoch로 선택/필터 재주입
 
 ## 자료 업로드 분석 파이프라인 (2026-07-12 성능 개선)
 
