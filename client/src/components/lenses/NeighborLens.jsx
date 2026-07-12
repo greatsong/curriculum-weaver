@@ -108,7 +108,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
       <div className="flex flex-col items-center py-10 gap-4">
         <div className="text-center">
           <p className="text-gray-700 font-semibold">내 교과의 성취기준에서 출발해 보세요</p>
-          <p className="text-xs text-gray-400 mt-1">연결된 타 교과 성취기준이 곧 "이 개념이 진짜 필요한 실생활 맥락"입니다</p>
+          <p className="text-xs text-gray-400 mt-1">연결된 다른 교과의 성취기준에서 수업의 실마리를 찾아보세요</p>
         </div>
         {/* 진입로 1: 내 교과 선택 → 성취기준 선택 */}
         <div className="w-full max-w-md flex flex-col gap-2">
@@ -192,7 +192,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
             onClick={(e) => { e.stopPropagation(); openScenario(node.code) }}
             className={`mt-1.5 flex items-center gap-1 text-[11px] font-semibold transition ${
               isOpen ? 'text-violet-700' : 'text-violet-500 hover:text-violet-700'}`}>
-            <Sparkles size={11} /> {isOpen ? '시나리오 열림 (위)' : '실생활 문제 시나리오'}
+            <Sparkles size={11} /> {isOpen ? '시나리오 열림' : '실생활 문제 시나리오'}
           </button>
         )}
       </div>
@@ -238,7 +238,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
           {scenario.loading ? (
             <div className="flex items-center gap-2 text-sm text-violet-600 py-2">
               <Loader2 size={15} className="animate-spin" />
-              "이 개념 없이는 답할 수 없는" 진짜 문제를 만드는 중… (10초 안팎)
+              두 성취기준을 엮은 수업 시나리오를 만들고 있어요… 10초 정도 걸려요
             </div>
           ) : scenario.error ? (
             <div className="flex items-center justify-between text-sm text-red-500">
@@ -269,7 +269,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
                 <p className="text-[12px] text-gray-500">✅ <b>평가:</b> {sc.assessment_idea}</p>
               )}
               <p className="text-[10.5px] text-gray-400">
-                AI 생성 초안입니다 — 함께 설계하는 {nodeByCode.get(sc.context_code)?.subject || '상대 교과'} 선생님과 맥락의 사실성을 확인하세요.
+                AI가 만든 초안이에요 — {nodeByCode.get(sc.context_code)?.subject || '상대 교과'} 선생님과 함께 다듬어 보세요.
                 {scenario.cached && ' (캐시된 시나리오)'}
               </p>
             </div>
@@ -282,7 +282,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
         <div>
           <div className="mb-2">
             <h3 className="text-[13px] font-bold text-gray-700">🌍 실생활·융합 맥락 <span className="font-normal text-gray-400">({contextNeighbors.length})</span></h3>
-            <p className="text-[11px] text-gray-400 mt-0.5">타 교과 교육과정이 보증하는 진짜 상황들 — 이 개념이 실제로 필요해지는 곳</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">이 성취기준이 다른 교과 수업에서 실제로 쓰이는 장면들이에요</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
             {contextNeighbors.map(({ link, node }) => (

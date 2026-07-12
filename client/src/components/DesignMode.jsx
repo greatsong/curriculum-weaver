@@ -11,10 +11,10 @@ import NeighborLens from './lenses/NeighborLens'
 import SeriesLens from './lenses/SeriesLens'
 
 const LENSES = [
-  { id: 'pair', label: '과목쌍', hint: '두 교과의 성취기준이 어떻게 붙는지' },
+  { id: 'neighbor', label: '이웃', hint: '이 성취기준과 연결된 것' },
   { id: 'theme', label: '주제', hint: '이 주제로 어떤 교과가 엮이는지' },
   { id: 'series', label: '계열', hint: '앞뒤 학습 계열은 무엇인지' },
-  { id: 'neighbor', label: '이웃', hint: '이 성취기준과 연결된 것' },
+  { id: 'pair', label: '과목쌍', hint: '두 교과의 성취기준이 어떻게 붙는지' },
 ]
 
 const BASKET_KEY = 'cw_design_basket'
@@ -32,7 +32,7 @@ export default function DesignMode() {
   const [showAllLinks, setShowAllLinks] = useState(false)
 
   // ── URL 상태 ──
-  const lens = searchParams.get('lens') || 'pair'
+  const lens = searchParams.get('lens') || 'neighbor'
   const pair = [searchParams.get('a') || '', searchParams.get('b') || '']
   const query = searchParams.get('q') || ''
   const focusCode = searchParams.get('focus') || ''
