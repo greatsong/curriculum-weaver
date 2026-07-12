@@ -119,6 +119,9 @@ export default function Graph3DShowcase() {
   // URL focus는 마운트 직후 URL 기록 effect가 지우기 전에 캡처해 둔다
   const initialFocusRef = useRef(null)
   if (initialFocusRef.current === null) initialFocusRef.current = searchParams.get('focus') || ''
+  // ?tour=1 공유 링크 — 진입 연출이 끝나면 투어 자동 시작 (연수·발표용)
+  const wantsTourRef = useRef(null)
+  if (wantsTourRef.current === null) wantsTourRef.current = searchParams.get('tour') === '1'
   // 씬 재생성 세대 — 재생성 시 선택/필터를 다시 주입하기 위한 트리거
   const [sceneEpoch, setSceneEpoch] = useState(0)
 
@@ -277,8 +280,10 @@ export default function Graph3DShowcase() {
 
   // ── URL 상태 초기화 (mount 시 1회) ──
   useEffect(() => {
-    const subjects = (searchParams.get('subjects') || '').split(',').filter(Boolean)
-    if (subjects.length > 0) setActiveGroups(new Set(subjects))
+    const rawSubjects = searchParams.get('subjects') || ''
+    const subjects = rawSubjects.split(',').filter(Boolean)
+    if (rawSubjects === 'none') setActiveGroups(new Set()) // '모두 끄기' 상태 복원
+    else if (subjects.length > 0) setActiveGroups(new Set(subjects))
     const levels = (searchParams.get('levels') || '').split(',').filter(Boolean)
     if (levels.length > 0) setActiveLevels(new Set(levels))
     const theme = searchParams.get('theme')
@@ -290,7 +295,9 @@ export default function Graph3DShowcase() {
   useEffect(() => {
     const next = new URLSearchParams(searchParams)
     next.set('mode', 'explore')
-    if (activeGroups && derived && activeGroups.size < derived.groups.length) next.set('subjects', [...activeGroups].join(','))
+    // 빈 선택(모두 끄기)은 'none' 센티널로 기록 — 새로고침해도 0개 선택 상태가 복원되게
+    if (activeGroups && activeGroups.size === 0) next.set('subjects', 'none')
+    else if (activeGroups && derived && activeGroups.size < derived.groups.length) next.set('subjects', [...activeGroups].join(','))
     else next.delete('subjects')
     if (activeLevels && derived && activeLevels.size < derived.levels.length) next.set('levels', [...activeLevels].join(','))
     else next.delete('levels')
@@ -424,6 +431,13 @@ export default function Graph3DShowcase() {
     visitedRef.current.clear()
     setTour({ active: true, idx: 0, paused: false })
   }, [])
+
+  // ?tour=1 공유 링크: 진입 연출이 끝나면 자동 시작 (focus 복원과 겹치면 focus 우선)
+  useEffect(() => {
+    if (!uiReady || !wantsTourRef.current) return
+    wantsTourRef.current = false
+    if (!initialFocusRef.current) startTour()
+  }, [uiReady, startTour])
 
   const endTour = useCallback(() => {
     setTour({ active: false, idx: 0, paused: false })
@@ -854,6 +868,12 @@ export default function Graph3DShowcase() {
         isMobile ? (
           !selected && (
             <div className="absolute bottom-0 inset-x-0 z-20 px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-6 flex gap-1.5 overflow-x-auto bg-gradient-to-t from-[#04060F] to-transparent">
+              <input
+                value={themeQuery}
+                onChange={(e) => setThemeQuery(e.target.value)}
+                placeholder="✨ 주제"
+                className="shrink-0 w-24 px-2.5 py-1 rounded-full text-[11px] bg-white/[0.08] border border-white/[0.12] text-slate-100 placeholder:text-slate-500/70 focus:outline-none focus:ring-2 focus:ring-sky-400/60"
+              />
               {derived.levels.map(lv => {
                 const active = !activeLevels || activeLevels.has(lv)
                 return (

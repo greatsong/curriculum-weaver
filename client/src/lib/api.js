@@ -99,6 +99,16 @@ export async function apiPut(path, body = {}) {
   return res.json()
 }
 
+export async function apiPatch(path, body = {}) {
+  const headers = await getHeaders()
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(body),
+  })
+  return res.json()
+}
+
 export async function apiDelete(path) {
   const headers = await getHeaders()
   const res = await fetchWithTimeout(`${API_BASE}${path}`, {

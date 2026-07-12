@@ -344,6 +344,105 @@ standardsRouter.post('/links/report', requireAuth, async (req, res) => {
   }
 })
 
+/**
+ * GET /api/standards/links/reports
+ * 신고 검토 큐 (관리자 전용) — 미처리 신고를 (source, target) 쌍으로 그룹핑해
+ * 링크 메타(품질·근거)와 성취기준 내용을 병합해 반환한다.
+ */
+standardsRouter.get('/links/reports', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { data: rows, error } = await supabaseAdmin
+      .from('link_reports')
+      .select('id, source_code, target_code, reporter_id, reason, created_at')
+      .is('resolved_at', null)
+      .order('created_at', { ascending: false })
+      .limit(500)
+    if (error) throw new Error(error.message)
+
+    // (source|target) 쌍으로 그룹핑
+    const byPair = new Map()
+    for (const r of rows) {
+      const key = `${r.source_code}|${r.target_code}`
+      if (!byPair.has(key)) byPair.set(key, { source_code: r.source_code, target_code: r.target_code, reports: [] })
+      byPair.get(key).reports.push({ id: r.id, reason: r.reason, created_at: r.created_at })
+    }
+
+    // 링크 메타 + 성취기준 내용 병합 (인메모리 — 추가 왕복 없음)
+    const allLinks = StandardLinks.list()
+    const linkByPair = new Map(allLinks.map(l => {
+      const [a, b] = l.source_code < l.target_code ? [l.source_code, l.target_code] : [l.target_code, l.source_code]
+      return [`${a}|${b}`, l]
+    }))
+    const items = [...byPair.entries()].map(([key, g]) => {
+      const link = linkByPair.get(key)
+      const src = Standards.getByCode(g.source_code)
+      const tgt = Standards.getByCode(g.target_code)
+      return {
+        ...g,
+        source: src ? { subject: src.subject, content: src.content } : null,
+        target: tgt ? { subject: tgt.subject, content: tgt.content } : null,
+        link: link ? {
+          status: link.status,
+          link_type: link.link_type,
+          rationale: link.rationale,
+          quality_score: link.quality_score,
+          semantic_score: link.semantic_score,
+        } : null, // 링크가 이미 삭제/미등재면 null
+      }
+    })
+    res.json({ items, total: rows.length })
+  } catch (err) {
+    console.error('[standards] 신고 목록 오류:', err.message)
+    res.status(500).json({ error: '신고 목록 조회에 실패했습니다.' })
+  }
+})
+
+/**
+ * PATCH /api/standards/links/reports/resolve
+ * 신고 쌍 처리 (관리자 전용) — body { source_code, target_code, action }
+ *  - action 'demote':  링크를 candidate로 강등(그래프에서 내려감) + 해당 쌍 신고 전체 처리 표시
+ *  - action 'dismiss': 링크는 그대로 두고 신고만 처리 표시 (문제없음 판정)
+ */
+standardsRouter.patch('/links/reports/resolve', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { source_code, target_code, action } = req.body || {}
+    if (!['demote', 'dismiss'].includes(action)) {
+      return res.status(400).json({ error: "action은 'demote' 또는 'dismiss'여야 합니다." })
+    }
+    const [a, b] = source_code < target_code ? [source_code, target_code] : [target_code, source_code]
+
+    let demoted = false
+    if (action === 'demote') {
+      const link = StandardLinks.list().find(l => {
+        const [x, y] = l.source_code < l.target_code ? [l.source_code, l.target_code] : [l.target_code, l.source_code]
+        return x === a && y === b
+      })
+      if (link && link.status === 'published') {
+        link.status = 'candidate'
+        StandardLinks.bumpVersion() // 스토어 우회 직접 변이 — 그래프 캐시 수동 무효화
+        const persistResult = await persistLinkStatus(link.source_code, link.target_code, 'candidate')
+        if (!persistResult.persisted && persistResult.error !== 'not_configured') {
+          console.warn('[standards] 신고 강등 DB 영속화 실패:', persistResult.error)
+        }
+        demoted = true
+      }
+    }
+
+    const { error } = await supabaseAdmin
+      .from('link_reports')
+      .update({ resolved_at: new Date().toISOString() })
+      .eq('source_code', a).eq('target_code', b)
+      .is('resolved_at', null)
+    if (error) throw new Error(error.message)
+
+    console.log(`[standards] 신고 처리: ${a} ↔ ${b} (${action}${demoted ? ', 강등됨' : ''})`)
+    res.json({ ok: true, demoted })
+  } catch (err) {
+    console.error('[standards] 신고 처리 오류:', err.message)
+    res.status(500).json({ error: '신고 처리에 실패했습니다.' })
+  }
+})
+
 // 링크 상태 변경 (관리자 전용 — 인증+권한 필수)
 standardsRouter.patch('/links/:linkId/status', requireAuth, requireAdmin, async (req, res) => {
   const { linkId } = req.params

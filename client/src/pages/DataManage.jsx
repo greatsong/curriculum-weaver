@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, X, GitBranch, HelpCircle } from 'lucide-react'
-import { apiGet, apiPost, apiDelete } from '../lib/api'
+import { apiGet, apiPost, apiPatch, apiDelete } from '../lib/api'
 import Logo from '../components/Logo'
 import LinkGuideOverlay, { resetLinkGuide } from '../components/LinkGuideOverlay'
 import { VOCATIONAL_SUBJECTS } from '../../../shared/constants'
@@ -46,10 +46,34 @@ export default function DataManage() {
   const [jsonInput, setJsonInput] = useState('')
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState(null)
-  const [tab, setTab] = useState('browse') // 'browse' | 'graph' | 'upload'
+  const [tab, setTab] = useState('browse') // 'browse' | 'graph' | 'upload' | 'reports'
   const [showAllLinks, setShowAllLinks] = useState(false) // AI 제안 링크 포함 여부
   const [allStandards, setAllStandards] = useState([])
   const [showLinkGuide, setShowLinkGuide] = useState(false) // 가이드 강제 표시용
+
+  // 신고 검토 큐 (3D 쇼케이스 "이상해요" 신고)
+  const [reports, setReports] = useState(null) // null=로딩전, {items,total}
+  const [resolvingPair, setResolvingPair] = useState(null)
+  const loadReports = useCallback(async () => {
+    try { setReports(await apiGet('/api/standards/links/reports')) }
+    catch { setReports({ items: [], total: 0, error: true }) }
+  }, [])
+  useEffect(() => { loadReports() }, [loadReports])
+  const resolveReport = async (item, action) => {
+    const label = action === 'demote' ? '그래프에서 내리기(검토 대기로 강등)' : '문제없음(신고만 닫기)'
+    if (!confirm(`${item.source_code} ↔ ${item.target_code} 신고를 "${label}"로 처리할까요?`)) return
+    const key = `${item.source_code}|${item.target_code}`
+    setResolvingPair(key)
+    try {
+      await apiPatch('/api/standards/links/reports/resolve', {
+        source_code: item.source_code, target_code: item.target_code, action,
+      })
+      await loadReports()
+    } catch (err) {
+      alert(`처리 실패: ${err.message}`)
+    }
+    setResolvingPair(null)
+  }
 
   // 교과 선택 상태 (인라인 그래프 탐색용)
   const [pickedSubjects, setPickedSubjects] = useState(new Set())
@@ -272,6 +296,7 @@ export default function DataManage() {
             { id: 'browse', label: '성취기준 보기' },
             { id: 'graph', label: '연결 그래프' },
             { id: 'upload', label: '데이터 업로드' },
+            { id: 'reports', label: '신고 검토', badge: reports?.items?.length || 0 },
           ].map((t) => (
             <button
               key={t.id}
@@ -281,9 +306,99 @@ export default function DataManage() {
               }`}
             >
               {t.label}
+              {t.badge > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold tabular-nums">{t.badge}</span>
+              )}
             </button>
           ))}
         </div>
+
+        {/* 신고 검토 탭 — 3D 쇼케이스 "이상해요" 신고 큐 */}
+        {tab === 'reports' && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                사용자가 "이상해요"로 신고한 교과 연결입니다. 강등하면 그래프에서 내려가고(candidate),
+                문제없음이면 신고만 닫힙니다 — 링크 원본은 삭제되지 않습니다.
+              </p>
+              <button onClick={loadReports} className="shrink-0 px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:bg-gray-100 border border-gray-200">
+                새로고침
+              </button>
+            </div>
+            {!reports ? (
+              <div className="py-16 text-center text-sm text-gray-400">불러오는 중…</div>
+            ) : reports.error ? (
+              <div className="py-16 text-center text-sm text-red-500">신고 목록을 불러오지 못했습니다 (관리자 권한 필요)</div>
+            ) : reports.items.length === 0 ? (
+              <div className="py-16 text-center">
+                <p className="text-3xl mb-2">✅</p>
+                <p className="text-sm text-gray-500">미처리 신고가 없습니다</p>
+              </div>
+            ) : (
+              reports.items.map((item) => {
+                const key = `${item.source_code}|${item.target_code}`
+                const busy = resolvingPair === key
+                const alreadyDown = item.link && item.link.status !== 'published'
+                return (
+                  <div key={key} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 font-semibold">
+                        신고 {item.reports.length}건
+                      </span>
+                      {item.link ? (
+                        <>
+                          <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{item.link.link_type}</span>
+                          <span className={`px-2 py-0.5 rounded-full ${alreadyDown ? 'bg-gray-100 text-gray-500' : 'bg-emerald-50 text-emerald-700'}`}>
+                            {item.link.status}
+                          </span>
+                          {item.link.quality_score != null && (
+                            <span className="text-gray-400">품질 {item.link.quality_score} · 유사도 {item.link.semantic_score ?? '—'}</span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">링크 미등재(이미 삭제됨)</span>
+                      )}
+                      <span className="ml-auto text-gray-400">{new Date(item.reports[0].created_at).toLocaleString('ko-KR')}</span>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {[['source', item.source_code, item.source], ['target', item.target_code, item.target]].map(([k, code, std]) => (
+                        <div key={k} className="rounded-lg bg-gray-50 border border-gray-100 p-3">
+                          <p className="font-mono text-xs font-bold text-blue-600 mb-1">{code} <span className="font-sans font-normal text-gray-400">{std?.subject || ''}</span></p>
+                          <p className="text-[13px] text-gray-700 leading-relaxed">{std?.content || '(성취기준 미등재)'}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {item.link?.rationale && (
+                      <p className="text-[13px] text-gray-500 leading-relaxed">💡 {item.link.rationale}</p>
+                    )}
+                    {item.reports.some(r => r.reason) && (
+                      <div className="text-[13px] text-gray-600 space-y-0.5">
+                        {item.reports.filter(r => r.reason).map(r => <p key={r.id}>🗣 {r.reason}</p>)}
+                      </div>
+                    )}
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => resolveReport(item, 'demote')}
+                        disabled={busy || alreadyDown || !item.link}
+                        className="px-3.5 py-2 rounded-lg text-sm font-semibold bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                      >
+                        {alreadyDown ? '이미 내려감' : '그래프에서 내리기'}
+                      </button>
+                      <button
+                        onClick={() => resolveReport(item, 'dismiss')}
+                        disabled={busy}
+                        className="px-3.5 py-2 rounded-lg text-sm font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 transition"
+                      >
+                        문제없음
+                      </button>
+                      {busy && <span className="self-center text-xs text-gray-400">처리 중…</span>}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
 
         {/* 업로드 탭 */}
         {tab === 'upload' && (
