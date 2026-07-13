@@ -124,7 +124,7 @@ export default function LoginPage() {
                 color: 'var(--color-text-primary)',
                 margin: '0 0 8px',
               }}>
-                {mode === 'login' ? '다시 오신 것을 환영합니다' : '새 계정 만들기'}
+                {mode === 'login' ? '커리큘럼 위버에 오신 것을 환영합니다' : '새 계정 만들기'}
               </h2>
               <p style={{
                 fontSize: 14,
