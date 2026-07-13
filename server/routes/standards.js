@@ -437,8 +437,11 @@ standardsRouter.post('/links/scenario', requireAuth, async (req, res) => {
 
     // variant: '다른 아이디어' — 같은 조합의 대안 시나리오. 0=기본, 1~5=대안(캐시키 분리)
     const variant = Math.max(0, Math.min(5, parseInt(body.variant, 10) || 0))
-    // 1. 캐시 조회 — 같은 조합+variant은 같은 시나리오 (팀 간 공유, 비용 1회)
-    const key = [concept.code, ...contexts.map(c => c.code)].sort().join('|') + (variant ? `#${variant}` : '')
+    // angle: 선택적 맥락 힌트(넛지 프리셋 등) — 상황을 특정 방향으로 유도. 캐시키에 반영.
+    const angle = typeof body.angle === 'string' ? body.angle.trim().slice(0, 120) : ''
+    // 1. 캐시 조회 — 같은 조합+variant+angle은 같은 시나리오 (팀 간 공유, 비용 1회)
+    const angleTag = angle ? '@' + Buffer.from(angle).toString('base64').slice(0, 12) : ''
+    const key = [concept.code, ...contexts.map(c => c.code)].sort().join('|') + (variant ? `#${variant}` : '') + angleTag
     const { data: cached } = await supabaseAdmin
       .from('scenario_cache').select('scenario')
       .eq('key', key).maybeSingle()
@@ -466,7 +469,8 @@ standardsRouter.post('/links/scenario', requireAuth, async (req, res) => {
     const variantDirective = variant > 0
       ? `\n## ⚠️ 대안 아이디어 (${variant}번째)\n앞서 만든 시나리오와 **뚜렷이 다른 문제 상황·소재·데이터**로 접근하세요. 같은 성취기준을 엮되, 배경(장소·사건·데이터 종류)과 활동 방식을 새롭게 잡아 브레인스토밍처럼 다른 각도를 제시합니다. 진부한 반복 금지.\n`
       : ''
-    const prompt = `당신은 융합 수업 설계 전문가입니다. 아래 성취기준들을 연결하는 "실생활 문제 시나리오" 하나를 만드세요.${variantDirective}
+    const angleDirective = angle ? `\n## 맥락 힌트\n문제 상황을 다음 방향으로 잡으세요: ${angle}\n` : ''
+    const prompt = `당신은 융합 수업 설계 전문가입니다. 아래 성취기준들을 연결하는 "실생활 문제 시나리오" 하나를 만드세요.${variantDirective}${angleDirective}
 
 ## 개념 성취기준 (학생이 배워야 할 도구·개념)
 ${concept.code} [${concept.subject}] ${concept.content}
@@ -483,9 +487,13 @@ ${contextBlocks}
 ${multi ? '4' : '3'}. 데이터는 학생이 실제로 구하거나 만들 수 있는 것만 (공공데이터, 교실 측정, 뉴스 통계 등 출처를 구체적으로).
 ${multi ? '5' : '4'}. "철수가 사과를…" 식 가짜 인물·가짜 수치 금지.
 
+## 톤 (중요)
+- 담담하고 차분하게. 비장하거나 선정적인 제목·문구 금지 ("~할 자격이 있는가", "~되던 날", "~던 순간" 같은 드라마틱한 표현 대신 무엇을 하는 수업인지 담백하게 드러내는 제목).
+- 역사·고전·인물·사건 등 사실 정보는 확실한 것만 쓴다. **해석이나 함의는 단정하지 말고** "~로 읽어볼 수 있다", "~인지 원문에서 확인해 보자"처럼 여지를 두거나 학생 탐구 과제로 넘긴다. 고전 원문의 특정 구절 뜻을 지어내지 말 것.
+
 ## 응답 형식 — 아래 JSON만 출력 (다른 텍스트·코드펜스 금지, 전체 1,300자 이내로 간결하게)
 {
-  "title": "시나리오 제목 (한 줄)",
+  "title": "시나리오 제목 (한 줄, 담백하게 — 무엇을 탐구하는 수업인지)",
   "situation": "문제 상황 3~5문장 — 맥락 교과의 실제 탐구 장면에서 시작",
   "data_sources": ["학생이 실제 접근 가능한 데이터·자료 출처 2~3개 (구체적으로)"],
   "driving_question": "핵심 질문 한 문장 — 개념 없이는 답할 수 없는 질문",
