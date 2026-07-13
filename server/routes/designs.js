@@ -22,8 +22,12 @@ import {
 } from '../lib/supabaseService.js'
 import {
   PROCEDURES, isProcedureSkippable, getActiveProcedures,
-  getNextActiveProcedure, getProcedureLabel,
+  getNextActiveProcedure, getProcedureLabel, isDemoBoardCode,
 } from 'curriculum-weaver-shared/constants.js'
+
+// 유효한 설계 코드인지 — 협력 절차 코드(PROCEDURES) 또는 시연 모드 자립 보드 코드(demo_*).
+// 시연 보드는 PROCEDURES에 없지만 designs.procedure_code는 free-form TEXT라 저장/조회가 안전하다.
+const isValidDesignCode = (code) => !!PROCEDURES[code] || isDemoBoardCode(code)
 import { requireWritableProject } from '../lib/projectGuards.js'
 
 const router = Router()
@@ -91,7 +95,7 @@ router.get('/projects/:projectId/designs/:procedureCode', checkDesignAccess, asy
     const { projectId, procedureCode } = req.params
 
     // 절차 코드 유효성 검증
-    if (!PROCEDURES[procedureCode]) {
+    if (!isValidDesignCode(procedureCode)) {
       return res.status(400).json({
         error: `유효하지 않은 절차 코드입니다: ${procedureCode}`
       })
@@ -139,7 +143,7 @@ router.put('/projects/:projectId/designs/:procedureCode', checkDesignAccess, req
     }
 
     // 절차 코드 유효성 검증
-    if (!PROCEDURES[procedureCode]) {
+    if (!isValidDesignCode(procedureCode)) {
       return res.status(400).json({
         error: `유효하지 않은 절차 코드입니다: ${procedureCode}`
       })
@@ -221,7 +225,7 @@ router.put('/projects/:projectId/designs/:procedureCode/status', checkDesignAcce
     }
 
     // 절차 코드 유효성 검증
-    if (!PROCEDURES[procedureCode]) {
+    if (!isValidDesignCode(procedureCode)) {
       return res.status(400).json({
         error: `유효하지 않은 절차 코드입니다: ${procedureCode}`
       })

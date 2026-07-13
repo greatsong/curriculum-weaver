@@ -440,6 +440,42 @@ export const BOARD_SCHEMAS = {
       processReflections: [], sharedReflections: [], finalImprovements: [],
     },
   },
+
+  // ─── [시연 모드] 교수학습과정안 (demo_lesson_plan → lesson_plan) ───
+  // 임용 2차 수업 실연 준비용. 단일 교과 한 차시의 도입-전개-정리 흐름 + 발문·판서·형성평가·시간배분을
+  // 한 장의 표로 통합한다(교수학습과정안은 원래 한 장). 발문/판서/형성평가는 별도 보드로 쪼개지 않고
+  // stages 테이블 컬럼과 boardPlan 필드로 흡수 — 렌더러/AI 제안 경로(table/textarea)가 이미 검증됨.
+  // 기존 협력 보드 스키마는 위에서 전부 불변 — 아래는 추가만.
+  lesson_plan: {
+    fields: [
+      { name: 'unit', label: '단원·차시·차시목표', type: 'text', required: true,
+        description: '교과·단원명, 본 차시(예: 3/5차시), 차시 학습 주제' },
+      { name: 'objectives', label: '본시 학습목표', type: 'list', required: true,
+        description: '선택한 성취기준에서 도출한 이 한 차시의 학습목표(1~3개)' },
+      { name: 'stages', label: '교수학습 흐름 (도입-전개-정리)', type: 'table', required: true,
+        description: '수업 단계별 교사·학생 활동, 핵심 발문, 자료, 형성평가, 시간 배분',
+        columns: [
+          { name: 'stage', label: '단계' },            // 도입 / 전개 / 정리
+          { name: 'minutes', label: '시간(분)' },
+          { name: 'teacherActivity', label: '교사 활동' },
+          { name: 'studentActivity', label: '학생 활동' },
+          { name: 'keyQuestions', label: '핵심 발문' },
+          { name: 'materials', label: '자료·매체' },
+          { name: 'assessment', label: '형성평가' },
+          { name: 'notes', label: '유의점' },
+        ] },
+      { name: 'boardPlan', label: '판서 계획', type: 'textarea', required: false,
+        description: '칠판 구조·배치를 텍스트로 스케치(제목·핵심 개념·학생 산출 위치 등)' },
+      { name: 'timeTotalCheck', label: '시간 배분 합계 점검', type: 'textarea', required: false,
+        description: 'AI 점검: 도입+전개+정리 합계가 차시 시간(예: 40/45/50분)과 맞는지' },
+      { name: 'objectiveAlignmentCheck', label: '목표-활동-평가 정합성', type: 'textarea', required: false,
+        description: 'AI 점검: 학습목표 ↔ 학습활동 ↔ 형성평가의 정합성 평가' },
+    ],
+    empty: {
+      unit: '', objectives: [], stages: [], boardPlan: '',
+      timeTotalCheck: '', objectiveAlignmentCheck: '',
+    },
+  },
 }
 
 // ──────────────────────────────────────────

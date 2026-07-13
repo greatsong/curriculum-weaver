@@ -3,6 +3,7 @@ import {
   PROCEDURES, PHASES, PHASE_LIST, ACTION_TYPES, ACTOR_COLUMNS,
   BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_ACTIVITIES,
   isProcedureSkippable, getProcedureLabel, replaceInternalProcedureCodes,
+  isDemoBoardCode,
 } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { BOARD_SCHEMAS, getBoardSchemaForProcedure, createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
@@ -22,11 +23,15 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
     setEditing(false)
   }, [procedureCode])
 
-  const procInfo = PROCEDURES[procedureCode]
-  const phase = procInfo ? PHASE_LIST.find((p) => p.id === procInfo.phase) : null
+  // 시연 모드 자립 보드(demo_lesson_plan)는 PROCEDURES에 없다 — 보드 라벨로 최소 헤더를 합성해 렌더.
+  const isDemo = isDemoBoardCode(procedureCode)
+  const boardType = BOARD_TYPES[procedureCode]
+  const procInfo = PROCEDURES[procedureCode] || (isDemo && boardType
+    ? { name: BOARD_TYPE_LABELS[boardType] || '교수학습과정안', description: '임용 실연 준비 — 단일 교과 한 차시의 교수학습과정안(도입-전개-정리)을 작성합니다.', displayCode: null, phase: null }
+    : null)
+  const phase = procInfo?.phase ? PHASE_LIST.find((p) => p.id === procInfo.phase) : null
   const steps = PROCEDURE_STEPS[procedureCode] || []
   const activity = PROCEDURE_ACTIVITIES[procedureCode]
-  const boardType = BOARD_TYPES[procedureCode]
   const schema = boardType ? BOARD_SCHEMAS[boardType] : null
   const board = boardType ? boards[boardType] : null
 

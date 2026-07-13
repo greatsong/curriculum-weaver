@@ -11,6 +11,8 @@ import { socket, joinSession, leaveSession } from '../lib/socket'
 import { PROCEDURES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
 import Logo from '../components/Logo'
 import ProcedureNav from '../components/ProcedureNav'
+import DemoStepNav from '../components/DemoStepNav'
+import DemoStandardsPanel from '../components/DemoStandardsPanel'
 import ChatPanel from '../components/ChatPanel'
 import ProcedureCanvas from '../components/ProcedureCanvas'
 import PrinciplePanel from '../components/PrinciplePanel'
@@ -21,6 +23,9 @@ import MaterialUploadBar from '../components/MaterialUploadBar'
 import Tutorial from '../components/Tutorial'
 import InteractiveTour from '../components/InteractiveTour'
 import ContinueSimulationButton from '../components/ContinueSimulationButton'
+
+// 시연 모드 교수학습과정안 보드의 자립 코드 (BOARD_TYPES['demo_lesson_plan']='lesson_plan')
+const DEMO_LESSON_PLAN = 'demo_lesson_plan'
 
 // Error Boundary — ChatPanel 등 하위 컴포넌트 크래시 시 전체 페이지 보호
 class ErrorBoundary extends Component {
@@ -176,6 +181,10 @@ export default function ProjectPage() {
   // 하나의 게이트로 함께 끈다(§9 리스크1·4). 협력 모드(기본값)는 isDemo=false로 완전 불변.
   const isDemo = currentProject?.learner_context?.demo === true
 
+  // 시연 모드 얕은 스텝: 'standards'(성취기준·단원 선택) → 'plan'(교수학습과정안)
+  const [demoStep, setDemoStep] = useState('standards')
+  const demoStandards = useProcedureStore((s) => s.standards)
+
   const [showStandardSearch, setShowStandardSearch] = useState(false)
   // 신규 사용자는 InteractiveTour(6스텝)만 본다. 레거시 Tutorial(9스텝)은
   // 투어를 이미 끝낸 적이 있는데 튜토리얼은 못 본 과거 사용자에게만 1회 노출 →
@@ -287,7 +296,9 @@ export default function ProjectPage() {
       const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
       const proj = useProjectStore.getState().currentProject
       const isReadOnly = proj?.status === 'simulation' || proj?.status === 'generating' || proj?.status === 'failed' || proj?.title?.startsWith('[시뮬레이션]')
-      const proc = useProcedureStore.getState().currentProcedure
+      // 시연 모드는 커서가 T-1-1로 초기화된 순간에 협력 인트로가 생성되지 않도록 데모 보드 코드로 고정한다.
+      const projIsDemo = proj?.learner_context?.demo === true
+      const proc = projIsDemo ? DEMO_LESSON_PLAN : useProcedureStore.getState().currentProcedure
       // introCache에 이미 있으면 스킵 (이전에 인트로 생성된 절차)
       if (!isReadOnly && !hasContent && !introCache[proc] && localStorage.getItem('cw_tour_done')) {
         if (proc) requestProcedureIntro(projectId, proc)
@@ -344,8 +355,14 @@ export default function ProjectPage() {
   }, [projectId, workspaceId])
 
   useEffect(() => {
+    // 시연 모드: 커서를 항상 교수학습과정안 보드로 고정한다(19절차 트랙 미사용).
+    // 채팅·보드가 이 자립 코드를 대상으로 동작하며, 좌측 패널은 demoStep으로 전환한다.
+    if (isDemo) {
+      if (currentProcedure !== DEMO_LESSON_PLAN) setProcedure(DEMO_LESSON_PLAN)
+      return
+    }
     if (currentProject?.current_procedure) setProcedure(currentProject.current_procedure)
-  }, [currentProject?.current_procedure])
+  }, [currentProject?.current_procedure, isDemo, currentProcedure, setProcedure])
 
   const connectSocket = useCallback(({ name: nickname, subject: subjectName }) => {
     if (joinedRef.current) return
@@ -735,8 +752,14 @@ export default function ProjectPage() {
       {/* 자료 관리 바 */}
       <MaterialUploadBar projectId={projectId} />
 
-      {/* 절차 네비게이션 — 시연 모드에서는 19절차 트랙을 숨긴다(단일 차시 자유 편집) */}
-      {!isDemo && (
+      {/* 절차 네비게이션 — 시연 모드에서는 19절차 트랙 대신 얕은 스텝 네비를 노출(단일 차시 준비) */}
+      {isDemo ? (
+        <DemoStepNav
+          step={demoStep}
+          onStepChange={setDemoStep}
+          standardsCount={(demoStandards || []).length}
+        />
+      ) : (
         <div data-tour="procedure-nav">
           <ProcedureNav
             currentProcedure={currentProcedure}
@@ -782,13 +805,21 @@ export default function ProjectPage() {
           }}
         >
           <ErrorBoundary>
-            <ProcedureCanvas
-              projectId={projectId}
-              procedureCode={currentProcedure}
-              readOnly={isReadOnlyProject}
-              loading={isReadOnlyLoading}
-              memberRole={currentProject?.my_role}
-            />
+            {isDemo && demoStep === 'standards' ? (
+              <DemoStandardsPanel
+                standards={demoStandards}
+                onOpenSearch={() => setShowStandardSearch(true)}
+                onNext={() => setDemoStep('plan')}
+              />
+            ) : (
+              <ProcedureCanvas
+                projectId={projectId}
+                procedureCode={currentProcedure}
+                readOnly={isReadOnlyProject}
+                loading={isReadOnlyLoading}
+                memberRole={currentProject?.my_role}
+              />
+            )}
           </ErrorBoundary>
         </div>
 

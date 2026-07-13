@@ -12,7 +12,7 @@
 
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth.js'
-import { buildAIResponse } from '../services/aiAgent.js'
+import { buildAIResponse, buildProcedureIntroResponse } from '../services/aiAgent.js'
 import {
   getMessages, getMessage, createMessage, getRecentMessages,
   getProject, getMemberRole, getDesignsByProject,
@@ -20,7 +20,7 @@ import {
 } from '../lib/supabaseService.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
-import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode } from 'curriculum-weaver-shared/constants.js'
+import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode, isDemoBoardCode } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
@@ -477,12 +477,57 @@ chatRouter.post('/stage-intro', async (req, res) => {
     return res.status(400).json({ error: 'stage-intro는 deprecated입니다. procedure-intro를 사용하세요.' })
   }
 
+  const introProject = req.project || await getProject(session_id).catch(() => null)
+  const isDemoIntro = introProject?.learner_context?.demo === true && isDemoBoardCode(procedure)
+
+  // 시연 모드: 자립 보드 코드(demo_lesson_plan)는 PROCEDURES에 없으므로 정적 가이드가 없다.
+  // 코치 톤 AI 환영 인트로를 buildProcedureIntroResponse(mode:'demo')로 스트리밍한다.
+  if (isDemoIntro) {
+    if (isReadOnlyProject(introProject)) {
+      return res.status(403).json({ error: '읽기 전용 프로젝트에서는 새 AI 안내를 생성하지 않습니다.' })
+    }
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    res.setHeader('X-Accel-Buffering', 'no')
+    res.flushHeaders()
+    try {
+      const designs = await getDesignsByProject(session_id).catch(() => [])
+      let introText = ''
+      await buildProcedureIntroResponse(
+        { procedure, sessionTitle: introProject?.title, boards: designs, mode: 'demo', tone: 'coaching', aiModel },
+        {
+          onText: (text) => {
+            introText += text
+            res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: text })}\n\n`)
+          },
+          onError: (msg) => res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.ERROR, message: msg })}\n\n`),
+        }
+      )
+      if (introText.trim()) {
+        await createMessage({
+          project_id: session_id,
+          sender_type: 'ai',
+          content: replaceInternalProcedureCodes(introText),
+          procedure_context: procedure,
+        }).catch(() => {})
+      }
+      res.write(`data: [DONE]\n\n`)
+      return res.end()
+    } catch (error) {
+      console.error('시연 인트로 오류:', error)
+      res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.ERROR, message: '인트로 생성 중 오류가 발생했습니다.' })}\n\n`)
+      res.write(`data: [DONE]\n\n`)
+      return res.end()
+    }
+  }
+
   // procedure-intro와 동일하게 처리
   if (!PROCEDURES[procedure]) {
     return res.status(400).json({ error: `유효하지 않은 절차 코드: ${procedure}` })
   }
 
-  const project = req.project || await getProject(session_id).catch(() => null)
+  const project = req.project || introProject
   if (isReadOnlyProject(project)) {
     return res.status(403).json({ error: '시뮬레이션 프로젝트에서는 새 AI 안내를 생성하지 않습니다.' })
   }
@@ -708,6 +753,11 @@ chatRouter.post('/message', async (req, res) => {
       explicit: selectionExplicit,
     })
 
+    // 시연 모드(임용 실연 준비) 판별 — 서버가 프로젝트 표식으로 결정(클라 신뢰하지 않음).
+    // demo면 buildSystemPrompt에 mode/tone을 주입해 융합 가드·협력UP·팀 비전·절차 전환을 끄고
+    // 코치 톤을 강제한다. 협력 모드(기본)는 mode 미지정이라 기존과 완전히 동일.
+    const isDemo = project?.learner_context?.demo === true
+
     const context = {
       session: project,
       standards,
@@ -717,13 +767,15 @@ chatRouter.post('/message', async (req, res) => {
       userMessage: content,
       procedure: activeProcedure,
       currentStep: currentStep ? Number(currentStep) : null,
-      aiRole: aiRole || undefined,
+      aiRole: isDemo ? 'coach' : (aiRole || undefined),
       aiModel: aiModel || undefined,
       mentionedMaterialIds: mentionedIds,
       mentionedMaterials,
       selectedMaterialIds,
       skippedCodes,
       standardLinks,
+      mode: isDemo ? 'demo' : undefined,
+      tone: isDemo ? 'coaching' : undefined,
     }
 
     // ── 진단 로그: 자료가 실제로 프롬프트에 흘러가는지 추적 (Railway 로그용) ──

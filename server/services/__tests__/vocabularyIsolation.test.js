@@ -107,6 +107,50 @@ describe('시스템 프롬프트 어휘 격리 — 절차 19종 전수', () => {
 })
 
 // ──────────────────────────────────────────
+// 2-B. 시연 모드 — 자립 보드 코드(demo_lesson_plan)가 스크럽/격리에 무해
+// ──────────────────────────────────────────
+
+describe('시연 모드 어휘 격리 + 분기', () => {
+  const demoContext = {
+    session: { title: '중학교 과학 한 차시 실연', description: '임용 실연 준비' },
+    standards: [
+      { curriculum_standards: { code: '9과01-01', content: '힘과 운동을 설명한다.', subject_group: '과학' } },
+    ],
+    materials: [],
+    boards: [],
+    recentMessages: [],
+    procedure: 'demo_lesson_plan',
+    currentStep: null,
+    mode: 'demo',
+    tone: 'coaching',
+  }
+
+  it('demo_lesson_plan 프롬프트에 내부 절차 코드가 없다', () => {
+    const prompt = buildSystemPrompt(demoContext)
+    const leaks = prompt.match(INTERNAL_CODE) || []
+    expect(leaks, `내부 코드 노출: ${[...new Set(leaks)].join(', ')}`).toEqual([])
+  })
+
+  it('demo_lesson_plan는 유효 프롬프트를 생성한다(시스템 오류 아님)', () => {
+    const prompt = buildSystemPrompt(demoContext)
+    expect(prompt).not.toContain('시스템 오류')
+    expect(prompt).toContain('교수학습과정안')
+  })
+
+  it('단일 교과여도 융합 가드를 발동하지 않는다 + 코치 톤이 주입된다', () => {
+    const prompt = buildSystemPrompt(demoContext)
+    expect(prompt).not.toContain('융합 가드')
+    expect(prompt).not.toContain('다른 교과의 성취기준을')
+    expect(prompt).toContain('코치')
+  })
+
+  it('demo_lesson_plan 코드는 스크럽·정규화가 원본을 보존한다', () => {
+    expect(replaceInternalProcedureCodes('demo_lesson_plan 보드')).toBe('demo_lesson_plan 보드')
+    expect(normalizeProcedureCode('demo_lesson_plan')).toBe('demo_lesson_plan')
+  })
+})
+
+// ──────────────────────────────────────────
 // 3. 대화 이력 스크럽 — 옛 메시지의 내부 코드가 모델 입력에서 제거
 // ──────────────────────────────────────────
 
