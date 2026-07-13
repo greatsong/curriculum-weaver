@@ -76,6 +76,15 @@ export default function DesignMode() {
     })
   }, [])
 
+  // 담기 전체 비우기 (인라인 2단계 확인)
+  const [clearConfirm, setClearConfirm] = useState(false)
+  const clearBasket = useCallback(() => {
+    setBasket(new Set())
+    sessionStorage.removeItem(BASKET_KEY)
+    sessionStorage.removeItem(BASKET_META_KEY)
+    setClearConfirm(false)
+  }, [])
+
   // ── 그래프 데이터 ──
   // 항상 status=all로 한 번만 받고 렌즈별로 클라이언트 필터링:
   // - 과목쌍 렌즈는 candidate(AI 제안)를 점선으로 항상 노출 (빈 쌍 문제 완화)
@@ -275,9 +284,19 @@ export default function DesignMode() {
       {/* 담기 트레이 */}
       {basket.size > 0 && (
         <div className="flex items-center gap-3 px-4 py-2.5 bg-white border-t border-gray-200 shrink-0">
-          <span className="text-xs text-gray-600">
+          <span className="text-xs text-gray-600 whitespace-nowrap">
             🧺 담은 성취기준 <b className="text-blue-700">{basket.size}</b>
           </span>
+          {clearConfirm ? (
+            <span className="flex items-center gap-1.5 text-[11px] whitespace-nowrap">
+              <span className="text-gray-500">모두 비울까요?</span>
+              <button onClick={clearBasket} className="font-semibold text-red-600 hover:underline">비우기</button>
+              <button onClick={() => setClearConfirm(false)} className="text-gray-400 hover:text-gray-600">취소</button>
+            </span>
+          ) : (
+            <button onClick={() => setClearConfirm(true)}
+              className="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap">비우기</button>
+          )}
           <div className="flex gap-1.5 overflow-x-auto min-w-0">
             {basketList.slice(0, 6).map(code => (
               <span key={code} className="flex items-center gap-1 px-2 py-0.5 bg-gray-100 rounded-lg text-[11px] font-mono text-gray-600 whitespace-nowrap">
