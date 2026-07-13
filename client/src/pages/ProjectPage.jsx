@@ -633,13 +633,14 @@ export default function ProjectPage() {
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
           <MemberList />
-          {!isReadOnlyProject && (
+          {!isReadOnlyProject && !isDemo && (
             <ContinueSimulationButton projectId={projectId} workspaceId={workspaceId} />
           )}
           {[
             { onClick: () => setShowReport(true), color: '#7C3AED', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>, label: '보고서', title: '결과 보고서' },
             { onClick: () => setShowStandardSearch(true), color: '#16A34A', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>, label: '성취기준', title: '성취기준 탐색' },
-            { onClick: handleCopyInvite, color: '#3B82F6', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>, label: '공유', title: '프로젝트 링크 복사' },
+            // 공유는 협력(팀 워크스페이스) 전용 — 개인 시연 준비에서는 은닉.
+            ...(isDemo ? [] : [{ onClick: handleCopyInvite, color: '#3B82F6', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>, label: '공유', title: '프로젝트 링크 복사' }]),
           ].map(({ onClick, color, icon, label, title }) => (
             <button
               key={label}

@@ -20,10 +20,11 @@
 - [ ] `buildProcedureIntroResponse`(aiAgent.js:1040) — tone 인자 + 협력UP 블록 demo 제거
 - [ ] 검증: 성취기준→보드작성→ai_suggestion 수락, 융합가드 미발동, demo_ 코드 스크럽 무해
 
-## Stage 2 — 발문 · 판서 (③)
-- [ ] lesson_plan keyQuestions/boardPlan 필드 + "발문 생성"·"판서 스케치" 트리거 버튼(chat 프롬프트)
-- [ ] buildCoherenceContext(aiAgent.js:209) 목표-활동-형성평가 정합성 타깃 demo 매핑
-- [ ] 검증: 발문/판서 생성·정합성 점검 출력
+## Stage 2 — 발문 · 판서 (③) ✅ 완료 (2026-07-13)
+- [x] lesson_plan keyQuestions/boardPlan 필드(스키마는 Stage 1에서 완비) + "발문 생성"·"판서 스케치" 트리거 버튼(ProcedureCanvas `DemoGenerateToolbar`, chat 프롬프트)
+- [x] buildCoherenceContext(aiAgent.js) `mode` 인자 + `buildDemoCoherenceContext`로 목표-활동-형성평가 정합성 demo 매핑
+- [x] 헤더 정리: demo에서 "여기부터 시뮬레이션"·"공유" 은닉("보고서" 유지)
+- [x] 검증: 발문/판서 생성·정합성 점검 출력(실채팅), 봉인 36/36·서버 180/180, 협력 회귀 없음
 
 ## Stage 3 — 대본 · 타이밍 (④)
 - [ ] BOARD_TYPES/SCHEMAS demo_script 추가(segments table + totalDurationCheck)

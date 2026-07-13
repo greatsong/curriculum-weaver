@@ -295,6 +295,22 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
       {/* 정합성 점검 결과 */}
       {coherenceCheckResult && <CoherenceCheckCard result={coherenceCheckResult} />}
 
+      {/* 시연 모드 AI 생성 도우미 — 발문·판서를 chat 프롬프트로 트리거(별도 라우트 없이 ai_suggestion 경로 재사용) */}
+      {isDemo && boardType === 'lesson_plan' && !readOnly && !isSkipped && (
+        <DemoGenerateToolbar
+          onKeyQuestions={() => sendMessage(
+            projectId,
+            '지금까지의 교수학습과정안(단원·학습목표·도입-전개-정리 흐름)을 바탕으로, 각 단계에 맞는 위계적 핵심 발문을 만들어 주세요. 사실 확인 → 사고 확장 → 적용·평가로 이어지는 흐름이 되게 하고, 학습목표와 각 단계의 활동에 정렬되도록 stages 표의 "핵심 발문(keyQuestions)" 칸을 채워 <ai_suggestion>으로 제안해 주세요.',
+            procedureCode,
+          )}
+          onBoardPlan={() => sendMessage(
+            projectId,
+            '이 수업의 판서 계획을 스케치해 주세요. 칠판을 어떻게 구획할지(제목·핵심 개념·학생 산출물 위치 등)와 수업 흐름(도입-전개-정리)에 따라 무엇을 언제 판서할지 구조적으로 정리해서, boardPlan 필드를 채워 <ai_suggestion>으로 제안해 주세요.',
+            procedureCode,
+          )}
+        />
+      )}
+
       {/* 보드 카드 */}
       {boardType && schema && (
         <BoardCard
@@ -321,6 +337,51 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
           }}
         />
       )}
+    </div>
+  )
+}
+
+// ── 시연 모드 발문·판서 생성 도우미 ──
+// 별도 보드/라우트를 신설하지 않고, 미리 짜인 코치 톤 프롬프트를 chat으로 보내는 얇은 트리거.
+// AI가 <ai_suggestion type="board_update">로 stages 핵심발문 컬럼·boardPlan 필드를 채우면
+// 기존 수락 경로가 그대로 동작한다.
+function DemoGenerateToolbar({ onKeyQuestions, onBoardPlan }) {
+  const buttons = [
+    {
+      label: '발문 생성',
+      hint: '단계별 위계적 핵심 발문',
+      onClick: onKeyQuestions,
+      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/><circle cx="12" cy="12" r="10"/></svg>,
+    },
+    {
+      label: '판서 스케치',
+      hint: '칠판 구조·판서 흐름',
+      onClick: onBoardPlan,
+      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="13" rx="1"/><line x1="7" y1="20" x2="17" y2="20"/><line x1="12" y1="17" x2="12" y2="20"/></svg>,
+    },
+  ]
+  return (
+    <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>AI 생성 도우미</span>
+        <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>버튼을 누르면 코치 AI가 제안을 만들어 드려요</span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {buttons.map((b) => (
+          <button
+            key={b.label}
+            onClick={b.onClick}
+            title={b.hint}
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '8px 14px', color: '#6D28D9', borderColor: '#DDD6FE' }}
+          >
+            {b.icon}
+            <span style={{ fontWeight: 600 }}>{b.label}</span>
+            <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{b.hint}</span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

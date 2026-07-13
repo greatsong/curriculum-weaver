@@ -66,6 +66,33 @@
 - reportGenerator·demo continue는 여전히 코어 절차(T-1-1 등) 가정 → demo 프로젝트에서 미검증. Stage 4에서 분기.
 - coherence(정합성 점검)는 Stage 2 범위 — 현재 demo는 getCoherenceTargets 빈값이라 섹션 미주입(무해).
 
+### Stage 2 — 발문·판서 트리거 + 정합성 점검 demo 매핑 완료 (2026-07-13)
+브랜치 `feat/demo-mode` (Stage 1=0fe80fd 위에 이어감). 모든 분기 `isDemo`/`mode==='demo'` opt-in, 협력 경로 불변. 공유 파일은 추가만.
+
+**서버 (aiAgent.js)**
+- `buildCoherenceContext(procedureCode, allBoards, skippedCodes, mode)` — 넷째 인자 `mode` 추가. `mode==='demo'`면 협력용 이전-절차 정합성 대신 `buildDemoCoherenceContext`로 위임. 협력 경로(mode 기본값)는 완전 불변.
+- 신설 `buildDemoCoherenceContext` — demo_lesson_plan 한 장 **내부**에서 [학습목표(objectives)] ↔ [학습활동(stages 교사·학생활동)] ↔ [형성평가(stages 형성평가)] 삼각 정렬을 점검하는 컨텍스트를 조립(현재 보드의 목표·단계별 활동/형성평가를 요약 주입 + 누락/초점이탈/평가정합성 점검 규칙 + 코치 톤 지시). 이전 절차 트랙이 없는 demo에 맞춤.
+- 호출부(§7): `buildCoherenceContext(..., mode)`로 mode 전달, coherence_check XML 형식 안내를 demo 분기 — demo는 `procedure="demo_lesson_plan" against="objectives-activities-assessment"`(비교 절차 없음), 협력은 기존 `against="[표시 코드들]"` 유지. 서버 `extractCoherenceCheck`/클라 `parseCoherenceCheck`가 demo 블록도 그대로 파싱(코드 검증).
+
+**프론트**
+- `client/src/components/ProcedureCanvas.jsx` — demo(lesson_plan)·비읽기전용·비스킵일 때 정합성 카드 아래에 **`DemoGenerateToolbar`**(신설, 같은 파일) 렌더. "발문 생성"·"판서 스케치" 버튼이 미리 짜인 코치 톤 프롬프트를 `sendMessage(projectId, prompt, procedureCode)`로 chat 전송 → AI가 `<ai_suggestion type="board_update">`로 stages 핵심발문 컬럼·boardPlan 필드를 채우면 기존 수락 경로가 그대로 저장. **별도 보드/라우트 신설 없음**(DESIGN §5.3·§4.3 결정).
+- `client/src/pages/ProjectPage.jsx` — 헤더 정리: `ContinueSimulationButton`은 `!isReadOnlyProject && !isDemo`로, "공유"(handleCopyInvite)는 배열 스프레드 `...(isDemo ? [] : [공유])`로 demo 은닉. "보고서"·"성취기준"은 유지. 협력(isDemo=false)은 종전과 동일.
+
+**검증 (백엔드 4107 재기동 + 프론트 4006, dev-bypass, 실채팅)**
+- 헤더: demo 프로젝트에서 "여기부터 시뮬레이션"·"공유" **미노출**, "보고서"·"성취기준" **노출**(read_page ref 목록·스크린샷 확인).
+- 발문 생성(실채팅): [12역학01-02] 단일교과 lesson_plan(목표2=에너지보존이 활동에 미반영·도입/정리 형성평가 공란으로 시드)에서 버튼 클릭 → AI가 **위계적 발문**(도입 사실확인 ② → 전개 사고확장·적용 ④ → 정리 적용·평가·일반화 ②)을 stages keyQuestions에 채운 ai_suggestion 생성, 수락 시 3행 전부 저장(API 재조회 확인). 응답에 목표1·목표2 정렬 근거 명시.
+- **정합성 점검 피드백 실동작**: 같은 응답이 "도입과 정리에는 형성평가가 비어있는 상태인데…" 하고 목표-활동-평가 정렬 갭(형성평가 누락)을 **코치 톤으로 지적** — demo coherence 매핑이 실제 프롬프트에 반영됨을 실채팅으로 확인.
+- 판서 스케치(실채팅): 버튼 클릭 → AI가 3구역(좌 고정/중 누적/우 정리) 시간흐름별 판서 계획을 boardPlan에 채운 ai_suggestion 생성, 수락 시 boardPlan 저장(301자, API 확인).
+- 봉인 테스트 `vocabularyIsolation.test.js` **36/36**, 서버 전체 **180/180** 통과(완화 없음). 콘솔 신규 에러 0(기존 flex/flexShrink 경고만).
+- 회귀: 협력 buildSystemPrompt(A-2-2)는 **generic 정합성 컨텍스트 유지**·"시연 모드" 섹션 미주입(node 검증). 헤더 협력 경로(isDemo=false)는 공유·시뮬레이션 버튼 로직 불변.
+
+**Stage 3 인계 주의**
+- demo_script(대본·타이밍) 보드는 아직 없음 — Stage 3에서 BOARD_TYPES/SCHEMAS `demo_script`(segments table + totalDurationCheck) 추가 예정. 추가만, 기존 엔트리 불변 원칙 유지.
+- 발문·판서는 lesson_plan 필드로 흡수했으므로 Stage 3 대본은 lesson_plan을 참조하는 별도 보드. 대본 생성 트리거도 DemoGenerateToolbar 패턴(chat 프롬프트) 재사용 가능 — 단 script 보드 컨텍스트에서만 노출되게 게이트 분리 필요.
+- coherence는 현재 lesson_plan 전용(`buildDemoCoherenceContext`가 boardType!=='lesson_plan'이면 빈값 반환). demo_script에도 타이밍 합계 점검이 필요하면 별도 함수/분기로.
+- 코치 프롬프트 문구는 ProcedureCanvas에 하드코딩 — 대본/루브릭 트리거 늘면 상수화 검토.
+- reportGenerator·demo continue는 여전히 코어 절차 가정(Stage 4 분기 대기, Stage 2 미변경).
+
 ## 결정·변경 이력
 - migration: MVP 0건(learner_context jsonb에 demo 표식). 향후 projects.mode 컬럼 승격 검토.
 - 시연 보드 코드는 `demo_*` 스네이크형(어휘격리 정규식 미매칭, PROCEDURES 미등록).
