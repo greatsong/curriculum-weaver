@@ -184,11 +184,18 @@ export default function WorkspaceDetailPage() {
     }, { replace: true })
   }, [searchParams, setSearchParams])
 
-  // 생성 모달 열릴 때 설계 모드 장바구니 로드
+  // 생성 모달 열릴 때 설계 모드 장바구니 로드 + 담아온 성취기준의 교과 자동 선택
   useEffect(() => {
     if (!showCreateProject) return
     try {
-      setDesignBasket(JSON.parse(sessionStorage.getItem('cw_design_basket') || '[]'))
+      const codes = JSON.parse(sessionStorage.getItem('cw_design_basket') || '[]')
+      setDesignBasket(codes)
+      // 교과 메타(코드→subject_group)로 교과 칩 자동 선택 (사용자가 이미 고른 게 없을 때만)
+      const meta = JSON.parse(sessionStorage.getItem('cw_design_basket_meta') || '{}')
+      const groups = [...new Set(codes.map(c => meta[c]).filter(Boolean))]
+      if (groups.length > 0) {
+        setProjectSubjects(prev => (prev.length > 0 ? prev : [...new Set([...prev, ...groups])]))
+      }
     } catch {
       setDesignBasket([])
     }
@@ -978,7 +985,7 @@ export default function WorkspaceDetailPage() {
                   교과 (2개 이상 선택)
                 </label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {['국어', '수학', '사회', '과학', '영어', '도덕', '정보', '음악', '미술', '체육', '기술·가정', '한문'].map(subj => (
+                  {['국어', '수학', '사회', '과학', '영어', '도덕', '정보', '음악', '미술', '체육', '기술·가정', '한문', '제2외국어', '교양', '실과'].map(subj => (
                     <button
                       key={subj}
                       type="button"

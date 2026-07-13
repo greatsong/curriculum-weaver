@@ -28,7 +28,7 @@ const SPARSE_LINK_THRESHOLD = 3
  */
 export default function PairLens({ graph, subjects, subjectGroups, pair, onPickPair, basket, onToggleBasket, onOpenNeighbor, subjectLinkCounts, onGraphRefresh }) {
   const [selectedLink, setSelectedLink] = useState(null)
-  const { scenario, openScenario, closeScenario } = useScenario()
+  const { scenario, openScenario, closeScenario, moreIdea, setActiveIndex } = useScenario()
   const laneRef = useRef(null)
   const cardRefs = useRef(new Map()) // code -> element
   const [lines, setLines] = useState([])
@@ -398,8 +398,9 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
 
       {/* 실생활 문제 시나리오 (연결 상세에서 생성) */}
       {scenario && (
-        <ScenarioPanel scenario={scenario} onClose={closeScenario}
+        <ScenarioPanel scenario={scenario} onClose={closeScenario} onMore={moreIdea} onNav={setActiveIndex}
           subjectOf={(code) => (selectedLink && [selectedLink.a, selectedLink.b].find(n => n.code === code)?.subject)}
+          standardOf={(code) => (selectedLink && [selectedLink.a, selectedLink.b].find(n => n.code === code))}
           basket={basket} onToggleBasket={onToggleBasket} />
       )}
     </div>
