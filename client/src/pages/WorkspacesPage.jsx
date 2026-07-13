@@ -225,15 +225,6 @@ export default function WorkspacesPage() {
               </button>
             )}
             <button
-              onClick={() => navigate('/demo-prep')}
-              className="btn btn-secondary"
-              style={{ padding: '8px 16px', fontSize: 13 }}
-              title="혼자서 임용 2차 수업 실연을 준비하는 시연 모드"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              임용 실연 준비
-            </button>
-            <button
               onClick={() => navigate('/demo')}
               className="btn"
               style={{
