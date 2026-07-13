@@ -35,7 +35,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
   const pendingFusionRef = useRef(null)
   const [nudgeSeed] = useState(() => Math.floor(Date.now() / 60000)) // 분 단위로 순서 회전
   const openNudge = (nudge) => {
-    pendingFusionRef.current = { concept: nudge.concept, contexts: nudge.contexts }
+    pendingFusionRef.current = { concept: nudge.concept, contexts: nudge.contexts, angle: nudge.angle || '' }
     setPicked(new Set(nudge.contexts))
     onFocus(nudge.concept)
   }
@@ -56,7 +56,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
     const pf = pendingFusionRef.current
     if (center && pf && pf.concept === center.code) {
       pendingFusionRef.current = null
-      openScenario(center.code, pf.contexts)
+      openScenario(center.code, pf.contexts, { angle: pf.angle })
     }
   }, [center, openScenario])
 

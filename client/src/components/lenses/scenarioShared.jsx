@@ -18,7 +18,7 @@ export function useScenario() {
   const inflightRef = useRef(new Set()) // `${pairKey}#${variant}` (중복 클릭 차단)
 
   // 특정 variant 생성 — items[variant]에 채운다. 서버는 끊겨도 생성을 이어가 캐시에 넣으므로 재요청 안전.
-  const fetchVariant = useCallback(async (pairKey, conceptCode, contexts, variant) => {
+  const fetchVariant = useCallback(async (pairKey, conceptCode, contexts, variant, angle = '') => {
     const flightKey = `${pairKey}#${variant}`
     if (inflightRef.current.has(flightKey)) return
     inflightRef.current.add(flightKey)
@@ -27,7 +27,7 @@ export function useScenario() {
       for (let attempt = 0; ; attempt++) {
         try {
           ;({ scenario: data, cached } = await apiPost('/api/standards/links/scenario', {
-            concept_code: conceptCode, context_codes: contexts, variant,
+            concept_code: conceptCode, context_codes: contexts, variant, angle,
           }, { timeoutMs: 180_000 }))
           break
         } catch (err) {
@@ -54,12 +54,13 @@ export function useScenario() {
     }
   }, [setState])
 
-  const openScenario = useCallback((conceptCode, contextCodes) => {
+  const openScenario = useCallback((conceptCode, contextCodes, opts = {}) => {
     const contexts = Array.isArray(contextCodes) ? contextCodes : [contextCodes]
-    const pairKey = [conceptCode, ...contexts].sort().join('|')
+    const angle = opts.angle || ''
+    const pairKey = [conceptCode, ...contexts].sort().join('|') + (angle ? '@' + angle : '')
     if (stateRef.current?.pairKey === pairKey && stateRef.current.items[0]?.data) return
-    setState({ pairKey, conceptCode, contexts, items: [], activeIndex: 0, loading: true })
-    fetchVariant(pairKey, conceptCode, contexts, 0)
+    setState({ pairKey, conceptCode, contexts, angle, items: [], activeIndex: 0, loading: true })
+    fetchVariant(pairKey, conceptCode, contexts, 0, angle)
   }, [setState, fetchVariant])
 
   // 다른 아이디어 — 다음 variant 생성(최대 6개: 0~5)
@@ -69,7 +70,7 @@ export function useScenario() {
     const variant = s.items.length
     if (variant > 5) return
     setState({ ...s, loading: true, activeIndex: variant })
-    fetchVariant(s.pairKey, s.conceptCode, s.contexts, variant)
+    fetchVariant(s.pairKey, s.conceptCode, s.contexts, variant, s.angle || '')
   }, [setState, fetchVariant])
 
   const setActiveIndex = useCallback((i) => {

@@ -16,10 +16,11 @@ export const FUSION_NUDGES = [
   },
   {
     id: 'stats-poll',
-    question: '통계의 렌즈로 여론조사를 본다면, 왜 예측은 빗나갈까?',
+    question: '통계의 렌즈로 지방선거 여론조사를 본다면?',
     concept: '[12실통01-03]',
     contexts: ['[12정치02-01]', '[12데과01-01]'],
     subjects: ['실용 통계', '정치', '데이터 과학'],
+    angle: '지방선거·공직선거의 여론조사 결과와 실제 득표의 차이(표본·응답 편향)',
   },
   {
     id: 'physics-war',
