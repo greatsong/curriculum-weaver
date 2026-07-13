@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { Search, ChevronRight, Plus, Check } from 'lucide-react'
 import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, isSameGrade, nodeSchoolLevel } from './lensCommon'
 import { useScenario, ScenarioButton, ScenarioPanel } from './scenarioShared'
+import MathText from '../MathText'
 
 // 실생활·융합 맥락으로 묶는 연결 유형 (계열 연결과 구분)
 const CONTEXT_TYPES = new Set(['cross_subject', 'application', 'same_concept'])
@@ -118,7 +119,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
                   className="text-left bg-white border border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 rounded-lg px-3 py-2 transition">
                   <span className="font-mono text-[11px] font-bold text-blue-600">{n.code}</span>
                   <span className="text-[10px] text-gray-400 ml-1.5">{n.grade_group}</span>
-                  <p className="text-xs text-gray-600 line-clamp-1">{n.content}</p>
+                  <p className="text-xs text-gray-600 line-clamp-1"><MathText text={n.content} /></p>
                 </button>
               ))}
             </div>
@@ -137,7 +138,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
               className="text-left border border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 rounded-lg px-3 py-2 transition">
               <span className="font-mono text-[11px] font-bold text-blue-600">{n.code}</span>
               <span className="text-[10px] text-gray-400 ml-1.5">{n.subject}</span>
-              <p className="text-xs text-gray-600 line-clamp-1">{n.content}</p>
+              <p className="text-xs text-gray-600 line-clamp-1"><MathText text={n.content} /></p>
             </button>
           ))}
         </div>
@@ -171,7 +172,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
           <span className="font-mono text-[11px] font-bold text-gray-700">{node.code}</span>
           <span className="text-[10px] text-gray-400 ml-auto">{node.subject} · {node.grade_group}</span>
         </div>
-        <p className="text-xs text-gray-600 leading-relaxed line-clamp-2">{node.content}</p>
+        <p className="text-xs text-gray-600 leading-relaxed line-clamp-2"><MathText text={node.content} /></p>
         {link.integration_theme && (
           <p className="text-[11px] text-blue-600/80 mt-1 line-clamp-1">🔗 {link.integration_theme}</p>
         )}
@@ -227,7 +228,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
             {inBasket ? <><Check size={11} /> 담김</> : <><Plus size={11} /> 담기</>}
           </button>
         </div>
-        <p className="text-sm text-gray-700 mt-1.5 leading-relaxed">{center.content}</p>
+        <p className="text-sm text-gray-700 mt-1.5 leading-relaxed"><MathText text={center.content} /></p>
       </div>
 
       {/* 실생활 문제 시나리오 패널 */}

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, Plus, Check, X, BookMarked, Link2, ChevronDown, ChevronUp, FileText, AlertTriangle, Sparkles } from 'lucide-react'
 import { apiGet, apiPost, apiDelete } from '../lib/api'
+import MathText from './MathText'
 
 // 교과군(subject_group) 기준 색상 매핑
 const SUBJECT_GROUP_COLORS = {
@@ -366,7 +367,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                               <span className={`px-2 py-0.5 rounded text-xs font-bold ${colorClass}`}>{companion.code}</span>
                               <span className="text-xs text-gray-400">{companion.subject}{companion.grade_group ? ` · ${companion.grade_group}` : ''}</span>
                             </div>
-                            <p className="text-sm text-gray-800 leading-relaxed line-clamp-2">{companion.content}</p>
+                            <p className="text-sm text-gray-800 leading-relaxed line-clamp-2"><MathText text={companion.content} /></p>
                             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                               {link?.integration_theme && (
                                 <span className="px-1.5 py-0.5 bg-violet-50 border border-violet-100 rounded text-xs text-violet-600">
@@ -443,7 +444,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                             <span className={`px-1.5 py-0.5 rounded text-xs ${catColor}`}>{std.curriculum_category}</span>
                           )}
                         </div>
-                        <p className={`text-sm leading-relaxed ${isSecondary ? 'text-gray-500' : 'text-gray-800'}`}>{std.content}</p>
+                        <p className={`text-sm leading-relaxed ${isSecondary ? 'text-gray-500' : 'text-gray-800'}`}><MathText text={std.content} /></p>
                         {std._reason && (
                           <p className="mt-1 text-xs text-violet-600 flex items-start gap-1">
                             <Sparkles size={11} className="mt-0.5 shrink-0" />
@@ -499,7 +500,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                             <FileText size={14} className="text-blue-400 mt-0.5 shrink-0" />
                             <div className="min-w-0 flex-1">
                               <span className="text-xs font-semibold text-blue-600">해설</span>
-                              <p className="text-xs text-gray-600 leading-relaxed mt-0.5 max-h-40 overflow-y-auto pr-1">{std.explanation}</p>
+                              <p className="text-xs text-gray-600 leading-relaxed mt-0.5 max-h-40 overflow-y-auto pr-1"><MathText text={std.explanation} /></p>
                             </div>
                           </div>
                         )}

@@ -9,6 +9,7 @@ import { apiGet, apiPost, API_BASE, getHeaders } from '../lib/api'
 import { fetchGraphData, invalidateGraphCache } from '../lib/graphDataCache'
 import { fixEmphasisFlanking } from '../lib/markdownFix'
 import Logo from './Logo'
+import MathText from './MathText'
 
 // 교과군(subject_group) 기준 색상 매핑
 const SUBJECT_COLORS = {
@@ -1473,7 +1474,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
                       </button>
                     </div>
                     <p className="text-[11px] text-gray-500 mb-1">{selectedNode.grade_group} · {selectedNode.area}</p>
-                    <p className="text-xs text-gray-300 leading-relaxed">{selectedNode.content}</p>
+                    <p className="text-xs text-gray-300 leading-relaxed">{<MathText text={selectedNode.content} />}</p>
                   </div>
 
                   {/* 연결된 성취기준 목록 */}
@@ -1502,7 +1503,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
                                 <span className="text-[10px] text-gray-500">{other.subject}</span>
                                 <ChevronRight size={12} className="ml-auto text-gray-600 group-hover:text-gray-400" />
                               </div>
-                              <p className="text-[11px] text-gray-400 leading-relaxed line-clamp-2 pl-1">{other.content}</p>
+                              <p className="text-[11px] text-gray-400 leading-relaxed line-clamp-2 pl-1">{<MathText text={other.content} />}</p>
                               {link.rationale && (
                                 <p className="text-[10px] text-amber-400/70 mt-1 pl-1 line-clamp-1">💡 {link.rationale}</p>
                               )}
@@ -1558,7 +1559,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
                           )}
                           <ChevronRight size={12} className={`text-gray-600 group-hover:text-gray-400 transition ${isSelected ? 'text-blue-400' : ''}`} />
                         </div>
-                        <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 pl-[18px]">{node.content}</p>
+                        <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 pl-[18px]">{<MathText text={node.content} />}</p>
                       </button>
                     )
                   })}

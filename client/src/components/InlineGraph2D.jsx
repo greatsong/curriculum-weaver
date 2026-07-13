@@ -7,6 +7,7 @@ import ForceGraph2D from 'react-force-graph-2d'
 import { X, ChevronRight, RotateCcw } from 'lucide-react'
 import { apiGet } from '../lib/api'
 import { fetchGraphData } from '../lib/graphDataCache'
+import MathText from './MathText'
 
 const SUBJECT_COLORS = {
   '과학': '#16a34a', '수학': '#2563eb', '국어': '#dc2626',
@@ -360,7 +361,7 @@ export default function InlineGraph2D({ subjects = [], showAllLinks = false }) {
                   </button>
                 </div>
                 <p className="text-[10px] text-gray-500 mb-1">{selectedNode.area}</p>
-                <p className="text-[11px] text-gray-700 leading-relaxed">{selectedNode.content}</p>
+                <p className="text-[11px] text-gray-700 leading-relaxed">{<MathText text={selectedNode.content} />}</p>
               </div>
               {/* 연결 성취기준 — 전문 표시 */}
               <div className="flex-1 overflow-auto p-2.5 space-y-2">
@@ -393,7 +394,7 @@ export default function InlineGraph2D({ subjects = [], showAllLinks = false }) {
                         <ChevronRight size={12} className="ml-auto text-gray-300 group-hover:text-blue-400" />
                       </div>
                       <p className="text-[10px] text-gray-400 mb-0.5">{other.grade_group} · {other.area}</p>
-                      <p className="text-[11px] text-gray-700 leading-relaxed">{other.content}</p>
+                      <p className="text-[11px] text-gray-700 leading-relaxed">{<MathText text={other.content} />}</p>
                       {link.rationale && (
                         <p className="text-[10px] text-amber-700 mt-1.5 bg-amber-50 rounded px-2 py-1 leading-relaxed">
                           💡 {link.rationale}
@@ -440,7 +441,7 @@ export default function InlineGraph2D({ subjects = [], showAllLinks = false }) {
                         <span className="text-[10px] text-gray-500">{src.subject}</span>
                         <span className="text-[9px] text-gray-400 ml-auto">{src.grade_group}</span>
                       </div>
-                      <p className="text-[11px] text-gray-700 leading-relaxed">{src.content}</p>
+                      <p className="text-[11px] text-gray-700 leading-relaxed">{<MathText text={src.content} />}</p>
                     </button>
                     {/* 연결 화살표 */}
                     <div className="px-3 flex items-center gap-2">
@@ -456,7 +457,7 @@ export default function InlineGraph2D({ subjects = [], showAllLinks = false }) {
                         <span className="text-[10px] text-gray-500">{tgt.subject}</span>
                         <span className="text-[9px] text-gray-400 ml-auto">{tgt.grade_group}</span>
                       </div>
-                      <p className="text-[11px] text-gray-700 leading-relaxed">{tgt.content}</p>
+                      <p className="text-[11px] text-gray-700 leading-relaxed">{<MathText text={tgt.content} />}</p>
                     </button>
                     {/* 연결 근거 */}
                     {link.rationale && (

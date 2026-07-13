@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, X, GitBranch, HelpCircle } from 'lucide-react'
 import { apiGet, apiPost, apiPatch, apiDelete } from '../lib/api'
 import Logo from '../components/Logo'
+import MathText from '../components/MathText'
 import LinkGuideOverlay, { resetLinkGuide } from '../components/LinkGuideOverlay'
 import { VOCATIONAL_SUBJECTS } from '../../../shared/constants'
 
@@ -532,7 +533,7 @@ export default function DataManage() {
                         <span className="px-2 py-0.5 bg-gray-100 rounded text-xs font-medium">{std.subject}</span>
                         <span className="text-xs text-gray-400">{std.area}</span>
                       </div>
-                      <p className="text-sm text-gray-700 leading-relaxed">{std.content}</p>
+                      <p className="text-sm text-gray-700 leading-relaxed">{<MathText text={std.content} />}</p>
                     </div>
                   ))}
                 </div>
@@ -556,7 +557,7 @@ export default function DataManage() {
                           <td className="px-4 py-2 whitespace-nowrap">{std.subject}</td>
                           <td className="px-4 py-2 whitespace-nowrap text-gray-500">{std.grade_group}</td>
                           <td className="px-4 py-2 whitespace-nowrap text-gray-500">{std.area}</td>
-                          <td className="px-4 py-2 text-gray-700">{std.content}</td>
+                          <td className="px-4 py-2 text-gray-700">{<MathText text={std.content} />}</td>
                         </tr>
                       ))}
                     </tbody>

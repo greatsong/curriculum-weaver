@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Search, Plus, Check } from 'lucide-react'
 import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, gradeBucket, linkQuality, nodeSchoolLevel } from './lensCommon'
+import MathText from '../MathText'
 
 /**
  * 계열 렌즈 — 성취기준을 중심으로 연결된 항목을 학년군 타임라인 위에 배치
@@ -69,7 +70,7 @@ export default function SeriesLens({ graph, focusCode, onFocus, level, basket, o
               className="text-left border border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 rounded-lg px-3 py-2 transition">
               <span className="font-mono text-[11px] font-bold text-blue-600">{n.code}</span>
               <span className="text-[10px] text-gray-400 ml-1.5">{n.subject} · {n.grade_group}</span>
-              <p className="text-xs text-gray-600 line-clamp-1">{n.content}</p>
+              <p className="text-xs text-gray-600 line-clamp-1"><MathText text={n.content} /></p>
             </button>
           ))}
         </div>
@@ -126,7 +127,7 @@ export default function SeriesLens({ graph, focusCode, onFocus, level, basket, o
                           <span className="font-mono text-[10.5px] font-bold text-blue-700">{center.code}</span>
                           <BasketBtn code={center.code} basket={basket} onToggleBasket={onToggleBasket} />
                         </div>
-                        <p className="text-[11px] text-gray-700 leading-relaxed mt-0.5 line-clamp-3">{center.content}</p>
+                        <p className="text-[11px] text-gray-700 leading-relaxed mt-0.5 line-clamp-3"><MathText text={center.content} /></p>
                       </div>
                     )}
                     {lane.items.map(({ link, node }) => (
@@ -140,7 +141,7 @@ export default function SeriesLens({ graph, focusCode, onFocus, level, basket, o
                           <span className="font-mono text-[10.5px] font-bold text-gray-700">{node.code}</span>
                           <BasketBtn code={node.code} basket={basket} onToggleBasket={onToggleBasket} hoverOnly />
                         </div>
-                        <p className="text-[11px] text-gray-600 leading-relaxed mt-0.5 line-clamp-2">{node.content}</p>
+                        <p className="text-[11px] text-gray-600 leading-relaxed mt-0.5 line-clamp-2"><MathText text={node.content} /></p>
                         <p className="text-[9.5px] text-gray-400 mt-0.5">{node.subject}</p>
                       </button>
                     ))}
