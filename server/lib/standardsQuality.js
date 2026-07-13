@@ -143,18 +143,16 @@ export function classifyExplanationQuality(explanation, ownCode = '') {
 
 /**
  * application_notes 필드의 bleed 플래그를 분류한다.
- * (나) 고려사항이 정위치인 필드라 guidance는 오염이 아님 — 코드/푸터/PUA/스텁만.
+ * (나) 적용 시 고려 사항은 정위치 필드이며 본질적으로 타 과목·성취기준을 **정상적으로 참조**한다
+ * ("‘…’ 과목과 연계", "[코드]과 [코드]을 지도할 때는" 등). 따라서 foreign_code·page_footer는
+ * 오탐이 심해 게이트 대상에서 제외하고, **명백한 오염(PUA·라벨 스텁)만** 플래그한다.
  * @param {string} notes
- * @param {string} ownCode
- * @returns {'ok'|'pua_encoding'|'foreign_code'|'page_footer'|'header_stub'}
+ * @returns {'ok'|'pua_encoding'|'header_stub'}
  */
-export function classifyApplicationNotesQuality(notes, ownCode = '') {
+export function classifyApplicationNotesQuality(notes) {
   const t = (notes || '').trim()
   if (!t) return 'ok'
   if (PUA_RE.test(t)) return 'pua_encoding'
-  if (/^적용\s*시\s*고려\s*사항$/.test(t)) return 'header_stub' // 라벨만 잔존
-  const foreign = (t.match(STD_CODE_RE) || []).some((c) => c !== ownCode)
-  if (foreign) return 'foreign_code'
-  if (FOOTER_RES.some((re) => re.test(t))) return 'page_footer'
+  if (/^(적용\s*시\s*고려\s*사항|성취기준\s*해설)$/.test(t)) return 'header_stub' // 라벨만 잔존
   return 'ok'
 }
