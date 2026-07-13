@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react'
-import { Search, ChevronRight, Plus, Check } from 'lucide-react'
+import { useState, useMemo, useRef, useEffect } from 'react'
+import { Search, ChevronRight, Plus, Check, Sparkles } from 'lucide-react'
 import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, isSameGrade, nodeSchoolLevel } from './lensCommon'
 import { useScenario, ScenarioButton, ScenarioPanel } from './scenarioShared'
+import { shuffledNudges } from '../../data/fusionNudges'
 import MathText from '../MathText'
 
 // 실생활·융합 맥락으로 묶는 연결 유형 (계열 연결과 구분)
@@ -29,6 +30,15 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
   const { scenario, openScenario, closeScenario, moreIdea, setActiveIndex } = useScenario()
   // 1:N 시나리오 — 맥락 카드 다중 선택 (최대 4)
   const [picked, setPicked] = useState(() => new Set())
+
+  // 융합 넛지 — 클릭 시 concept로 진입 후, center가 로드되면 3개짜리 시나리오를 자동으로 연다
+  const pendingFusionRef = useRef(null)
+  const [nudgeSeed] = useState(() => Math.floor(Date.now() / 60000)) // 분 단위로 순서 회전
+  const openNudge = (nudge) => {
+    pendingFusionRef.current = { concept: nudge.concept, contexts: nudge.contexts }
+    setPicked(new Set(nudge.contexts))
+    onFocus(nudge.concept)
+  }
   const togglePick = (code) => setPicked(prev => {
     const next = new Set(prev)
     if (next.has(code)) next.delete(code)
@@ -40,6 +50,15 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
   const nodeById = useMemo(() => new Map((graph?.nodes || []).map(n => [n.id, n])), [graph])
 
   const center = focusCode ? nodeByCode.get(focusCode) : null
+
+  // 넛지 클릭 후 concept가 로드되면 3개짜리 시나리오를 자동으로 연다 (한 번만)
+  useEffect(() => {
+    const pf = pendingFusionRef.current
+    if (center && pf && pf.concept === center.code) {
+      pendingFusionRef.current = null
+      openScenario(center.code, pf.contexts)
+    }
+  }, [center, openScenario])
 
   const neighbors = useMemo(() => {
     if (!graph || !center) return []
@@ -142,11 +161,22 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
             </button>
           ))}
         </div>
-        {!query.trim() && !pickSubject && nodeByCode.has('[12인기03-01]') && (
-          <button onClick={() => onFocus('[12인기03-01]')}
-            className="px-3.5 py-2 rounded-full border border-blue-300 bg-blue-50/60 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition">
-            예시: [12인기03-01] 인공지능 기초의 이웃 보기
-          </button>
+        {/* 융합 넛지 — 강요 아닌 영감. 질문형으로 슬쩍 던지고, 클릭할 때만 열린다 */}
+        {!query.trim() && !pickSubject && (
+          <div className="w-full max-w-md mt-2">
+            <p className="text-[11px] font-semibold text-gray-400 mb-2 flex items-center gap-1">
+              <Sparkles size={12} className="text-violet-400" /> 이런 렌즈는 어때요?
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {shuffledNudges(nudgeSeed).filter(n => nodeByCode.has(n.concept)).map(n => (
+                <button key={n.id} onClick={() => openNudge(n)}
+                  className="group text-left rounded-xl border border-violet-100 bg-violet-50/40 hover:bg-violet-50 hover:border-violet-300 px-3.5 py-2.5 transition">
+                  <p className="text-[13px] font-semibold text-violet-800 group-hover:text-violet-900">{n.question}</p>
+                  <p className="text-[10.5px] text-gray-400 mt-0.5">{n.subjects.join(' · ')} 3개 교과 · 클릭하면 시나리오가 열려요</p>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     )
