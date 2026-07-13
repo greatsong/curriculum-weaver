@@ -18,6 +18,8 @@ const GRADE_GROUPS = [
   {
     label: '초등',
     grades: [
+      { value: '초3', label: '3학년' },
+      { value: '초4', label: '4학년' },
       { value: '초5', label: '5학년' },
       { value: '초6', label: '6학년' },
     ],
