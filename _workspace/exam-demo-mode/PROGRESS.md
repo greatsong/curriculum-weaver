@@ -93,6 +93,37 @@
 - 코치 프롬프트 문구는 ProcedureCanvas에 하드코딩 — 대본/루브릭 트리거 늘면 상수화 검토.
 - reportGenerator·demo continue는 여전히 코어 절차 가정(Stage 4 분기 대기, Stage 2 미변경).
 
+### Stage 3 — 실연 대본·타이밍 보드 (④) 완료 (2026-07-13)
+브랜치 `feat/demo-mode` (Stage 2=7b66834 위에 이어감). 모든 분기 `isDemo`/`mode==='demo'` opt-in, 협력 경로 불변. 공유 파일은 추가만.
+
+**공유 상수·스키마 (추가만 — 기존 엔트리 불변)**
+- `shared/constants.js` — `BOARD_TYPES['demo_script']='demo_script'`, `DEMO_BOARD_TYPES`에 `'demo_script'` 추가, `BOARD_TYPE_LABELS.demo_script='실연 대본·타이밍'`.
+- `shared/boardSchemas.js` — `BOARD_SCHEMAS.demo_script`: **segments(table: 구간/시간(분)/대사·행동/전달·유의점)** + `totalDurationCheck`(textarea). `empty={segments:[],totalDurationCheck:''}`. minutes 컬럼이 클라·서버 합계 검증 대상. 10~15분 실연 전제.
+
+**서버 (aiAgent.js)**
+- `DEMO_PROC_INFO.demo_script` 추가 — buildSystemPrompt/인트로가 PROCEDURES 미등록 코드로 시스템 오류 내지 않게 폴백.
+- `buildDemoCoherenceContext`에 `boardType==='demo_script'` 분기 추가 → 신설 `buildDemoScriptCoherenceContext`로 위임. 이 함수는 ① lesson_plan 보드(학습목표·흐름·핵심발문)를 **근거로 컨텍스트에 함께 주입**(§14는 현재 보드만 넣으므로 대본 생성 시 과정안이 안 보이던 것 보강) ② segments minutes 합계를 계산해 "합계 ≈ N분(기준 10~15분)"을 명시하고 과정안 반영·시간 배분 점검 규칙을 코치 톤으로 지시.
+- §7 coherence_check XML 형식 안내를 demo 보드별로 동적화: demo_script는 `procedure="demo_script" against="lessonplan-timing"`, demo_lesson_plan은 기존 `objectives-activities-assessment` 유지(하드코딩 → BOARD_TYPES[procedure] 분기). 서버 extractCoherenceCheck·클라 parseCoherenceCheck는 procedure/against 속성만 매칭·normalize하므로 무해(demo_ 코드는 스크럽·정규화 불변).
+
+**프론트**
+- `DemoStepNav.jsx` — ③ `{id:'script',label:'실연 대본'}` 스텝 추가(①성취기준 ②교수학습과정안 ③실연 대본).
+- `ProjectPage.jsx` — `DEMO_SCRIPT='demo_script'` + `DEMO_STEP_PROCEDURE` 매핑(standards·plan→demo_lesson_plan, script→demo_script). 커서 고정 effect를 demoStep 기반으로 변경(스텝 전환 시 setProcedure→loadBoards가 해당 보드 로드). ProcedureCanvas는 currentProcedure로 lesson_plan/demo_script를 그대로 렌더(추가 분기 불필요).
+- `ProcedureCanvas.jsx` — ① demo 헤더 description을 boardType별로(demo_script는 "…대본을 작성합니다") ② **`DemoScriptToolbar`**(신설) — `boardType==='demo_script'` 게이트 분리, "대본 생성" 버튼이 교수학습과정안을 근거로 10~15분 구간 대본·타이밍을 만드는 코치 프롬프트를 sendMessage로 전송(별도 라우트 없이 `<ai_suggestion>` 경로 재사용, lesson_plan 참조를 프롬프트에 명시) ③ **`DemoScriptTimingSummary`**(신설) — segments minutes 합산 후 10~15분 범위를 클라에서 검증: 합계 표시 + 범위 내 녹색 "실연 시간 범위 적정" / 초과 빨강 "N분 초과" / 미달 파랑 "N분 미만" 배지.
+
+**검증 (백엔드 4107 재기동 + 프론트 4006, dev-bypass, 실채팅)**
+- ③ 스텝 클릭 → demo_script 보드 렌더(헤더 "실연 대본·타이밍", segments 표 구간/시간(분)/대사·행동/전달·유의점), 편집 가능.
+- **타이밍 합계 경고**: 20분 시드(도입4·전개12·정리4) → "총 실연 시간 합계 20분 / 목표 10~15분" + 빨강 "15분 초과 — 구간을 줄여 주세요" 배지(DOM 확인). 대본 생성 수락 후 15분(3·9·3)으로 재계산 → 녹색 "실연 시간 범위 적정"으로 전환(경고 사라짐).
+- **대본 생성(실채팅)**: 버튼 클릭 → AI가 lesson_plan을 근거로 도입-전개-정리 segments를 채운 `<ai_suggestion>` 생성(도입 script가 과정안의 "농구 슛 영상"·핵심발문 "이 공은 어떤 모양의 경로로…"를 그대로 반영 — 근거 주입 확인). 수락 시 3구간·합계 15분·totalDurationCheck까지 저장(API 재조회). **AI가 totalDurationCheck에 "구간 합계 3+9+3=15분…10~15분 상한 부합"으로 타이밍 합계를 코치 톤으로 언급** — demo_script coherence 확장이 실프롬프트에 반영됨.
+- 봉인 테스트 `vocabularyIsolation.test.js` **36/36**, 서버 전체 **180/180** 통과(완화 없음). 콘솔 신규 에러 0(기존 flex/flexShrink 경고만).
+- 회귀: 협력 buildSystemPrompt(A-2-1)는 demo coherence·against 토큰 미포함·총괄원리(협력UP) 유지(node 검증). `getAllBoardSchemasForPrompt`는 어디서도 미사용이라 demo 스키마가 협력 프롬프트로 새지 않음. demo_lesson_plan coherence는 여전히 objectives-activities-assessment.
+
+**Stage 4 인계 주의**
+- demo_rubric(채점 셀프체크) 보드는 아직 없음 — Stage 4에서 BOARD_TYPES/SCHEMAS `demo_rubric`(items table + overallComment) 추가 예정. 추가만·기존 불변, DEMO_BOARD_TYPES·DEMO_PROC_INFO·BOARD_TYPE_LABELS·DemoStepNav 4번째 스텝·DEMO_STEP_PROCEDURE 매핑 동일 패턴으로 확장.
+- **reportGenerator·demo continue는 여전히 코어 절차(T-1-1 등) 하드코딩 가정** — demo 프로젝트엔 그 코드가 없어 미검증. Stage 4에서 collectReportData/generateExecutiveSummary/procedureStatus/진행률 분모를 mode 분기(§6). 진행률 분모는 demo 보드(lesson_plan·demo_script·demo_rubric) 기준으로.
+- 채점관 렌즈 토글(examinerLens): 현재 coach 톤은 "요청 시 채점관 관점"만 프롬프트에 있음. Stage 4 루브릭에서 UI 토글→examinerLens 파라미터 주입 설계(DESIGN §5.1) 구현 필요.
+- 코치/대본 프롬프트 문구는 ProcedureCanvas 하드코딩 — 루브릭 트리거까지 늘면 상수화 검토(문구 3종째).
+- 타이밍 합계 로직은 클라(DemoScriptTimingSummary)·서버(buildDemoScriptCoherenceContext) 두 곳에 각각 있음(공유 유틸 아님) — minutes 파싱 규칙 변경 시 양쪽 동기 필요.
+
 ## 결정·변경 이력
 - migration: MVP 0건(learner_context jsonb에 demo 표식). 향후 projects.mode 컬럼 승격 검토.
 - 시연 보드 코드는 `demo_*` 스네이크형(어휘격리 정규식 미매칭, PROCEDURES 미등록).

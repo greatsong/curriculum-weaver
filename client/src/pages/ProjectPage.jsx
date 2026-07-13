@@ -24,8 +24,16 @@ import Tutorial from '../components/Tutorial'
 import InteractiveTour from '../components/InteractiveTour'
 import ContinueSimulationButton from '../components/ContinueSimulationButton'
 
-// 시연 모드 교수학습과정안 보드의 자립 코드 (BOARD_TYPES['demo_lesson_plan']='lesson_plan')
+// 시연 모드 자립 보드 코드 (BOARD_TYPES['demo_lesson_plan']='lesson_plan', ['demo_script']='demo_script')
 const DEMO_LESSON_PLAN = 'demo_lesson_plan'
+const DEMO_SCRIPT = 'demo_script'
+// 시연 얕은 스텝 → 커서(보드) 코드 매핑. 'standards'는 DemoStandardsPanel을 보여주므로
+// 채팅/보드 기본 커서는 교수학습과정안으로 둔다.
+const DEMO_STEP_PROCEDURE = {
+  standards: DEMO_LESSON_PLAN,
+  plan: DEMO_LESSON_PLAN,
+  script: DEMO_SCRIPT,
+}
 
 // Error Boundary — ChatPanel 등 하위 컴포넌트 크래시 시 전체 페이지 보호
 class ErrorBoundary extends Component {
@@ -355,14 +363,16 @@ export default function ProjectPage() {
   }, [projectId, workspaceId])
 
   useEffect(() => {
-    // 시연 모드: 커서를 항상 교수학습과정안 보드로 고정한다(19절차 트랙 미사용).
-    // 채팅·보드가 이 자립 코드를 대상으로 동작하며, 좌측 패널은 demoStep으로 전환한다.
+    // 시연 모드: 커서를 얕은 스텝(demoStep)에 맞는 자립 보드 코드로 맞춘다(19절차 트랙 미사용).
+    // ②교수학습과정안=demo_lesson_plan, ③실연 대본=demo_script. 채팅·보드가 이 커서를 대상으로
+    // 동작하며, 좌측 패널은 demoStep으로 전환한다.
     if (isDemo) {
-      if (currentProcedure !== DEMO_LESSON_PLAN) setProcedure(DEMO_LESSON_PLAN)
+      const target = DEMO_STEP_PROCEDURE[demoStep] || DEMO_LESSON_PLAN
+      if (currentProcedure !== target) setProcedure(target)
       return
     }
     if (currentProject?.current_procedure) setProcedure(currentProject.current_procedure)
-  }, [currentProject?.current_procedure, isDemo, currentProcedure, setProcedure])
+  }, [currentProject?.current_procedure, isDemo, demoStep, currentProcedure, setProcedure])
 
   const connectSocket = useCallback(({ name: nickname, subject: subjectName }) => {
     if (joinedRef.current) return

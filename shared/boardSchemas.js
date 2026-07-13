@@ -476,6 +476,27 @@ export const BOARD_SCHEMAS = {
       timeTotalCheck: '', objectiveAlignmentCheck: '',
     },
   },
+
+  // ─── [시연 모드] 실연 대본·타이밍 (demo_script → demo_script) ───
+  // 임용 2차 수업 실연은 10~15분 안에 도입-전개-정리를 압축해 보여야 한다. 이 보드는
+  // 교수학습과정안(lesson_plan)을 근거로 실제 실연 흐름을 구간별 대사·행동과 분(分) 배분으로
+  // 옮긴 대본이다. minutes 컬럼의 합계가 10~15분 범위인지 클라이언트에서 계산·경고한다.
+  // 기존 협력 보드 스키마는 위에서 전부 불변 — 아래는 추가만.
+  demo_script: {
+    fields: [
+      { name: 'segments', label: '실연 구간·타이밍', type: 'table', required: true,
+        description: '10~15분 실연을 구간(도입/전개/정리 등)으로 나눠 시간(분)·핵심 대사·행동·유의점을 적는다',
+        columns: [
+          { name: 'segment', label: '구간' },            // 도입 / 전개 / 정리 / 마무리
+          { name: 'minutes', label: '시간(분)' },        // 이 구간에 쓸 분(分) — 합계 검증 대상
+          { name: 'script', label: '대사·행동' },         // 교사 발화·판서·동선 등 실연 대본
+          { name: 'delivery', label: '전달·유의점' },     // 목소리·시선·강조 등 전달 팁
+        ] },
+      { name: 'totalDurationCheck', label: '총 실연 시간 점검', type: 'textarea', required: false,
+        description: 'AI 점검: 구간 시간(분) 합계가 10~15분 범위에 드는지, 배분이 도입-전개-정리에 적절한지' },
+    ],
+    empty: { segments: [], totalDurationCheck: '' },
+  },
 }
 
 // ──────────────────────────────────────────

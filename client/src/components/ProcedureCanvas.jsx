@@ -23,11 +23,14 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
     setEditing(false)
   }, [procedureCode])
 
-  // 시연 모드 자립 보드(demo_lesson_plan)는 PROCEDURES에 없다 — 보드 라벨로 최소 헤더를 합성해 렌더.
+  // 시연 모드 자립 보드(demo_lesson_plan·demo_script)는 PROCEDURES에 없다 — 보드 라벨로 최소 헤더를 합성해 렌더.
   const isDemo = isDemoBoardCode(procedureCode)
   const boardType = BOARD_TYPES[procedureCode]
+  const demoDescription = boardType === 'demo_script'
+    ? '임용 실연 준비 — 교수학습과정안을 근거로 10~15분 실연의 구간별 대사·행동과 시간(분) 배분을 담은 대본을 작성합니다.'
+    : '임용 실연 준비 — 단일 교과 한 차시의 교수학습과정안(도입-전개-정리)을 작성합니다.'
   const procInfo = PROCEDURES[procedureCode] || (isDemo && boardType
-    ? { name: BOARD_TYPE_LABELS[boardType] || '교수학습과정안', description: '임용 실연 준비 — 단일 교과 한 차시의 교수학습과정안(도입-전개-정리)을 작성합니다.', displayCode: null, phase: null }
+    ? { name: BOARD_TYPE_LABELS[boardType] || '교수학습과정안', description: demoDescription, displayCode: null, phase: null }
     : null)
   const phase = procInfo?.phase ? PHASE_LIST.find((p) => p.id === procInfo.phase) : null
   const steps = PROCEDURE_STEPS[procedureCode] || []
@@ -311,6 +314,22 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
         />
       )}
 
+      {/* 시연 대본 AI 생성 도우미 — script 보드 컨텍스트에서만 노출(게이트 분리). 교수학습과정안을 근거로 대본 생성 */}
+      {isDemo && boardType === 'demo_script' && !readOnly && !isSkipped && (
+        <DemoScriptToolbar
+          onGenerateScript={() => sendMessage(
+            projectId,
+            '앞서 작성한 교수학습과정안(단원·학습목표·도입-전개-정리 흐름과 핵심 발문)을 근거로, 10~15분 임용 수업 실연 대본을 만들어 주세요. 실연을 도입-전개-정리 구간으로 나누고 각 구간마다 시간(분) 배분, 교사의 실제 대사·행동(발문·판서·동선 포함), 전달 유의점(목소리·시선·강조)을 구체적으로 적어 주세요. 구간별 시간(분) 합계가 10~15분 범위에 들도록 배분하고, demo_script 보드의 segments 표(구간/시간(분)/대사·행동/전달·유의점)와 totalDurationCheck를 채워 <ai_suggestion>으로 제안해 주세요.',
+            procedureCode,
+          )}
+        />
+      )}
+
+      {/* 시연 대본 타이밍 합계 — 구간 시간(분)을 클라이언트에서 합산해 10~15분 범위를 검증·경고 */}
+      {isDemo && boardType === 'demo_script' && (
+        <DemoScriptTimingSummary board={board} />
+      )}
+
       {/* 보드 카드 */}
       {boardType && schema && (
         <BoardCard
@@ -382,6 +401,87 @@ function DemoGenerateToolbar({ onKeyQuestions, onBoardPlan }) {
           </button>
         ))}
       </div>
+    </div>
+  )
+}
+
+// ── 시연 대본 생성 도우미 ──
+// script 보드 컨텍스트에서만 노출. 교수학습과정안을 근거로 10~15분 실연 대본을 chat 프롬프트로 생성.
+function DemoScriptToolbar({ onGenerateScript }) {
+  return (
+    <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>AI 생성 도우미</span>
+        <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>교수학습과정안을 근거로 실연 대본을 만들어 드려요</span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          onClick={onGenerateScript}
+          title="도입-전개-정리 10~15분 실연 대본·타이밍"
+          className="btn btn-secondary"
+          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '8px 14px', color: '#6D28D9', borderColor: '#DDD6FE' }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span style={{ fontWeight: 600 }}>대본 생성</span>
+          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>10~15분 구간·타이밍</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── 시연 대본 타이밍 합계 검증 ──
+// segments의 시간(분)을 합산해 임용 실연 기준(10~15분) 범위를 클라이언트에서 검증·경고한다.
+function DemoScriptTimingSummary({ board }) {
+  const segments = Array.isArray(board?.content?.segments) ? board.content.segments : []
+  const parsed = segments
+    .map((s) => parseFloat(String(s?.minutes ?? '').replace(/[^0-9.]/g, '')))
+    .filter((n) => Number.isFinite(n))
+  const total = parsed.reduce((a, b) => a + b, 0)
+  const hasAny = segments.length > 0
+
+  const MIN = 10
+  const MAX = 15
+  const outOfRange = hasAny && (total < MIN || total > MAX)
+  const overload = total > MAX
+
+  // 색상: 범위 내=녹색, 벗어남=주황(초과)/파랑(미달). 미작성=중립.
+  const tone = !hasAny
+    ? { bg: 'var(--color-bg-secondary)', border: 'var(--color-border)', fg: 'var(--color-text-secondary)', accent: 'var(--color-text-tertiary)' }
+    : outOfRange
+      ? (overload
+          ? { bg: '#FEF2F2', border: '#FECACA', fg: '#991B1B', accent: '#DC2626' }
+          : { bg: '#EFF6FF', border: '#BFDBFE', fg: '#1E40AF', accent: '#2563EB' })
+      : { bg: '#F0FDF4', border: '#BBF7D0', fg: '#166534', accent: '#16A34A' }
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+      padding: '12px 16px', borderRadius: 'var(--radius-lg)',
+      background: tone.bg, border: `1px solid ${tone.border}`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={tone.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span style={{ fontSize: 13, fontWeight: 600, color: tone.fg }}>
+          총 실연 시간 합계 {hasAny ? `${Number.isInteger(total) ? total : total.toFixed(1)}분` : '—'}
+        </span>
+        <span style={{ fontSize: 11.5, color: tone.accent }}>/ 목표 {MIN}~{MAX}분</span>
+      </div>
+      {outOfRange && (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          fontSize: 12, fontWeight: 600, color: tone.fg,
+          padding: '3px 10px', borderRadius: 9999,
+          background: overload ? '#FEE2E2' : '#DBEAFE',
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          {overload ? `${MAX}분 초과 — 구간을 줄여 주세요` : `${MIN}분 미만 — 구간을 보강해 주세요`}
+        </span>
+      )}
+      {hasAny && !outOfRange && (
+        <span style={{ fontSize: 12, color: tone.accent, fontWeight: 600 }}>실연 시간 범위 적정</span>
+      )}
     </div>
   )
 }

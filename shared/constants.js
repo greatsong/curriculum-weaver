@@ -403,6 +403,7 @@ export const BOARD_TYPES = {
   // 어휘 격리 정규식 /(T|A|Ds|DI|E)-\d+-\d+/ 에 매칭되지 않아 스크럽·displayCode 관문에 무해.
   // (기존 협력 절차 엔트리는 위에서 불변 — 아래는 추가만.)
   'demo_lesson_plan': 'lesson_plan',
+  'demo_script':      'demo_script',
 }
 
 /**
@@ -410,7 +411,7 @@ export const BOARD_TYPES = {
  * 이 코드들은 PROCEDURES에 없으므로 스킵 시스템·절차 네비·보고서 코어 참조를 태우지 않는다.
  * @type {Set<string>}
  */
-export const DEMO_BOARD_TYPES = new Set(['demo_lesson_plan'])
+export const DEMO_BOARD_TYPES = new Set(['demo_lesson_plan', 'demo_script'])
 
 /**
  * 코드가 시연 모드 자립 보드 코드인지 여부.
@@ -448,6 +449,7 @@ export const BOARD_TYPE_LABELS = {
 
   // ─── 시연 모드 전용 보드 라벨 (추가만 — 기존 불변) ───
   lesson_plan:          '교수학습과정안',
+  demo_script:          '실연 대본·타이밍',
 }
 
 // ──────────────────────────────────────────

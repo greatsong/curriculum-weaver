@@ -271,6 +271,10 @@ ${sections.join('\n\n')}
  */
 function buildDemoCoherenceContext(procedureCode, allBoards) {
   const boardType = BOARD_TYPES[procedureCode]
+  // 실연 대본(demo_script)은 교수학습과정안을 근거로 구간별 시간 합계가 10~15분인지 점검한다.
+  if (boardType === 'demo_script') {
+    return buildDemoScriptCoherenceContext(allBoards)
+  }
   if (boardType !== 'lesson_plan') return ''
 
   const board = (allBoards || []).find((b) => b.board_type === boardType)
@@ -309,6 +313,65 @@ ${stageText}
 - 각 학습목표의 도달 여부를 확인하는 형성평가가 있는지, 그 형성평가가 목표를 실제로 측정하는지 확인하세요(평가 정합성).
 - 불일치·누락이 있으면 <coherence_check> XML 블록으로 결과를 출력하고, 예비교사에게 개선 방향을 코치 톤으로 제안하세요. 최종 수정 결정은 예비교사가 합니다.
 - 정렬이 양호하면 무엇이 잘 맞물려 있는지 짚어 격려하세요.`
+}
+
+/**
+ * 시연 대본(demo_script) 정합성 점검 컨텍스트.
+ * ① 실연 대본이 교수학습과정안(lesson_plan)의 도입-전개-정리 흐름·학습목표를 실제로 옮겼는지,
+ * ② 구간별 시간(분) 합계가 임용 실연 기준 10~15분 범위에 드는지를 점검한다.
+ * lesson_plan 보드를 근거 자료로 컨텍스트에 함께 주입한다(대본 생성/점검의 사실 근거).
+ *
+ * @param {Object[]} allBoards - 세션 보드 데이터
+ * @returns {string}
+ */
+function buildDemoScriptCoherenceContext(allBoards) {
+  const boards = allBoards || []
+  const planBoard = boards.find((b) => b.board_type === 'lesson_plan')
+  const scriptBoard = boards.find((b) => b.board_type === 'demo_script')
+
+  const planContent = planBoard?.content || {}
+  const planObjectives = Array.isArray(planContent.objectives) ? planContent.objectives : []
+  const planStages = Array.isArray(planContent.stages) ? planContent.stages : []
+
+  const planObjText = planObjectives.length
+    ? planObjectives.map((o, i) => `  ${i + 1}. ${typeof o === 'string' ? o : JSON.stringify(o)}`).join('\n')
+    : '  (교수학습과정안 학습목표가 아직 작성되지 않음)'
+  const planStageText = planStages.length
+    ? planStages.map((s) => {
+        const stage = s.stage || '단계'
+        const min = s.minutes ? ` · ${s.minutes}분` : ''
+        return `  [${stage}${min}] 교사활동: ${s.teacherActivity || ''} / 핵심발문: ${s.keyQuestions || ''}`
+      }).join('\n')
+    : '  (교수학습과정안 흐름이 아직 작성되지 않음)'
+
+  const segments = Array.isArray(scriptBoard?.content?.segments) ? scriptBoard.content.segments : []
+  const parsedMinutes = segments
+    .map((seg) => parseFloat(String(seg?.minutes ?? '').replace(/[^0-9.]/g, '')))
+    .filter((n) => Number.isFinite(n))
+  const totalMinutes = parsedMinutes.reduce((a, b) => a + b, 0)
+  const timingText = segments.length
+    ? `현재 대본 구간 ${segments.length}개, 시간(분) 합계 ≈ ${totalMinutes}분 (임용 실연 기준 10~15분)`
+    : '아직 대본 구간이 작성되지 않음 (임용 실연 기준 10~15분)'
+
+  return `[정합성 점검 컨텍스트 — 시연 대본]
+이 실연 대본은 위 교수학습과정안을 10~15분 실연으로 옮긴 것입니다. 대본이 과정안의 흐름·학습목표를
+충실히 반영하는지, 구간별 시간 배분이 실연 시간(10~15분)에 맞는지 점검하세요.
+
+■ 교수학습과정안 학습목표:
+${planObjText}
+
+■ 교수학습과정안 흐름(근거):
+${planStageText}
+
+■ 실연 대본 타이밍 현황:
+  ${timingText}
+
+★ 점검 규칙:
+- 대본의 도입-전개-정리 구간이 교수학습과정안의 흐름·핵심 발문을 실제로 반영하는지 확인하세요.
+- 구간별 시간(분) 합계가 10~15분 범위에 드는지 확인하고, 벗어나면(너무 짧거나 긴 경우) 어느 구간을 조정할지 코치 톤으로 제안하세요.
+- 특정 구간에 시간이 과도하게 몰리면(예: 전개만 12분) 균형을 지적하세요.
+- 불일치·시간 초과/미달이 있으면 <coherence_check> XML 블록으로 결과를 출력하고, 최종 수정 결정은 예비교사가 하도록 하세요.
+- 흐름·타이밍이 적절하면 무엇이 잘 짜였는지 짚어 격려하세요.`
 }
 
 // ──────────────────────────────────────────
@@ -714,6 +777,12 @@ const DEMO_PROC_INFO = {
     description: '임용 2차 수업 실연을 위한 단일 교과 한 차시(10~15분)의 교수학습과정안(도입-전개-정리)을 작성합니다.',
     order: 999,
   },
+  demo_script: {
+    phase: null,
+    name: '실연 대본·타이밍',
+    description: '교수학습과정안을 근거로 10~15분 수업 실연의 구간별 대사·행동과 시간(분) 배분을 담은 대본을 작성합니다.',
+    order: 999,
+  },
 }
 
 export function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes, standardLinks, mode, tone }) {
@@ -948,10 +1017,17 @@ ${schemaText}
   if (coherenceContext) {
     parts.push(coherenceContext)
 
-    // 점검 XML 형식 안내 — demo는 비교대상 절차가 없으므로 자체 정렬 축(목표-활동-평가) 토큰을 쓴다.
+    // 점검 XML 형식 안내 — demo는 비교대상 절차가 없으므로 자체 정렬 축 토큰을 쓴다.
+    // demo_lesson_plan은 목표-활동-평가, demo_script는 과정안↔타이밍(10~15분)을 축으로 한다.
+    const demoAgainst = BOARD_TYPES[procedure] === 'demo_script'
+      ? 'lessonplan-timing'
+      : 'objectives-activities-assessment'
+    const demoFeedback = BOARD_TYPES[procedure] === 'demo_script'
+      ? '점검 결과 요약(과정안 반영·시간 배분 10~15분)'
+      : '점검 결과 요약(목표-활동-평가 정렬)'
     parts.push(isDemo ? `<coherence_check> 형식:
-<coherence_check procedure="demo_lesson_plan" against="objectives-activities-assessment">
-{"aligned": true/false, "feedback": "점검 결과 요약(목표-활동-평가 정렬)", "details": [{"item": "점검 항목", "status": "ok/warning/mismatch", "suggestion": "개선 제안"}]}
+<coherence_check procedure="${procedure}" against="${demoAgainst}">
+{"aligned": true/false, "feedback": "${demoFeedback}", "details": [{"item": "점검 항목", "status": "ok/warning/mismatch", "suggestion": "개선 제안"}]}
 </coherence_check>` : `<coherence_check> 형식:
 <coherence_check procedure="${xmlProcToken(procedure)}" against="[비교대상 절차의 표시 코드들(위 정합성 섹션의 T-1·A-2 형식), 쉼표구분]">
 {"aligned": true/false, "feedback": "점검 결과 요약", "details": [{"item": "점검 항목", "status": "ok/warning/mismatch", "suggestion": "개선 제안"}]}

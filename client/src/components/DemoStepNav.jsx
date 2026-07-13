@@ -1,12 +1,13 @@
 /**
  * 시연 모드(임용 실연 준비) 전용 얕은 스텝 네비게이션.
  * 협력 모드의 19절차 ProcedureNav를 대체한다(팀 절차가 아니라 1인 준비 흐름).
- * Stage 1 범위: ① 성취기준·단원 선택 → ② 교수학습과정안. 이후 단계는 확장 예정.
+ * 스텝: ① 성취기준·단원 선택 → ② 교수학습과정안 → ③ 실연 대본. 이후 단계는 확장 예정.
  */
 export default function DemoStepNav({ step, onStepChange, standardsCount = 0 }) {
   const steps = [
     { id: 'standards', label: '성취기준·단원 선택' },
     { id: 'plan', label: '교수학습과정안' },
+    { id: 'script', label: '실연 대본' },
   ]
 
   return (
