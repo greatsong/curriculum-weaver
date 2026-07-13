@@ -111,15 +111,36 @@ export const TEXT_FIELD_FLAGS = [
   'header_stub', // 본문 유실, "성취기준 해설" 헤더 라벨만 잔존
 ]
 
-const STD_CODE_RE = /\[[0-9]{2}[가-힣A-Za-z]{1,6}[0-9]{2}-[0-9]{2}\]/g
+// 모든 코드 포맷 포괄: [12고대02-05]·[10통사1-01-01]·[9기가03-04](한자리)·[공관 02-03-05](공백)
+const STD_CODE_RE = /\[[0-9가-힣A-Za-zⅠ-Ⅹ][0-9가-힣A-Za-zⅠ-Ⅹ \-·]*?[0-9]{1,2}-[0-9]{2}\]/g
 const FOOTER_RES = [
   /(진로|일반|융합)\s*선택\s*과목/, /[가-힣]{2,10}\s*계열\s*선택\s*과목/,
   /선택\s*중심\s*교육과정/, /공통\s*교육과정/, /과목\s*교육과정/,
+  /[가-힣][가-힣()⋅·/]{0,20}\s*(교과|정보과)\s*교육과정/, // 실과(기술⋅가정)/정보과 교육과정, 교양 교과 교육과정
   /\d+\s*[가-힣]{0,12}\s*교육과정/,
 ]
 const GUIDANCE_BLEED_RE = /적용\s*시\s*고려\s*사항/
 const ENUM_HEADER_RE = /(^|\n)\s*(\([가-하]\)\s*(성취기준|영역)|\(\s*\d+\s*\)\s*[가-힣])/
 const HEADER_STUB_RE = /성취기준\s*해설/
+
+/**
+ * explanation에 "다른 성취기준 코드가 침범"했는지 판정.
+ * 정상 교차참조("‘○○ 관리’의 [코드]와 연계", "‘과목’의 [코드]")는 bleed가 아니므로 제외.
+ */
+function hasForeignCodeBleed(text, ownCode) {
+  const own = (ownCode || '').replace(/\s+/g, ' ')
+  const re = new RegExp(STD_CODE_RE.source, 'g')
+  let m
+  while ((m = re.exec(text))) {
+    if (m[0].replace(/\s+/g, ' ') === own) continue
+    const before = text.slice(Math.max(0, m.index - 6), m.index)
+    const after = text.slice(m.index + m[0].length, m.index + m[0].length + 8)
+    if (/['’"의]\s*$|과목\s*$/.test(before)) continue // 정상 참조
+    if (/^\s*(와|과)\s*연계|^\s*[’']/.test(after)) continue // 정상 참조
+    return true // 다음 성취기준 본문 침범
+  }
+  return false
+}
 
 /**
  * explanation 필드의 bleed 플래그를 분류한다 (본문은 아님 — 해설 전용).
@@ -133,8 +154,7 @@ export function classifyExplanationQuality(explanation, ownCode = '') {
   if (PUA_RE.test(t)) return 'pua_encoding'
   // 본문 유실 헤더 스텁: "성취기준 해설"만 남고 실질 내용 없음
   if (HEADER_STUB_RE.test(t) && t.replace(/\s|성취기준|해설/g, '').length < 3) return 'header_stub'
-  const foreign = (t.match(STD_CODE_RE) || []).some((c) => c !== ownCode)
-  if (foreign) return 'foreign_code'
+  if (hasForeignCodeBleed(t, ownCode)) return 'foreign_code'
   if (FOOTER_RES.some((re) => re.test(t))) return 'page_footer'
   if (GUIDANCE_BLEED_RE.test(t)) return 'guidance_bleed'
   if (ENUM_HEADER_RE.test(t)) return 'enum_header'
