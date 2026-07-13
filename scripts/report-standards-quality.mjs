@@ -16,6 +16,9 @@ import {
   QUALITY_FLAGS,
   shouldRemoveStandard,
   classifyStandardQuality,
+  TEXT_FIELD_FLAGS,
+  classifyExplanationQuality,
+  classifyApplicationNotesQuality,
 } from '../server/lib/standardsQuality.js'
 
 // ── CLI 옵션 ──
@@ -36,6 +39,7 @@ function optValue(name) {
   return n
 }
 const maxFlagged = optValue('--max-flagged')
+const maxExplFlagged = optValue('--max-expl-flagged')
 const sampleCount = optValue('--samples') ?? 0
 
 // ── 분류 (store.js initStore와 동일한 순서: 코드 dedup → 제거 → 플래그) ──
@@ -140,7 +144,52 @@ if (sampleCount > 0) {
   console.log('')
 }
 
+// ── explanation / application_notes bleed 패스 (2026-07-13 확장) ──
+const explFlagCounts = Object.fromEntries(TEXT_FIELD_FLAGS.map((f) => [f, 0]))
+const anFlagCounts = Object.fromEntries(TEXT_FIELD_FLAGS.map((f) => [f, 0]))
+const explSamples = Object.fromEntries(TEXT_FIELD_FLAGS.map((f) => [f, []]))
+const seenExpl = new Set()
+for (const s of ALL_STANDARDS) {
+  if (seenExpl.has(s.code)) continue
+  seenExpl.add(s.code)
+  const eq = classifyExplanationQuality(s.explanation, s.code)
+  if (eq !== 'ok') {
+    explFlagCounts[eq]++
+    if (explSamples[eq].length < sampleCount) explSamples[eq].push(s)
+  }
+  const aq = classifyApplicationNotesQuality(s.application_notes, s.code)
+  if (aq !== 'ok') anFlagCounts[aq]++
+}
+const totalExplFlagged = Object.values(explFlagCounts).reduce((a, b) => a + b, 0)
+const totalAnFlagged = Object.values(anFlagCounts).reduce((a, b) => a + b, 0)
+
+console.log('── explanation bleed 분포 ──')
+console.log(padEnd('유형', 20) + padEnd('explanation', 14) + 'application_notes')
+for (const f of TEXT_FIELD_FLAGS) {
+  console.log(padEnd(f, 20) + padEnd(explFlagCounts[f], 14) + anFlagCounts[f])
+}
+console.log(padEnd('합계', 20) + padEnd(totalExplFlagged, 14) + totalAnFlagged)
+console.log('')
+if (sampleCount > 0) {
+  console.log(`── explanation bleed 샘플 (최대 ${sampleCount}건) ──`)
+  for (const f of TEXT_FIELD_FLAGS) {
+    if (!explSamples[f].length) continue
+    console.log(`[${f}]`)
+    for (const s of explSamples[f]) {
+      console.log(`  ${s.code} ${(s.explanation || '').slice(0, 70).replace(/\n/g, ' ')}…`)
+    }
+  }
+  console.log('')
+}
+
 // ── 품질 게이트 ──
+if (maxExplFlagged !== null) {
+  if (totalExplFlagged > maxExplFlagged) {
+    console.error(`explanation 품질 게이트 실패: bleed 총계 ${totalExplFlagged} > 허용치 ${maxExplFlagged}`)
+    process.exit(1)
+  }
+  console.log(`explanation 품질 게이트 통과: bleed 총계 ${totalExplFlagged} <= 허용치 ${maxExplFlagged}`)
+}
 if (maxFlagged !== null) {
   if (totalFlagged > maxFlagged) {
     console.error(`품질 게이트 실패: 플래그 총계 ${totalFlagged} > 허용치 ${maxFlagged}`)

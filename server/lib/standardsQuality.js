@@ -91,3 +91,68 @@ export function classifyStandardQuality(content) {
 
   return 'ok'
 }
+
+// ────────────────────────────────────────────────────────────────────
+// explanation / application_notes 필드 추출잔재(bleed) 탐지 — 2026-07-13
+//
+// content 게이트(classifyStandardQuality)는 content만 검사해 explanation 오염을
+// 사각지대로 남겼다. 종합감사에서 explanation bleed 526+건이 무방비 존치된 원인.
+// 아래 탐지기로 게이트를 explanation/application_notes까지 확장한다.
+// (탐지만 — 복원은 scripts/clean-explanation-bleed.mjs. 마커는 그 스크립트와 동일 계열)
+// ────────────────────────────────────────────────────────────────────
+
+/** explanation/application_notes bleed 플래그 종류 (ok 제외) */
+export const TEXT_FIELD_FLAGS = [
+  'pua_encoding', // HWP 수식 PUA 글리프 잔존
+  'foreign_code', // 다른 성취기준 코드 침범 (다음 성취기준 본문 유입)
+  'page_footer', // 쪽번호+교육과정 편제 영역명 러닝푸터 혼입
+  'guidance_bleed', // (나) 적용 시 고려 사항 블록이 explanation에 유입 (정위치=application_notes)
+  'enum_header', // 영역 열거/번호 헤더 "(가) 성취기준 해설"·"(3) …" 잔존
+  'header_stub', // 본문 유실, "성취기준 해설" 헤더 라벨만 잔존
+]
+
+const STD_CODE_RE = /\[[0-9]{2}[가-힣A-Za-z]{1,6}[0-9]{2}-[0-9]{2}\]/g
+const FOOTER_RES = [
+  /(진로|일반|융합)\s*선택\s*과목/, /[가-힣]{2,10}\s*계열\s*선택\s*과목/,
+  /선택\s*중심\s*교육과정/, /공통\s*교육과정/, /과목\s*교육과정/,
+  /\d+\s*[가-힣]{0,12}\s*교육과정/,
+]
+const GUIDANCE_BLEED_RE = /적용\s*시\s*고려\s*사항/
+const ENUM_HEADER_RE = /(^|\n)\s*(\([가-하]\)\s*(성취기준|영역)|\(\s*\d+\s*\)\s*[가-힣])/
+const HEADER_STUB_RE = /성취기준\s*해설/
+
+/**
+ * explanation 필드의 bleed 플래그를 분류한다 (본문은 아님 — 해설 전용).
+ * @param {string} explanation
+ * @param {string} ownCode 이 성취기준의 코드 (자기 코드 인용은 오염 아님)
+ * @returns {'ok'|'pua_encoding'|'foreign_code'|'page_footer'|'guidance_bleed'|'enum_header'|'header_stub'}
+ */
+export function classifyExplanationQuality(explanation, ownCode = '') {
+  const t = (explanation || '').trim()
+  if (!t) return 'ok' // 빈값은 대체로 원본부재(정상)
+  if (PUA_RE.test(t)) return 'pua_encoding'
+  // 본문 유실 헤더 스텁: "성취기준 해설"만 남고 실질 내용 없음
+  if (HEADER_STUB_RE.test(t) && t.replace(/\s|성취기준|해설/g, '').length < 3) return 'header_stub'
+  const foreign = (t.match(STD_CODE_RE) || []).some((c) => c !== ownCode)
+  if (foreign) return 'foreign_code'
+  if (FOOTER_RES.some((re) => re.test(t))) return 'page_footer'
+  if (GUIDANCE_BLEED_RE.test(t)) return 'guidance_bleed'
+  if (ENUM_HEADER_RE.test(t)) return 'enum_header'
+  return 'ok'
+}
+
+/**
+ * application_notes 필드의 bleed 플래그를 분류한다.
+ * (나) 적용 시 고려 사항은 정위치 필드이며 본질적으로 타 과목·성취기준을 **정상적으로 참조**한다
+ * ("‘…’ 과목과 연계", "[코드]과 [코드]을 지도할 때는" 등). 따라서 foreign_code·page_footer는
+ * 오탐이 심해 게이트 대상에서 제외하고, **명백한 오염(PUA·라벨 스텁)만** 플래그한다.
+ * @param {string} notes
+ * @returns {'ok'|'pua_encoding'|'header_stub'}
+ */
+export function classifyApplicationNotesQuality(notes) {
+  const t = (notes || '').trim()
+  if (!t) return 'ok'
+  if (PUA_RE.test(t)) return 'pua_encoding'
+  if (/^(적용\s*시\s*고려\s*사항|성취기준\s*해설)$/.test(t)) return 'header_stub' // 라벨만 잔존
+  return 'ok'
+}

@@ -1,0 +1,55 @@
+{
+  "pua": [],
+  "headless_strict": [],
+  "headless_loose_only": [],
+  "explanation": [],
+  "page_footer": [],
+  "truncated": [],
+  "empty_or_tiny": [],
+  "short": [
+    {
+      "code": "[10기영1-02-02]",
+      "subject_group": "영어",
+      "subject": "기본영어1·2",
+      "content": "경험이나 사건을 묘사한다.",
+      "len": 14
+    },
+    {
+      "code": "[10기영2-02-02]",
+      "subject_group": "영어",
+      "subject": "기본영어1·2",
+      "content": "경험이나 사건을 묘사한다.",
+      "len": 14
+    },
+    {
+      "code": "[9한01-03]",
+      "subject_group": "한문",
+      "subject": "한문",
+      "content": "단어의 짜임을 구별한다.",
+      "len": 13
+    },
+    {
+      "code": "[9한02-01]",
+      "subject_group": "한문",
+      "subject": "한문",
+      "content": "문장의 구조를 구별한다.",
+      "len": 13
+    },
+    {
+      "code": "[9한02-02]",
+      "subject_group": "한문",
+      "subject": "한문",
+      "content": "글을 의미에 맞게 읽는다.",
+      "len": 14
+    },
+    {
+      "code": "[9한02-03]",
+      "subject_group": "한문",
+      "subject": "한문",
+      "content": "글을 바르게 풀이한다.",
+      "len": 12
+    }
+  ],
+  "code_intrusion": [],
+  "no_terminal_punct": []
+}
