@@ -12,14 +12,40 @@ import WorkspacesPage from './pages/WorkspacesPage'
 import WorkspaceDetailPage from './pages/WorkspaceDetailPage'
 import ProjectPage from './pages/ProjectPage'
 
+/**
+ * 청크 로드 실패 대응 lazy 래퍼.
+ * 배포로 해시가 바뀌면 열어둔 옛 탭이 참조하는 lazy 청크가 사라져
+ * (404 → SPA fallback으로 index.html/text-html 반환) "Failed to fetch
+ * dynamically imported module" 흰 화면이 뜬다. 이 경우 1회만 새로고침해
+ * 최신 index.html·청크를 받게 하고, 무한 리로드는 sessionStorage 플래그로 막는다.
+ */
+function lazyWithReload(factory, key) {
+  const flag = `chunk-reloaded:${key}`
+  return lazy(() =>
+    factory()
+      .then((mod) => {
+        sessionStorage.removeItem(flag) // 성공 시 플래그 해제 → 세션 후반 재배포도 재복구
+        return mod
+      })
+      .catch((err) => {
+        if (!sessionStorage.getItem(flag)) {
+          sessionStorage.setItem(flag, '1')
+          window.location.reload()
+          return new Promise(() => {}) // 리로드 완료까지 렌더 보류
+        }
+        throw err // 새로고침 후에도 실패하면 진짜 오류 → 상위로 전파
+      })
+  )
+}
+
 // 지연 로드
-const DataManage = lazy(() => import('./pages/DataManage'))
-const GraphPage = lazy(() => import('./pages/GraphPage'))
-const IntroPage = lazy(() => import('./pages/IntroPage'))
-const DemoMode = lazy(() => import('./components/DemoMode'))
-const DemoPrepPage = lazy(() => import('./pages/DemoPrepPage'))
-const GuidePage = lazy(() => import('./pages/GuidePage'))
-const AuthCallback = lazy(() => import('./pages/AuthCallback'))
+const DataManage = lazyWithReload(() => import('./pages/DataManage'), 'DataManage')
+const GraphPage = lazyWithReload(() => import('./pages/GraphPage'), 'GraphPage')
+const IntroPage = lazyWithReload(() => import('./pages/IntroPage'), 'IntroPage')
+const DemoMode = lazyWithReload(() => import('./components/DemoMode'), 'DemoMode')
+const DemoPrepPage = lazyWithReload(() => import('./pages/DemoPrepPage'), 'DemoPrepPage')
+const GuidePage = lazyWithReload(() => import('./pages/GuidePage'), 'GuidePage')
+const AuthCallback = lazyWithReload(() => import('./pages/AuthCallback'), 'AuthCallback')
 
 // 레거시 호환: /session/:id 로 들어오면 워크스페이스로 돌려보냄
 function LegacySessionRedirect() {
