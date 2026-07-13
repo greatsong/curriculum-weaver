@@ -43,6 +43,7 @@ export default function IntroPage() {
           협력적 수업설계를 위한 AI 에이전트
         </p>
         <p className="text-sm text-gray-500 max-w-xl mx-auto leading-relaxed">
+          <b className="text-gray-600">교육과정의 우주에서 별을 잇듯 교과를 연결합니다.</b>{' '}
           교사 팀의 협력적 수업설계 과정을 AI가 퍼실리테이터로서 함께합니다.
           단계별 핵심 질문과 예시 자료를 통해 설계를 안내하고,
           검증된 5가지 협력 원리로 협력적 수업 설계의 품질을 높입니다.

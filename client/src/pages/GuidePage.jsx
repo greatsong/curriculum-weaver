@@ -569,9 +569,9 @@ export default function GuidePage() {
             AI와 함께<br className="sm:hidden" /> 융합 수업을<br />설계하세요
           </h1>
           <p className="text-base sm:text-lg text-slate-500 max-w-xl mx-auto mb-10 leading-relaxed">
-            5가지 협력 원리 기반 협력적 수업 설계 플랫폼.<br className="hidden sm:block" />
-            교사 팀이 AI 공동설계자와 함께 5개 과정, 18개 세부활동을 따라<br className="hidden sm:block" />
-            체계적으로 융합 수업을 만들어갑니다.
+            4,800여 개 성취기준이 별처럼 펼쳐진 교육과정의 우주 —<br className="hidden sm:block" />
+            그 안에서 교과를 잇고, 동료·AI와 함께 수업이라는 별자리를 완성합니다.<br className="hidden sm:block" />
+            5가지 협력 원리와 5개 과정·18개 세부활동이 그 길을 안내합니다.
           </p>
           <div className="flex items-center justify-center gap-3">
             <button
@@ -958,7 +958,7 @@ export default function GuidePage() {
             <span className="text-xs text-slate-500">커리큘럼 위버</span>
           </div>
           <p className="text-xs text-slate-600">
-            5가지 협력 원리 기반 AI 협력적 수업 설계 플랫폼
+            5가지 협력 원리 기반 수업 설계 플랫폼 — 교육과정의 별을 이어 별자리를 짜는 곳
           </p>
         </div>
       </footer>
