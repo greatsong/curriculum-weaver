@@ -171,6 +171,11 @@ export default function ProjectPage() {
   } = useChatStore()
   const { setMembers } = useSessionStore()
 
+  // 시연 모드(임용 실연 준비): learner_context.demo 표식으로 판별.
+  // demo일 때 팀 전제 UI 4종(닉네임 모달·소켓 join·팀 커서 PATCH·ProcedureNav)을
+  // 하나의 게이트로 함께 끈다(§9 리스크1·4). 협력 모드(기본값)는 isDemo=false로 완전 불변.
+  const isDemo = currentProject?.learner_context?.demo === true
+
   const [showStandardSearch, setShowStandardSearch] = useState(false)
   // 신규 사용자는 InteractiveTour(6스텝)만 본다. 레거시 Tutorial(9스텝)은
   // 투어를 이미 끝낸 적이 있는데 튜토리얼은 못 본 과거 사용자에게만 1회 노출 →
@@ -369,6 +374,10 @@ export default function ProjectPage() {
   }, [projectId])
 
   useEffect(() => {
+    // 시연 모드: 팀 실시간(소켓 join·닉네임·커서 전파)을 사용하지 않는다.
+    // 프로젝트 로드 전(currentProject=null)엔 isDemo=false라 협력 모드처럼 잠깐
+    // 연결됐다가, demo로 판별되면 이 effect가 재실행되며 cleanup으로 즉시 정리된다.
+    if (isDemo) return
     if (user) {
       const displayName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || '교사'
       const subject = user.user_metadata?.subject || ''
@@ -384,7 +393,7 @@ export default function ProjectPage() {
     // 토큰을 갱신하며 user 객체를 새 참조로 교체해도, 같은 사용자라면 이 effect가
     // 재실행되지 않아 cleanup의 reset()으로 절차/단계가 초기화되지 않는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, connectSocket, user?.id])
+  }, [projectId, connectSocket, user?.id, isDemo])
 
   const handleNicknameConfirm = (info) => {
     setNeedsNickname(false)
@@ -456,6 +465,9 @@ export default function ProjectPage() {
 
   const handleProcedureChange = async (code) => {
     setProcedure(code)
+    // 시연 모드: 팀 커서(current_procedure) PATCH·소켓 전파·인트로 생성을 건너뛴다.
+    // 로컬 뷰 전환만 수행(개인 단독이라 공유 커서 개념 없음).
+    if (isDemo) return
     // 생략(스킵)된 절차는 열람만 — 팀 커서(current_procedure) PATCH·소켓 전파·
     // AI 인트로 생성을 모두 건너뛴다. (서버도 스킵 절차 PATCH를 400으로 거부)
     if (skippedCodes.has(code)) return
@@ -723,16 +735,18 @@ export default function ProjectPage() {
       {/* 자료 관리 바 */}
       <MaterialUploadBar projectId={projectId} />
 
-      {/* 절차 네비게이션 */}
-      <div data-tour="procedure-nav">
-        <ProcedureNav
-          currentProcedure={currentProcedure}
-          onProcedureChange={handleProcedureChange}
-          completedProcedures={completedProcedures}
-          boardStatuses={boardStatuses}
-          skippedCodes={skippedCodes}
-        />
-      </div>
+      {/* 절차 네비게이션 — 시연 모드에서는 19절차 트랙을 숨긴다(단일 차시 자유 편집) */}
+      {!isDemo && (
+        <div data-tour="procedure-nav">
+          <ProcedureNav
+            currentProcedure={currentProcedure}
+            onProcedureChange={handleProcedureChange}
+            completedProcedures={completedProcedures}
+            boardStatuses={boardStatuses}
+            skippedCodes={skippedCodes}
+          />
+        </div>
+      )}
 
       {/* 후행 절차 재검토 안내 — 앞 절차가 이 절차보다 나중에 수정된 경우 */}
       {currentIsStale && !isReadOnlyProject && (
@@ -973,7 +987,7 @@ export default function ProjectPage() {
       </div>
 
       {/* 모달들 */}
-      {needsNickname && <NicknameModal onConfirm={handleNicknameConfirm} />}
+      {needsNickname && !isDemo && <NicknameModal onConfirm={handleNicknameConfirm} />}
       {showStandardSearch && (
         <StandardSearch
           sessionId={projectId}

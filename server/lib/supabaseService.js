@@ -171,6 +171,53 @@ export async function getWorkspacesByUser(userId) {
   })
 }
 
+// ── 개인(시연) 워크스페이스 idempotent 확보 ──
+// 시연 모드(임용 실연 준비)는 팀/초대/닉네임 계층 없이 1인이 즉시 시작한다.
+// 사용자마다 owner 단독 "개인 워크스페이스"를 1개만 두고, workflow_config.personal=true로
+// 표식한다(WorkspacesPage 목록에서 숨김). auth.js의 dev 유저 생성 패턴과 동일하게
+// 프로세스 내 promise 캐시로 동시 요청 중복 생성을 막는다. 신규 스키마 0건.
+const PERSONAL_WS_NAME = '내 시연 준비 공간'
+const _personalWsPromises = new Map() // userId -> Promise<workspace>
+
+/**
+ * 사용자의 개인(시연) 워크스페이스를 idempotent하게 확보한다.
+ * 이미 있으면 그 워크스페이스를, 없으면 새로 생성해 반환한다.
+ * @param {{ id: string }} user
+ * @returns {Promise<object>} 개인 워크스페이스
+ */
+export async function ensurePersonalWorkspace(user) {
+  const userId = user?.id
+  if (!userId) throw new Error('사용자 정보가 필요합니다.')
+
+  if (_personalWsPromises.has(userId)) return _personalWsPromises.get(userId)
+
+  const promise = (async () => {
+    // 1) 기존 personal 워크스페이스 조회 (owner 단독, workflow_config.personal=true)
+    const list = await getWorkspacesByUser(userId)
+    const existing = (list || []).find(
+      (ws) => ws?.workflow_config?.personal === true && ws?.owner_id === userId
+    )
+    if (existing) return existing
+
+    // 2) 없으면 생성 (생성자를 owner 멤버로 자동 추가하는 기존 경로 재사용)
+    return await createWorkspace({
+      name: PERSONAL_WS_NAME,
+      description: '임용 실연 준비용 개인 공간',
+      owner_id: userId,
+      ai_config: {},
+      workflow_config: { personal: true },
+    })
+  })()
+
+  _personalWsPromises.set(userId, promise)
+  try {
+    return await promise
+  } catch (err) {
+    _personalWsPromises.delete(userId) // 실패 시 다음 요청에서 재시도 가능
+    throw err
+  }
+}
+
 /**
  * 워크스페이스 수정
  * @param {string} id
@@ -1532,7 +1579,7 @@ export async function createMessagesBulk(rows) {
 // ── 서비스 객체로 일괄 내보내기 ──
 const supabaseService = {
   // 워크스페이스
-  createWorkspace, getWorkspace, getWorkspacesByUser, updateWorkspace, deleteWorkspace,
+  createWorkspace, getWorkspace, getWorkspacesByUser, ensurePersonalWorkspace, updateWorkspace, deleteWorkspace,
   // 프로젝트
   createProject, getProject, getProjectsByWorkspace, updateProject, deleteProject,
   // 설계
