@@ -12,7 +12,7 @@
 
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth.js'
-import { buildAIResponse, buildProcedureIntroResponse } from '../services/aiAgent.js'
+import { buildAIResponse } from '../services/aiAgent.js'
 import {
   getMessages, getMessage, createMessage, getRecentMessages,
   getProject, getMemberRole, getDesignsByProject,
