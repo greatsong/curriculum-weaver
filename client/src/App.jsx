@@ -17,6 +17,7 @@ const DataManage = lazy(() => import('./pages/DataManage'))
 const GraphPage = lazy(() => import('./pages/GraphPage'))
 const IntroPage = lazy(() => import('./pages/IntroPage'))
 const DemoMode = lazy(() => import('./components/DemoMode'))
+const DemoPrepPage = lazy(() => import('./pages/DemoPrepPage'))
 const GuidePage = lazy(() => import('./pages/GuidePage'))
 const AuthCallback = lazy(() => import('./pages/AuthCallback'))
 
@@ -211,6 +212,16 @@ export default function App() {
 
         {/* AI 시뮬레이션 (로그인 필수) */}
         <Route path="/demo" element={<DemoMode />} />
+
+        {/* 시연 모드(임용 실연 준비) 진입 — 개인 워크스페이스+demo 프로젝트 부트스트랩 */}
+        <Route
+          path="/demo-prep"
+          element={
+            <ProtectedRoute>
+              <DemoPrepPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* 워크스페이스 */}
         <Route

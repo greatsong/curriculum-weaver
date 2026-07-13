@@ -17,6 +17,7 @@ import {
   BOARD_TYPES,
   MATERIAL_PROCESSING_STATUSES,
   DEFAULT_MATERIAL_INTENT,
+  isDemoBoardCode,
 } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
@@ -87,7 +88,8 @@ export const useProcedureStore = create((set, get) => ({
   // ── 절차/스텝 네비게이션 ────
 
   setProcedure: (code) => {
-    if (PROCEDURES[code]) {
+    // 시연 모드 자립 보드 코드(demo_lesson_plan)는 PROCEDURES에 없지만 커서로 허용한다.
+    if (PROCEDURES[code] || isDemoBoardCode(code)) {
       const steps = PROCEDURE_STEPS[code]
       const maxStep = steps && steps.length > 0 ? steps.length : 0
       // 절차를 떠났다 돌아오면 마지막으로 보던 단계를 복원한다(없으면 1단계).

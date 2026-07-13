@@ -3,6 +3,7 @@ import {
   PROCEDURES, PHASES, PHASE_LIST, ACTION_TYPES, ACTOR_COLUMNS,
   BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_ACTIVITIES,
   isProcedureSkippable, getProcedureLabel, replaceInternalProcedureCodes,
+  isDemoBoardCode,
 } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { BOARD_SCHEMAS, getBoardSchemaForProcedure, createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
@@ -12,7 +13,7 @@ import ReadableValue from './ReadableValue'
 
 export default function ProcedureCanvas({ projectId, procedureCode, readOnly = false, loading = false, memberRole = null }) {
   const { boards, currentStep, setStep, updateBoard, skippedProcedures, skipProcedure, unskipProcedure } = useProcedureStore()
-  const { pendingSuggestions, coherenceCheckResult, acceptSuggestion, editAcceptSuggestion, rejectSuggestion, sendMessage } = useChatStore()
+  const { pendingSuggestions, coherenceCheckResult, acceptSuggestion, editAcceptSuggestion, rejectSuggestion, sendMessage, examinerLens, setExaminerLens } = useChatStore()
   const [editing, setEditing] = useState(false)
   const [skipBusy, setSkipBusy] = useState(false)
 
@@ -22,11 +23,20 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
     setEditing(false)
   }, [procedureCode])
 
-  const procInfo = PROCEDURES[procedureCode]
-  const phase = procInfo ? PHASE_LIST.find((p) => p.id === procInfo.phase) : null
+  // 시연 모드 자립 보드(demo_lesson_plan·demo_script)는 PROCEDURES에 없다 — 보드 라벨로 최소 헤더를 합성해 렌더.
+  const isDemo = isDemoBoardCode(procedureCode)
+  const boardType = BOARD_TYPES[procedureCode]
+  const demoDescription = boardType === 'demo_script'
+    ? '임용 실연 준비 — 교수학습과정안을 근거로 10~15분 실연의 구간별 대사·행동과 시간(분) 배분을 담은 대본을 작성합니다.'
+    : boardType === 'demo_rubric'
+      ? '임용 실연 준비 — 채점관 관점(성취기준 도달도·학생활동 비중·발문 위계·목표-활동-평가 정렬 등)으로 과정안·대본을 스스로 점검하는 셀프체크 루브릭을 작성합니다.'
+      : '임용 실연 준비 — 단일 교과 한 차시의 교수학습과정안(도입-전개-정리)을 작성합니다.'
+  const procInfo = PROCEDURES[procedureCode] || (isDemo && boardType
+    ? { name: BOARD_TYPE_LABELS[boardType] || '교수학습과정안', description: demoDescription, displayCode: null, phase: null }
+    : null)
+  const phase = procInfo?.phase ? PHASE_LIST.find((p) => p.id === procInfo.phase) : null
   const steps = PROCEDURE_STEPS[procedureCode] || []
   const activity = PROCEDURE_ACTIVITIES[procedureCode]
-  const boardType = BOARD_TYPES[procedureCode]
   const schema = boardType ? BOARD_SCHEMAS[boardType] : null
   const board = boardType ? boards[boardType] : null
 
@@ -290,6 +300,54 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
       {/* 정합성 점검 결과 */}
       {coherenceCheckResult && <CoherenceCheckCard result={coherenceCheckResult} />}
 
+      {/* 시연 모드 AI 생성 도우미 — 발문·판서를 chat 프롬프트로 트리거(별도 라우트 없이 ai_suggestion 경로 재사용) */}
+      {isDemo && boardType === 'lesson_plan' && !readOnly && !isSkipped && (
+        <DemoGenerateToolbar
+          onKeyQuestions={() => sendMessage(
+            projectId,
+            '지금까지의 교수학습과정안(단원·학습목표·도입-전개-정리 흐름)을 바탕으로, 각 단계에 맞는 위계적 핵심 발문을 만들어 주세요. 사실 확인 → 사고 확장 → 적용·평가로 이어지는 흐름이 되게 하고, 학습목표와 각 단계의 활동에 정렬되도록 stages 표의 "핵심 발문(keyQuestions)" 칸을 채워 <ai_suggestion>으로 제안해 주세요.',
+            procedureCode,
+          )}
+          onBoardPlan={() => sendMessage(
+            projectId,
+            '이 수업의 판서 계획을 스케치해 주세요. 칠판을 어떻게 구획할지(제목·핵심 개념·학생 산출물 위치 등)와 수업 흐름(도입-전개-정리)에 따라 무엇을 언제 판서할지 구조적으로 정리해서, boardPlan 필드를 채워 <ai_suggestion>으로 제안해 주세요.',
+            procedureCode,
+          )}
+        />
+      )}
+
+      {/* 시연 대본 AI 생성 도우미 — script 보드 컨텍스트에서만 노출(게이트 분리). 교수학습과정안을 근거로 대본 생성 */}
+      {isDemo && boardType === 'demo_script' && !readOnly && !isSkipped && (
+        <DemoScriptToolbar
+          onGenerateScript={() => sendMessage(
+            projectId,
+            '앞서 작성한 교수학습과정안(단원·학습목표·도입-전개-정리 흐름과 핵심 발문)을 근거로, 10~15분 임용 수업 실연 대본을 만들어 주세요. 실연을 도입-전개-정리 구간으로 나누고 각 구간마다 시간(분) 배분, 교사의 실제 대사·행동(발문·판서·동선 포함), 전달 유의점(목소리·시선·강조)을 구체적으로 적어 주세요. 구간별 시간(분) 합계가 10~15분 범위에 들도록 배분하고, demo_script 보드의 segments 표(구간/시간(분)/대사·행동/전달·유의점)와 totalDurationCheck를 채워 <ai_suggestion>으로 제안해 주세요.',
+            procedureCode,
+          )}
+        />
+      )}
+
+      {/* 시연 대본 타이밍 합계 — 구간 시간(분)을 클라이언트에서 합산해 10~15분 범위를 검증·경고 */}
+      {isDemo && boardType === 'demo_script' && (
+        <DemoScriptTimingSummary board={board} />
+      )}
+
+      {/* 채점 셀프체크 — 채점관 렌즈(코치↔채점관 강도) 토글 + 셀프체크 생성 도우미 */}
+      {isDemo && boardType === 'demo_rubric' && (
+        <>
+          <ExaminerLensToggle value={examinerLens} onChange={setExaminerLens} />
+          {!readOnly && !isSkipped && (
+            <DemoRubricToolbar
+              onGenerateRubric={() => sendMessage(
+                projectId,
+                '앞서 작성한 교수학습과정안과 실연 대본을 근거로, 임용 2차 수업 실연 "채점 셀프체크" 루브릭 초안을 만들어 주세요. 채점 관점은 최소한 (1) 성취기준 도달도, (2) 학생활동 비중, (3) 발문의 위계, (4) 목표-활동-평가 정렬, (5) 시간 배분, (6) 판서·전달을 포함하고, 각 관점마다 이 과정안·대본을 근거로 자기평가(상/중/하)와 그 근거·개선점을 구체적으로 적어 주세요. demo_rubric 보드의 items 표(채점 관점/자기평가/근거·개선점)와 overallComment(강점·최우선 개선 1~2가지 종합)를 채워 <ai_suggestion>으로 제안해 주세요.',
+                procedureCode,
+              )}
+            />
+          )}
+        </>
+      )}
+
       {/* 보드 카드 */}
       {boardType && schema && (
         <BoardCard
@@ -315,6 +373,200 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
             sendMessage(projectId, `현재 논의된 내용을 바탕으로 "${label}" 보드의 내용을 구체적으로 작성해 주세요.`, procedureCode)
           }}
         />
+      )}
+    </div>
+  )
+}
+
+// ── 시연 모드 발문·판서 생성 도우미 ──
+// 별도 보드/라우트를 신설하지 않고, 미리 짜인 코치 톤 프롬프트를 chat으로 보내는 얇은 트리거.
+// AI가 <ai_suggestion type="board_update">로 stages 핵심발문 컬럼·boardPlan 필드를 채우면
+// 기존 수락 경로가 그대로 동작한다.
+function DemoGenerateToolbar({ onKeyQuestions, onBoardPlan }) {
+  const buttons = [
+    {
+      label: '발문 생성',
+      hint: '단계별 위계적 핵심 발문',
+      onClick: onKeyQuestions,
+      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/><circle cx="12" cy="12" r="10"/></svg>,
+    },
+    {
+      label: '판서 스케치',
+      hint: '칠판 구조·판서 흐름',
+      onClick: onBoardPlan,
+      icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="13" rx="1"/><line x1="7" y1="20" x2="17" y2="20"/><line x1="12" y1="17" x2="12" y2="20"/></svg>,
+    },
+  ]
+  return (
+    <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>AI 생성 도우미</span>
+        <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>버튼을 누르면 코치 AI가 제안을 만들어 드려요</span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {buttons.map((b) => (
+          <button
+            key={b.label}
+            onClick={b.onClick}
+            title={b.hint}
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '8px 14px', color: '#6D28D9', borderColor: '#DDD6FE' }}
+          >
+            {b.icon}
+            <span style={{ fontWeight: 600 }}>{b.label}</span>
+            <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{b.hint}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── 시연 대본 생성 도우미 ──
+// script 보드 컨텍스트에서만 노출. 교수학습과정안을 근거로 10~15분 실연 대본을 chat 프롬프트로 생성.
+function DemoScriptToolbar({ onGenerateScript }) {
+  return (
+    <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>AI 생성 도우미</span>
+        <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>교수학습과정안을 근거로 실연 대본을 만들어 드려요</span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          onClick={onGenerateScript}
+          title="도입-전개-정리 10~15분 실연 대본·타이밍"
+          className="btn btn-secondary"
+          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '8px 14px', color: '#6D28D9', borderColor: '#DDD6FE' }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span style={{ fontWeight: 600 }}>대본 생성</span>
+          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>10~15분 구간·타이밍</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── 시연 채점 셀프체크 생성 도우미 ──
+// rubric 보드 컨텍스트에서만 노출. 교수학습과정안·대본을 근거로 채점 셀프체크 루브릭 초안을 chat으로 생성.
+function DemoRubricToolbar({ onGenerateRubric }) {
+  return (
+    <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>AI 생성 도우미</span>
+        <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>과정안·대본을 근거로 채점 셀프체크를 만들어 드려요</span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          onClick={onGenerateRubric}
+          title="채점 관점별 자기평가·근거·개선점 루브릭 초안"
+          className="btn btn-secondary"
+          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '8px 14px', color: '#6D28D9', borderColor: '#DDD6FE' }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          <span style={{ fontWeight: 600 }}>셀프체크 생성</span>
+          <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>채점 관점별 자기평가</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── 채점관 렌즈 강도 토글 (코치 ↔ 채점관) ──
+// 시연 모드 셀프체크 화면에서 AI 피드백 강도를 조절한다. '채점관'을 켜면 이후 채팅 요청에
+// examiner_lens=true가 실려 서버가 채점관 관점(감점 요인·개선점)으로 피드백 강도를 높인다.
+function ExaminerLensToggle({ value, onChange }) {
+  const modes = [
+    { id: false, label: '코치', hint: '격려 기반 스파링', color: '#6D28D9', activeBg: '#F5F3FF', activeBorder: '#8B5CF6' },
+    { id: true, label: '채점관', hint: '감점 요인·개선점 지적', color: '#B91C1C', activeBg: '#FEF2F2', activeBorder: '#EF4444' },
+  ]
+  return (
+    <div className="card" style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-secondary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l7 4v6c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z"/></svg>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>피드백 강도</span>
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {modes.map((m) => {
+          const active = value === m.id
+          return (
+            <button
+              key={String(m.id)}
+              onClick={() => onChange(m.id)}
+              title={m.hint}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 14px', borderRadius: 9999,
+                border: active ? `1px solid ${m.activeBorder}` : '1px solid var(--color-border)',
+                background: active ? m.activeBg : 'transparent',
+                color: active ? m.color : 'var(--color-text-secondary)',
+                fontSize: 13, fontWeight: active ? 700 : 500, cursor: 'pointer',
+                fontFamily: 'var(--font-sans)', transition: 'all var(--transition-fast)',
+              }}
+            >
+              {m.label}
+              <span style={{ fontSize: 11, color: active ? m.color : 'var(--color-text-tertiary)', opacity: 0.85 }}>{m.hint}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── 시연 대본 타이밍 합계 검증 ──
+// segments의 시간(분)을 합산해 임용 실연 기준(10~15분) 범위를 클라이언트에서 검증·경고한다.
+function DemoScriptTimingSummary({ board }) {
+  const segments = Array.isArray(board?.content?.segments) ? board.content.segments : []
+  const parsed = segments
+    .map((s) => parseFloat(String(s?.minutes ?? '').replace(/[^0-9.]/g, '')))
+    .filter((n) => Number.isFinite(n))
+  const total = parsed.reduce((a, b) => a + b, 0)
+  const hasAny = segments.length > 0
+
+  const MIN = 10
+  const MAX = 15
+  const outOfRange = hasAny && (total < MIN || total > MAX)
+  const overload = total > MAX
+
+  // 색상: 범위 내=녹색, 벗어남=주황(초과)/파랑(미달). 미작성=중립.
+  const tone = !hasAny
+    ? { bg: 'var(--color-bg-secondary)', border: 'var(--color-border)', fg: 'var(--color-text-secondary)', accent: 'var(--color-text-tertiary)' }
+    : outOfRange
+      ? (overload
+          ? { bg: '#FEF2F2', border: '#FECACA', fg: '#991B1B', accent: '#DC2626' }
+          : { bg: '#EFF6FF', border: '#BFDBFE', fg: '#1E40AF', accent: '#2563EB' })
+      : { bg: '#F0FDF4', border: '#BBF7D0', fg: '#166534', accent: '#16A34A' }
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+      padding: '12px 16px', borderRadius: 'var(--radius-lg)',
+      background: tone.bg, border: `1px solid ${tone.border}`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={tone.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span style={{ fontSize: 13, fontWeight: 600, color: tone.fg }}>
+          총 실연 시간 합계 {hasAny ? `${Number.isInteger(total) ? total : total.toFixed(1)}분` : '—'}
+        </span>
+        <span style={{ fontSize: 11.5, color: tone.accent }}>/ 목표 {MIN}~{MAX}분</span>
+      </div>
+      {outOfRange && (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          fontSize: 12, fontWeight: 600, color: tone.fg,
+          padding: '3px 10px', borderRadius: 9999,
+          background: overload ? '#FEE2E2' : '#DBEAFE',
+        }}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          {overload ? `${MAX}분 초과 — 구간을 줄여 주세요` : `${MIN}분 미만 — 구간을 보강해 주세요`}
+        </span>
+      )}
+      {hasAny && !outOfRange && (
+        <span style={{ fontSize: 12, color: tone.accent, fontWeight: 600 }}>실연 시간 범위 적정</span>
       )}
     </div>
   )

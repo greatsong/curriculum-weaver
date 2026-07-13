@@ -37,6 +37,10 @@ export default function WorkspacesPage() {
 
   useEffect(() => { fetchWorkspaces() }, [fetchWorkspaces])
 
+  // 개인(시연) 워크스페이스는 협력 워크스페이스 목록에 섞이지 않도록 숨긴다.
+  // (시연 모드는 /demo-prep 진입점으로만 접근)
+  const visibleWorkspaces = workspaces.filter((ws) => !ws?.workflow_config?.personal)
+
   const handleCreate = async (e) => {
     e.preventDefault()
     if (!name.trim()) return
@@ -221,6 +225,15 @@ export default function WorkspacesPage() {
               </button>
             )}
             <button
+              onClick={() => navigate('/demo-prep')}
+              className="btn btn-secondary"
+              style={{ padding: '8px 16px', fontSize: 13 }}
+              title="혼자서 임용 2차 수업 실연을 준비하는 시연 모드"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              임용 실연 준비
+            </button>
+            <button
               onClick={() => navigate('/demo')}
               className="btn"
               style={{
@@ -300,7 +313,7 @@ export default function WorkspacesPage() {
               </button>
             )}
           </div>
-        ) : workspaces.length === 0 ? (
+        ) : visibleWorkspaces.length === 0 ? (
           <div
             className="animate-fade-in"
             style={{
@@ -334,7 +347,7 @@ export default function WorkspacesPage() {
             gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
             gap: 16,
           }}>
-            {workspaces.map((ws, idx) => (
+            {visibleWorkspaces.map((ws, idx) => (
               <button
                 key={ws.id}
                 onClick={() => navigate(detailPath(ws.id))}

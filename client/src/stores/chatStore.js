@@ -149,6 +149,11 @@ export const useChatStore = create((set, get) => ({
   boardSuggestions: [],
   stageAdvanceSuggestion: null,
 
+  // 시연 모드 채점관 렌즈(코치↔채점관 강도 토글). true면 채팅 요청에 examiner_lens=true를 실어
+  // 서버(시연 모드)에서 채점관 관점 피드백 강도를 높인다. 협력 모드에서는 서버가 무시한다.
+  examinerLens: false,
+  setExaminerLens: (on) => set({ examinerLens: !!on }),
+
   // ── Socket.IO 이벤트 리스너 ────
 
   subscribe: (sessionId) => {
@@ -311,6 +316,8 @@ export const useChatStore = create((set, get) => ({
       selected_material_ids: selectedIds,
       material_selection_explicit: materialSelectionExplicit,
       current_step: currentStep,
+      // 채점관 렌즈 강도 토글 — 서버는 시연 모드에서만 반영(협력 모드는 무시)
+      examiner_lens: get().examinerLens === true,
     }, {
       onText: (text) => {
         set((state) => ({ streamingText: state.streamingText + text }))

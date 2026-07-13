@@ -397,6 +397,30 @@ export const BOARD_TYPES = {
   'DI-2-1': 'class_record',
   'E-1-1':  'class_reflection',
   'E-2-1':  'process_reflection',
+
+  // ─── 시연 모드(임용 실연 준비) 전용 자립 보드 코드 ───
+  // demo_ 스네이크형 자립 코드 — PROCEDURES에 등록하지 않는다(절차 트랙 미사용).
+  // 어휘 격리 정규식 /(T|A|Ds|DI|E)-\d+-\d+/ 에 매칭되지 않아 스크럽·displayCode 관문에 무해.
+  // (기존 협력 절차 엔트리는 위에서 불변 — 아래는 추가만.)
+  'demo_lesson_plan': 'lesson_plan',
+  'demo_script':      'demo_script',
+  'demo_rubric':      'demo_rubric',
+}
+
+/**
+ * 시연 모드 전용 보드 코드 집합 — 협력 절차 코드와 구분하기 위한 단일 소스.
+ * 이 코드들은 PROCEDURES에 없으므로 스킵 시스템·절차 네비·보고서 코어 참조를 태우지 않는다.
+ * @type {Set<string>}
+ */
+export const DEMO_BOARD_TYPES = new Set(['demo_lesson_plan', 'demo_script', 'demo_rubric'])
+
+/**
+ * 코드가 시연 모드 자립 보드 코드인지 여부.
+ * @param {string} code
+ * @returns {boolean}
+ */
+export function isDemoBoardCode(code) {
+  return DEMO_BOARD_TYPES.has(code)
 }
 
 /**
@@ -423,6 +447,11 @@ export const BOARD_TYPE_LABELS = {
   class_record:         '수업 기록',
   class_reflection:     '수업 성찰',
   process_reflection:   '협력 과정 성찰',
+
+  // ─── 시연 모드 전용 보드 라벨 (추가만 — 기존 불변) ───
+  lesson_plan:          '교수학습과정안',
+  demo_script:          '실연 대본·타이밍',
+  demo_rubric:          '채점 셀프체크',
 }
 
 // ──────────────────────────────────────────
@@ -566,6 +595,18 @@ export const AI_ROLE_PRESETS = {
     promptTone: 'proactive',
     order: 3,
   },
+  // ─── 시연 모드(임용 실연 준비) 전용 코치 프리셋 (추가만 — 협력 모드 기본 프리셋 불변) ───
+  coach: {
+    id: 'coach',
+    name: '코치',
+    icon: '🎓',
+    description: '격려 기반으로 실연 준비를 함께 다듬고, 요청 시 채점관 관점 피드백을 줍니다',
+    detail: '임용 2차 수업 실연을 준비하는 예비교사 1인을 돕는 시연 모드 전용 역할입니다.',
+    enabledActions: { guide: true, generate: true, check: true, record: true },
+    promptTone: 'coaching',
+    order: 4,
+    demoOnly: true,
+  },
 }
 
 /** 기본 AI 역할 프리셋 */
@@ -575,7 +616,9 @@ export const DEFAULT_AI_ROLE = 'facilitator'
  * AI 역할 프리셋을 order 순으로 정렬한 배열 (UI 렌더링용)
  * @type {Array<{id: string, name: string, icon: string, description: string, detail: string, enabledActions: Object, promptTone: string, order: number}>}
  */
-export const AI_ROLE_PRESET_LIST = Object.values(AI_ROLE_PRESETS).sort((a, b) => a.order - b.order)
+export const AI_ROLE_PRESET_LIST = Object.values(AI_ROLE_PRESETS)
+  .filter((p) => !p.demoOnly) // 협력 모드 역할 선택 UI에는 시연 전용(coach) 프리셋을 노출하지 않는다
+  .sort((a, b) => a.order - b.order)
 
 /**
  * promptTone에 따른 시스템 프롬프트 톤 지시문
@@ -611,6 +654,15 @@ export const PROMPT_TONE_INSTRUCTIONS = {
 - "저는 이런 방향도 좋다고 생각합니다"처럼 자신의 관점을 명확히 밝히세요.
 - 여러 대안을 동시에 제시하고, 각각의 장단점을 분석하세요.
 - 빠른 설계 진행을 위해 적극적으로 초안을 생성하세요.`,
+
+  // ─── 시연 모드 전용 코치 톤 (추가만) ───
+  coaching: `[AI 역할 톤: 코치 (격려 기반 스파링 + 요청 시 채점관 관점)]
+- 예비교사의 강점을 먼저 짚어 격려하고, 그 위에서 함께 실연을 다듬는 코치입니다.
+- 개선점은 지적으로 끝내지 말고 반드시 구체적인 대안·예시와 함께 제시하세요.
+- 실연 흐름(도입-전개-정리), 핵심 발문, 판서, 시간 배분을 함께 점검하며 사고를 확장시키세요.
+- 최종 결정은 예비교사가 합니다. 근거 있는 제안과 질문으로 이끄세요.
+- 예비교사가 "채점관 관점", "엄격하게", "피드백 강하게"를 요청하면, 그때는 임용 채점 관점에서
+  감점 요인·부족한 점을 구체적으로 짚되 반드시 개선 방향을 함께 제시하세요.`,
 }
 
 // ──────────────────────────────────────────

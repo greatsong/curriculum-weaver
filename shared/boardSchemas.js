@@ -440,6 +440,84 @@ export const BOARD_SCHEMAS = {
       processReflections: [], sharedReflections: [], finalImprovements: [],
     },
   },
+
+  // ─── [시연 모드] 교수학습과정안 (demo_lesson_plan → lesson_plan) ───
+  // 임용 2차 수업 실연 준비용. 단일 교과 한 차시의 도입-전개-정리 흐름 + 발문·판서·형성평가·시간배분을
+  // 한 장의 표로 통합한다(교수학습과정안은 원래 한 장). 발문/판서/형성평가는 별도 보드로 쪼개지 않고
+  // stages 테이블 컬럼과 boardPlan 필드로 흡수 — 렌더러/AI 제안 경로(table/textarea)가 이미 검증됨.
+  // 기존 협력 보드 스키마는 위에서 전부 불변 — 아래는 추가만.
+  lesson_plan: {
+    fields: [
+      { name: 'unit', label: '단원·차시·차시목표', type: 'text', required: true,
+        description: '교과·단원명, 본 차시(예: 3/5차시), 차시 학습 주제' },
+      { name: 'objectives', label: '본시 학습목표', type: 'list', required: true,
+        description: '선택한 성취기준에서 도출한 이 한 차시의 학습목표(1~3개)' },
+      { name: 'stages', label: '교수학습 흐름 (도입-전개-정리)', type: 'table', required: true,
+        description: '수업 단계별 교사·학생 활동, 핵심 발문, 자료, 형성평가, 시간 배분',
+        columns: [
+          { name: 'stage', label: '단계' },            // 도입 / 전개 / 정리
+          { name: 'minutes', label: '시간(분)' },
+          { name: 'teacherActivity', label: '교사 활동' },
+          { name: 'studentActivity', label: '학생 활동' },
+          { name: 'keyQuestions', label: '핵심 발문' },
+          { name: 'materials', label: '자료·매체' },
+          { name: 'assessment', label: '형성평가' },
+          { name: 'notes', label: '유의점' },
+        ] },
+      { name: 'boardPlan', label: '판서 계획', type: 'textarea', required: false,
+        description: '칠판 구조·배치를 텍스트로 스케치(제목·핵심 개념·학생 산출 위치 등)' },
+      { name: 'timeTotalCheck', label: '시간 배분 합계 점검', type: 'textarea', required: false,
+        description: 'AI 점검: 도입+전개+정리 합계가 차시 시간(예: 40/45/50분)과 맞는지' },
+      { name: 'objectiveAlignmentCheck', label: '목표-활동-평가 정합성', type: 'textarea', required: false,
+        description: 'AI 점검: 학습목표 ↔ 학습활동 ↔ 형성평가의 정합성 평가' },
+    ],
+    empty: {
+      unit: '', objectives: [], stages: [], boardPlan: '',
+      timeTotalCheck: '', objectiveAlignmentCheck: '',
+    },
+  },
+
+  // ─── [시연 모드] 실연 대본·타이밍 (demo_script → demo_script) ───
+  // 임용 2차 수업 실연은 10~15분 안에 도입-전개-정리를 압축해 보여야 한다. 이 보드는
+  // 교수학습과정안(lesson_plan)을 근거로 실제 실연 흐름을 구간별 대사·행동과 분(分) 배분으로
+  // 옮긴 대본이다. minutes 컬럼의 합계가 10~15분 범위인지 클라이언트에서 계산·경고한다.
+  // 기존 협력 보드 스키마는 위에서 전부 불변 — 아래는 추가만.
+  demo_script: {
+    fields: [
+      { name: 'segments', label: '실연 구간·타이밍', type: 'table', required: true,
+        description: '10~15분 실연을 구간(도입/전개/정리 등)으로 나눠 시간(분)·핵심 대사·행동·유의점을 적는다',
+        columns: [
+          { name: 'segment', label: '구간' },            // 도입 / 전개 / 정리 / 마무리
+          { name: 'minutes', label: '시간(분)' },        // 이 구간에 쓸 분(分) — 합계 검증 대상
+          { name: 'script', label: '대사·행동' },         // 교사 발화·판서·동선 등 실연 대본
+          { name: 'delivery', label: '전달·유의점' },     // 목소리·시선·강조 등 전달 팁
+        ] },
+      { name: 'totalDurationCheck', label: '총 실연 시간 점검', type: 'textarea', required: false,
+        description: 'AI 점검: 구간 시간(분) 합계가 10~15분 범위에 드는지, 배분이 도입-전개-정리에 적절한지' },
+    ],
+    empty: { segments: [], totalDurationCheck: '' },
+  },
+
+  // ─── [시연 모드] 채점 셀프체크 루브릭 (demo_rubric → demo_rubric) ───
+  // 임용 2차 수업 실연 후, 예비교사가 채점관 관점으로 자신의 과정안·대본을 스스로 점검하는 루브릭.
+  // 교과 무관 공통 관점(성취기준 도달도·학생활동 비중·발문 위계·목표-활동-평가 정렬 등)으로 시작하며,
+  // 각 관점마다 자기평가(상/중/하)와 근거·개선점을 적는다. "셀프체크 생성" 버튼이 과정안·대본을 근거로
+  // AI가 items 표 초안을 <ai_suggestion>으로 채운다. 렌더러/제안 경로(table/textarea)는 이미 검증됨.
+  // 기존 협력 보드 스키마는 위에서 전부 불변 — 아래는 추가만.
+  demo_rubric: {
+    fields: [
+      { name: 'items', label: '채점 셀프체크 항목', type: 'table', required: true,
+        description: '임용 채점 관점별로 스스로 평가(상/중/하)하고, 그 근거와 개선점을 적는다',
+        columns: [
+          { name: 'criterion', label: '채점 관점' },     // 성취기준 도달도 / 학생활동 비중 / 발문 위계 / 목표-활동-평가 정렬 등
+          { name: 'selfRating', label: '자기평가' },      // 상 / 중 / 하 (또는 점수)
+          { name: 'evidence', label: '근거·개선점' },     // 그렇게 평가한 근거 + 어떻게 개선할지
+        ] },
+      { name: 'overallComment', label: '종합 코멘트', type: 'textarea', required: false,
+        description: '채점관 관점에서 본 이 실연의 강점과 최우선 개선 1~2가지 종합' },
+    ],
+    empty: { items: [], overallComment: '' },
+  },
 }
 
 // ──────────────────────────────────────────

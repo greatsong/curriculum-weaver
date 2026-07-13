@@ -11,6 +11,8 @@ import { socket, joinSession, leaveSession } from '../lib/socket'
 import { PROCEDURES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
 import Logo from '../components/Logo'
 import ProcedureNav from '../components/ProcedureNav'
+import DemoStepNav from '../components/DemoStepNav'
+import DemoStandardsPanel from '../components/DemoStandardsPanel'
 import ChatPanel from '../components/ChatPanel'
 import ProcedureCanvas from '../components/ProcedureCanvas'
 import PrinciplePanel from '../components/PrinciplePanel'
@@ -21,6 +23,19 @@ import MaterialUploadBar from '../components/MaterialUploadBar'
 import Tutorial from '../components/Tutorial'
 import InteractiveTour from '../components/InteractiveTour'
 import ContinueSimulationButton from '../components/ContinueSimulationButton'
+
+// 시연 모드 자립 보드 코드 (BOARD_TYPES['demo_lesson_plan']='lesson_plan', ['demo_script']='demo_script')
+const DEMO_LESSON_PLAN = 'demo_lesson_plan'
+const DEMO_SCRIPT = 'demo_script'
+const DEMO_RUBRIC = 'demo_rubric'
+// 시연 얕은 스텝 → 커서(보드) 코드 매핑. 'standards'는 DemoStandardsPanel을 보여주므로
+// 채팅/보드 기본 커서는 교수학습과정안으로 둔다.
+const DEMO_STEP_PROCEDURE = {
+  standards: DEMO_LESSON_PLAN,
+  plan: DEMO_LESSON_PLAN,
+  script: DEMO_SCRIPT,
+  rubric: DEMO_RUBRIC,
+}
 
 // Error Boundary — ChatPanel 등 하위 컴포넌트 크래시 시 전체 페이지 보호
 class ErrorBoundary extends Component {
@@ -171,6 +186,15 @@ export default function ProjectPage() {
   } = useChatStore()
   const { setMembers } = useSessionStore()
 
+  // 시연 모드(임용 실연 준비): learner_context.demo 표식으로 판별.
+  // demo일 때 팀 전제 UI 4종(닉네임 모달·소켓 join·팀 커서 PATCH·ProcedureNav)을
+  // 하나의 게이트로 함께 끈다(§9 리스크1·4). 협력 모드(기본값)는 isDemo=false로 완전 불변.
+  const isDemo = currentProject?.learner_context?.demo === true
+
+  // 시연 모드 얕은 스텝: 'standards'(성취기준·단원 선택) → 'plan'(교수학습과정안)
+  const [demoStep, setDemoStep] = useState('standards')
+  const demoStandards = useProcedureStore((s) => s.standards)
+
   const [showStandardSearch, setShowStandardSearch] = useState(false)
   // 신규 사용자는 InteractiveTour(6스텝)만 본다. 레거시 Tutorial(9스텝)은
   // 투어를 이미 끝낸 적이 있는데 튜토리얼은 못 본 과거 사용자에게만 1회 노출 →
@@ -282,7 +306,9 @@ export default function ProjectPage() {
       const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
       const proj = useProjectStore.getState().currentProject
       const isReadOnly = proj?.status === 'simulation' || proj?.status === 'generating' || proj?.status === 'failed' || proj?.title?.startsWith('[시뮬레이션]')
-      const proc = useProcedureStore.getState().currentProcedure
+      // 시연 모드는 커서가 T-1-1로 초기화된 순간에 협력 인트로가 생성되지 않도록 데모 보드 코드로 고정한다.
+      const projIsDemo = proj?.learner_context?.demo === true
+      const proc = projIsDemo ? DEMO_LESSON_PLAN : useProcedureStore.getState().currentProcedure
       // introCache에 이미 있으면 스킵 (이전에 인트로 생성된 절차)
       if (!isReadOnly && !hasContent && !introCache[proc] && localStorage.getItem('cw_tour_done')) {
         if (proc) requestProcedureIntro(projectId, proc)
@@ -339,8 +365,16 @@ export default function ProjectPage() {
   }, [projectId, workspaceId])
 
   useEffect(() => {
+    // 시연 모드: 커서를 얕은 스텝(demoStep)에 맞는 자립 보드 코드로 맞춘다(19절차 트랙 미사용).
+    // ②교수학습과정안=demo_lesson_plan, ③실연 대본=demo_script. 채팅·보드가 이 커서를 대상으로
+    // 동작하며, 좌측 패널은 demoStep으로 전환한다.
+    if (isDemo) {
+      const target = DEMO_STEP_PROCEDURE[demoStep] || DEMO_LESSON_PLAN
+      if (currentProcedure !== target) setProcedure(target)
+      return
+    }
     if (currentProject?.current_procedure) setProcedure(currentProject.current_procedure)
-  }, [currentProject?.current_procedure])
+  }, [currentProject?.current_procedure, isDemo, demoStep, currentProcedure, setProcedure])
 
   const connectSocket = useCallback(({ name: nickname, subject: subjectName }) => {
     if (joinedRef.current) return
@@ -369,6 +403,10 @@ export default function ProjectPage() {
   }, [projectId])
 
   useEffect(() => {
+    // 시연 모드: 팀 실시간(소켓 join·닉네임·커서 전파)을 사용하지 않는다.
+    // 프로젝트 로드 전(currentProject=null)엔 isDemo=false라 협력 모드처럼 잠깐
+    // 연결됐다가, demo로 판별되면 이 effect가 재실행되며 cleanup으로 즉시 정리된다.
+    if (isDemo) return
     if (user) {
       const displayName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0] || '교사'
       const subject = user.user_metadata?.subject || ''
@@ -384,7 +422,7 @@ export default function ProjectPage() {
     // 토큰을 갱신하며 user 객체를 새 참조로 교체해도, 같은 사용자라면 이 effect가
     // 재실행되지 않아 cleanup의 reset()으로 절차/단계가 초기화되지 않는다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, connectSocket, user?.id])
+  }, [projectId, connectSocket, user?.id, isDemo])
 
   const handleNicknameConfirm = (info) => {
     setNeedsNickname(false)
@@ -456,6 +494,9 @@ export default function ProjectPage() {
 
   const handleProcedureChange = async (code) => {
     setProcedure(code)
+    // 시연 모드: 팀 커서(current_procedure) PATCH·소켓 전파·인트로 생성을 건너뛴다.
+    // 로컬 뷰 전환만 수행(개인 단독이라 공유 커서 개념 없음).
+    if (isDemo) return
     // 생략(스킵)된 절차는 열람만 — 팀 커서(current_procedure) PATCH·소켓 전파·
     // AI 인트로 생성을 모두 건너뛴다. (서버도 스킵 절차 PATCH를 400으로 거부)
     if (skippedCodes.has(code)) return
@@ -604,13 +645,14 @@ export default function ProjectPage() {
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
           <MemberList />
-          {!isReadOnlyProject && (
+          {!isReadOnlyProject && !isDemo && (
             <ContinueSimulationButton projectId={projectId} workspaceId={workspaceId} />
           )}
           {[
             { onClick: () => setShowReport(true), color: '#7C3AED', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>, label: '보고서', title: '결과 보고서' },
             { onClick: () => setShowStandardSearch(true), color: '#16A34A', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>, label: '성취기준', title: '성취기준 탐색' },
-            { onClick: handleCopyInvite, color: '#3B82F6', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>, label: '공유', title: '프로젝트 링크 복사' },
+            // 공유는 협력(팀 워크스페이스) 전용 — 개인 시연 준비에서는 은닉.
+            ...(isDemo ? [] : [{ onClick: handleCopyInvite, color: '#3B82F6', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>, label: '공유', title: '프로젝트 링크 복사' }]),
           ].map(({ onClick, color, icon, label, title }) => (
             <button
               key={label}
@@ -723,16 +765,24 @@ export default function ProjectPage() {
       {/* 자료 관리 바 */}
       <MaterialUploadBar projectId={projectId} />
 
-      {/* 절차 네비게이션 */}
-      <div data-tour="procedure-nav">
-        <ProcedureNav
-          currentProcedure={currentProcedure}
-          onProcedureChange={handleProcedureChange}
-          completedProcedures={completedProcedures}
-          boardStatuses={boardStatuses}
-          skippedCodes={skippedCodes}
+      {/* 절차 네비게이션 — 시연 모드에서는 19절차 트랙 대신 얕은 스텝 네비를 노출(단일 차시 준비) */}
+      {isDemo ? (
+        <DemoStepNav
+          step={demoStep}
+          onStepChange={setDemoStep}
+          standardsCount={(demoStandards || []).length}
         />
-      </div>
+      ) : (
+        <div data-tour="procedure-nav">
+          <ProcedureNav
+            currentProcedure={currentProcedure}
+            onProcedureChange={handleProcedureChange}
+            completedProcedures={completedProcedures}
+            boardStatuses={boardStatuses}
+            skippedCodes={skippedCodes}
+          />
+        </div>
+      )}
 
       {/* 후행 절차 재검토 안내 — 앞 절차가 이 절차보다 나중에 수정된 경우 */}
       {currentIsStale && !isReadOnlyProject && (
@@ -768,13 +818,21 @@ export default function ProjectPage() {
           }}
         >
           <ErrorBoundary>
-            <ProcedureCanvas
-              projectId={projectId}
-              procedureCode={currentProcedure}
-              readOnly={isReadOnlyProject}
-              loading={isReadOnlyLoading}
-              memberRole={currentProject?.my_role}
-            />
+            {isDemo && demoStep === 'standards' ? (
+              <DemoStandardsPanel
+                standards={demoStandards}
+                onOpenSearch={() => setShowStandardSearch(true)}
+                onNext={() => setDemoStep('plan')}
+              />
+            ) : (
+              <ProcedureCanvas
+                projectId={projectId}
+                procedureCode={currentProcedure}
+                readOnly={isReadOnlyProject}
+                loading={isReadOnlyLoading}
+                memberRole={currentProject?.my_role}
+              />
+            )}
           </ErrorBoundary>
         </div>
 
@@ -973,7 +1031,7 @@ export default function ProjectPage() {
       </div>
 
       {/* 모달들 */}
-      {needsNickname && <NicknameModal onConfirm={handleNicknameConfirm} />}
+      {needsNickname && !isDemo && <NicknameModal onConfirm={handleNicknameConfirm} />}
       {showStandardSearch && (
         <StandardSearch
           sessionId={projectId}
