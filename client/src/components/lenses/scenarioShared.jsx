@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, X, Loader2, Check, ArrowRight } from 'lucide-react'
+import { Sparkles, X, Check, ArrowRight } from 'lucide-react'
 import { apiPost } from '../../lib/api'
 
 /**
@@ -65,15 +65,28 @@ export function useScenario() {
   return { scenario, openScenario, closeScenario }
 }
 
-// 로딩 안내 — 요리하듯 단계가 바뀌는 메시지 (생성 ~30초, 마지막 단계에서 유지)
+// 로딩 안내 — 별자리가 그려지듯 단계가 바뀌는 메시지 (생성 ~30초, 마지막 단계에서 유지)
 const LOADING_STEPS = [
-  '🧺 성취기준 재료를 꺼내고 있어요',
-  '🔍 진짜 문제가 있는 수업 장면을 찾고 있어요',
-  '🧑‍🍳 교과들을 알맞게 버무리고 있어요',
-  '📊 학생이 직접 구할 수 있는 데이터를 고르고 있어요',
-  '✨ 핵심 질문을 다듬고 있어요',
-  '🍳 수업 한 상이 거의 완성됐어요 — 잠시만 기다려 주세요',
+  '성취기준 별들의 위치를 확인하는 중',
+  '교과 사이 가장 밝은 연결선을 찾는 중',
+  '그 길 위에 수업 장면을 그리는 중',
+  '학생이 직접 다룰 데이터를 고르는 중',
+  '답을 미리 주지 않는 질문으로 다듬는 중',
+  '별자리 완성 직전 — 마지막 획을 긋고 있어요',
 ]
+
+// 별자리 미니 애니메이션 — 별 셋이 깜빡이며 연결선이 그어진다 (제품의 성운 은유)
+function ConstellationLoader() {
+  return (
+    <svg viewBox="0 0 40 28" className="w-10 h-7 shrink-0" aria-hidden="true">
+      <line x1="6" y1="21" x2="20" y2="6" className="scn-line" />
+      <line x1="20" y1="6" x2="34" y2="17" className="scn-line" style={{ animationDelay: '0.9s' }} />
+      <circle cx="6" cy="21" r="2" className="scn-star" />
+      <circle cx="20" cy="6" r="2.6" className="scn-star" style={{ animationDelay: '0.6s' }} />
+      <circle cx="34" cy="17" r="2" className="scn-star" style={{ animationDelay: '1.2s' }} />
+    </svg>
+  )
+}
 
 function ScenarioLoading() {
   const [step, setStep] = useState(0)
@@ -82,8 +95,8 @@ function ScenarioLoading() {
     return () => clearInterval(t)
   }, [])
   return (
-    <div className="flex items-center gap-2 text-sm text-violet-600 py-2">
-      <Loader2 size={15} className="animate-spin shrink-0" />
+    <div className="flex items-center gap-2.5 text-sm text-violet-600 py-2">
+      <ConstellationLoader />
       <span key={step} className="animate-fade-in">{LOADING_STEPS[step]}…</span>
     </div>
   )
