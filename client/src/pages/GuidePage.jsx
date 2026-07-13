@@ -118,9 +118,9 @@ function MockInviteUI() {
         </div>
         <div className="space-y-2">
           {[
-            { name: '김수진', email: 'kim@school.ac.kr', role: '관리자', color: '#3B82F6' },
-            { name: '이정현', email: 'lee@school.ac.kr', role: '편집자', color: '#8B5CF6' },
-            { name: '박민수', email: 'park@school.ac.kr', role: '편집자', color: '#10B981' },
+            { name: '김수진', email: 'kim@school.hs.kr', role: '관리자', color: '#3B82F6' },
+            { name: '이정현', email: 'lee@school.hs.kr', role: '편집자', color: '#8B5CF6' },
+            { name: '박민수', email: 'park@school.hs.kr', role: '편집자', color: '#10B981' },
           ].map((m, i) => (
             <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-white border border-slate-100">
               <div className="w-7 h-7 rounded-full text-white text-[11px] font-bold flex items-center justify-center shrink-0" style={{ background: m.color }}>
