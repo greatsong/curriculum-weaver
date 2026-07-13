@@ -48,6 +48,14 @@ const PHASE_ICONS = {
   E:    '🔄',
 }
 
+// 시연 모드(임용 실연 준비) 보고서 보드 — 협력 절차 트랙(PROCEDURE_LIST) 대신 이 3장을 순회한다.
+// 코어 절차 코드(T-1-1·A-1-2·A-2-2 등) 하드코딩 참조가 demo에서 터지지 않도록 mode 분기의 단일 소스.
+const DEMO_REPORT_BOARDS = [
+  { code: 'demo_lesson_plan', icon: '📝' },
+  { code: 'demo_script',      icon: '🎬' },
+  { code: 'demo_rubric',      icon: '✅' },
+]
+
 /**
  * 프로젝트의 전체 데이터를 수집
  *
@@ -109,33 +117,46 @@ export async function collectReportData(projectId) {
     }
   }
 
+  // 시연 모드(임용 실연 준비) 판별 — 협력 코어 절차가 없으므로 진행률·상태 계산을 분기한다.
+  const isDemo = project?.learner_context?.demo === true
+  const mode = isDemo ? 'demo' : 'collaborative'
+
   // 절차별 완료 상태 계산.
   // '절차 확정' UI가 없어 실제로는 대부분 보드가 draft로 남는다. 따라서 명시적 confirmed뿐
   // 아니라 '내용이 채워진 절차'도 완료로 집계한다. (내용이 있으면 그 절차의 설계는 작성 완료)
   const procedureStatus = {}
-  for (const proc of PROCEDURE_LIST) {
-    // 생략 절차는 내용 유무보다 우선 — '진행중' 오분류 방지
-    if (skipMap[proc.code]) {
-      procedureStatus[proc.code] = 'skipped'
-      continue
-    }
-    const design = designMap[proc.code]
+  const statusFor = (design) => {
     const hasContent = !!(design?.content && Object.keys(design.content).length > 0)
-    if (design?.save_status === 'confirmed' || hasContent) {
-      procedureStatus[proc.code] = 'confirmed'
-    } else if (design?.save_status === 'draft') {
-      procedureStatus[proc.code] = 'draft'
-    } else {
-      procedureStatus[proc.code] = design ? 'in_progress' : 'empty'
-    }
+    if (design?.save_status === 'confirmed' || hasContent) return 'confirmed'
+    if (design?.save_status === 'draft') return 'draft'
+    return design ? 'in_progress' : 'empty'
   }
 
-  // 완료 절차 수 — 생략 절차는 분모에서 제외 ("12/19 완료" 오표기 방지)
-  const confirmedCount = Object.values(procedureStatus).filter(s => s === 'confirmed').length
-  const totalProcedures = getActiveProcedures(skips.map(s => s.procedure_code)).length
+  let confirmedCount, totalProcedures
+  if (isDemo) {
+    // 시연 모드: 협력 절차 트랙 대신 demo 보드 3장(교수학습과정안·대본·셀프체크) 기준.
+    for (const { code } of DEMO_REPORT_BOARDS) {
+      procedureStatus[code] = statusFor(designMap[code])
+    }
+    confirmedCount = DEMO_REPORT_BOARDS.filter(({ code }) => procedureStatus[code] === 'confirmed').length
+    totalProcedures = DEMO_REPORT_BOARDS.length
+  } else {
+    for (const proc of PROCEDURE_LIST) {
+      // 생략 절차는 내용 유무보다 우선 — '진행중' 오분류 방지
+      if (skipMap[proc.code]) {
+        procedureStatus[proc.code] = 'skipped'
+        continue
+      }
+      procedureStatus[proc.code] = statusFor(designMap[proc.code])
+    }
+    // 완료 절차 수 — 생략 절차는 분모에서 제외 ("12/19 완료" 오표기 방지)
+    confirmedCount = Object.values(procedureStatus).filter(s => s === 'confirmed').length
+    totalProcedures = getActiveProcedures(skips.map(s => s.procedure_code)).length
+  }
 
   return {
     project,
+    mode,
     designMap,
     standards,
     messageStats,
@@ -221,6 +242,7 @@ function renderBoardContent(boardType, content) {
  * 확정된 보드 내용으로 요약문 생성
  */
 function generateExecutiveSummary(data) {
+  if (data.mode === 'demo') return generateDemoSummary(data)
   const { project, designMap, participants, confirmedCount, totalProcedures, standards } = data
   const lines = []
 
@@ -259,12 +281,62 @@ function generateExecutiveSummary(data) {
   return lines
 }
 
+/**
+ * 시연 모드(임용 실연 준비) 요약 생성.
+ * 융합 주제·통합목표·참여 교과 대신 단일교과 한 차시 실연 준비 지표로 대체한다.
+ */
+function generateDemoSummary(data) {
+  const { designMap, confirmedCount, totalProcedures, standards } = data
+  const lines = []
+
+  const plan = designMap['demo_lesson_plan']?.content || {}
+  const script = designMap['demo_script']?.content || {}
+  const rubric = designMap['demo_rubric']?.content || {}
+
+  // 단원·차시
+  if (plan.unit) lines.push(`단원·차시: ${String(plan.unit).replace(/\n/g, ' ')}`)
+
+  // 본시 학습목표 수
+  const objectives = Array.isArray(plan.objectives) ? plan.objectives : []
+  if (objectives.length > 0) lines.push(`본시 학습목표: ${objectives.length}개`)
+
+  // 핵심 발문 수 (stages의 keyQuestions가 채워진 단계 수)
+  const stages = Array.isArray(plan.stages) ? plan.stages : []
+  const questionCount = stages.filter(s => s && typeof s === 'object' && String(s.keyQuestions || '').trim()).length
+  if (questionCount > 0) lines.push(`핵심 발문: ${questionCount}개 단계에 배치`)
+
+  // 실연 총시간 (대본 구간 시간 합계)
+  const segments = Array.isArray(script.segments) ? script.segments : []
+  if (segments.length > 0) {
+    const total = segments
+      .map(s => parseFloat(String(s?.minutes ?? '').replace(/[^0-9.]/g, '')))
+      .filter(n => Number.isFinite(n))
+      .reduce((a, b) => a + b, 0)
+    lines.push(`실연 대본: ${segments.length}개 구간 · 총 ${Number.isInteger(total) ? total : total.toFixed(1)}분 (목표 10~15분)`)
+  }
+
+  // 채점 셀프체크 항목 수
+  const rubricItems = Array.isArray(rubric.items) ? rubric.items : []
+  if (rubricItems.length > 0) lines.push(`채점 셀프체크: ${rubricItems.length}개 관점 자기평가`)
+
+  // 성취기준
+  if (standards.length > 0) lines.push(`관련 성취기준: ${standards.length}개`)
+
+  // 진행률 (demo 보드 3장 기준)
+  lines.push(`실연 준비 진행: ${confirmedCount}/${totalProcedures}장 작성 완료`)
+
+  return lines
+}
+
 // ════════════════════════════════════════════
 // HTML 보고서 생성
 // ════════════════════════════════════════════
 
 export function generateHTML(data) {
-  const { project, designMap, messageStats, participants, standards, procedureStatus, confirmedCount, totalProcedures, skipMap = {} } = data
+  const { project, mode, designMap, messageStats, participants, standards, procedureStatus, confirmedCount, totalProcedures, skipMap = {} } = data
+  const isDemo = mode === 'demo'
+  const coverSubtitle = isDemo ? '임용 수업 실연 준비 보고서' : '융합 수업 설계 보고서'
+  const progressLabel = isDemo ? `${confirmedCount}/${totalProcedures}장 작성` : `${confirmedCount}/${totalProcedures} 절차 완료`
   const createdDate = new Date(project.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
   const now = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
   const summary = generateExecutiveSummary(data)
@@ -509,7 +581,7 @@ export function generateHTML(data) {
   <div class="cover">
     <div class="cover-top">
       ${logoBase64 ? `<img src="${logoBase64}" alt="" class="cover-logo">` : ''}
-      <span class="cover-brand">커리큘럼 위버 · 융합 수업 설계 보고서</span>
+      <span class="cover-brand">커리큘럼 위버 · ${coverSubtitle}</span>
     </div>
     <h1>${esc(project.title)}</h1>
     ${project.description ? `<p class="cover-desc">${esc(project.description)}</p>` : ''}
@@ -517,7 +589,7 @@ export function generateHTML(data) {
       ${workspaceName ? `<span><span class="prop-label">워크스페이스</span><span class="prop-value">${esc(workspaceName)}</span></span>` : ''}
       <span><span class="prop-label">생성일</span><span class="prop-value">${createdDate}</span></span>
       <span><span class="prop-label">보고서</span><span class="prop-value">${now}</span></span>
-      <span><span class="prop-label">진행</span><span class="prop-value">${confirmedCount}/${totalProcedures} 절차 완료</span></span>
+      <span><span class="prop-label">진행</span><span class="prop-value">${progressLabel}</span></span>
     </div>
   </div>
 `
@@ -548,7 +620,7 @@ export function generateHTML(data) {
   html += `<hr class="divider">
   <div class="section-title">요약</div>
   <div class="stats-row">
-    <div class="stat-box"><div class="stat-num">${confirmedCount}</div><div class="stat-label">완료 절차</div></div>
+    <div class="stat-box"><div class="stat-num">${confirmedCount}</div><div class="stat-label">${isDemo ? '작성 완료' : '완료 절차'}</div></div>
     <div class="stat-box"><div class="stat-num">${messageStats.total}</div><div class="stat-label">전체 대화</div></div>
     <div class="stat-box"><div class="stat-num">${messageStats.teacher}</div><div class="stat-label">교사 메시지</div></div>
     <div class="stat-box"><div class="stat-num">${messageStats.ai}</div><div class="stat-label">AI 응답</div></div>
@@ -576,8 +648,13 @@ export function generateHTML(data) {
     }
   }
 
-  // ── Phase별 절차 보드 ──
-  for (const phase of PHASE_LIST) {
+  // ── 시연 모드: demo 보드 3장을 순서대로 렌더 (협력 Phase 트랙 미사용) ──
+  if (isDemo) {
+    html += renderDemoBoardsHTML(designMap, procedureStatus)
+  }
+
+  // ── Phase별 절차 보드 ── (협력 모드 전용)
+  for (const phase of (isDemo ? [] : PHASE_LIST)) {
     const procedures = getProceduresByPhase(phase.id)
     const phaseColor = PHASE_COLORS[phase.id] || '#64748b'
 
@@ -677,6 +754,51 @@ export function generateHTML(data) {
 
   // 심층 방어: 보드/대화 원문에 내부 절차 코드가 남아 있어도 최종 문서에는 표시 코드만
   return replaceInternalProcedureCodes(html)
+}
+
+/**
+ * 시연 모드 demo 보드 3장(교수학습과정안·실연 대본·채점 셀프체크)을 HTML로 렌더.
+ * 협력 Phase 헤더/생략 표기/코어 절차 참조 없이, demo 보드만 순서대로 출력한다.
+ */
+function renderDemoBoardsHTML(designMap, procedureStatus) {
+  const demoColor = '#8b5cf6'
+  let html = `
+  <div class="phase-header" style="border-left-color: ${demoColor};">
+    <span>🎓</span>
+    임용 수업 실연 준비
+    <span class="phase-badge" style="background:${demoColor};">DEMO</span>
+  </div>`
+
+  for (const { code, icon } of DEMO_REPORT_BOARDS) {
+    const boardType = BOARD_TYPES[code]
+    const label = BOARD_TYPE_LABELS[boardType] || boardType
+    const design = designMap[code]
+    const sections = design ? renderBoardContent(boardType, design.content) : null
+    if (!sections) continue
+
+    const status = procedureStatus[code] || 'empty'
+    const statusLabel = status === 'confirmed' ? '작성 완료' : status === 'draft' ? '초안' : ''
+    const statusClass = status === 'confirmed' ? 'status-confirmed' : status === 'draft' ? 'status-draft' : 'status-empty'
+
+    html += `
+  <div class="proc-block">
+    <div class="proc-header">
+      <span class="proc-code" style="background:${demoColor};">${esc(icon)}</span>
+      ${esc(label)}
+      ${statusLabel ? `<span class="proc-status ${statusClass}">${statusLabel}</span>` : ''}
+    </div>`
+    html += renderSectionsHTML(sections)
+
+    // AI 점검 결과(Check 필드)
+    if (design?.content) {
+      const checkFields = getCheckFields(boardType, design.content)
+      for (const cf of checkFields) {
+        html += `<div class="check-result"><div class="check-label">AI 점검: ${esc(cf.label)}</div>${esc(cf.value)}</div>`
+      }
+    }
+    html += `</div>`
+  }
+  return html
 }
 
 /**
@@ -858,17 +980,20 @@ function renderGraphHTML(label, nodes, edges) {
 // ════════════════════════════════════════════
 
 export function generateMarkdown(data) {
-  const { project, designMap, messageStats, participants, standards, procedureStatus, confirmedCount, totalProcedures, skipMap = {} } = data
+  const { project, mode, designMap, messageStats, participants, standards, procedureStatus, confirmedCount, totalProcedures, skipMap = {} } = data
+  const isDemo = mode === 'demo'
   const createdDate = new Date(project.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
   const now = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
   const summary = generateExecutiveSummary(data)
 
   let md = `# ${project.title}\n\n`
-  md += `> TADDs-DIE 협력적 수업 설계 보고서\n\n`
+  md += isDemo ? `> 임용 수업 실연 준비 보고서\n\n` : `> TADDs-DIE 협력적 수업 설계 보고서\n\n`
   if (project.description) md += `${project.description}\n\n`
   md += `- **생성일**: ${createdDate}\n`
   md += `- **보고서 생성**: ${now}\n`
-  md += `- **설계 진행**: ${confirmedCount}/${totalProcedures} 절차 완료\n\n`
+  md += isDemo
+    ? `- **실연 준비 진행**: ${confirmedCount}/${totalProcedures}장 작성 완료\n\n`
+    : `- **설계 진행**: ${confirmedCount}/${totalProcedures} 절차 완료\n\n`
 
   // 참여자
   if (participants.length > 0) {
@@ -886,7 +1011,7 @@ export function generateMarkdown(data) {
   // 요약
   md += `## 요약\n\n`
   md += `| 항목 | 수치 |\n|------|------|\n`
-  md += `| 완료 절차 | ${confirmedCount}/${totalProcedures} |\n`
+  md += `| ${isDemo ? '작성 완료' : '완료 절차'} | ${confirmedCount}/${totalProcedures} |\n`
   md += `| 전체 대화 | ${messageStats.total} |\n`
   md += `| 교사 메시지 | ${messageStats.teacher} |\n`
   md += `| AI 응답 | ${messageStats.ai} |\n\n`
@@ -914,8 +1039,13 @@ export function generateMarkdown(data) {
 
   md += `---\n\n`
 
-  // Phase별 절차
-  for (const phase of PHASE_LIST) {
+  // 시연 모드: demo 보드 3장을 순서대로 렌더 (협력 Phase 트랙 미사용)
+  if (isDemo) {
+    md += renderDemoBoardsMD(designMap, procedureStatus)
+  }
+
+  // Phase별 절차 (협력 모드 전용)
+  for (const phase of (isDemo ? [] : PHASE_LIST)) {
     const procedures = getProceduresByPhase(phase.id)
     const phaseIcon = PHASE_ICONS[phase.id] || ''
 
@@ -973,6 +1103,33 @@ export function generateMarkdown(data) {
 
   // 심층 방어: 보드/대화 원문에 내부 절차 코드가 남아 있어도 최종 문서에는 표시 코드만
   return replaceInternalProcedureCodes(md)
+}
+
+/**
+ * 시연 모드 demo 보드 3장을 Markdown으로 렌더 (HTML 렌더러의 MD 버전).
+ */
+function renderDemoBoardsMD(designMap, procedureStatus) {
+  let md = `## 🎓 임용 수업 실연 준비\n\n`
+  for (const { code, icon } of DEMO_REPORT_BOARDS) {
+    const boardType = BOARD_TYPES[code]
+    const label = BOARD_TYPE_LABELS[boardType] || boardType
+    const design = designMap[code]
+    const sections = design ? renderBoardContent(boardType, design.content) : null
+    if (!sections) continue
+
+    const status = procedureStatus[code] || 'empty'
+    const statusTag = status === 'confirmed' ? ' [작성 완료]' : status === 'draft' ? ' [초안]' : ''
+    md += `### ${icon} ${label}${statusTag}\n\n`
+    md += renderSectionsMD(sections)
+
+    if (design?.content) {
+      const checkFields = getCheckFields(boardType, design.content)
+      for (const cf of checkFields) {
+        md += `> **AI 점검: ${cf.label}**\n>\n> ${cf.value.replace(/\n/g, '\n> ')}\n\n`
+      }
+    }
+  }
+  return md
 }
 
 function renderSectionsMD(sections) {

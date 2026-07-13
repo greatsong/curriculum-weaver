@@ -619,6 +619,8 @@ chatRouter.post('/message', async (req, res) => {
   const mentionedRaw = req.body?.mentioned_material_ids
   const selectedRaw = req.body?.selected_material_ids
   const selectionExplicit = req.body?.material_selection_explicit === true
+  // 채점관 렌즈(코치↔채점관 강도 토글) — 시연 모드에서만 buildSystemPrompt가 반영. 클라 신뢰하나 서버가 isDemo로 게이트.
+  const examinerLensRequested = req.body?.examiner_lens === true
   // 하위 호환: stage → procedure
   const activeProcedure = procedure || req.body.stage
 
@@ -776,6 +778,8 @@ chatRouter.post('/message', async (req, res) => {
       standardLinks,
       mode: isDemo ? 'demo' : undefined,
       tone: isDemo ? 'coaching' : undefined,
+      // 채점관 렌즈는 시연 모드에서만 유효 — 협력 모드 요청에 섞여 와도 무시된다.
+      examinerLens: isDemo ? examinerLensRequested : undefined,
     }
 
     // ── 진단 로그: 자료가 실제로 프롬프트에 흘러가는지 추적 (Railway 로그용) ──

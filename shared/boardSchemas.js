@@ -497,6 +497,27 @@ export const BOARD_SCHEMAS = {
     ],
     empty: { segments: [], totalDurationCheck: '' },
   },
+
+  // ─── [시연 모드] 채점 셀프체크 루브릭 (demo_rubric → demo_rubric) ───
+  // 임용 2차 수업 실연 후, 예비교사가 채점관 관점으로 자신의 과정안·대본을 스스로 점검하는 루브릭.
+  // 교과 무관 공통 관점(성취기준 도달도·학생활동 비중·발문 위계·목표-활동-평가 정렬 등)으로 시작하며,
+  // 각 관점마다 자기평가(상/중/하)와 근거·개선점을 적는다. "셀프체크 생성" 버튼이 과정안·대본을 근거로
+  // AI가 items 표 초안을 <ai_suggestion>으로 채운다. 렌더러/제안 경로(table/textarea)는 이미 검증됨.
+  // 기존 협력 보드 스키마는 위에서 전부 불변 — 아래는 추가만.
+  demo_rubric: {
+    fields: [
+      { name: 'items', label: '채점 셀프체크 항목', type: 'table', required: true,
+        description: '임용 채점 관점별로 스스로 평가(상/중/하)하고, 그 근거와 개선점을 적는다',
+        columns: [
+          { name: 'criterion', label: '채점 관점' },     // 성취기준 도달도 / 학생활동 비중 / 발문 위계 / 목표-활동-평가 정렬 등
+          { name: 'selfRating', label: '자기평가' },      // 상 / 중 / 하 (또는 점수)
+          { name: 'evidence', label: '근거·개선점' },     // 그렇게 평가한 근거 + 어떻게 개선할지
+        ] },
+      { name: 'overallComment', label: '종합 코멘트', type: 'textarea', required: false,
+        description: '채점관 관점에서 본 이 실연의 강점과 최우선 개선 1~2가지 종합' },
+    ],
+    empty: { items: [], overallComment: '' },
+  },
 }
 
 // ──────────────────────────────────────────

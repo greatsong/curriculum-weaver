@@ -27,12 +27,14 @@ import ContinueSimulationButton from '../components/ContinueSimulationButton'
 // 시연 모드 자립 보드 코드 (BOARD_TYPES['demo_lesson_plan']='lesson_plan', ['demo_script']='demo_script')
 const DEMO_LESSON_PLAN = 'demo_lesson_plan'
 const DEMO_SCRIPT = 'demo_script'
+const DEMO_RUBRIC = 'demo_rubric'
 // 시연 얕은 스텝 → 커서(보드) 코드 매핑. 'standards'는 DemoStandardsPanel을 보여주므로
 // 채팅/보드 기본 커서는 교수학습과정안으로 둔다.
 const DEMO_STEP_PROCEDURE = {
   standards: DEMO_LESSON_PLAN,
   plan: DEMO_LESSON_PLAN,
   script: DEMO_SCRIPT,
+  rubric: DEMO_RUBRIC,
 }
 
 // Error Boundary — ChatPanel 등 하위 컴포넌트 크래시 시 전체 페이지 보호

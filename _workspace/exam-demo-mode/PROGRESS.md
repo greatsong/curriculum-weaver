@@ -124,6 +124,49 @@
 - 코치/대본 프롬프트 문구는 ProcedureCanvas 하드코딩 — 루브릭 트리거까지 늘면 상수화 검토(문구 3종째).
 - 타이밍 합계 로직은 클라(DemoScriptTimingSummary)·서버(buildDemoScriptCoherenceContext) 두 곳에 각각 있음(공유 유틸 아님) — minutes 파싱 규칙 변경 시 양쪽 동기 필요.
 
+### Stage 4 — 채점 셀프체크 루브릭 + 채점관 렌즈 + 보고서 demo 분기 (MVP 완료, 2026-07-13)
+브랜치 `feat/demo-mode` (Stage 3=cb011d9 위에 이어감). 모든 분기 `isDemo`/`mode==='demo'` opt-in, 협력 경로 불변. 공유 파일은 추가만. migration 0건.
+
+**공유 상수·스키마 (추가만 — 기존 엔트리 불변)**
+- `shared/constants.js` — `BOARD_TYPES['demo_rubric']='demo_rubric'`, `DEMO_BOARD_TYPES`에 `'demo_rubric'` 추가, `BOARD_TYPE_LABELS.demo_rubric='채점 셀프체크'`. (Stage 3 패턴 그대로)
+- `shared/boardSchemas.js` — `BOARD_SCHEMAS.demo_rubric`: **items(table: 채점 관점/자기평가/근거·개선점)** + `overallComment`(textarea). `empty={items:[],overallComment:''}`. 교과 무관 공통 채점 관점(성취기준 도달도·학생활동 비중·발문 위계·목표-활동-평가 정렬 등).
+
+**서버 (aiAgent.js / chat.js)**
+- `DEMO_PROC_INFO.demo_rubric` 추가(폴백). `buildDemoCoherenceContext`에 `boardType==='demo_rubric'` 분기 → 신설 `buildDemoRubricCoherenceContext`(lesson_plan·demo_script를 근거로 채점 관점 커버리지·자기평가 근거를 점검, 핵심 관점 누락 지적). §7 coherence_check `against` 토큰 3분기화(demo_rubric=`rubric-selfcheck`).
+- **examinerLens(채점관 렌즈)**: `buildSystemPrompt({..., examinerLens})` 파라미터 추가. `isDemo && examinerLens`일 때만 코치 톤 위에 **[채점관 렌즈 — 강도 상향]** 지시 블록 주입(격려 최소화·감점 요인 우선순위·개선 대안 동반). 협력 모드는 examinerLens 무시. `chat.js`가 `req.body.examiner_lens`를 읽어 `isDemo`일 때만 context에 전달(클라 불신·서버 게이트).
+
+**프론트**
+- `DemoStepNav.jsx` — ④ `{id:'rubric',label:'채점 셀프체크'}` 스텝 추가. `ProjectPage.jsx` — `DEMO_RUBRIC` + `DEMO_STEP_PROCEDURE.rubric` 매핑.
+- `ProcedureCanvas.jsx` — ① demo 헤더 description에 demo_rubric 분기 ② **`ExaminerLensToggle`**(신설) — 코치↔채점관 강도 토글, chatStore `examinerLens`/`setExaminerLens` 구독 ③ **`DemoRubricToolbar`**(신설, `boardType==='demo_rubric'` 게이트) — "셀프체크 생성" 버튼이 과정안·대본 근거 루브릭 초안 코치 프롬프트를 sendMessage. rubric 보드는 범용 BoardCard로 렌더.
+- `chatStore.js` — `examinerLens` state + setter, sendMessage가 `examiner_lens`를 요청 바디에 실음(협력 모드는 서버가 무시).
+
+**reportGenerator.js — mode 분기 (§6)**
+- `collectReportData` — `isDemo=learner_context.demo===true` → 반환 데이터에 `mode` 포함. demo면 procedureStatus/confirmedCount/totalProcedures를 **demo 보드 3장(lesson_plan·demo_script·demo_rubric) 기준**으로 계산(코어 절차 순회·getActiveProcedures 우회). 협력 경로는 else로 불변.
+- `generateExecutiveSummary` → demo면 신설 `generateDemoSummary`(단원·차시·본시목표 수·핵심발문 수·실연 총시간·셀프체크 항목 수·진행률). 융합 주제/통합목표/참여교과 하드코딩 대체.
+- `generateHTML`/`generateMarkdown` — `mode` 분기: 표지 부제·진행률 라벨(demo="N/3장 작성")·요약 stat 라벨을 demo 문구로, Phase 트랙 루프 대신 신설 `renderDemoBoardsHTML`/`renderDemoBoardsMD`(demo 보드 3장만, 코어 절차 참조 없음). 범용 renderSectionsHTML/MD·getCheckFields 재사용. 협력은 `if(!isDemo)`/`isDemo?[]:PHASE_LIST`로 완전 불변.
+- `report.js`는 무변경 — mode를 collectReportData가 프로젝트 표식으로 자체 결정(라우트가 클라 신뢰 안 함).
+
+**검증 (백엔드 4107 재기동 + 프론트 4006, dev-bypass, 실채팅·실보고서)**
+- ④ 스텝: demo_rubric 보드 렌더(헤더·피드백강도 토글·셀프체크 생성 도우미·items 표), 편집 가능.
+- **채점관 렌즈(실채팅)**: 토글 '채점관' ON → 실제 AI 응답이 "격려보다 냉정한 평가가 필요하다고 하셨으니, 감점 요인부터 명확히 짚겠습니다", "가장 치명적인 감점 요인 (우선순위) 1순위…감점 대상입니다"로 채점관 강도 상향 확인. `<ai_suggestion>`로 6개 채점 관점(성취기준 도달도·학생활동 비중·발문 위계·목표-활동-평가 정렬·시간 배분·판서·전달) items 표 + overallComment 생성 → 수락 시 보드 저장. coherence_check(warning)도 핵심 관점 커버리지 점검 반영.
+- **demo 보고서(실제 생성, API)**: HTML/MD 200. 표지 "임용 수업 실연 준비 보고서", 본문에 교수학습과정안·실연 대본·타이밍·채점 셀프체크 3장 + 루브릭 관점, 진행률 "3/3장 작성 완료", **코어 절차 코드(T-1-1/A-1-2/A-2-2/T-2-1) 누출 0·에러 0**.
+- **협력 보고서 회귀 없음**: 실제 협력 프로젝트 3건 HTML/MD 200, "융합 수업 설계 보고서"·"N/19 절차 완료"·demo 문구 누출 0.
+- 봉인 테스트 `vocabularyIsolation.test.js` **36/36**, 서버 **180/180**, 클라 **52/52** 통과(완화 없음).
+
+**MVP 5기능 전체 완료 상태 (동작 확인)**
+1. 시연 진입·격리(Stage 0) — /demo-prep→개인WS·demo 프로젝트, 팀 UI 은닉 ✅
+2. 교수학습과정안 보드 + AI 코치 demo 분기(Stage 1) — 융합가드 비활성·코치톤·ai_suggestion ✅
+3. 발문·판서 트리거 + 정합성 점검(Stage 2) — DemoGenerateToolbar·목표-활동-평가 삼각 점검 ✅
+4. 실연 대본·타이밍(Stage 3) — demo_script·10~15분 합계 검증·과정안 근거 대본 생성 ✅
+5. 채점 셀프체크 + 채점관 렌즈 + 보고서 demo 분기(Stage 4) — demo_rubric·examinerLens·demo 보고서 ✅
+
+**배포 전 남은 점검**
+- 헤더 "보고서" 버튼은 demo에서 preview/다운로드 시 위 API를 그대로 호출(무변경) — UI에서 한 번 더 클릭 확인 권장.
+- examinerLens는 chatStore 전역 state라 데모 스텝 전환 후에도 유지(설계상 사용자 선택 강도 유지) — 협력 프로젝트로 이동 시에도 값이 남지만 서버가 isDemo로 무시하므로 무해. 필요 시 프로젝트 진입 시 리셋 검토.
+- 코치/대본/루브릭 프롬프트 문구가 ProcedureCanvas 하드코딩(3종) — 상수화 검토(기능엔 영향 없음).
+- 타이밍/루브릭 데이터 파싱 규칙은 클라·서버 각각 존재(공유 유틸 아님) — 규칙 변경 시 양쪽 동기.
+- demo continue(이어서 시뮬레이션)는 데모에서 이미 은닉(Stage 2) — 코어 절차 가정 잔존하나 demo 미노출이라 무해.
+
 ## 결정·변경 이력
 - migration: MVP 0건(learner_context jsonb에 demo 표식). 향후 projects.mode 컬럼 승격 검토.
 - 시연 보드 코드는 `demo_*` 스네이크형(어휘격리 정규식 미매칭, PROCEDURES 미등록).
