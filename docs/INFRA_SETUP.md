@@ -100,10 +100,12 @@ ANTHROPIC_API_KEY=sk-ant-...
 ### 4-2. 시드 스크립트 실행
 
 ```bash
-node scripts/seed-standards-to-supabase.mjs
+node scripts/seed-standards-from-canonical.mjs          # 미리보기(dry-run)가 필요하면 --dry-run
 ```
 
-이 스크립트는 `server/data/standards.js`와 `server/data/standards_social.js`의 성취기준 데이터를 Supabase `standards` 테이블에 적재합니다.
+이 스크립트는 정본 `server/data/standards.js`(4,856개)의 성취기준 데이터를 Supabase `standards` 테이블에 `code` 기준 upsert로 적재합니다(기존 id·메타·embedding 보존, 비파괴).
+
+> 과거 문서에 있던 `seed-standards-to-supabase.mjs`는 DEPRECATED로 `scripts/legacy/`에 보관 중이며 실행하면 안 됩니다.
 
 ### 4-3. 교과 간 연결 데이터 적재
 
