@@ -696,7 +696,7 @@ export default function GuidePage() {
                 { icon: '&#128204;', title: '안내', desc: '다음 절차를 안내하고 설계 방향을 제시' },
                 { icon: '&#9997;', title: '생성', desc: '맥락에 맞는 보드 초안을 자동 작성' },
                 { icon: '&#128269;', title: '점검', desc: '설계 원리 기반 피드백과 개선 제안' },
-                { icon: '&#128221;', title: '기록', desc: '대화 내용을 보드에 자동 반영' },
+                { icon: '&#128221;', title: '기록', desc: '대화 내용을 정리해 보드 반영을 제안' },
               ].map((r, i) => (
                 <div key={i} className="bg-slate-50 rounded-xl p-3.5 border border-slate-100">
                   <span className="text-lg" dangerouslySetInnerHTML={{ __html: r.icon }} />
