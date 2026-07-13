@@ -1,0 +1,27 @@
+{
+  "total": 4856,
+  "dup_codes": [],
+  "dup_codes_count": 0,
+  "counts": {
+    "pua": 0,
+    "headless_strict": 0,
+    "headless_loose_only": 0,
+    "explanation": 0,
+    "page_footer": 0,
+    "truncated": 0,
+    "empty_or_tiny": 0,
+    "short": 6,
+    "code_intrusion": 0,
+    "no_terminal_punct": 0
+  },
+  "classify_flag_counts": {
+    "ok": 4856
+  },
+  "dist_no_terminal_punct": {},
+  "dist_pua": {},
+  "dist_empty_or_tiny": {},
+  "dist_short": {
+    "한문": 4,
+    "영어": 2
+  }
+}

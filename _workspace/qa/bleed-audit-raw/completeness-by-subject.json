@@ -1,0 +1,135 @@
+{
+  "과학": {
+    "n": 473,
+    "expl_empty": 198,
+    "appnotes_empty": 43,
+    "area_empty": 348,
+    "kw_empty": 0
+  },
+  "과학계열전문": {
+    "n": 369,
+    "expl_empty": 250,
+    "appnotes_empty": 369,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "교양": {
+    "n": 155,
+    "expl_empty": 55,
+    "appnotes_empty": 155,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "국어": {
+    "n": 257,
+    "expl_empty": 104,
+    "appnotes_empty": 253,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "기술·가정": {
+    "n": 176,
+    "expl_empty": 66,
+    "appnotes_empty": 176,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "도덕": {
+    "n": 103,
+    "expl_empty": 103,
+    "appnotes_empty": 103,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "미술": {
+    "n": 39,
+    "expl_empty": 23,
+    "appnotes_empty": 39,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "사회": {
+    "n": 145,
+    "expl_empty": 0,
+    "appnotes_empty": 0,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "산업수요전문": {
+    "n": 1492,
+    "expl_empty": 57,
+    "appnotes_empty": 24,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "수학": {
+    "n": 435,
+    "expl_empty": 241,
+    "appnotes_empty": 435,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "실과": {
+    "n": 39,
+    "expl_empty": 18,
+    "appnotes_empty": 39,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "영어": {
+    "n": 209,
+    "expl_empty": 99,
+    "appnotes_empty": 209,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "예술계열전문": {
+    "n": 483,
+    "expl_empty": 123,
+    "appnotes_empty": 478,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "음악": {
+    "n": 39,
+    "expl_empty": 2,
+    "appnotes_empty": 39,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "정보": {
+    "n": 105,
+    "expl_empty": 56,
+    "appnotes_empty": 105,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "제2외국어": {
+    "n": 134,
+    "expl_empty": 102,
+    "appnotes_empty": 134,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "체육": {
+    "n": 100,
+    "expl_empty": 20,
+    "appnotes_empty": 100,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "체육계열전문": {
+    "n": 91,
+    "expl_empty": 3,
+    "appnotes_empty": 88,
+    "area_empty": 0,
+    "kw_empty": 0
+  },
+  "한문": {
+    "n": 12,
+    "expl_empty": 7,
+    "appnotes_empty": 12,
+    "area_empty": 0,
+    "kw_empty": 0
+  }
+}

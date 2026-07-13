@@ -10,6 +10,7 @@
 import XLSX from 'xlsx';
 import { readdirSync, statSync, writeFileSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
+import { cleanExplanation } from '../server/lib/explanationCleaner.js';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -238,8 +239,13 @@ function parse7SheetFile(filePath) {
     const cleanCode = String(rawCode).trim();
     const cleanContent = String(row[iContent] || '').trim();
     const cleanArea = String(row[iArea] || '').trim();
-    const cleanExplanation = String(row[iExplanation] || '').trim();
-    const cleanAppNotes = String(row[iAppNotes] || '').trim();
+    // 경계로직 내장: xlsx "해설" 셀에 병합된 bleed(다음코드·푸터·(나)블록)를 정제.
+    // (나) 적용 시 고려 사항은 정위치 application_notes로 분리한다.
+    const rawExplanation = String(row[iExplanation] || '').trim();
+    const rawAppNotes = String(row[iAppNotes] || '').trim();
+    const cleaned = cleanExplanation(rawExplanation, cleanCode);
+    const cleanExpl = cleaned.explanation;
+    const cleanAppNotes = rawAppNotes || cleaned.applicationNotes;
 
     if (!cleanContent) continue;
 
@@ -266,7 +272,7 @@ function parse7SheetFile(filePath) {
       domain: '',
       content: cleanContent,
       keywords: extractKeywords(cleanContent + ' ' + cleanArea),
-      explanation: cleanExplanation,
+      explanation: cleanExpl,
       application_notes: cleanAppNotes,
     });
   }

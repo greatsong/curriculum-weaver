@@ -25,3 +25,7 @@ scripts/mission_reports/
 
 # Supabase CLI 임시 디렉터리 (프로젝트 ref 등 노출 방지)
 supabase/.temp/
+
+# explanation bleed 감사 로컬 백업·산출물 (2026-07-13)
+server/data/backup_20260713_*/
+scripts/results/

@@ -1,0 +1,29 @@
+{
+  "total": 4856,
+  "content_classify": {
+    "ok": 4856
+  },
+  "explanation": {
+    "nonEmpty": 3329,
+    "next_code": 105,
+    "guidance": 196,
+    "footer": 35,
+    "headless_stub": 145,
+    "pua": 7,
+    "union": 420
+  },
+  "pua_by_field": {
+    "content": 0,
+    "explanation": 7,
+    "application_notes": 0,
+    "keywords": 0,
+    "area": 0
+  },
+  "keywords": {
+    "not_array": 0,
+    "has_long": 0,
+    "has_code": 0,
+    "empty": 0,
+    "total_tokens": 24239
+  }
+}
