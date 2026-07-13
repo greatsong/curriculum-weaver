@@ -161,6 +161,12 @@ export function ScenarioPanel({ scenario, onClose, subjectOf, standardOf, basket
   const startProject = () => {
     const missing = pairCodes.filter(c => !basket.has(c))
     if (missing.length > 0) onToggleBasket(missing)
+    // AI가 지은 시나리오 제목·핵심을 프로젝트 제목·설명 추천으로 넘긴다 (사람이 모달에서 손봄)
+    try {
+      if (sc?.title) sessionStorage.setItem('cw_project_title_suggestion', sc.title)
+      const desc = [sc?.driving_question, sc?.situation].find(Boolean)
+      if (desc) sessionStorage.setItem('cw_project_desc_suggestion', desc)
+    } catch { /* noop */ }
     navigate('/workspaces?createProject=1')
   }
 

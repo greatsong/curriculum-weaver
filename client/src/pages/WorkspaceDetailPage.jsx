@@ -37,6 +37,8 @@ export default function WorkspaceDetailPage() {
   const [showCreateProject, setShowCreateProject] = useState(false)
   const [showInvite, setShowInvite] = useState(false)
   const [projectTitle, setProjectTitle] = useState('')
+  const [titleSuggested, setTitleSuggested] = useState(false) // AI 추천 제목이 채워졌고 아직 사람이 안 고침
+  const [descSuggested, setDescSuggested] = useState(false)   // AI 추천 설명이 채워졌고 아직 사람이 안 고침
   const [projectDescription, setProjectDescription] = useState('')
   const [projectSubjects, setProjectSubjects] = useState([])
   const [projectGrade, setProjectGrade] = useState('')
@@ -196,6 +198,25 @@ export default function WorkspaceDetailPage() {
       if (groups.length > 0) {
         setProjectSubjects(prev => (prev.length > 0 ? prev : [...new Set([...prev, ...groups])]))
       }
+      // AI 추천 제목 미리 채우기 — 시나리오 제목 우선, 없으면 교과 기반. 사람이 손보라는 신호로 표시.
+      setProjectTitle(prev => {
+        if (prev) return prev // 이미 입력한 게 있으면 존중
+        let suggestion = ''
+        try { suggestion = sessionStorage.getItem('cw_project_title_suggestion') || '' } catch { /* noop */ }
+        sessionStorage.removeItem('cw_project_title_suggestion')
+        if (!suggestion && groups.length > 0) suggestion = `${groups.slice(0, 3).join('·')} 융합 수업`
+        if (suggestion) setTitleSuggested(true)
+        return suggestion
+      })
+      // AI 추천 설명 미리 채우기 (시나리오 핵심 질문/상황)
+      setProjectDescription(prev => {
+        if (prev) return prev
+        let desc = ''
+        try { desc = sessionStorage.getItem('cw_project_desc_suggestion') || '' } catch { /* noop */ }
+        sessionStorage.removeItem('cw_project_desc_suggestion')
+        if (desc) setDescSuggested(true)
+        return desc
+      })
     } catch {
       setDesignBasket([])
     }
@@ -234,6 +255,8 @@ export default function WorkspaceDetailPage() {
 
       setShowCreateProject(false)
       setProjectTitle('')
+      setTitleSuggested(false)
+      setDescSuggested(false)
       setProjectDescription('')
       setProjectSubjects([])
       setProjectGrade('')
@@ -943,20 +966,33 @@ export default function WorkspaceDetailPage() {
           <form onSubmit={handleCreateProject}>
             <h2 style={{ fontSize: 17, fontWeight: 700, margin: '0 0 20px', color: 'var(--color-text-primary)' }}>새 프로젝트 만들기</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <input
-                value={projectTitle}
-                onChange={(e) => setProjectTitle(e.target.value)}
-                placeholder="프로젝트 제목 (예: 3학년 기후변화 융합수업)"
-                autoFocus
-                required
-                style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
-              />
+              <div>
+                <input
+                  value={projectTitle}
+                  onChange={(e) => { setProjectTitle(e.target.value); if (titleSuggested) setTitleSuggested(false) }}
+                  placeholder="프로젝트 제목 (예: 3학년 기후변화 융합수업)"
+                  autoFocus
+                  required
+                  style={{
+                    width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box',
+                    ...(titleSuggested ? { borderColor: 'var(--color-primary)', background: '#f5f3ff' } : {}),
+                  }}
+                />
+                {titleSuggested && (
+                  <p style={{ margin: '5px 2px 0', fontSize: 11.5, color: '#7c3aed' }}>
+                    ✨ AI가 지은 {descSuggested ? '제목·설명' : '제목'} 초안이에요 — 자유롭게 고쳐 보세요
+                  </p>
+                )}
+              </div>
               <textarea
                 value={projectDescription}
-                onChange={(e) => setProjectDescription(e.target.value)}
+                onChange={(e) => { setProjectDescription(e.target.value); if (descSuggested) setDescSuggested(false) }}
                 placeholder="간략한 설명 (선택)"
                 rows={2}
-                style={{ width: '100%', padding: '10px 14px', fontSize: 14, resize: 'none', boxSizing: 'border-box' }}
+                style={{
+                  width: '100%', padding: '10px 14px', fontSize: 14, resize: 'none', boxSizing: 'border-box',
+                  ...(descSuggested ? { borderColor: 'var(--color-primary)', background: '#f5f3ff' } : {}),
+                }}
               />
 
               {/* 학년 선택 */}
