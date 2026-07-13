@@ -81,6 +81,12 @@ const REJUDGE = flag('--rejudge')
 // 성취기준 content 복원(2026-07-11) 후 오염 텍스트 기반 판정을 갱신하는 용도 —
 // quality_score 유무와 무관하게 재판정하고, rationale/theme/hook도 새 판정으로 교체한다.
 const CODES_FILE = (() => { const i = args.indexOf('--codes-file'); return i >= 0 ? args[i + 1] : null })()
+// --touch-codes-file <json>: 후보쌍을 "지정 코드가 한 끝에라도 낀 쌍"으로 한정 (신규 복원 코드 링크 생성용)
+const TOUCH_CODES = (() => {
+  const i = args.indexOf('--touch-codes-file'); if (i < 0) return null
+  const arr = JSON.parse(fs.readFileSync(args[i + 1], 'utf8'))
+  return new Set(arr)
+})()
 // --ids-file <json>: 재판정 대상을 "링크 id 배열"로 정밀 지정 (codes-file은 코드가 낀
 // 링크 전체를 스윕하므로 과잉 — 위험군만 좁혀 재판정할 때 사용).
 // 갱신 정책은 기본 rejudge와 동일: rationale 보존, 빈 theme/hook만 채움, 기각은 0.2.
@@ -262,9 +268,16 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
     }
   }
 
-  const pairs = [...pairMap.entries()]
+  let pairs = [...pairMap.entries()]
     .map(([key, cos]) => { const [a, b] = key.split('|'); return { a, b, cos } })
     .sort((x, y) => y.cos - x.cos)
+
+  // --touch-codes-file: 지정 코드 집합이 한 끝에라도 낀 쌍만 (신규 복원 코드 연결 한정, 기존-기존 증가 방지)
+  if (TOUCH_CODES) {
+    const before = pairs.length
+    pairs = pairs.filter(p => TOUCH_CODES.has(p.a) || TOUCH_CODES.has(p.b))
+    log(`  🎯 --touch-codes: ${TOUCH_CODES.size}개 코드가 낀 쌍만 → ${before} → ${pairs.length}쌍`)
+  }
 
   log(`  비교 ${stats.compared.toLocaleString()}쌍 | 임계값(${CROSS_METHOD ? `바닥 ${CROSS_METHOD_COS_FLOOR}` : MIN_COS}) 미달 ${stats.belowMinCos.toLocaleString()} | 동일교과군 제외 ${stats.sameGroup.toLocaleString()} | 학교급 격차 제외 ${stats.levelGap.toLocaleString()}${CROSS_METHOD ? ` | 비도구쌍 제외 ${stats.notToolPair.toLocaleString()}` : ''}`)
   log(`  기존 링크와 중복 제외 ${stats.existing}쌍 → 신규 후보 ${pairs.length}쌍`)
