@@ -304,7 +304,13 @@ export default function ProjectPage() {
       introRequestedRef.current = true
       const { messages: msgs, introCache } = useChatStore.getState()
       const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
-      const proj = useProjectStore.getState().currentProject
+      // currentProject가 아직 로드되지 않으면 projIsDemo를 신뢰할 수 없어(기본 커서 T-1-1로
+      // 협력 인트로가 새는 경쟁 상태) 메시지 로드처럼 한 차례 대기 후 다시 읽는다.
+      let proj = useProjectStore.getState().currentProject
+      if (!proj || proj.id !== projectId) {
+        await new Promise((r) => setTimeout(r, 1500))
+        proj = useProjectStore.getState().currentProject
+      }
       const isReadOnly = proj?.status === 'simulation' || proj?.status === 'generating' || proj?.status === 'failed' || proj?.title?.startsWith('[시뮬레이션]')
       // 시연 모드는 커서가 T-1-1로 초기화된 순간에 협력 인트로가 생성되지 않도록 데모 보드 코드로 고정한다.
       const projIsDemo = proj?.learner_context?.demo === true

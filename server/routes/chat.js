@@ -381,6 +381,12 @@ chatRouter.post('/procedure-intro', async (req, res) => {
     return res.status(403).json({ error: '시뮬레이션 프로젝트에서는 새 AI 안내를 생성하지 않습니다.' })
   }
 
+  // 시연 모드 프로젝트에는 협력 절차 인트로를 생성하지 않는다(시연은 demo_* 보드 트랙 전용).
+  // 코치 인트로는 /stage-intro의 데모 분기가 담당한다.
+  if (project?.learner_context?.demo === true) {
+    return res.status(400).json({ error: '시연 모드 프로젝트에는 절차 인트로를 생성하지 않습니다.' })
+  }
+
   // 생략된 절차에는 인트로를 생성하지 않는다 (클라도 요청 안 하지만 직접 호출 대비 + 토큰 절약)
   const introSkips = await getProjectSkips(session_id).catch(() => [])
   if (introSkips.some((s) => s.procedure_code === procedure)) {
@@ -467,7 +473,8 @@ chatRouter.post('/stage-intro', async (req, res) => {
   // 여기서는 호환성을 위해 procedure 필드가 있으면 사용
   req.body.procedure = req.body.procedure || req.body.stage
   // procedure-intro 핸들러로 포워딩
-  const { session_id, procedure, aiModel } = req.body
+  let { procedure } = req.body
+  const { session_id, aiModel } = req.body
   if (!session_id || !procedure) {
     return res.status(400).json({ error: '세션 ID와 절차(또는 단계)가 필요합니다.' })
   }
@@ -478,7 +485,15 @@ chatRouter.post('/stage-intro', async (req, res) => {
   }
 
   const introProject = req.project || await getProject(session_id).catch(() => null)
-  const isDemoIntro = introProject?.learner_context?.demo === true && isDemoBoardCode(procedure)
+  // 시연 모드 프로젝트에는 협력 절차 인트로(T-1 팀준비 등)를 절대 서빙하지 않는다.
+  // 클라 경쟁 상태(currentProject 로드 전 기본 커서 T-1-1)로 협력 코드가 들어와도
+  // 데모 보드 코드로 교정해 코치 인트로만 내보낸다(타이밍 무관 최종 방어).
+  const isDemoProject = introProject?.learner_context?.demo === true
+  if (isDemoProject && !isDemoBoardCode(procedure)) {
+    procedure = 'demo_lesson_plan'
+    req.body.procedure = procedure
+  }
+  const isDemoIntro = isDemoProject && isDemoBoardCode(procedure)
 
   // 시연 모드: 자립 보드 코드(demo_lesson_plan)는 PROCEDURES에 없으므로 정적 가이드가 없다.
   // 코치 톤 AI 환영 인트로를 buildProcedureIntroResponse(mode:'demo')로 스트리밍한다.
