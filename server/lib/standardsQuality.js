@@ -101,7 +101,7 @@ export function classifyStandardQuality(content) {
 // (탐지만 — 복원은 scripts/clean-explanation-bleed.mjs. 마커는 그 스크립트와 동일 계열)
 // ────────────────────────────────────────────────────────────────────
 
-/** explanation/application_notes bleed 플래그 종류 (ok 제외) */
+/** explanation/application_notes bleed·완결성 플래그 종류 (ok 제외) */
 export const TEXT_FIELD_FLAGS = [
   'pua_encoding', // HWP 수식 PUA 글리프 잔존
   'foreign_code', // 다른 성취기준 코드 침범 (다음 성취기준 본문 유입)
@@ -109,6 +109,10 @@ export const TEXT_FIELD_FLAGS = [
   'guidance_bleed', // (나) 적용 시 고려 사항 블록이 explanation에 유입 (정위치=application_notes)
   'enum_header', // 영역 열거/번호 헤더 "(가) 성취기준 해설"·"(3) …" 잔존
   'header_stub', // 본문 유실, "성취기준 해설" 헤더 라벨만 잔존
+  // ↓ 완결성/귀속 관문 (2026-07-13 추가 — 반-할루시네이션은 통과하나 실오류인 것들)
+  'content_system_bleed', // 다음 과목 "가. 내용 체계" 표 유입 (교차과목 귀속오류)
+  'unterminated', // 목록/괄호 도중 절단 (쉼표·대시·열린괄호로 끝남)
+  'tail_stub', // explanation이 content 문장 꼬리 어절만 남음 (본문 유실)
 ]
 
 // 모든 코드 포맷 포괄: [12고대02-05]·[10통사1-01-01]·[9기가03-04](한자리)·[공관 02-03-05](공백)
@@ -148,16 +152,24 @@ function hasForeignCodeBleed(text, ownCode) {
  * @param {string} ownCode 이 성취기준의 코드 (자기 코드 인용은 오염 아님)
  * @returns {'ok'|'pua_encoding'|'foreign_code'|'page_footer'|'guidance_bleed'|'enum_header'|'header_stub'}
  */
-export function classifyExplanationQuality(explanation, ownCode = '') {
+const CONTENT_SYSTEM_RE = /(\[[^\]]{1,20}\]|<[^>]{1,20}>)?\s*가\s*\.\s*내용\s*체계/ // "[과목] 가. 내용 체계"
+const UNTERMINATED_RE = /[,，、(（[]\s*$|[가-힣]\s[-–—]\s*$/ // 목록/괄호/대시 도중 절단
+const normNoWs = (t) => (t || '').replace(/\s/g, '')
+
+export function classifyExplanationQuality(explanation, ownCode = '', content = '') {
   const t = (explanation || '').trim()
   if (!t) return 'ok' // 빈값은 대체로 원본부재(정상)
   if (PUA_RE.test(t)) return 'pua_encoding'
   // 본문 유실 헤더 스텁: "성취기준 해설"만 남고 실질 내용 없음
   if (HEADER_STUB_RE.test(t) && t.replace(/\s|성취기준|해설/g, '').length < 3) return 'header_stub'
+  // content 문장 꼬리 어절만 남은 스텁(예: content='…준수한다.' expl='준수한다.')
+  if (content && t.length < 40 && normNoWs(content).endsWith(normNoWs(t)) && normNoWs(t).length >= 3) return 'tail_stub'
+  if (CONTENT_SYSTEM_RE.test(t)) return 'content_system_bleed'
   if (hasForeignCodeBleed(t, ownCode)) return 'foreign_code'
   if (FOOTER_RES.some((re) => re.test(t))) return 'page_footer'
   if (GUIDANCE_BLEED_RE.test(t)) return 'guidance_bleed'
   if (ENUM_HEADER_RE.test(t)) return 'enum_header'
+  if (t.length > 20 && UNTERMINATED_RE.test(t)) return 'unterminated'
   return 'ok'
 }
 
@@ -174,5 +186,7 @@ export function classifyApplicationNotesQuality(notes) {
   if (!t) return 'ok'
   if (PUA_RE.test(t)) return 'pua_encoding'
   if (/^(적용\s*시\s*고려\s*사항|성취기준\s*해설)$/.test(t)) return 'header_stub' // 라벨만 잔존
+  if (CONTENT_SYSTEM_RE.test(t)) return 'content_system_bleed' // 다음 과목 내용체계표 유입
+  if (t.length > 20 && UNTERMINATED_RE.test(t)) return 'unterminated' // 목록/괄호 도중 절단
   return 'ok'
 }

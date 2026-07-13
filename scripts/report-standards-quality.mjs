@@ -152,7 +152,7 @@ const seenExpl = new Set()
 for (const s of ALL_STANDARDS) {
   if (seenExpl.has(s.code)) continue
   seenExpl.add(s.code)
-  const eq = classifyExplanationQuality(s.explanation, s.code)
+  const eq = classifyExplanationQuality(s.explanation, s.code, s.content)
   if (eq !== 'ok') {
     explFlagCounts[eq]++
     if (explSamples[eq].length < sampleCount) explSamples[eq].push(s)
