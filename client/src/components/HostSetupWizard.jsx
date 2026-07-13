@@ -68,10 +68,6 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
   const [enabledAI, setEnabledAI] = useState({ ...AI_ROLE_PRESETS[DEFAULT_AI_ROLE].enabledActions })
 
   const handleAiRoleChange = (roleId) => {
-    if (roleId === 'custom') {
-      setAiRole('custom')
-      return
-    }
     const preset = AI_ROLE_PRESETS[roleId]
     if (preset) {
       setAiRole(roleId)
@@ -360,61 +356,6 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
                   </div>
                 </div>
 
-                {/* 커스텀 토글 */}
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => handleAiRoleChange(aiRole === 'custom' ? DEFAULT_AI_ROLE : 'custom')}
-                    style={{
-                      fontSize: 12,
-                      color: aiRole === 'custom' ? '#2563EB' : '#9CA3AF',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: '4px 0',
-                      fontFamily: 'var(--font-sans, inherit)',
-                      textDecoration: 'underline',
-                    }}
-                  >
-                    {aiRole === 'custom' ? '프리셋으로 돌아가기' : '직접 설정 (커스텀)'}
-                  </button>
-                  {aiRole === 'custom' && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
-                      {[
-                        { key: 'guide', label: '안내', desc: '단계 설명', color: '#3B82F6' },
-                        { key: 'generate', label: '생성', desc: '초안/예시', color: '#F59E0B' },
-                        { key: 'check', label: '점검', desc: '정합성 검토', color: '#22C55E' },
-                        { key: 'record', label: '기록', desc: '자동 저장', color: '#6B7280' },
-                      ].map(({ key, label, desc, color }) => (
-                        <label
-                          key={key}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 10,
-                            padding: '10px 14px',
-                            borderRadius: 10,
-                            border: `1px solid ${enabledAI[key] ? color + '40' : '#E5E7EB'}`,
-                            background: enabledAI[key] ? color + '08' : '#fff',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s',
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={enabledAI[key]}
-                            onChange={() => setEnabledAI((prev) => ({ ...prev, [key]: !prev[key] }))}
-                            style={{ accentColor: color, width: 16, height: 16 }}
-                          />
-                          <div>
-                            <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{label}</span>
-                            <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 4 }}>({desc})</span>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
           )}

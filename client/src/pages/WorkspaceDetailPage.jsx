@@ -83,7 +83,8 @@ export default function WorkspaceDetailPage() {
         check: wc.enabledAI?.check !== false,
         record: wc.enabledAI?.record !== false,
       })
-      setAiRole(wc.aiRole || DEFAULT_AI_ROLE)
+      // 과거에 저장된 'custom'은 미지원 — 기본 프리셋으로 정규화 (커스텀 UI 제거, 2026-07-13)
+      setAiRole(!wc.aiRole || wc.aiRole === 'custom' ? DEFAULT_AI_ROLE : wc.aiRole)
     }
   }, [currentWorkspace])
 
@@ -134,9 +135,6 @@ export default function WorkspaceDetailPage() {
     )
   }
 
-  const toggleAIRole = (role) => {
-    setEnabledAI((prev) => ({ ...prev, [role]: !prev[role] }))
-  }
 
   // 교과/학년 변경 시 성취기준 추천 로드
   const loadRecommendations = useCallback(async (subjects, grade) => {
@@ -833,7 +831,7 @@ export default function WorkspaceDetailPage() {
               </div>
 
               {/* 현재 선택된 역할의 활성화 상태 표시 */}
-              {aiRole && aiRole !== 'custom' && (
+              {aiRole && (
                 <div style={{ marginTop: 10, padding: '10px 14px', background: 'var(--color-bg-tertiary)', borderRadius: 'var(--radius-md)', fontSize: 12, color: 'var(--color-text-secondary)' }}>
                   <span style={{ fontWeight: 600 }}>활성화된 기능: </span>
                   {Object.entries(enabledAI).map(([key, val]) => (
@@ -844,67 +842,6 @@ export default function WorkspaceDetailPage() {
                 </div>
               )}
 
-              {/* 커스텀 세부 조절 */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (aiRole === 'custom') {
-                    setAiRole(DEFAULT_AI_ROLE)
-                    setEnabledAI({ ...AI_ROLE_PRESETS[DEFAULT_AI_ROLE].enabledActions })
-                  } else {
-                    setAiRole('custom')
-                  }
-                }}
-                style={{
-                  marginTop: 8,
-                  fontSize: 12,
-                  color: aiRole === 'custom' ? '#2563EB' : 'var(--color-text-tertiary)',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: '4px 0',
-                  fontFamily: 'var(--font-sans)',
-                  textDecoration: 'underline',
-                }}
-              >
-                {aiRole === 'custom' ? '프리셋으로 돌아가기' : '직접 설정 (커스텀)'}
-              </button>
-              {aiRole === 'custom' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
-                  {[
-                    { key: 'guide', label: '안내', desc: '단계 설명', color: '#3B82F6' },
-                    { key: 'generate', label: '생성', desc: '초안/예시', color: '#F59E0B' },
-                    { key: 'check', label: '점검', desc: '정합성 검토', color: '#22C55E' },
-                    { key: 'record', label: '기록', desc: '자동 저장', color: '#6B7280' },
-                  ].map(({ key, label, desc, color }) => (
-                    <label
-                      key={key}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        padding: '10px 14px',
-                        borderRadius: 'var(--radius-md)',
-                        border: `1px solid ${enabledAI[key] ? color + '40' : 'var(--color-border)'}`,
-                        background: enabledAI[key] ? color + '08' : 'transparent',
-                        cursor: 'pointer',
-                        transition: 'all var(--transition-fast)',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={enabledAI[key]}
-                        onChange={() => toggleAIRole(key)}
-                        style={{ accentColor: color, width: 16, height: 16 }}
-                      />
-                      <div>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)' }}>{label}</span>
-                        <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)', marginLeft: 6 }}>({desc})</span>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              )}
             </SettingsSection>
 
             {/* 1-B: 워크플로우 커스터마이징 */}
