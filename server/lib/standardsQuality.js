@@ -16,6 +16,7 @@ export const QUALITY_FLAGS = [
   'explanation_as_content', // 해설문이 content에 들어감: "이 성취기준은 ..."
   'page_tag_mixed', // PDF 페이지 푸터 혼입: "78 선택 중심 교육과정" 류
   'truncated', // 문장이 중간에 잘림: 종결부호 없이 끝남
+  'cross_ref_fragment', // content가 성취기준이 아니라 타 성취기준 해설의 교차참조 파편("‘[코드] …’와 연계할 수 있다")
 ]
 
 // ── PUA(사설 영역) 문자 탐지 ──
@@ -60,6 +61,10 @@ const EXPLANATION_RE = /^이\s*성취기준은\s/
 const PAGE_TAG_RE = /\d+\s*[가-힣]*\s*(교육과정|편제와|시간 배당)/
 // 문미에서 닫는 따옴표/괄호는 무시하고 종결부호(. ? !)를 확인
 const TRAILING_CLOSERS_RE = /["'’”)\]』」>]+$/
+// 교차참조 파편: 따옴표+성취기준코드(타 성취기준 인용) 또는 "…’와/과 연계할 수 있다" 종결
+const CROSS_REF_RE = /[’'"‘][^’'"‘\n]*\[[0-9가-힣][^\]]*[0-9]-[0-9]/ // ‘[12사표02-02] …’
+  // eslint-disable-next-line
+const CROSS_REF_TAIL_RE = /[’'"”]\s*(와|과)\s*연계할\s*수\s*있다\s*\.?\s*$/
 
 /**
  * 성취기준 content의 품질 플래그를 분류한다.
@@ -80,6 +85,11 @@ export function classifyStandardQuality(content) {
 
   // 2. 해설문이 content에 들어감
   if (EXPLANATION_RE.test(c)) return 'explanation_as_content'
+
+  // 2-1. 교차참조 파편: content가 성취기준이 아니라 타 성취기준 해설의
+  //      교차참조 문장("‘[코드] …’와 연계할 수 있다")에서 잘려 들어온 것.
+  //      성취기준 본문은 코드/따옴표를 품지 않으므로 강한 신호.
+  if (CROSS_REF_RE.test(c) || CROSS_REF_TAIL_RE.test(c)) return 'cross_ref_fragment'
 
   // 3. 페이지 푸터 혼입
   if (PAGE_TAG_RE.test(c)) return 'page_tag_mixed'
