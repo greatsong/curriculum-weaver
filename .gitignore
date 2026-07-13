@@ -29,3 +29,6 @@ supabase/.temp/
 # explanation bleed 감사 로컬 백업·산출물 (2026-07-13)
 server/data/backup_20260713_*/
 scripts/results/
+
+# 복원 파이프라인 재현가능 산출물
+scripts/reconcile/results/
