@@ -6,16 +6,32 @@
  * (standardsValidator.js는 자체 탐지 없이 store가 매긴 _quality 플래그만 소비)
  *
  * 플래그 우선순위 (복수 해당 시 앞선 것 하나만):
- *   headless_explanation > explanation_as_content > page_tag_mixed > truncated
+ *   pua_encoding > headless_explanation > explanation_as_content > page_tag_mixed > truncated
  */
 
 /** _quality 플래그 종류 (ok 제외) */
 export const QUALITY_FLAGS = [
+  'pua_encoding', // HWP 수식 폰트의 사설 영역(PUA) 글리프 잔존: 수식이 깨진 채 유입 (예: 수학 성취기준 y=xⁿ)
   'headless_explanation', // 문두 결손 해설체: 조사(은/는/을/를/와/과)+공백으로 시작
   'explanation_as_content', // 해설문이 content에 들어감: "이 성취기준은 ..."
   'page_tag_mixed', // PDF 페이지 푸터 혼입: "78 선택 중심 교육과정" 류
   'truncated', // 문장이 중간에 잘림: 종결부호 없이 끝남
 ]
+
+// ── PUA(사설 영역) 문자 탐지 ──
+// U+E000–U+F8FF: HWP 수식/심볼 폰트 글리프가 텍스트 추출 시 코드포인트만 살아남은 경우.
+// 표준 폰트에 글리프가 없어 폴백도 안 돼(네모·엉뚱한 글자로 렌더) 반드시 원문 복원 대상.
+// 재발 지점: xlsx/HWP 재파싱(parse-xlsx-to-standards.mjs). 이 게이트로 유입을 조기 차단한다.
+export const PUA_RE = /[-\u{F0000}-\u{FFFFD}\u{100000}-\u{10FFFD}]/u
+
+/**
+ * content에 PUA(사설 영역) 문자가 있는지 판정.
+ * @param {string} content
+ * @returns {boolean}
+ */
+export function hasPuaChars(content) {
+  return PUA_RE.test(content || '')
+}
 
 // ── 완전 제거 대상 (성취기준으로 볼 수 없는 content) ──
 const REMOVE_PATTERNS = [
@@ -50,11 +66,14 @@ const TRAILING_CLOSERS_RE = /["'’”)\]』」>]+$/
  * 제거 대상 판정(shouldRemoveStandard)은 하지 않는다 — 제거 후 남은 항목에 대해 호출할 것.
  *
  * @param {string} content
- * @returns {'ok'|'headless_explanation'|'explanation_as_content'|'page_tag_mixed'|'truncated'}
+ * @returns {'ok'|'pua_encoding'|'headless_explanation'|'explanation_as_content'|'page_tag_mixed'|'truncated'}
  */
 export function classifyStandardQuality(content) {
   const c = (content || '').trim()
   if (!c) return 'ok' // 빈 content는 제거 대상이지 플래그 대상이 아님
+
+  // 0. PUA(HWP 수식 글리프) 잔존 — 렌더 폴백 불가라 최우선 플래그
+  if (PUA_RE.test(c)) return 'pua_encoding'
 
   // 1. 문두 결손 해설체
   if (HEADLESS_RE.test(c)) return 'headless_explanation'
