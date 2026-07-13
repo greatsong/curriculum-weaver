@@ -3,6 +3,7 @@ import { Search, Plus, Check } from 'lucide-react'
 import { apiGet } from '../../lib/api'
 import { subjectColor, simBadge, nodeSchoolLevel, getLinkId, linkQuality, LINK_TYPE_LABELS, LINK_TYPE_COLORS } from './lensCommon'
 import { useScenario, ScenarioButton, ScenarioPanel } from './scenarioShared'
+import MathText from '../MathText'
 
 /**
  * 주제 렌즈 — 시맨틱 검색 결과를 교과군별 컬럼으로 배열
@@ -191,7 +192,7 @@ export default function ThemeLens({ graph, query, onQuery, level, basket, onTogg
                             {inBasket ? <Check size={12} /> : <Plus size={12} />}
                           </button>
                         </div>
-                        <p className="text-[11.5px] text-gray-600 leading-relaxed mt-0.5 line-clamp-3">{std.content}</p>
+                        <p className="text-[11.5px] text-gray-600 leading-relaxed mt-0.5 line-clamp-3"><MathText text={std.content} /></p>
                         <p className="text-[10px] text-gray-400 mt-0.5">{std.subject} · {std.grade_group}</p>
                       </div>
                     )

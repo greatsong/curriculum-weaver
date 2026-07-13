@@ -3,6 +3,7 @@ import { Sparkles, Plus, Check, Loader2 } from 'lucide-react'
 import { apiGet, apiPost } from '../../lib/api'
 import { useScenario, ScenarioPanel } from './scenarioShared'
 import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, linkPriority, isSameGrade, gradeBucket } from './lensCommon'
+import MathText from '../MathText'
 
 // 탐색 버튼을 보여줄 연결 수 임계 — 이보다 적으면 "더 찾기"가 의미 있다
 const SPARSE_LINK_THRESHOLD = 3
@@ -491,7 +492,7 @@ function Column({ title, stds, connected, side, registerCard, selectedLink, bask
                   {inBasket ? <Check size={13} /> : <Plus size={13} />}
                 </button>
               </div>
-              <p className="text-xs text-gray-600 leading-relaxed mt-0.5 line-clamp-2">{std.content}</p>
+              <p className="text-xs text-gray-600 leading-relaxed mt-0.5 line-clamp-2"><MathText text={std.content} /></p>
               {!isConnected && (
                 <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-gray-400 bg-gray-50 rounded px-1.5 py-0.5">
                   <Sparkles size={9} /> 아직 연결 없음

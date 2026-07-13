@@ -11,6 +11,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Play, Pause, Compass, X, Rocket, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, List, HelpCircle, Flag } from 'lucide-react'
 import { apiGet, apiPost } from '../lib/api'
 import Logo from './Logo'
+import MathText from './MathText'
 import { createNebulaScene } from '../lib/nebulaScene'
 import {
   NEBULA_BG, SUBJECT_COLORS_DARK, FALLBACK_NODE_COLOR,
@@ -585,7 +586,7 @@ export default function Graph3DShowcase() {
           <X size={16} />
         </button>
       </div>
-      <p className="px-4 text-sm font-semibold leading-relaxed text-slate-100">{selectedNode.content}</p>
+      <p className="px-4 text-sm font-semibold leading-relaxed text-slate-100">{<MathText text={selectedNode.content} />}</p>
       <div className="flex items-center gap-2 px-4 pt-3 pb-2">
         <span className="text-[11px] font-medium text-slate-400/70">
           연결 <b className="text-slate-100 tabular-nums">{connections.length}</b>개
@@ -608,7 +609,7 @@ export default function Graph3DShowcase() {
                 <span className="font-mono text-[11px] text-slate-400/70 truncate">{c.other.code}</span>
                 <span className="ml-auto text-[11px] text-slate-400/70 shrink-0">{c.other.subject}</span>
               </div>
-              <p className="text-[13px] leading-relaxed text-slate-300/90 line-clamp-2">{c.other.content}</p>
+              <p className="text-[13px] leading-relaxed text-slate-300/90 line-clamp-2">{<MathText text={c.other.content} />}</p>
               {c.theme && <p className="mt-1.5 text-[11px] text-slate-400/70">🔗 {c.theme}</p>}
               {c.hook && <p className="mt-0.5 text-[11px] text-slate-400/70 line-clamp-1">📝 {c.hook}</p>}
               {c.rationale && <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400/70 line-clamp-3">💡 {c.rationale}</p>}
@@ -855,7 +856,7 @@ export default function Graph3DShowcase() {
                       </span>
                       {n.grade_group && <span className="text-[10.5px] text-slate-400/70">{n.grade_group}</span>}
                     </div>
-                    <p className="text-[12px] leading-snug text-slate-300/90 line-clamp-2">{n.content}</p>
+                    <p className="text-[12px] leading-snug text-slate-300/90 line-clamp-2">{<MathText text={n.content} />}</p>
                   </button>
                 )
               })
@@ -1006,7 +1007,7 @@ export default function Graph3DShowcase() {
           </div>
           {derived?.nodesByCode.get(hover.node.code) && (
             <p className="mt-0.5 text-[11px] leading-snug text-slate-300/90 max-w-[240px] truncate">
-              {derived.nodesByCode.get(hover.node.code).content}
+              {<MathText text={derived.nodesByCode.get(hover.node.code).content} />}
             </p>
           )}
         </div>
