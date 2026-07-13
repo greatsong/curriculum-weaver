@@ -33,7 +33,7 @@ function clean(t) {
 }
 // 적용 안전 게이트: PUA·외래코드·미해결 러닝푸터 있으면 스킵(원문 대조/교사 트랙)
 const PUA = /[\u{E000}-\u{F8FF}]/u
-const RESIDUAL = /진로\s*선택\s*과목\s*[-–—]|계열\s*선택\s*과목\s*교육과정|선택\s*중심\s*교육과정/
+const RESIDUAL = /진로\s*선택\s*과목\s*[-–—]|계열\s*선택\s*과목\s*교육과정|선택\s*중심\s*교육과정|교수\s*[⋅·․]\s*학습|[가-하]\s*\.\s*(평가|성취기준|교수)|\d\s*\.\s*교수/
 function guidanceIsClean(t) {
   if (PUA.test(t)) return false
   if (new RegExp(CODE_G.source).test(t)) return false
@@ -55,7 +55,19 @@ for (const s of ALL_STANDARDS) {
 // 영역프리픽스는 (나) 직전 해설/목록 코드에서 최빈값으로 도출(area 필드 불신, 코드구조 사용).
 const guidanceByCode = new Map()
 const GUIDE_HDR = /\(\s*나\s*\)\s*성취기준\s*적용\s*시\s*고려\s*사항/g
-const SECTION_END = /\(\s*가\s*\)\s*성취기준\s*해설|\(\s*나\s*\)\s*성취기준\s*적용|\n\s*\(\s*\d+\s*\)\s*[가-힣]|성취기준\s*해설/
+// (나) 블록 끝 경계 — 다음 영역/섹션이 시작되는 지점. 교수학습·평가·내용체계 헤더까지 포괄.
+const SECTION_END = new RegExp([
+  '\\(\\s*가\\s*\\)\\s*성취기준\\s*해설',           // (가) 성취기준 해설
+  '\\(\\s*나\\s*\\)\\s*성취기준\\s*적용',           // 다음 (나)
+  '성취기준\\s*해설',                              // 성취기준 해설
+  '\\d\\s*\\.\\s*교수\\s*[⋅·․]\\s*학습',           // 3. 교수⋅학습 및 평가
+  '교수\\s*[⋅·․]\\s*학습\\s*및\\s*평가',            // 교수⋅학습 및 평가
+  '[가-하]\\s*\\.\\s*교수\\s*[⋅·․]\\s*학습',        // 가. 교수⋅학습
+  '[가-하]\\s*\\.\\s*평가',                        // 나. 평가 / 다. 평가
+  '[가-하]\\s*\\.\\s*성취기준',                    // 나. 성취기준 (내용체계)
+  '\\n\\s*\\(\\s*\\d+\\s*\\)\\s*[가-힣]',           // (3) 다음 영역
+  '\\n\\s*\\d+\\s*\\.\\s*[가-힣]{2,}',              // N. 다음 섹션
+].join('|'))
 for (const f of readdirSync(BYEOLCHAEK_DIR).filter((x) => /^2022_개정_교육과정_별책\d+\.json$/.test(x))) {
   let j
   try { j = JSON.parse(readFileSync(path.join(BYEOLCHAEK_DIR, f), 'utf8')) } catch { continue }
