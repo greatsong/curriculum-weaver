@@ -174,14 +174,13 @@ function MockProjectCard() {
   )
 }
 
-/** 3패널 레이아웃 미니 목업 */
+/** 작업 공간 미니 목업 — 실제 레이아웃: 상단 절차 내비 + 보드(좌)·채팅(우), 원리는 드로어 */
 function MockThreePanel() {
   return (
     <BrowserFrame title="기후변화와 데이터 리터러시 - 수업 설계">
-      <div className="flex gap-2 min-h-[160px]">
-        {/* 좌: 절차 내비 */}
-        <div className="w-[100px] shrink-0 bg-white rounded-lg border border-slate-200 p-2 space-y-1.5">
-          <div className="text-[10px] font-bold text-slate-400 mb-1">PHASES</div>
+      <div className="flex flex-col gap-2 min-h-[170px]">
+        {/* 상단: 절차 내비게이션 (가로) */}
+        <div className="flex gap-1 bg-white rounded-lg border border-slate-200 p-1.5 overflow-hidden">
           {[
             { label: 'T 팀준비', color: '#8B5CF6', active: false },
             { label: 'A 분석', color: '#3B82F6', active: true },
@@ -189,28 +188,35 @@ function MockThreePanel() {
             { label: 'DI 개발', color: '#F59E0B', active: false },
             { label: 'E 평가', color: '#F43F5E', active: false },
           ].map((p, i) => (
-            <div key={i} className={`text-[10px] px-2 py-1.5 rounded-md font-medium truncate ${p.active ? 'text-white' : 'text-slate-600 bg-slate-50'}`} style={p.active ? { background: p.color } : {}}>
+            <div key={i} className={`text-[10px] px-2 py-1 rounded-md font-medium whitespace-nowrap ${p.active ? 'text-white' : 'text-slate-500 bg-slate-50'}`} style={p.active ? { background: p.color } : {}}>
               {p.label}
             </div>
           ))}
         </div>
-        {/* 중: 보드 */}
-        <div className="flex-1 bg-white rounded-lg border border-slate-200 p-3">
-          <div className="text-[11px] font-bold text-blue-700 mb-2">{getProcedureDisplayCode('A-1-2')} {PROCEDURES['A-1-2'].name}</div>
-          <div className="space-y-1.5">
-            <div className="text-[10px] bg-blue-50 text-blue-800 px-2 py-1.5 rounded-md">주제: 기후변화와 데이터 리터러시</div>
-            <div className="text-[10px] bg-blue-50 text-blue-800 px-2 py-1.5 rounded-md">교과: 과학, 수학, 사회</div>
-            <div className="text-[10px] bg-blue-50 text-blue-800 px-2 py-1.5 rounded-md">학년: 고등학교 1학년</div>
+        <div className="flex gap-2 flex-1">
+          {/* 좌: 설계 보드 */}
+          <div className="flex-1 bg-white rounded-lg border border-slate-200 p-3">
+            <div className="text-[11px] font-bold text-blue-700 mb-2">{getProcedureDisplayCode('A-1-2')} {PROCEDURES['A-1-2'].name}</div>
+            <div className="space-y-1.5">
+              <div className="text-[10px] bg-blue-50 text-blue-800 px-2 py-1.5 rounded-md">주제: 기후변화와 데이터 리터러시</div>
+              <div className="text-[10px] bg-blue-50 text-blue-800 px-2 py-1.5 rounded-md">교과: 과학, 수학, 사회</div>
+              <div className="text-[10px] bg-blue-50 text-blue-800 px-2 py-1.5 rounded-md">학년: 고등학교 1학년</div>
+            </div>
+          </div>
+          {/* 우: AI 채팅 */}
+          <div className="w-[130px] shrink-0 bg-white rounded-lg border border-slate-200 p-2 flex flex-col">
+            <div className="text-[10px] font-bold text-slate-400 mb-1.5">AI 위버</div>
+            <div className="flex-1 space-y-1.5 overflow-hidden">
+              <div className="text-[9px] bg-slate-100 text-slate-600 px-2 py-1.5 rounded-md rounded-tl-none">주제를 선정해 볼까요?</div>
+              <div className="text-[9px] bg-blue-500 text-white px-2 py-1.5 rounded-md rounded-tr-none ml-auto max-w-[90%]">기후변화를 하고 싶어요</div>
+              <div className="text-[9px] bg-slate-100 text-slate-600 px-2 py-1.5 rounded-md rounded-tl-none">좋은 선택이에요!</div>
+            </div>
           </div>
         </div>
-        {/* 우: 채팅 */}
-        <div className="w-[130px] shrink-0 bg-white rounded-lg border border-slate-200 p-2 flex flex-col">
-          <div className="text-[10px] font-bold text-slate-400 mb-1.5">AI 위버</div>
-          <div className="flex-1 space-y-1.5 overflow-hidden">
-            <div className="text-[9px] bg-slate-100 text-slate-600 px-2 py-1.5 rounded-md rounded-tl-none">주제를 선정해 볼까요?</div>
-            <div className="text-[9px] bg-blue-500 text-white px-2 py-1.5 rounded-md rounded-tr-none ml-auto max-w-[90%]">기후변화를 하고 싶어요</div>
-            <div className="text-[9px] bg-slate-100 text-slate-600 px-2 py-1.5 rounded-md rounded-tl-none">좋은 선택이에요!</div>
-          </div>
+        {/* 하단: 원리 드로어 토글 힌트 */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">🎯 원칙</span>
+          <span className="text-[9px] text-slate-400">버튼으로 협력 원리 드로어를 열 수 있어요</span>
         </div>
       </div>
     </BrowserFrame>
@@ -397,7 +403,7 @@ const FAQ_DATA = [
   },
   {
     q: '교육과정 성취기준은 어떻게 활용되나요?',
-    a: '2022 개정 교육과정 성취기준 2,200여 개가 내장되어 있습니다. 주제를 선정하면 AI가 관련 성취기준을 자동으로 추천하고, 교과 간 연결 가능성을 분석해 줍니다.',
+    a: '2022 개정 교육과정 성취기준 4,800여 개가 내장되어 있습니다. 주제를 선정하면 AI가 관련 성취기준을 자동으로 추천하고, 교과 간 연결 가능성을 분석해 줍니다.',
   },
 ]
 
@@ -602,7 +608,7 @@ export default function GuidePage() {
             { step: 1, title: '워크스페이스 만들기', desc: '교사 연구회, 학년 팀 등 협업 단위로 워크스페이스를 생성합니다.', mockup: <MockWorkspaceCard /> },
             { step: 2, title: '팀원 초대', desc: '이메일로 동료 교사를 초대하고 역할을 부여합니다.', mockup: <MockInviteUI /> },
             { step: 3, title: '프로젝트 생성', desc: '융합 수업 주제와 참여 교과를 설정하고 프로젝트를 시작합니다.', mockup: <MockProjectCard /> },
-            { step: 4, title: 'AI와 설계 시작', desc: '3패널 인터페이스에서 AI와 대화하며 수업을 설계합니다.', mockup: <MockThreePanel /> },
+            { step: 4, title: 'AI와 설계 시작', desc: '설계 보드와 AI 채팅이 나란한 작업 공간에서 절차를 따라 수업을 설계합니다.', mockup: <MockThreePanel /> },
           ].map((item) => {
             const fade = useFadeIn(0.1)
             return (
@@ -834,15 +840,16 @@ export default function GuidePage() {
             <span className="text-xs font-semibold text-cyan-600 tracking-widest uppercase mb-3 block">Curriculum Graph</span>
             <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4">교과 연결 탐색</h2>
             <p className="text-sm text-slate-600 leading-relaxed mb-5">
-              4,700여 개 성취기준과 AI가 검증한 교과 간 연결을 탐색하세요.
+              4,800여 개 성취기준과 AI가 검증한 교과 간 연결을 탐색하세요.
               교사의 질문에 하나씩 대응하는 <b>설계 모드 렌즈 4개</b>와,
               교육과정 전체를 성운처럼 조망하는 <b>탐험 3D 모드</b>를 오가며 융합 수업 소재를 발견할 수 있습니다.
             </p>
             <ul className="space-y-2.5 text-sm text-slate-600 mb-6">
               {[
-                '과목쌍 렌즈 — 두 교과의 성취기준이 어떻게 붙는지 (선 굵기 = 검증 품질)',
+                '이웃 렌즈 — 내 성취기준이 다른 교과 수업에서 실제로 쓰이는 장면들',
                 '주제 렌즈 — "기후변화"로 몇 개 교과가 연결되는지 한눈에',
-                '계열 렌즈 — 선수 학습과 심화·확장의 학년 흐름',
+                '계열 렌즈 — 선수 학습과 심화·확장의 학년 흐름 / 과목쌍 렌즈 — 두 교과가 어떻게 붙는지',
+                '실생활 문제 시나리오 — 연결을 고르면 AI가 상황·데이터·핵심 질문까지 초안 생성',
                 '모든 연결에 근거·융합 주제·수업 아이디어 포함, 담아서 바로 프로젝트로',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-2.5">
