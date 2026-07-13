@@ -155,24 +155,31 @@ export default function WorkspaceDetailPage() {
       const data = await apiGet(`/api/standards/recommend?${params}`)
       const recs = data.recommendations || []
       setRecommendedStandards(recs)
-      // 관련도 상위 항목만 기본 선택 (교과당 최대 5개)
-      const autoSelected = new Set()
-      const perSubject = {}
-      for (const s of recs) {
-        const sg = s.subject_group || s.subject
-        if (!perSubject[sg]) perSubject[sg] = 0
-        if (perSubject[sg] < 5 && (s._relevance > 0 || recs.length <= 20)) {
-          autoSelected.add(s.code)
-          perSubject[sg]++
+      // 담아온 성취기준(설계 모드)이 있으면 그것이 곧 교사의 선택 —
+      // 추천을 자동 체크하지 않는다(큐레이션에 엉뚱한 항목이 얹혀 희석되는 것 방지).
+      // 추천 목록은 그대로 보여 필요하면 직접 추가할 수 있게 한다.
+      if (designBasket.length > 0) {
+        setSelectedStandardIds(new Set())
+      } else {
+        // 처음부터 만드는 경우에만 관련도 상위 항목 기본 선택 (교과당 최대 5개)
+        const autoSelected = new Set()
+        const perSubject = {}
+        for (const s of recs) {
+          const sg = s.subject_group || s.subject
+          if (!perSubject[sg]) perSubject[sg] = 0
+          if (perSubject[sg] < 5 && (s._relevance > 0 || recs.length <= 20)) {
+            autoSelected.add(s.code)
+            perSubject[sg]++
+          }
         }
+        setSelectedStandardIds(autoSelected)
       }
-      setSelectedStandardIds(autoSelected)
     } catch {
       setRecommendedStandards([])
     } finally {
       setLoadingRecommend(false)
     }
-  }, [projectTitle])
+  }, [projectTitle, designBasket])
 
   // 그래프(설계/탐험)에서 넘어온 흐름 — ?createProject=1이면 생성 모달 자동 오픈.
   // 쿼리는 즉시 제거해 새로고침/뒤로가기 시 모달이 다시 열리지 않게 한다.
@@ -1154,7 +1161,10 @@ export default function WorkspaceDetailPage() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
               <button type="button" onClick={() => setShowCreateProject(false)} className="btn btn-ghost" style={{ fontSize: 13 }}>취소</button>
               <button type="submit" disabled={creating} className="btn btn-primary" style={{ fontSize: 13, opacity: creating ? 0.5 : 1 }}>
-                {creating ? '생성 중...' : `만들기${selectedStandardIds.size > 0 ? ` (성취기준 ${selectedStandardIds.size}개 포함)` : ''}`}
+                {creating ? '생성 중...' : (() => {
+                  const total = new Set([...selectedStandardIds, ...designBasket]).size // 담기 + 선택 실제 합
+                  return `만들기${total > 0 ? ` (성취기준 ${total}개 포함)` : ''}`
+                })()}
               </button>
             </div>
           </form>
