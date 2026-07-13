@@ -435,8 +435,10 @@ standardsRouter.post('/links/scenario', requireAuth, async (req, res) => {
     }
     if (contexts.length === 0) return res.status(400).json({ error: '맥락 성취기준이 1개 이상 필요합니다.' })
 
-    // 1. 캐시 조회 — 같은 조합은 같은 시나리오 (팀 간 공유, 비용 1회)
-    const key = [concept.code, ...contexts.map(c => c.code)].sort().join('|')
+    // variant: '다른 아이디어' — 같은 조합의 대안 시나리오. 0=기본, 1~5=대안(캐시키 분리)
+    const variant = Math.max(0, Math.min(5, parseInt(body.variant, 10) || 0))
+    // 1. 캐시 조회 — 같은 조합+variant은 같은 시나리오 (팀 간 공유, 비용 1회)
+    const key = [concept.code, ...contexts.map(c => c.code)].sort().join('|') + (variant ? `#${variant}` : '')
     const { data: cached } = await supabaseAdmin
       .from('scenario_cache').select('scenario')
       .eq('key', key).maybeSingle()
@@ -461,7 +463,10 @@ standardsRouter.post('/links/scenario', requireAuth, async (req, res) => {
     }).join('\n')
 
     const multi = contexts.length > 1
-    const prompt = `당신은 융합 수업 설계 전문가입니다. 아래 성취기준들을 연결하는 "실생활 문제 시나리오" 하나를 만드세요.
+    const variantDirective = variant > 0
+      ? `\n## ⚠️ 대안 아이디어 (${variant}번째)\n앞서 만든 시나리오와 **뚜렷이 다른 문제 상황·소재·데이터**로 접근하세요. 같은 성취기준을 엮되, 배경(장소·사건·데이터 종류)과 활동 방식을 새롭게 잡아 브레인스토밍처럼 다른 각도를 제시합니다. 진부한 반복 금지.\n`
+      : ''
+    const prompt = `당신은 융합 수업 설계 전문가입니다. 아래 성취기준들을 연결하는 "실생활 문제 시나리오" 하나를 만드세요.${variantDirective}
 
 ## 개념 성취기준 (학생이 배워야 할 도구·개념)
 ${concept.code} [${concept.subject}] ${concept.content}

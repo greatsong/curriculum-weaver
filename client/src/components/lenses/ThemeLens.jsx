@@ -56,7 +56,7 @@ export default function ThemeLens({ graph, query, onQuery, level, basket, onTogg
     level ? results.filter(r => { const lv = nodeSchoolLevel(r); return lv === level || lv === null }) : results
   ), [results, level])
 
-  const { scenario, openScenario, closeScenario } = useScenario()
+  const { scenario, openScenario, closeScenario, moreIdea, setActiveIndex } = useScenario()
 
   // 주제 매칭 성취기준 사이의 검증된 교과군 간 연결 — 시나리오 생성의 좋은 출발점
   const themePairs = useMemo(() => {
@@ -151,8 +151,9 @@ export default function ThemeLens({ graph, query, onQuery, level, basket, onTogg
             })}
           </div>
           {scenario && (
-            <ScenarioPanel scenario={scenario} onClose={closeScenario}
+            <ScenarioPanel scenario={scenario} onClose={closeScenario} onMore={moreIdea} onNav={setActiveIndex}
               subjectOf={(code) => filtered.find(r => r.code === code)?.subject}
+              standardOf={(code) => filtered.find(r => r.code === code)}
               basket={basket} onToggleBasket={onToggleBasket} />
           )}
         </div>

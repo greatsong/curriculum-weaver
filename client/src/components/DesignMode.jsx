@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { X, HelpCircle } from 'lucide-react'
 import { fetchGraphData, invalidateGraphCache } from '../lib/graphDataCache'
@@ -18,6 +18,7 @@ const LENSES = [
 ]
 
 const BASKET_KEY = 'cw_design_basket'
+const BASKET_META_KEY = 'cw_design_basket_meta' // { code: subject_group } — 프로젝트 모달 교과 자동선택용
 const SCHOOL_LEVELS = ['초등학교', '중학교', '고등학교']
 
 /**
@@ -53,12 +54,24 @@ export default function DesignMode() {
   const [basket, setBasket] = useState(() => {
     try { return new Set(JSON.parse(sessionStorage.getItem(BASKET_KEY) || '[]')) } catch { return new Set() }
   })
+  // 코드→교과(subject_group) 해석용 — 담기 시 교과 메타를 함께 적재(모달 자동선택)
+  const codeToGroupRef = useRef(new Map())
+  useEffect(() => {
+    codeToGroupRef.current = new Map((graphData?.nodes || []).map(n => [n.code, n.subject_group || n.subject]))
+  }, [graphData])
   const toggleBasket = useCallback((codes) => {
     setBasket(prev => {
       const next = new Set(prev)
       const allIn = codes.every(c => next.has(c))
       codes.forEach(c => allIn ? next.delete(c) : next.add(c))
       sessionStorage.setItem(BASKET_KEY, JSON.stringify([...next]))
+      // 교과 메타 누적 — 담긴 코드의 subject_group을 저장(제거된 코드는 정리)
+      try {
+        const meta = JSON.parse(sessionStorage.getItem(BASKET_META_KEY) || '{}')
+        for (const c of next) { const g = codeToGroupRef.current.get(c); if (g) meta[c] = g }
+        for (const c of Object.keys(meta)) if (!next.has(c)) delete meta[c]
+        sessionStorage.setItem(BASKET_META_KEY, JSON.stringify(meta))
+      } catch { /* noop */ }
       return next
     })
   }, [])

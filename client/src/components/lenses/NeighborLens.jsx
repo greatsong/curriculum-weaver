@@ -26,7 +26,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
   const [trail, setTrail] = useState([]) // 방문 경로 (code[])
   const [query, setQuery] = useState('')
   const [pickSubject, setPickSubject] = useState('') // 빈 상태의 "내 교과 선택" 진입로
-  const { scenario, openScenario, closeScenario } = useScenario()
+  const { scenario, openScenario, closeScenario, moreIdea, setActiveIndex } = useScenario()
   // 1:N 시나리오 — 맥락 카드 다중 선택 (최대 4)
   const [picked, setPicked] = useState(() => new Set())
   const togglePick = (code) => setPicked(prev => {
@@ -233,8 +233,9 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
 
       {/* 실생활 문제 시나리오 패널 */}
       {scenario && (
-        <ScenarioPanel scenario={scenario} onClose={closeScenario}
+        <ScenarioPanel scenario={scenario} onClose={closeScenario} onMore={moreIdea} onNav={setActiveIndex}
           subjectOf={(code) => nodeByCode.get(code)?.subject}
+          standardOf={(code) => nodeByCode.get(code)}
           basket={basket} onToggleBasket={onToggleBasket} />
       )}
 
