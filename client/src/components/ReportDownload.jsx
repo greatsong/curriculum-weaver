@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, FileText, FileCode, FileDown, ExternalLink, Loader2 } from 'lucide-react'
+import { X, FileText, FileCode, FileDown, ExternalLink, Loader2, Eye } from 'lucide-react'
 import { API_BASE, getHeaders } from '../lib/api'
 
 const FORMATS = [
@@ -38,6 +38,24 @@ const FORMATS = [
 
 export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
   const [downloading, setDownloading] = useState(null)
+  // 앱 안에서 바로 보기 — /preview(인라인 HTML)를 받아 iframe으로 렌더한다.
+  const [previewHtml, setPreviewHtml] = useState(null)
+  const [loadingPreview, setLoadingPreview] = useState(false)
+
+  const handlePreview = async () => {
+    setLoadingPreview(true)
+    try {
+      const headers = await getHeaders()
+      const res = await fetch(`${API_BASE}/api/report/${sessionId}/preview`, { headers })
+      if (!res.ok) throw new Error('보고서를 불러오지 못했습니다.')
+      setPreviewHtml(await res.text())
+    } catch (err) {
+      console.error('보고서 미리보기 오류:', err)
+      alert('보고서를 불러오는 중 오류가 발생했습니다.')
+    } finally {
+      setLoadingPreview(false)
+    }
+  }
 
   const handleDownload = async (format) => {
     setDownloading(format)
@@ -95,12 +113,34 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
           >
             <X size={18} />
           </button>
-          <h2 className="text-lg font-bold">결과 보고서 다운로드</h2>
-          <p className="text-sm text-white/80 mt-1">설계 과정과 결과를 정리한 보고서를 받아보세요</p>
+          <h2 className="text-lg font-bold">결과 보고서</h2>
+          <p className="text-sm text-white/80 mt-1">여기서 바로 보거나, 파일로 받아보세요</p>
+        </div>
+
+        {/* 바로 보기 — 앱을 벗어나지 않고 보고서를 확인한다 */}
+        <div className="px-6 pt-6">
+          <button
+            onClick={handlePreview}
+            disabled={loadingPreview || !!downloading}
+            className="w-full flex items-center gap-4 p-4 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition disabled:opacity-50 disabled:cursor-not-allowed text-left"
+          >
+            <div className="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
+              {loadingPreview ? (
+                <Loader2 size={22} className="text-indigo-600 animate-spin" />
+              ) : (
+                <Eye size={22} className="text-indigo-600" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-gray-900 text-sm">바로 보기</div>
+              <div className="text-xs text-gray-500 mt-0.5">다운로드 없이 이 화면에서 확인</div>
+            </div>
+          </button>
         </div>
 
         {/* 포맷 선택 */}
         <div className="p-6 space-y-3">
+          <div className="text-xs font-medium text-gray-400">파일로 받기</div>
           {FORMATS.map((fmt) => {
             const Icon = fmt.icon
             const isLoading = downloading === fmt.id
@@ -142,6 +182,39 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
           </p>
         </div>
       </div>
+
+      {/* 앱 내 보고서 뷰어 — 보고서 HTML은 자체 완결(스타일 포함)이라 iframe으로 격리 렌더 */}
+      {previewHtml && (
+        <div className="absolute inset-0 z-10 flex flex-col bg-white">
+          <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-200 bg-white">
+            <h3 className="text-sm font-semibold text-gray-900 truncate">
+              {sessionTitle || '결과 보고서'}
+            </h3>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => handleDownload('html')}
+                disabled={!!downloading}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition disabled:opacity-50"
+              >
+                HTML 저장
+              </button>
+              <button
+                onClick={() => setPreviewHtml(null)}
+                className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition"
+                title="닫기"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+          <iframe
+            title="결과 보고서"
+            srcDoc={previewHtml}
+            sandbox=""
+            className="flex-1 w-full border-0 bg-white"
+          />
+        </div>
+      )}
     </div>,
     document.body
   )
