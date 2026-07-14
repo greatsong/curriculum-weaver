@@ -316,7 +316,11 @@ export default function ProjectPage() {
       const projIsDemo = proj?.learner_context?.demo === true
       const proc = projIsDemo ? DEMO_LESSON_PLAN : useProcedureStore.getState().currentProcedure
       // introCache에 이미 있으면 스킵 (이전에 인트로 생성된 절차)
-      if (!isReadOnly && !hasContent && !introCache[proc] && localStorage.getItem('cw_tour_done')) {
+      // 협력 모드는 온보딩 투어를 마친 뒤에 인트로를 띄운다(투어와 겹치지 않게).
+      // 시연 모드는 투어를 아예 노출하지 않으므로 cw_tour_done을 요구하면 코치 인트로가
+      // 영영 뜨지 않는다 → 데모는 투어 완료 조건 없이 바로 인트로.
+      const introReady = projIsDemo || !!localStorage.getItem('cw_tour_done')
+      if (!isReadOnly && !hasContent && !introCache[proc] && introReady) {
         if (proc) requestProcedureIntro(projectId, proc)
       }
     }
@@ -1051,8 +1055,13 @@ export default function ProjectPage() {
           onClose={() => setShowReport(false)}
         />
       )}
-      {showTutorial && !showTour && <Tutorial onComplete={() => setShowTutorial(false)} />}
-      {showTour && <InteractiveTour onComplete={() => {
+      {/* 온보딩(투어·튜토리얼)은 팀·융합·TADDs-DIE 전제라 시연 모드에는 노출하지 않는다.
+          currentProject 로드 전에는 isDemo를 신뢰할 수 없으므로(기본 false) 로드까지 기다려
+          시연 프로젝트에서 협력 온보딩이 깜빡 뜨는 것도 막는다. */}
+      {showTutorial && !showTour && currentProject && !isDemo && (
+        <Tutorial onComplete={() => setShowTutorial(false)} />
+      )}
+      {showTour && currentProject && !isDemo && <InteractiveTour onComplete={() => {
         setShowTour(false)
         // 완료/건너뛰기를 사용자 프로필에 영구 저장 → 다른 기기에서도 다시 안 뜬다.
         markTourDone()
