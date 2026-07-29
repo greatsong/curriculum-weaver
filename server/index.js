@@ -352,11 +352,14 @@ app.get('/api/health', (req, res) => {
 app.get('/api/keepalive', async (req, res) => {
   try {
     const { supabaseAdmin } = await import('./lib/supabaseAdmin.js')
-    const { error } = await supabaseAdmin
-      .from('standards')
-      .select('code', { count: 'exact', head: true })
+    // 주의: head:true 조회는 없는 테이블에도 204를 돌려주므로 에러만으로는 판별 불가.
+    // 실제 행을 읽어 와야 "DB가 살아 있다"는 신호가 된다.
+    const { data, error } = await supabaseAdmin
+      .from('curriculum_standards')
+      .select('code')
       .limit(1)
     if (error) throw error
+    if (!data?.length) throw new Error('curriculum_standards 조회 결과가 비어 있음')
     res.json({ status: 'ok', supabase: 'reachable', ts: new Date().toISOString() })
   } catch (err) {
     res.status(503).json({ status: 'error', supabase: 'unreachable', message: err.message })

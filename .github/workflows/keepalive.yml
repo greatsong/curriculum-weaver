@@ -1,12 +1,14 @@
 name: Supabase Keepalive
 
 # Supabase Free 플랜은 7일 비활성 시 프로젝트를 자동 일시정지(pause)함.
-# /api/keepalive 가 standards 테이블에 카운트 쿼리를 보내 활동 카운터를 리셋한다.
-# 5일 간격으로 호출하여 7일 임계치 전에 깨운다.
+# /api/keepalive 가 curriculum_standards 테이블에서 실제 행을 읽어 활동 카운터를 리셋한다.
+# 주 2회(월·목) 호출 — 최대 간격 4일로 7일 임계치에 여유를 둔다.
+# (구 '0 3 */5 * *'는 매월 1·6·11·16·21·26일이라 31일 달은 26→1일이 6일 간격이었고,
+#  GitHub 스케줄 지연까지 겹치면 마진이 사라졌음)
 
 on:
   schedule:
-    - cron: '0 3 */5 * *'  # UTC 03:00, 5일마다 (KST 12:00)
+    - cron: '0 3 * * 1,4'  # UTC 03:00 월·목 (KST 12:00)
   workflow_dispatch:        # 수동 트리거 허용
 
 jobs:
