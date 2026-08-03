@@ -283,7 +283,7 @@ export const PROCEDURE_STEPS = {
       actionType: 'guide',
       actorColumn: 'ai_only',
       title: '팀 규칙 결정 안내',
-      description: 'Ground Rule 결정의 의미와 진행 방법을 안내한다.',
+      description: '팀 규칙 결정의 의미와 진행 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
     },
@@ -620,14 +620,14 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // A-2-2: 통합된 수업 목표 진술 (8 스텝)
+  // A-2-2: 핵심 아이디어 도출 및 통합 수업목표 진술 (8 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'A-2-2': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '통합된 수업 목표 진술 안내',
+      title: '핵심 아이디어 도출 및 통합 수업목표 진술 안내',
       description: '세부학습목표와 통합학습목표의 차이, 목표 진술 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,
@@ -914,14 +914,14 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Ds-2-1: 자료와 도구 연결 (7 스텝)
+  // Ds-2-1: 도구 연결 (7 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'Ds-2-1': [
     {
       stepNumber: 1,
       actionType: 'guide',
       actorColumn: 'ai_only',
-      title: '자료와 도구 연결 안내',
+      title: '도구 연결 안내',
       description: '학습 활동을 지원하는 자료와 도구를 활동에 연결하고, 탐색·개발 자료로 나누는 방법을 안내한다.',
       aiCapability: 'guide',
       boardField: null,

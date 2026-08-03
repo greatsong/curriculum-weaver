@@ -9,7 +9,7 @@ export const GENERAL_PRINCIPLES = [
   {
     id: 'GP01',
     name: '상호 의존의 원리',
-    description: '목적(비전)을 공유하고 서로에 대한 신뢰를 바탕으로 설계팀을 형성한다.',
+    description: '팀원의 역할과 결과가 서로 이어지도록 협력하는 방법의 원리.',
     guidelines: [
       {
         id: 'GP01-G1',
@@ -28,7 +28,7 @@ export const GENERAL_PRINCIPLES = [
   {
     id: 'GP02',
     name: '인지 분산의 원리',
-    description: '설계팀원들의 인지를 사회적·물리적으로 분산한다.',
+    description: '생각과 결정, 진행 상황을 표와 기록지, 각종 도구, 공유 문서에 나누어 담는 원리.',
     guidelines: [
       {
         id: 'GP02-G1',
@@ -43,7 +43,7 @@ export const GENERAL_PRINCIPLES = [
   {
     id: 'GP03',
     name: '활성화의 원리',
-    description: '설계과정에서 설계팀 구성원들이 아이디어 생성을 활성화한다.',
+    description: '각자의 생각과 경험을 먼저 꺼내 논의의 재료를 충분히 마련하는 원리.',
     guidelines: [
       {
         id: 'GP03-G1',
@@ -58,7 +58,7 @@ export const GENERAL_PRINCIPLES = [
   {
     id: 'GP04',
     name: '외현화의 원리',
-    description: '설계팀 구성원들의 지식을 시각적으로 표상하고 공유한다.',
+    description: '머릿속 생각을 키워드와 메모, 그림이나 표로 나타내어 함께 보는 원리.',
     guidelines: [
       {
         id: 'GP04-G1',
@@ -73,7 +73,7 @@ export const GENERAL_PRINCIPLES = [
   {
     id: 'GP05',
     name: '조정의 원리',
-    description: '설계팀 구성원들이 표현한 지식(생각)들을 통합 및 보완한다.',
+    description: '여러 의견을 기준에 따라 묶고 비교해서 공동의 결론으로 다듬는 원리.',
     guidelines: [
       {
         id: 'GP05-G1',

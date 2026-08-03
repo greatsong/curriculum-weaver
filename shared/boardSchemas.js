@@ -118,7 +118,7 @@ export const BOARD_SCHEMAS = {
       { name: 'allRules', label: '브레인스토밍 규칙', type: 'list', required: false,
         description: '팀원들이 제안한 모든 규칙 아이디어' },
       { name: 'coreRules', label: '핵심 규칙', type: 'list', required: true,
-        description: '팀이 최종 결정한 핵심 Ground Rule' },
+        description: '팀이 최종 결정한 핵심 규칙 (5개 내외)' },
       { name: 'appropriatenessCheck', label: '적절성 점검', type: 'textarea', required: false,
         description: 'AI 점검: 규칙의 실행 가능성 및 적절성 평가' },
     ],
