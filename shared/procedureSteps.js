@@ -1,5 +1,5 @@
 /**
- * 세부절차(Procedure)별 스텝 데이터 — 18 절차, 총 131개 스텝 (prep은 보드 입력 전용으로 스텝 없음)
+ * 세부절차(Procedure)별 스텝 데이터 — 18 절차, 총 127개 스텝 (prep은 보드 입력 전용으로 스텝 없음)
  *
  * 각 Procedure는 5~9개의 순차적 스텝으로 구성된다.
  * 스텝은 액션 타입(actionType)과 행위 주체(actorColumn)를 가진다.
@@ -707,7 +707,7 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Ds-1-1: 평가 설계 (8 스텝)
+  // Ds-1-1: 평가 설계 (7 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'Ds-1-1': [
     {
@@ -715,77 +715,67 @@ export const PROCEDURE_STEPS = {
       actionType: 'guide',
       actorColumn: 'ai_only',
       title: '평가 설계 안내',
-      description: '역방향 설계(Backward Design) 관점에서 평가 설계의 의미와 진행 방법을 안내한다.',
+      description: '평가가 수업의 방향을 정하는 설계의 출발점(역방향 설계)임을 안내하고, 요소·방법·시점·주체 결정의 흐름을 소개한다.',
       aiCapability: 'guide',
       boardField: null,
     },
     {
       stepNumber: 2,
-      actionType: 'judge',
-      actorColumn: 'individual',
-      title: '교과별 평가 구상',
-      description: '각 팀원이 담당 교과에서 평가할 내용과 방법을 구상한다.',
+      actionType: 'share',
+      actorColumn: 'team',
+      title: '평가 요소 아이디어 나열',
+      description: '각 교사가 중요하게 여기는 평가 요소를 메모지 한 장에 하나씩 적어 충분히 꺼내 놓는다. 최종 산출물뿐 아니라 수행 과정의 장면도 함께 살핀다.',
       aiCapability: null,
       boardField: null,
     },
     {
       stepNumber: 3,
-      actionType: 'generate',
-      actorColumn: 'team_ai',
-      title: '평가 내용/방법 추천',
-      description: 'AI가 수업목표에 기반한 평가 내용과 방법을 추천한다.',
-      aiCapability: 'generate',
-      boardField: null,
-    },
-    {
-      stepNumber: 4,
-      actionType: 'discuss',
+      actionType: 'adjust',
       actorColumn: 'team',
-      title: '평가 내용/방법 논의',
-      description: '팀원들이 교과별 평가 내용과 방법을 논의하고 조율한다.',
-      aiCapability: null,
-      boardField: null,
-    },
-    {
-      stepNumber: 5,
-      actionType: 'generate',
-      actorColumn: 'team_ai',
-      title: '활동별 평가 추천',
-      description: 'AI가 각 학습활동에 적합한 평가 방법과 루브릭 요소를 추천한다.',
-      aiCapability: 'generate',
-      boardField: null,
-    },
-    {
-      stepNumber: 6,
-      actionType: 'discuss',
-      actorColumn: 'team',
-      title: '활동별 평가 확정',
-      description: '팀이 활동별 평가 설계를 최종 확정한다.',
+      title: '평가 요소 결정',
+      description: '통합 수업목표를 옆에 두고 목표와의 관련성을 기준으로 하나씩 추려, 필수 요소와 보조 요소를 정리한다.',
       aiCapability: null,
       boardField: 'assessments',
     },
     {
-      stepNumber: 7,
+      stepNumber: 4,
+      actionType: 'generate',
+      actorColumn: 'team_ai',
+      title: '행동 문장 변환',
+      description: 'AI가 협력·참여 같은 추상적인 요소를 교사가 수업 중 관찰할 수 있는 행동 문장 후보로 바꿔 제안한다.',
+      aiCapability: 'generate',
+      boardField: null,
+    },
+    {
+      stepNumber: 5,
+      actionType: 'discuss',
+      actorColumn: 'team',
+      title: '평가 방법·시점·주체 조정',
+      description: '각 평가 요소를 산출물·발표·수행 장면·자기/동료평가 중 알맞은 방법으로 확인하도록 정하고, 언제 누가 기록할지 나누어 교사가 감당할 수 있는 계획으로 다듬는다.',
+      aiCapability: null,
+      boardField: 'assessments',
+    },
+    {
+      stepNumber: 6,
       actionType: 'check',
       actorColumn: 'team_ai',
       title: '수업목표-평가 정합성 검토',
-      description: 'AI가 수업목표와 평가 설계의 정합성을 검토한다.',
+      description: 'AI가 평가 설계가 통합 수업목표(A-4)를 빠짐없이 커버하는지 검토한다.',
       aiCapability: 'check',
       boardField: 'objectiveAlignmentCheck',
     },
     {
-      stepNumber: 8,
+      stepNumber: 7,
       actionType: 'record',
       actorColumn: 'ai_only',
       title: '저장 및 리포트',
-      description: 'AI가 평가 설계를 보드에 저장하고 요약 리포트를 생성한다.',
+      description: 'AI가 평가 설계표를 보드에 저장하고 요약 리포트를 생성한다.',
       aiCapability: 'record',
       boardField: null,
     },
   ],
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Ds-1-2: 문제 상황 설정 (8 스텝)
+  // Ds-1-2: 문제 상황 설정 (7 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'Ds-1-2': [
     {
@@ -793,66 +783,57 @@ export const PROCEDURE_STEPS = {
       actionType: 'guide',
       actorColumn: 'ai_only',
       title: '문제 상황 설정 안내',
-      description: '실세계 기반 문제 상황의 요건과 설정 방법을 안내한다.',
+      description: '문제 상황이 학습활동 전체를 아우르는 실생활 맥락의 이야기임을 안내하고, 나열→선정→구체화→정합성 검토의 흐름을 소개한다.',
       aiCapability: 'guide',
       boardField: null,
     },
     {
       stepNumber: 2,
-      actionType: 'judge',
-      actorColumn: 'individual',
-      title: '흥미/실제성/수준 고려',
-      description: '각 팀원이 학생의 흥미, 실제성, 수준을 고려하여 문제 상황 방향을 구상한다.',
+      actionType: 'share',
+      actorColumn: 'team',
+      title: '실생활 맥락 아이디어 나열',
+      description: '수업목표와 내용을 담아낼 실생활 맥락을 자유롭게 떠올리고, 각 아이디어가 어떤 학습내용과 이어지는지 덧붙인다.',
       aiCapability: null,
-      boardField: null,
+      boardField: 'candidates',
     },
     {
       stepNumber: 3,
-      actionType: 'generate',
-      actorColumn: 'team_ai',
-      title: '실제 데이터 기반 초안 생성',
-      description: 'AI가 실제 데이터를 활용하여 문제 상황 초안 2~3개를 생성한다.',
-      aiCapability: 'generate',
-      boardField: 'candidates',
+      actionType: 'adjust',
+      actorColumn: 'team',
+      title: '적합한 맥락 설정',
+      description: '학생의 흥미와 수준, 실제성, 수업 운영 가능성을 기준으로 논의해 수업 시간 안에 다룰 수 있는 맥락을 정한다.',
+      aiCapability: null,
+      boardField: null,
     },
     {
       stepNumber: 4,
       actionType: 'discuss',
       actorColumn: 'team',
-      title: '통합 문제 상황 결정',
-      description: '팀이 후보 중에서 통합 문제 상황을 결정하거나 조합한다.',
+      title: '문제 상황 구체화',
+      description: '설정한 맥락에 등장인물과 학생의 역할, 해결 과제, 참고 정보, 산출물의 형태를 더해 문제 상황을 구체화한다.',
       aiCapability: null,
-      boardField: null,
+      boardField: 'selected',
     },
     {
       stepNumber: 5,
       actionType: 'generate',
       actorColumn: 'team_ai',
-      title: '우선순위 추천',
-      description: 'AI가 문제 상황 후보의 교육적 가치와 실현 가능성을 기준으로 우선순위를 추천한다.',
-      aiCapability: 'generate',
-      boardField: null,
-    },
-    {
-      stepNumber: 6,
-      actionType: 'generate',
-      actorColumn: 'team_ai',
-      title: '문제 상황 제작/수정',
-      description: 'AI가 팀의 결정에 따라 최종 문제 상황을 제작하거나 수정한다.',
+      title: '학생용 제시문 다듬기',
+      description: 'AI가 팀이 정한 맥락·역할·과제·산출물을 학생이 쉽게 이해할 상황 제시문 초안으로 다듬고, 팀이 표현과 난이도를 손본다.',
       aiCapability: 'generate',
       boardField: 'selected',
     },
     {
-      stepNumber: 7,
+      stepNumber: 6,
       actionType: 'check',
       actorColumn: 'team_ai',
-      title: '학습내용/산출물/청중 반영 검토',
-      description: 'AI가 문제 상황에 학습내용, 산출물, 청중이 적절히 반영되었는지 검토한다.',
+      title: '문제 상황-평가 정합성 검토',
+      description: 'Ds-1에서 정한 평가 요소와 통합 수업목표가 문제 상황 속에서 자연스럽게 드러나는지 검토한다. 정답을 미리 정해 주는 표현은 피한다.',
       aiCapability: 'check',
       boardField: 'learningContentCheck',
     },
     {
-      stepNumber: 8,
+      stepNumber: 7,
       actionType: 'record',
       actorColumn: 'ai_only',
       title: '저장 및 리포트',
@@ -862,7 +843,6 @@ export const PROCEDURE_STEPS = {
     },
   ],
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Ds-1-3: 학습 활동 설계 (6 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'Ds-1-3': [
@@ -992,7 +972,7 @@ export const PROCEDURE_STEPS = {
   ],
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // Ds-2-2: 스캐폴딩 설계 (8 스텝)
+  // Ds-2-2: 스캐폴딩 설계 (6 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'Ds-2-2': [
     {
@@ -1000,66 +980,48 @@ export const PROCEDURE_STEPS = {
       actionType: 'guide',
       actorColumn: 'ai_only',
       title: '스캐폴딩 설계 안내',
-      description: '스캐폴딩의 유형과 설계 방법, 점진적 제거 전략을 안내한다.',
+      description: '스캐폴딩이 학생이 도움을 받으면 해낼 수 있는 지점에 발판을 놓는 일임을 안내한다. 과다하면 사고를 대신하고 과소하면 포기하게 되며, 점차 줄여 가는 것까지가 스캐폴딩이다.',
       aiCapability: 'guide',
       boardField: null,
     },
     {
       stepNumber: 2,
-      actionType: 'record',
-      actorColumn: 'individual',
-      title: '지원 방안 정리',
-      description: '각 팀원이 기존에 활용한 학습 지원 방안을 정리하여 기록한다.',
+      actionType: 'share',
+      actorColumn: 'team',
+      title: '활동별 어려움 예상',
+      description: '각 활동에서 학생이 겪을 수 있는 어려움을 실제 수업 장면을 떠올리며 구체적으로 예상하고, 그에 필요한 스캐폴딩(질문 프롬프트·예시·분석 틀·체크리스트 등)을 제안한다.',
       aiCapability: null,
-      boardField: 'supportMethods',
+      boardField: 'scaffolds',
     },
     {
       stepNumber: 3,
-      actionType: 'share',
+      actionType: 'check',
       actorColumn: 'team',
-      title: '스캐폴딩 방안 설명',
-      description: '팀원들이 각자의 스캐폴딩 경험과 방안을 팀에게 설명한다.',
+      title: '지원의 수준 검토',
+      description: '"이 지원이 없으면 학생이 수행하기 어려운가?"(예), "이 지원이 있으면 학생이 스스로 생각하지 않아도 되는가?"(아니오) 두 물음으로 지원이 사고를 대신하지 않는지 통합 수업목표와 학생 수준에 비추어 검토한다.',
       aiCapability: null,
       boardField: null,
     },
     {
       stepNumber: 4,
-      actionType: 'discuss',
+      actionType: 'adjust',
       actorColumn: 'team',
-      title: '학습자 관점 스캐폴딩 논의',
-      description: '팀이 학습자 관점에서 필요한 스캐폴딩을 논의한다.',
-      aiCapability: null,
-      boardField: null,
-    },
-    {
-      stepNumber: 5,
-      actionType: 'generate',
-      actorColumn: 'team_ai',
-      title: '스캐폴딩 추천',
-      description: 'AI가 각 학습 활동에 적합한 스캐폴딩 유형과 내용을 추천한다.',
-      aiCapability: 'generate',
-      boardField: null,
-    },
-    {
-      stepNumber: 6,
-      actionType: 'discuss',
-      actorColumn: 'team',
-      title: '최종 결정',
-      description: '팀이 스캐폴딩 계획을 최종 결정한다.',
+      title: '지원 방안 결정',
+      description: '지원을 어느 활동 단계에서, 누구에게, 어떤 방식으로 제공할지 함께 결정하고, 실제로 사용할 수 있는 수준으로 다듬는다.',
       aiCapability: null,
       boardField: 'scaffolds',
     },
     {
-      stepNumber: 7,
+      stepNumber: 5,
       actionType: 'check',
       actorColumn: 'team_ai',
-      title: '적절성 검토',
-      description: 'AI가 스캐폴딩의 적절성과 점진적 제거 계획을 검토한다.',
+      title: '표현 수준 검토',
+      description: 'AI가 질문 카드·분석 틀·체크리스트의 표현을 학생 수준에 맞게 검토한다. 정답을 알려 주는 것인지 사고를 돕는 발판인지는 팀이 직접 판단한다.',
       aiCapability: 'check',
       boardField: 'appropriatenessCheck',
     },
     {
-      stepNumber: 8,
+      stepNumber: 6,
       actionType: 'record',
       actorColumn: 'ai_only',
       title: '저장 및 리포트',
@@ -1069,7 +1031,6 @@ export const PROCEDURE_STEPS = {
     },
   ],
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // DI-1-1: 자료 탐색·개발 (7 스텝)
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   'DI-1-1': [

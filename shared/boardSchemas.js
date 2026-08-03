@@ -243,14 +243,14 @@ export const BOARD_SCHEMAS = {
   // ─── Ds-1-1: 평가 설계 ───
   assessment_plan: {
     fields: [
-      { name: 'assessments', label: '평가 항목', type: 'table', required: true,
-        description: '활동별 평가 내용, 방법, 루브릭',
+      { name: 'assessments', label: '평가 설계표', type: 'table', required: true,
+        description: '확인 지점(산출물/수행 장면)별 평가 요소·방법·시점·주체 — 추상적 요소는 관찰 가능한 행동 문장으로',
         columns: [
-          { name: 'activity', label: '대상 활동' },
-          { name: 'subject', label: '평가 교과' },
-          { name: 'content', label: '평가 내용' },
+          { name: 'checkpoint', label: '확인 지점 (산출물/수행 장면)' },
+          { name: 'content', label: '평가 요소' },
           { name: 'method', label: '평가 방법' },
-          { name: 'rubricSummary', label: '루브릭 요약' },
+          { name: 'timing', label: '평가 시점' },
+          { name: 'evaluator', label: '평가 주체' },
         ] },
       { name: 'objectiveAlignmentCheck', label: '수업목표-평가 정합성', type: 'textarea', required: false,
         description: 'AI 검토: 수업목표와 평가 설계의 정합성' },
@@ -263,24 +263,20 @@ export const BOARD_SCHEMAS = {
   // ─── Ds-1-2: 문제 상황 ───
   problem_situation: {
     fields: [
-      { name: 'candidates', label: '문제 상황 후보', type: 'list', required: false,
-        description: 'AI가 실제 데이터 기반으로 제안한 문제 상황 초안 2~3개',
+      { name: 'candidates', label: '실생활 맥락 아이디어', type: 'list', required: false,
+        description: '팀이 나열한 실생활 맥락 아이디어 (각 아이디어가 어떤 학습내용과 이어지는지 함께 기록)',
         itemSchema: {
-          title: { label: '제목', type: 'text' },
-          situation: { label: '문제 상황', type: 'textarea' },
-          dataSource: { label: '데이터 출처', type: 'text' },
+          title: { label: '맥락', type: 'text' },
+          situation: { label: '설명·연결되는 학습내용', type: 'textarea' },
+          dataSource: { label: '참고 자료·데이터', type: 'text' },
         } },
       { name: 'selected', label: '선정 문제 상황', type: 'textarea', required: true,
-        description: '팀이 최종 결정한 통합 문제 상황' },
-      { name: 'realWorldData', label: '실제 데이터', type: 'textarea', required: false,
-        description: '문제 상황에 활용된 실제 데이터 출처 및 내용' },
-      { name: 'audience', label: '청중', type: 'text', required: false,
-        description: '학생 활동의 대상 청중 (예: 지역 주민, 학부모)' },
-      { name: 'learningContentCheck', label: '학습내용/산출물/청중 반영 검토', type: 'textarea', required: false,
-        description: 'AI 검토: 문제 상황에 학습내용, 산출물, 청중이 적절히 반영되었는지 확인' },
+        description: '구체화한 문제 상황(등장인물·학생 역할·해결 과제·참고 정보·산출물)과 학생용 제시문' },
+      { name: 'learningContentCheck', label: '평가 정합성 검토', type: 'textarea', required: false,
+        description: 'Ds-1 평가 요소와 통합 수업목표가 문제 상황 속에 자연스럽게 드러나는지 검토' },
     ],
     empty: {
-      candidates: [], selected: '', realWorldData: '', audience: '', learningContentCheck: '',
+      candidates: [], selected: '', learningContentCheck: '',
     },
   },
 
@@ -288,13 +284,16 @@ export const BOARD_SCHEMAS = {
   learning_activities: {
     fields: [
       { name: 'activities', label: '학습 활동', type: 'table', required: true,
-        description: '문제 해결 절차에 따른 학습 활동',
+        description: '문제 해결 절차(이해→탐색→분석→의사결정→산출→공유)에 따른 학습 활동',
         columns: [
           { name: 'order', label: '순서' },
           { name: 'activityName', label: '활동명' },
           { name: 'description', label: '활동 설명' },
           { name: 'subject', label: '담당 교과' },
           { name: 'hours', label: '차시' },
+          { name: 'expectedTime', label: '예상 시간' },
+          { name: 'teacherSupport', label: '교사 지원' },
+          { name: 'assessmentPoint', label: '평가 시점' },
         ] },
       { name: 'objectiveFeasibilityCheck', label: '학습목표/실행 적절성 검토', type: 'textarea', required: false,
         description: 'AI 검토: 학습목표 달성 가능성 및 실행 적절성' },
@@ -336,26 +335,21 @@ export const BOARD_SCHEMAS = {
   // ─── Ds-2-2: 스캐폴딩 설계 ───
   scaffolding_design: {
     fields: [
-      { name: 'supportMethods', label: '지원 방안 정리', type: 'list', required: false,
-        description: '팀원들의 기존 지원 방안 정리',
-        itemSchema: {
-          method: { label: '지원 방안', type: 'text' },
-          targetActivity: { label: '대상 활동', type: 'text' },
-        } },
-      { name: 'scaffolds', label: '스캐폴딩 계획', type: 'table', required: true,
-        description: '활동별 스캐폴딩 유형과 내용',
+      { name: 'scaffolds', label: '스캐폴딩 설계표', type: 'table', required: true,
+        description: '활동별 예상 어려움과 지원 내용, 제공 계획 (질문 프롬프트·예시·분석 틀·체크리스트 등)',
         columns: [
           { name: 'activity', label: '대상 활동' },
-          { name: 'scaffoldType', label: '스캐폴딩 유형' },
-          { name: 'content', label: '구체적 내용' },
-          { name: 'targetLevel', label: '대상 수준' },
+          { name: 'difficulty', label: '예상 어려움' },
+          { name: 'content', label: '지원 내용' },
+          { name: 'timing', label: '제공 시점·방법' },
+          { name: 'targetLevel', label: '제공 대상' },
           { name: 'fadePlan', label: '점진적 제거 계획' },
         ] },
       { name: 'appropriatenessCheck', label: '적절성 검토', type: 'textarea', required: false,
-        description: 'AI 검토: 스캐폴딩의 적절성 및 개선 제안' },
+        description: '지원 수준 2문 점검("없으면 수행하기 어려운가=예 / 있으면 스스로 생각하지 않아도 되는가=아니오") + AI 표현 수준 검토' },
     ],
     empty: {
-      supportMethods: [], scaffolds: [], appropriatenessCheck: '',
+      scaffolds: [], appropriatenessCheck: '',
     },
   },
 
