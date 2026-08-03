@@ -298,7 +298,7 @@ export const PRINCIPLES = [
   {
     id: 'SP31',
     stage: 5,
-    substep: 'Ds-1-1',
+    substep: 'Ds-1-2',
     sort_order: 1,
     name: '실제 데이터 기반 문제',
     description: '첫 번째 행에는 실제 데이터를 기반으로 실제성 있는 문제를 제시한다.',
@@ -306,7 +306,7 @@ export const PRINCIPLES = [
   {
     id: 'SP32',
     stage: 5,
-    substep: 'Ds-1-1',
+    substep: 'Ds-1-2',
     sort_order: 2,
     name: '학습내용·산출물 명시',
     description: '두 번째 행에는 문제를 해결하기 위해 요구되는 학습 내용과 산출물을 구체적으로 제시한다.',
@@ -314,7 +314,7 @@ export const PRINCIPLES = [
   {
     id: 'SP33',
     stage: 5,
-    substep: 'Ds-1-1',
+    substep: 'Ds-1-2',
     sort_order: 3,
     name: '청중과 행위 설정',
     description: '세 번째 행에는 문제를 해결하기 위한 청중을 결정하고 구체적인 행위를 제시한다.',
@@ -324,7 +324,7 @@ export const PRINCIPLES = [
   {
     id: 'SP34',
     stage: 5,
-    substep: 'Ds-1-2',
+    substep: 'Ds-1-3',
     sort_order: 4,
     name: '다양한 활동 유형 구성',
     description: '학습활동은 세부 수업목표와 연계하여, 학습자의 흥미, 수업상황을 고려하여 다양한 활동 유형들을 구성할 수 있다.',
@@ -332,7 +332,7 @@ export const PRINCIPLES = [
   {
     id: 'SP35',
     stage: 5,
-    substep: 'Ds-1-2',
+    substep: 'Ds-1-3',
     sort_order: 5,
     name: '내용·기능 기반 활동 나열',
     description: '활동 아이디어 나열 시에는 포스트잇, 수업설계카드 등을 활용할 수 있다. 분석 단계에서 도출한 내용요소와 기능요소를 활동 아이디어로 나열한다.',
@@ -340,7 +340,7 @@ export const PRINCIPLES = [
   {
     id: 'SP36',
     stage: 5,
-    substep: 'Ds-1-2',
+    substep: 'Ds-1-3',
     sort_order: 6,
     name: '현실적 배치 조정',
     description: '활동 아이디어 조정시 팀원들의 수업시간표/진도계획 등을 고려하여 배치할 수 있다.',
@@ -430,7 +430,7 @@ export const PRINCIPLES = [
   {
     id: 'SP46',
     stage: 6,
-    substep: 'Ds-2-3',
+    substep: 'Ds-1-1',
     sort_order: 10,
     name: '수업모형 기반 평가',
     description: '설계방향에서 특정 수업모형을 선택하였다면 모형의 각 단계별 학습활동(산출물)이 평가내용이 될 수 있다.',
@@ -438,7 +438,7 @@ export const PRINCIPLES = [
   {
     id: 'SP47',
     stage: 6,
-    substep: 'Ds-2-3',
+    substep: 'Ds-1-1',
     sort_order: 11,
     name: '목표·평가 독립성',
     description: '평가내용은 수업목표 혹은 도달목표에서 반드시 확인해야 한다고 생각하는 것이므로 세부 수업목표와 평가내용의 개수가 일치할 필요는 없다.',
@@ -446,7 +446,7 @@ export const PRINCIPLES = [
   {
     id: 'SP48',
     stage: 6,
-    substep: 'Ds-2-3',
+    substep: 'Ds-1-1',
     sort_order: 12,
     name: '피드백 방안 논의',
     description: '평가계획을 논의하면서 각 과목별 피드백방안에 대해서 논의한다.',

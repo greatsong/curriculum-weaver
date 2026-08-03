@@ -74,8 +74,8 @@ export const BOARD_SCHEMAS = {
   // ─── T-1-2: 수업설계 방향 ───
   design_direction: {
     fields: [
-      { name: 'keywords', label: '핵심 키워드', type: 'tags', required: true,
-        description: '수업설계 방향을 나타내는 핵심 키워드 목록' },
+      { name: 'keywords', label: '핵심 키워드', type: 'tags', required: false,
+        description: '수업설계 방향을 나타내는 핵심 키워드 목록 (선택)' },
       { name: 'directions', label: '설계 방향', type: 'list', required: true,
         description: '구체적인 수업설계 방향 진술문',
         itemSchema: {
@@ -118,7 +118,7 @@ export const BOARD_SCHEMAS = {
       { name: 'allRules', label: '브레인스토밍 규칙', type: 'list', required: false,
         description: '팀원들이 제안한 모든 규칙 아이디어' },
       { name: 'coreRules', label: '핵심 규칙', type: 'list', required: true,
-        description: '팀이 최종 결정한 핵심 Ground Rule' },
+        description: '팀이 최종 결정한 핵심 규칙 (5개 내외)' },
       { name: 'appropriatenessCheck', label: '적절성 점검', type: 'textarea', required: false,
         description: 'AI 점검: 규칙의 실행 가능성 및 적절성 평가' },
     ],
@@ -149,11 +149,11 @@ export const BOARD_SCHEMAS = {
   topic_criteria: {
     fields: [
       { name: 'criteria', label: '주제 선정 기준', type: 'table', required: true,
-        description: '융합 수업 주제를 선정하기 위한 평가 기준',
+        description: '융합 수업 주제를 선정하기 위한 기준 (팀 비전 정합성에 따라 핵심 기준과 참고 기준으로 구분)',
         columns: [
           { name: 'criterionName', label: '기준명' },
           { name: 'description', label: '설명' },
-          { name: 'weight', label: '가중치' },
+          { name: 'category', label: '구분 (핵심/참고)' },
         ] },
     ],
     empty: {
@@ -171,16 +171,6 @@ export const BOARD_SCHEMAS = {
           subjects: { label: '관련 교과', type: 'text' },
           rationale: { label: '제안 근거', type: 'text' },
         } },
-      { name: 'comparisonTable', label: '비교표', type: 'table', required: false,
-        description: '주제 후보별 기준 충족도 비교표',
-        columns: [
-          { name: 'topic', label: '주제' },
-          { name: 'criteria_scores', label: '기준별 점수 (JSON)', description: 'A-1-1에서 설정한 기준별 점수 객체' },
-          { name: 'totalScore', label: '총점' },
-          { name: 'notes', label: '비고' },
-        ] },
-      { name: 'clusterMap', label: '클러스터맵', type: 'json', required: false,
-        description: 'AI 생성: 주제 간 관계 클러스터맵 데이터' },
       { name: 'selectedTopic', label: '최종 선정 주제', type: 'text', required: true,
         description: '팀이 최종 선정한 융합 수업 주제' },
       { name: 'selectionRationale', label: '선정 근거', type: 'textarea', required: false,
@@ -189,8 +179,7 @@ export const BOARD_SCHEMAS = {
         description: 'AI 점검: 선정 주제가 비전 및 선정 기준에 부합하는지 검토' },
     ],
     empty: {
-      candidates: [], comparisonTable: [], clusterMap: null,
-      selectedTopic: '', selectionRationale: '', visionCriteriaCheck: '',
+      candidates: [], selectedTopic: '', selectionRationale: '', visionCriteriaCheck: '',
     },
   },
 
@@ -207,46 +196,50 @@ export const BOARD_SCHEMAS = {
           { name: 'process', label: '과정·기능' },
           { name: 'values', label: '가치·태도' },
         ] },
-      { name: 'connectionMap', label: '연결맵', type: 'json', required: false,
-        description: 'AI 생성: 교과 간 성취기준 연결 시각화 데이터' },
-      { name: 'duplicateCheck', label: '중복 정리 검토', type: 'textarea', required: false,
-        description: '중복되는 내용 요소 정리 및 AI 점검 결과' },
+      { name: 'duplicateCheck', label: '핵심 요소 통합·조정', type: 'textarea', required: false,
+        description: '교과 간 공통·중복 요소를 통합하고, 학생 수준·교육과정 범위에 맞지 않는 요소를 덜어낸 조정 결과' },
+      { name: 'restructuredStandards', label: '재구조화 성취기준', type: 'list', required: false,
+        description: '교과 간 공통 요소를 바탕으로, 평가 준거로 쓰기에 알맞게 구체적이고 명료하게 다듬은 재구조화 성취기준 문장' },
     ],
     empty: {
-      standards: [], connectionMap: null, duplicateCheck: '',
+      standards: [], duplicateCheck: '', restructuredStandards: [],
     },
   },
 
   // ─── A-2-2: 통합 수업목표 ───
   integrated_objectives: {
     fields: [
-      { name: 'subObjectives', label: '세부 학습목표', type: 'list', required: true,
-        description: '교과별 세부 학습목표',
+      { name: 'coreIdea', label: '핵심 아이디어', type: 'textarea', required: false,
+        description: '재구조화 표의 교과 간 공통 요소를 아우르는 핵심 아이디어 한 문장 (소재를 바꿔도 성립하는 개념 중심 문장)' },
+      { name: 'inquiryQuestions', label: '탐구 질문', type: 'list', required: false,
+        description: '핵심 아이디어를 학생의 물음으로 바꾼, 단원을 관통할 탐구 질문' },
+      { name: 'subObjectives', label: '교과별 수업목표', type: 'list', required: true,
+        description: '교과별 수업목표 (귀납적: 교과 목표→통합 / 연역적: 핵심 아이디어→교과 구체화)',
         itemSchema: {
           subject: { label: '교과', type: 'text' },
           objective: { label: '학습목표', type: 'textarea' },
         } },
-      { name: 'integratedObjectives', label: '통합 학습목표', type: 'list', required: true,
-        description: '융합 수업의 통합 학습목표 진술문' },
+      { name: 'integratedObjectives', label: '통합 수업목표', type: 'list', required: true,
+        description: '핵심 아이디어로 수렴되는 키워드를 모아 한 문장으로 진술한 통합 수업목표' },
       { name: 'alignment', label: '비전-성취기준-목표 정합성', type: 'textarea', required: false,
-        description: 'AI 검토: 비전, 성취기준, 수업목표 간의 정합성 평가' },
+        description: 'AI 검토: 비전, 성취기준, 핵심 아이디어, 수업목표 간의 정합성 평가' },
     ],
     empty: {
-      subObjectives: [], integratedObjectives: [], alignment: '',
+      coreIdea: '', inquiryQuestions: [], subObjectives: [], integratedObjectives: [], alignment: '',
     },
   },
 
   // ─── Ds-1-1: 평가 설계 ───
   assessment_plan: {
     fields: [
-      { name: 'assessments', label: '평가 항목', type: 'table', required: true,
-        description: '활동별 평가 내용, 방법, 루브릭',
+      { name: 'assessments', label: '평가 설계표', type: 'table', required: true,
+        description: '확인 지점(산출물/수행 장면)별 평가 요소·방법·시점·주체 — 추상적 요소는 관찰 가능한 행동 문장으로',
         columns: [
-          { name: 'activity', label: '대상 활동' },
-          { name: 'subject', label: '평가 교과' },
-          { name: 'content', label: '평가 내용' },
+          { name: 'checkpoint', label: '확인 지점 (산출물/수행 장면)' },
+          { name: 'content', label: '평가 요소' },
           { name: 'method', label: '평가 방법' },
-          { name: 'rubricSummary', label: '루브릭 요약' },
+          { name: 'timing', label: '평가 시점' },
+          { name: 'evaluator', label: '평가 주체' },
         ] },
       { name: 'objectiveAlignmentCheck', label: '수업목표-평가 정합성', type: 'textarea', required: false,
         description: 'AI 검토: 수업목표와 평가 설계의 정합성' },
@@ -259,24 +252,20 @@ export const BOARD_SCHEMAS = {
   // ─── Ds-1-2: 문제 상황 ───
   problem_situation: {
     fields: [
-      { name: 'candidates', label: '문제 상황 후보', type: 'list', required: false,
-        description: 'AI가 실제 데이터 기반으로 제안한 문제 상황 초안 2~3개',
+      { name: 'candidates', label: '실생활 맥락 아이디어', type: 'list', required: false,
+        description: '팀이 나열한 실생활 맥락 아이디어 (각 아이디어가 어떤 학습내용과 이어지는지 함께 기록)',
         itemSchema: {
-          title: { label: '제목', type: 'text' },
-          situation: { label: '문제 상황', type: 'textarea' },
-          dataSource: { label: '데이터 출처', type: 'text' },
+          title: { label: '맥락', type: 'text' },
+          situation: { label: '설명·연결되는 학습내용', type: 'textarea' },
+          dataSource: { label: '참고 자료·데이터', type: 'text' },
         } },
       { name: 'selected', label: '선정 문제 상황', type: 'textarea', required: true,
-        description: '팀이 최종 결정한 통합 문제 상황' },
-      { name: 'realWorldData', label: '실제 데이터', type: 'textarea', required: false,
-        description: '문제 상황에 활용된 실제 데이터 출처 및 내용' },
-      { name: 'audience', label: '청중', type: 'text', required: false,
-        description: '학생 활동의 대상 청중 (예: 지역 주민, 학부모)' },
-      { name: 'learningContentCheck', label: '학습내용/산출물/청중 반영 검토', type: 'textarea', required: false,
-        description: 'AI 검토: 문제 상황에 학습내용, 산출물, 청중이 적절히 반영되었는지 확인' },
+        description: '구체화한 문제 상황(등장인물·학생 역할·해결 과제·참고 정보·산출물)과 학생용 제시문' },
+      { name: 'learningContentCheck', label: '평가 정합성 검토', type: 'textarea', required: false,
+        description: 'Ds-1 평가 요소와 통합 수업목표가 문제 상황 속에 자연스럽게 드러나는지 검토' },
     ],
     empty: {
-      candidates: [], selected: '', realWorldData: '', audience: '', learningContentCheck: '',
+      candidates: [], selected: '', learningContentCheck: '',
     },
   },
 
@@ -284,13 +273,16 @@ export const BOARD_SCHEMAS = {
   learning_activities: {
     fields: [
       { name: 'activities', label: '학습 활동', type: 'table', required: true,
-        description: '문제 해결 절차에 따른 학습 활동',
+        description: '문제 해결 절차(이해→탐색→분석→의사결정→산출→공유)에 따른 학습 활동',
         columns: [
           { name: 'order', label: '순서' },
           { name: 'activityName', label: '활동명' },
           { name: 'description', label: '활동 설명' },
           { name: 'subject', label: '담당 교과' },
           { name: 'hours', label: '차시' },
+          { name: 'expectedTime', label: '예상 시간' },
+          { name: 'teacherSupport', label: '교사 지원' },
+          { name: 'assessmentPoint', label: '평가 시점' },
         ] },
       { name: 'objectiveFeasibilityCheck', label: '학습목표/실행 적절성 검토', type: 'textarea', required: false,
         description: 'AI 검토: 학습목표 달성 가능성 및 실행 적절성' },
@@ -303,51 +295,50 @@ export const BOARD_SCHEMAS = {
   // ─── Ds-2-1: 자료와 도구 연결 (보드 필드는 도구 중심 유지 — 자료 컬럼 보강은 후속) ───
   support_tools: {
     fields: [
-      { name: 'experiencedTools', label: '경험한 도구 정리', type: 'list', required: false,
-        description: '팀원들이 경험한 도구 목록',
-        itemSchema: {
-          toolName: { label: '도구명', type: 'text' },
-          experience: { label: '활용 경험', type: 'text' },
-        } },
-      { name: 'tools', label: '학습활동-도구 매칭', type: 'table', required: true,
-        description: '각 학습 활동에 매칭된 도구와 활용 방안',
+      { name: 'tools', label: '도구 설계표', type: 'table', required: true,
+        description: '각 학습활동에 연결한 도구와 활용 방안 ("이 활동에 무엇이 필요한가" 기준, 개수보다 기능 중심)',
         columns: [
           { name: 'activity', label: '대상 활동' },
           { name: 'toolName', label: '도구명' },
           { name: 'usage', label: '활용 방안' },
-          { name: 'alternative', label: '대안 도구' },
+          { name: 'sourceType', label: '구분(탐색/개발)' },
+        ] },
+      { name: 'agencyCheck', label: 'Human-AI Agency 점검', type: 'textarea', required: false,
+        description: 'AI 도구별로 학생이 직접 할 일 / AI가 지원할 일 / 교사가 확인·개입할 일을 나누어 기록 — 도구가 학생의 사고를 대신하지 않는지 점검' },
+      { name: 'prepPlan', label: '도구 준비표', type: 'table', required: false,
+        description: '도구별 담당자와 준비 시점, 사전 점검 방법 (수업 전 직접 시험해 볼 사람까지)',
+        columns: [
+          { name: 'toolName', label: '도구명' },
+          { name: 'owner', label: '담당자' },
+          { name: 'prepBy', label: '준비 시점' },
+          { name: 'precheck', label: '사전 점검' },
         ] },
       { name: 'environmentCheck', label: '학습환경 적절성 검토', type: 'textarea', required: false,
-        description: '학습 환경에서의 도구 활용 적절성 검토' },
+        description: '학교 인프라·학생 디지털 리터러시 수준에서의 도구 활용 적절성 검토' },
     ],
     empty: {
-      experiencedTools: [], tools: [], environmentCheck: '',
+      tools: [], agencyCheck: '', prepPlan: [], environmentCheck: '',
     },
   },
 
   // ─── Ds-2-2: 스캐폴딩 설계 ───
   scaffolding_design: {
     fields: [
-      { name: 'supportMethods', label: '지원 방안 정리', type: 'list', required: false,
-        description: '팀원들의 기존 지원 방안 정리',
-        itemSchema: {
-          method: { label: '지원 방안', type: 'text' },
-          targetActivity: { label: '대상 활동', type: 'text' },
-        } },
-      { name: 'scaffolds', label: '스캐폴딩 계획', type: 'table', required: true,
-        description: '활동별 스캐폴딩 유형과 내용',
+      { name: 'scaffolds', label: '스캐폴딩 설계표', type: 'table', required: true,
+        description: '활동별 예상 어려움과 지원 내용, 제공 계획 (질문 프롬프트·예시·분석 틀·체크리스트 등)',
         columns: [
           { name: 'activity', label: '대상 활동' },
-          { name: 'scaffoldType', label: '스캐폴딩 유형' },
-          { name: 'content', label: '구체적 내용' },
-          { name: 'targetLevel', label: '대상 수준' },
+          { name: 'difficulty', label: '예상 어려움' },
+          { name: 'content', label: '지원 내용' },
+          { name: 'timing', label: '제공 시점·방법' },
+          { name: 'targetLevel', label: '제공 대상' },
           { name: 'fadePlan', label: '점진적 제거 계획' },
         ] },
       { name: 'appropriatenessCheck', label: '적절성 검토', type: 'textarea', required: false,
-        description: 'AI 검토: 스캐폴딩의 적절성 및 개선 제안' },
+        description: '지원 수준 2문 점검("없으면 수행하기 어려운가=예 / 있으면 스스로 생각하지 않아도 되는가=아니오") + AI 표현 수준 검토' },
     ],
     empty: {
-      supportMethods: [], scaffolds: [], appropriatenessCheck: '',
+      scaffolds: [], appropriatenessCheck: '',
     },
   },
 
@@ -355,89 +346,88 @@ export const BOARD_SCHEMAS = {
   material_list: {
     fields: [
       { name: 'materials', label: '개발 자료 목록', type: 'table', required: true,
-        description: '개발/탐색 자료 구분 및 제작 계획',
+        description: '활동–필요 자료–확보 방법(탐색/개발) 목록과 제작 계획 (확보 가능 여부를 처음부터 따지지 말고 이상적으로 필요한 자료를 일단 다 적기)',
         columns: [
+          { name: 'activity', label: '대상 활동' },
           { name: 'materialType', label: '자료 유형' },
           { name: 'title', label: '자료명' },
           { name: 'subject', label: '교과' },
-          { name: 'category', label: '구분 (개발/탐색)' },
+          { name: 'category', label: '구분 (탐색/개발)' },
           { name: 'assignee', label: '담당자' },
-          { name: 'priority', label: '우선순위' },
           { name: 'deadline', label: '마감일' },
+          { name: 'status', label: '완료 여부' },
         ] },
+      { name: 'peerReview', label: '동료 검토·보완', type: 'list', required: false,
+        description: '완성한 자료를 동료가 학생 관점에서 따라 해 보고 남긴 검토 의견과 보완 내용' },
     ],
     empty: {
-      materials: [],
+      materials: [], peerReview: [],
     },
   },
 
-  // ─── DI-2-1: 수업 기록 ───
+  // ─── DI-2-1: 수업 실행·기록 ───
   class_record: {
     fields: [
-      { name: 'recordingMethod', label: '기록 방안', type: 'textarea', required: false,
-        description: '팀이 합의한 수업 기록 방안' },
+      { name: 'executionPlan', label: '실행 방식·역할', type: 'textarea', required: false,
+        description: '팀이 합의한 수업 실행 방식(개별/공동)과 실행·참관·지원 역할 분담, 교과별 실행 시점' },
       { name: 'episodes', label: '주요 상황 기록', type: 'table', required: true,
-        description: '수업 중 주요 에피소드와 시사점',
+        description: '수업 중·직후에 남긴 에피소드 (예상과 달랐던 반응, 인상적인 발화, 뜻밖의 질문 — 깊은 분석은 평가 단계에서)',
         columns: [
           { name: 'timestamp', label: '시점' },
           { name: 'situation', label: '상황 설명' },
           { name: 'studentResponse', label: '학생 반응' },
-          { name: 'insight', label: '시사점' },
+          { name: 'insight', label: '메모·단서' },
         ] },
-      { name: 'transcripts', label: '전사/분석', type: 'list', required: false,
-        description: 'AI 생성: 수업 전사 및 분석 결과' },
-      { name: 'implications', label: '종합 시사점', type: 'textarea', required: false,
-        description: '기록 분석에서 도출된 종합 시사점' },
     ],
     empty: {
-      recordingMethod: '', episodes: [], transcripts: [], implications: '',
+      executionPlan: '', episodes: [],
     },
   },
 
   // ─── E-1-1: 수업 성찰 ───
   class_reflection: {
     fields: [
-      { name: 'learningResults', label: '학습 과정/결과 공유', type: 'list', required: false,
-        description: '각 교과별 수업 과정과 결과 공유',
+      { name: 'learningResults', label: '학생 자료·학습 결과', type: 'list', required: false,
+        description: '팀이 함께 검토한 학생 결과물·형성평가 응답·성찰일지 (목표 도달 사례 / 자주 보인 오개념 / 예상 밖의 창의적 반응 세 갈래 샘플)',
         itemSchema: {
           subject: { label: '교과', type: 'text' },
-          processResult: { label: '과정 및 결과', type: 'textarea' },
+          processResult: { label: '자료와 발견', type: 'textarea' },
         } },
-      { name: 'improvements', label: '개선사항/수정보완', type: 'list', required: true,
-        description: '팀 협의를 통해 도출된 개선사항' },
-      { name: 'personalReflections', label: '교과별 수업 개선', type: 'list', required: false,
-        description: '각 교사가 본인 교과 수업에 대해 개선할 점',
-        itemSchema: {
-          subject: { label: '교과', type: 'text' },
-          whatWorked: { label: '잘된 점', type: 'textarea' },
-          improvement: { label: '개선할 점', type: 'textarea' },
-        } },
-      { name: 'improvementIdeas', label: '수업 개선 아이디어', type: 'list', required: false,
-        description: 'AI 생성: 수업 개선을 위한 구체적 아이디어' },
+      { name: 'rubricGapAnalysis', label: '루브릭 기준 도달 확인', type: 'textarea', required: false,
+        description: '합의한 평가 루브릭을 기준으로 판단한 성취수준과, 설계 의도와 실제 배움 사이의 간극' },
+      { name: 'improvements', label: '원인 분석·개선 아이디어', type: 'list', required: true,
+        description: '학생이 막힌 지점의 원인(안내 부족·발문·시간 배분 등)과 팀이 나눈 개선 아이디어' },
+      { name: 'revisionLog', label: '설계안 수정 기록', type: 'table', required: false,
+        description: '지도안·활동지·평가 도구에서 무엇을 왜 바꾸었는지 기록',
+        columns: [
+          { name: 'target', label: '수정 대상' },
+          { name: 'change', label: '수정 내용' },
+          { name: 'reason', label: '수정 이유' },
+        ] },
     ],
     empty: {
-      learningResults: [], improvements: [], personalReflections: [], improvementIdeas: [],
+      learningResults: [], rubricGapAnalysis: '', improvements: [], revisionLog: [],
     },
   },
 
-  // ─── E-2-1: 과정 성찰 ───
+  // ─── E-2-1: 협력 과정 성찰 ───
   process_reflection: {
     fields: [
-      { name: 'processReflections', label: '과정 성찰', type: 'table', required: true,
-        description: '단계별 수업설계 과정에 대한 성찰',
+      { name: 'agreementReview', label: '초기 합의 사항 대조', type: 'table', required: true,
+        description: '준비 과정에서 합의한 비전·수업설계 방향·역할·규칙·일정을 실제 진행과 비교',
         columns: [
-          { name: 'phase', label: '단계' },
-          { name: 'goal', label: '목표' },
-          { name: 'result', label: '결과' },
-          { name: 'improvement', label: '개선사항' },
+          { name: 'item', label: '합의 항목' },
+          { name: 'agreed', label: '합의 내용' },
+          { name: 'actual', label: '실제 진행' },
+          { name: 'assessment', label: '평가' },
         ] },
-      { name: 'sharedReflections', label: '성찰 공유', type: 'list', required: false,
-        description: '팀원들이 공유한 개인 성찰' },
-      { name: 'finalImprovements', label: '최종 개선사항', type: 'list', required: true,
-        description: '팀 협의를 통해 도출된 최종 개선사항 및 수정·보완 계획' },
+      { name: 'structureReview', label: '협력 구조 검토', type: 'textarea', required: false,
+        description: '역할 분담의 공평성, 갈등 상황에서 규칙의 실효성, 일정 운영의 무리 여부 — 원인은 개인이 아니라 운영 방식(구조)에서 찾기' },
+      { name: 'operatingPrinciples', label: '다음 협력 운영 원칙', type: 'list', required: true,
+        description: '다음 협력에서 새로 도입하거나 수정할 운영 원칙 (바로 실행하고 지켰는지 확인할 수 있는 행동으로)' },
     ],
     empty: {
-      processReflections: [], sharedReflections: [], finalImprovements: [],
+      agreementReview: [], structureReview: '', operatingPrinciples: [],
     },
   },
 
