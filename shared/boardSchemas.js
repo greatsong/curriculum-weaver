@@ -220,19 +220,23 @@ export const BOARD_SCHEMAS = {
   // ─── A-2-2: 통합 수업목표 ───
   integrated_objectives: {
     fields: [
-      { name: 'subObjectives', label: '세부 학습목표', type: 'list', required: true,
-        description: '교과별 세부 학습목표',
+      { name: 'coreIdea', label: '핵심 아이디어', type: 'textarea', required: false,
+        description: '재구조화 표의 교과 간 공통 요소를 아우르는 핵심 아이디어 한 문장 (소재를 바꿔도 성립하는 개념 중심 문장)' },
+      { name: 'inquiryQuestions', label: '탐구 질문', type: 'list', required: false,
+        description: '핵심 아이디어를 학생의 물음으로 바꾼, 단원을 관통할 탐구 질문' },
+      { name: 'subObjectives', label: '교과별 수업목표', type: 'list', required: true,
+        description: '교과별 수업목표 (귀납적: 교과 목표→통합 / 연역적: 핵심 아이디어→교과 구체화)',
         itemSchema: {
           subject: { label: '교과', type: 'text' },
           objective: { label: '학습목표', type: 'textarea' },
         } },
-      { name: 'integratedObjectives', label: '통합 학습목표', type: 'list', required: true,
-        description: '융합 수업의 통합 학습목표 진술문' },
+      { name: 'integratedObjectives', label: '통합 수업목표', type: 'list', required: true,
+        description: '핵심 아이디어로 수렴되는 키워드를 모아 한 문장으로 진술한 통합 수업목표' },
       { name: 'alignment', label: '비전-성취기준-목표 정합성', type: 'textarea', required: false,
-        description: 'AI 검토: 비전, 성취기준, 수업목표 간의 정합성 평가' },
+        description: 'AI 검토: 비전, 성취기준, 핵심 아이디어, 수업목표 간의 정합성 평가' },
     ],
     empty: {
-      subObjectives: [], integratedObjectives: [], alignment: '',
+      coreIdea: '', inquiryQuestions: [], subObjectives: [], integratedObjectives: [], alignment: '',
     },
   },
 
@@ -303,25 +307,29 @@ export const BOARD_SCHEMAS = {
   // ─── Ds-2-1: 자료와 도구 연결 (보드 필드는 도구 중심 유지 — 자료 컬럼 보강은 후속) ───
   support_tools: {
     fields: [
-      { name: 'experiencedTools', label: '경험한 도구 정리', type: 'list', required: false,
-        description: '팀원들이 경험한 도구 목록',
-        itemSchema: {
-          toolName: { label: '도구명', type: 'text' },
-          experience: { label: '활용 경험', type: 'text' },
-        } },
-      { name: 'tools', label: '학습활동-도구 매칭', type: 'table', required: true,
-        description: '각 학습 활동에 매칭된 도구와 활용 방안',
+      { name: 'tools', label: '도구 설계표', type: 'table', required: true,
+        description: '각 학습활동에 연결한 도구와 활용 방안 ("이 활동에 무엇이 필요한가" 기준, 개수보다 기능 중심)',
         columns: [
           { name: 'activity', label: '대상 활동' },
           { name: 'toolName', label: '도구명' },
           { name: 'usage', label: '활용 방안' },
-          { name: 'alternative', label: '대안 도구' },
+          { name: 'sourceType', label: '구분(탐색/개발)' },
+        ] },
+      { name: 'agencyCheck', label: 'Human-AI Agency 점검', type: 'textarea', required: false,
+        description: 'AI 도구별로 학생이 직접 할 일 / AI가 지원할 일 / 교사가 확인·개입할 일을 나누어 기록 — 도구가 학생의 사고를 대신하지 않는지 점검' },
+      { name: 'prepPlan', label: '도구 준비표', type: 'table', required: false,
+        description: '도구별 담당자와 준비 시점, 사전 점검 방법 (수업 전 직접 시험해 볼 사람까지)',
+        columns: [
+          { name: 'toolName', label: '도구명' },
+          { name: 'owner', label: '담당자' },
+          { name: 'prepBy', label: '준비 시점' },
+          { name: 'precheck', label: '사전 점검' },
         ] },
       { name: 'environmentCheck', label: '학습환경 적절성 검토', type: 'textarea', required: false,
-        description: '학습 환경에서의 도구 활용 적절성 검토' },
+        description: '학교 인프라·학생 디지털 리터러시 수준에서의 도구 활용 적절성 검토' },
     ],
     empty: {
-      experiencedTools: [], tools: [], environmentCheck: '',
+      tools: [], agencyCheck: '', prepPlan: [], environmentCheck: '',
     },
   },
 
@@ -397,47 +405,47 @@ export const BOARD_SCHEMAS = {
   // ─── E-1-1: 수업 성찰 ───
   class_reflection: {
     fields: [
-      { name: 'learningResults', label: '학습 과정/결과 공유', type: 'list', required: false,
-        description: '각 교과별 수업 과정과 결과 공유',
+      { name: 'learningResults', label: '학생 자료·학습 결과', type: 'list', required: false,
+        description: '팀이 함께 검토한 학생 결과물·형성평가 응답·성찰일지 (목표 도달 사례 / 자주 보인 오개념 / 예상 밖의 창의적 반응 세 갈래 샘플)',
         itemSchema: {
           subject: { label: '교과', type: 'text' },
-          processResult: { label: '과정 및 결과', type: 'textarea' },
+          processResult: { label: '자료와 발견', type: 'textarea' },
         } },
-      { name: 'improvements', label: '개선사항/수정보완', type: 'list', required: true,
-        description: '팀 협의를 통해 도출된 개선사항' },
-      { name: 'personalReflections', label: '교과별 수업 개선', type: 'list', required: false,
-        description: '각 교사가 본인 교과 수업에 대해 개선할 점',
-        itemSchema: {
-          subject: { label: '교과', type: 'text' },
-          whatWorked: { label: '잘된 점', type: 'textarea' },
-          improvement: { label: '개선할 점', type: 'textarea' },
-        } },
-      { name: 'improvementIdeas', label: '수업 개선 아이디어', type: 'list', required: false,
-        description: 'AI 생성: 수업 개선을 위한 구체적 아이디어' },
+      { name: 'rubricGapAnalysis', label: '루브릭 기준 도달 확인', type: 'textarea', required: false,
+        description: '합의한 평가 루브릭을 기준으로 판단한 성취수준과, 설계 의도와 실제 배움 사이의 간극' },
+      { name: 'improvements', label: '원인 분석·개선 아이디어', type: 'list', required: true,
+        description: '학생이 막힌 지점의 원인(안내 부족·발문·시간 배분 등)과 팀이 나눈 개선 아이디어' },
+      { name: 'revisionLog', label: '설계안 수정 기록', type: 'table', required: false,
+        description: '지도안·활동지·평가 도구에서 무엇을 왜 바꾸었는지 기록',
+        columns: [
+          { name: 'target', label: '수정 대상' },
+          { name: 'change', label: '수정 내용' },
+          { name: 'reason', label: '수정 이유' },
+        ] },
     ],
     empty: {
-      learningResults: [], improvements: [], personalReflections: [], improvementIdeas: [],
+      learningResults: [], rubricGapAnalysis: '', improvements: [], revisionLog: [],
     },
   },
 
-  // ─── E-2-1: 과정 성찰 ───
+  // ─── E-2-1: 협력 과정 성찰 ───
   process_reflection: {
     fields: [
-      { name: 'processReflections', label: '과정 성찰', type: 'table', required: true,
-        description: '단계별 수업설계 과정에 대한 성찰',
+      { name: 'agreementReview', label: '초기 합의 사항 대조', type: 'table', required: true,
+        description: '준비 과정에서 합의한 비전·수업설계 방향·역할·규칙·일정을 실제 진행과 비교',
         columns: [
-          { name: 'phase', label: '단계' },
-          { name: 'goal', label: '목표' },
-          { name: 'result', label: '결과' },
-          { name: 'improvement', label: '개선사항' },
+          { name: 'item', label: '합의 항목' },
+          { name: 'agreed', label: '합의 내용' },
+          { name: 'actual', label: '실제 진행' },
+          { name: 'assessment', label: '평가' },
         ] },
-      { name: 'sharedReflections', label: '성찰 공유', type: 'list', required: false,
-        description: '팀원들이 공유한 개인 성찰' },
-      { name: 'finalImprovements', label: '최종 개선사항', type: 'list', required: true,
-        description: '팀 협의를 통해 도출된 최종 개선사항 및 수정·보완 계획' },
+      { name: 'structureReview', label: '협력 구조 검토', type: 'textarea', required: false,
+        description: '역할 분담의 공평성, 갈등 상황에서 규칙의 실효성, 일정 운영의 무리 여부 — 원인은 개인이 아니라 운영 방식(구조)에서 찾기' },
+      { name: 'operatingPrinciples', label: '다음 협력 운영 원칙', type: 'list', required: true,
+        description: '다음 협력에서 새로 도입하거나 수정할 운영 원칙 (바로 실행하고 지켰는지 확인할 수 있는 행동으로)' },
     ],
     empty: {
-      processReflections: [], sharedReflections: [], finalImprovements: [],
+      agreementReview: [], structureReview: '', operatingPrinciples: [],
     },
   },
 
