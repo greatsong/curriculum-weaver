@@ -363,42 +363,41 @@ export const BOARD_SCHEMAS = {
   material_list: {
     fields: [
       { name: 'materials', label: '개발 자료 목록', type: 'table', required: true,
-        description: '개발/탐색 자료 구분 및 제작 계획',
+        description: '활동–필요 자료–확보 방법(탐색/개발) 목록과 제작 계획 (확보 가능 여부를 처음부터 따지지 말고 이상적으로 필요한 자료를 일단 다 적기)',
         columns: [
+          { name: 'activity', label: '대상 활동' },
           { name: 'materialType', label: '자료 유형' },
           { name: 'title', label: '자료명' },
           { name: 'subject', label: '교과' },
-          { name: 'category', label: '구분 (개발/탐색)' },
+          { name: 'category', label: '구분 (탐색/개발)' },
           { name: 'assignee', label: '담당자' },
-          { name: 'priority', label: '우선순위' },
           { name: 'deadline', label: '마감일' },
+          { name: 'status', label: '완료 여부' },
         ] },
+      { name: 'peerReview', label: '동료 검토·보완', type: 'list', required: false,
+        description: '완성한 자료를 동료가 학생 관점에서 따라 해 보고 남긴 검토 의견과 보완 내용' },
     ],
     empty: {
-      materials: [],
+      materials: [], peerReview: [],
     },
   },
 
-  // ─── DI-2-1: 수업 기록 ───
+  // ─── DI-2-1: 수업 실행·기록 ───
   class_record: {
     fields: [
-      { name: 'recordingMethod', label: '기록 방안', type: 'textarea', required: false,
-        description: '팀이 합의한 수업 기록 방안' },
+      { name: 'executionPlan', label: '실행 방식·역할', type: 'textarea', required: false,
+        description: '팀이 합의한 수업 실행 방식(개별/공동)과 실행·참관·지원 역할 분담, 교과별 실행 시점' },
       { name: 'episodes', label: '주요 상황 기록', type: 'table', required: true,
-        description: '수업 중 주요 에피소드와 시사점',
+        description: '수업 중·직후에 남긴 에피소드 (예상과 달랐던 반응, 인상적인 발화, 뜻밖의 질문 — 깊은 분석은 평가 단계에서)',
         columns: [
           { name: 'timestamp', label: '시점' },
           { name: 'situation', label: '상황 설명' },
           { name: 'studentResponse', label: '학생 반응' },
-          { name: 'insight', label: '시사점' },
+          { name: 'insight', label: '메모·단서' },
         ] },
-      { name: 'transcripts', label: '전사/분석', type: 'list', required: false,
-        description: 'AI 생성: 수업 전사 및 분석 결과' },
-      { name: 'implications', label: '종합 시사점', type: 'textarea', required: false,
-        description: '기록 분석에서 도출된 종합 시사점' },
     ],
     empty: {
-      recordingMethod: '', episodes: [], transcripts: [], implications: '',
+      executionPlan: '', episodes: [],
     },
   },
 
