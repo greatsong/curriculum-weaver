@@ -74,8 +74,8 @@ export const BOARD_SCHEMAS = {
   // ─── T-1-2: 수업설계 방향 ───
   design_direction: {
     fields: [
-      { name: 'keywords', label: '핵심 키워드', type: 'tags', required: true,
-        description: '수업설계 방향을 나타내는 핵심 키워드 목록' },
+      { name: 'keywords', label: '핵심 키워드', type: 'tags', required: false,
+        description: '수업설계 방향을 나타내는 핵심 키워드 목록 (선택)' },
       { name: 'directions', label: '설계 방향', type: 'list', required: true,
         description: '구체적인 수업설계 방향 진술문',
         itemSchema: {
@@ -149,11 +149,11 @@ export const BOARD_SCHEMAS = {
   topic_criteria: {
     fields: [
       { name: 'criteria', label: '주제 선정 기준', type: 'table', required: true,
-        description: '융합 수업 주제를 선정하기 위한 평가 기준',
+        description: '융합 수업 주제를 선정하기 위한 기준 (팀 비전 정합성에 따라 핵심 기준과 참고 기준으로 구분)',
         columns: [
           { name: 'criterionName', label: '기준명' },
           { name: 'description', label: '설명' },
-          { name: 'weight', label: '가중치' },
+          { name: 'category', label: '구분 (핵심/참고)' },
         ] },
     ],
     empty: {
@@ -171,16 +171,6 @@ export const BOARD_SCHEMAS = {
           subjects: { label: '관련 교과', type: 'text' },
           rationale: { label: '제안 근거', type: 'text' },
         } },
-      { name: 'comparisonTable', label: '비교표', type: 'table', required: false,
-        description: '주제 후보별 기준 충족도 비교표',
-        columns: [
-          { name: 'topic', label: '주제' },
-          { name: 'criteria_scores', label: '기준별 점수 (JSON)', description: 'A-1-1에서 설정한 기준별 점수 객체' },
-          { name: 'totalScore', label: '총점' },
-          { name: 'notes', label: '비고' },
-        ] },
-      { name: 'clusterMap', label: '클러스터맵', type: 'json', required: false,
-        description: 'AI 생성: 주제 간 관계 클러스터맵 데이터' },
       { name: 'selectedTopic', label: '최종 선정 주제', type: 'text', required: true,
         description: '팀이 최종 선정한 융합 수업 주제' },
       { name: 'selectionRationale', label: '선정 근거', type: 'textarea', required: false,
@@ -189,8 +179,7 @@ export const BOARD_SCHEMAS = {
         description: 'AI 점검: 선정 주제가 비전 및 선정 기준에 부합하는지 검토' },
     ],
     empty: {
-      candidates: [], comparisonTable: [], clusterMap: null,
-      selectedTopic: '', selectionRationale: '', visionCriteriaCheck: '',
+      candidates: [], selectedTopic: '', selectionRationale: '', visionCriteriaCheck: '',
     },
   },
 
@@ -207,13 +196,13 @@ export const BOARD_SCHEMAS = {
           { name: 'process', label: '과정·기능' },
           { name: 'values', label: '가치·태도' },
         ] },
-      { name: 'connectionMap', label: '연결맵', type: 'json', required: false,
-        description: 'AI 생성: 교과 간 성취기준 연결 시각화 데이터' },
-      { name: 'duplicateCheck', label: '중복 정리 검토', type: 'textarea', required: false,
-        description: '중복되는 내용 요소 정리 및 AI 점검 결과' },
+      { name: 'duplicateCheck', label: '핵심 요소 통합·조정', type: 'textarea', required: false,
+        description: '교과 간 공통·중복 요소를 통합하고, 학생 수준·교육과정 범위에 맞지 않는 요소를 덜어낸 조정 결과' },
+      { name: 'restructuredStandards', label: '재구조화 성취기준', type: 'list', required: false,
+        description: '교과 간 공통 요소를 바탕으로, 평가 준거로 쓰기에 알맞게 구체적이고 명료하게 다듬은 재구조화 성취기준 문장' },
     ],
     empty: {
-      standards: [], connectionMap: null, duplicateCheck: '',
+      standards: [], duplicateCheck: '', restructuredStandards: [],
     },
   },
 
