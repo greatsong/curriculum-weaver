@@ -228,6 +228,43 @@ function buildSchemaText(codes) {
  * AI 스트리밍 호출 + 절차 감지 + SSE 전송
  */
 async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, label, sendEvent }) {
+  // 3장 개정(PR #102)으로 보드 필드가 늘어 한 페이즈(9~10개 보드+대화)의 자유 텍스트 JSON이
+  // 절단·문법오류로 파싱 0건이 재현됨 → 강제 tool 호출로 전환. tool 입력은 API 계약상
+  // 항상 유효한 JSON이라 파싱 실패가 원천 차단되고, 절차 코드별 스키마로 최상위 형태를 고정한다.
+  // 스트림 중단·부분 생성에 대비해 결과가 절반 미만이면 1회 재시도한다.
+  const MAX_ATTEMPTS = 2
+  const minKeys = Math.ceil(codes.length / 2)
+  let best = {}
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const result = await streamAttempt({ systemPrompt, userPrompt, codes, startIndex, label: `${label}${attempt > 1 ? `-재시도` : ''}`, sendEvent })
+    const matched = Object.keys(result).filter((k) => codes.includes(k)).length
+    if (matched > Object.keys(best).filter((k) => codes.includes(k)).length) best = result
+    if (matched >= minKeys) { best = result; break }
+    console.warn(`[demo][${label}] 시도 ${attempt}: 유효 절차 ${matched}/${codes.length}개 — ${attempt < MAX_ATTEMPTS ? '재시도' : '보충 생성으로 진행'}`)
+  }
+
+  // 최종 방어선: 누락 절차를 하나씩 개별 생성해 채운다.
+  // 프롬프트 앞부분(cache_control)이 공유되어 반복 호출 비용은 캐시 읽기 수준.
+  const missing = codes.filter((c) => !best[c])
+  for (const code of missing) {
+    try {
+      const single = await streamAttempt({
+        systemPrompt, userPrompt, codes: [code],
+        startIndex: startIndex + codes.indexOf(code), label: `${label}-보충:${code}`, sendEvent,
+        focusInstruction: `\n\n[보충 지시] 위 요구 전체 중, 지금은 절차 "${code}"(${procedureNameMap[code] || code}) 하나만 생성해 save_boards로 저장하라. 다른 절차는 포함하지 말 것.`,
+      })
+      if (single[code]) best = { ...best, [code]: single[code] }
+    } catch (fillErr) {
+      console.warn(`[demo][${label}] 보충 생성 실패 (${code}):`, fillErr?.message)
+    }
+  }
+  const finalCount = Object.keys(best).filter((k) => codes.includes(k)).length
+  console.log(`[demo][${label}] 최종 확보: ${finalCount}/${codes.length}개 절차`)
+  return best
+}
+
+async function streamAttempt({ systemPrompt, userPrompt, codes, startIndex, label, sendEvent, focusInstruction = null }) {
   let fullText = ''
   let tokenCount = 0
   let lastTokenEvent = 0
@@ -235,18 +272,42 @@ async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, lab
 
   console.log(`[demo][${label}] AI 스트리밍 시작 — ${codes.length}개 절차`)
 
-  // output-128k 베타 헤더는 Claude 4+ 모델에 기본 내장되어 제거
-  const stream = await getAnthropic().messages.stream({
+  // 절차 코드를 최상위 키로 강제하는 스키마 (strict 아님 — 형태 유도 목적, board 내용은 자유형)
+  const inputSchema = {
+    type: 'object',
+    properties: Object.fromEntries(codes.map((code) => [code, {
+      type: 'object',
+      properties: {
+        board: { type: 'object', description: '보드 스키마에 맞는 데이터' },
+        conversation: { type: 'array', description: '교사·AI 대화 턴 배열 [{speaker, message}]' },
+      },
+      required: ['board'],
+    }])),
+    required: [...codes],
+  }
+
+  // 재시도·보충 호출이 같은 프리픽스를 재사용하도록 캐시 브레이크포인트를 건다
+  const userContent = [{ type: 'text', text: userPrompt, cache_control: { type: 'ephemeral' } }]
+  if (focusInstruction) userContent.push({ type: 'text', text: focusInstruction })
+
+  const stream = getAnthropic().messages.stream({
     model: 'claude-sonnet-5',
-    max_tokens: 16000,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userPrompt }],
+    max_tokens: 32000,
+    system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: userContent }],
+    tools: [{
+      name: 'save_boards',
+      description: `생성한 절차별 보드(board)와 교사 대화(conversation)를 저장한다. 최상위 키는 반드시 절차 코드(${codes.join(', ')})이며 ${codes.length}개 전부 포함해야 한다.`,
+      input_schema: inputSchema,
+    }],
+    tool_choice: { type: 'tool', name: 'save_boards' },
   })
 
   try {
     for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-        fullText += event.delta.text
+      if (event.type === 'content_block_delta' &&
+          (event.delta?.type === 'input_json_delta' || event.delta?.type === 'text_delta')) {
+        fullText += event.delta.type === 'input_json_delta' ? event.delta.partial_json : event.delta.text
         tokenCount++
 
         if (tokenCount - lastTokenEvent >= 300) {
@@ -259,7 +320,7 @@ async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, lab
             detectedProcedures.add(code)
             const globalIndex = startIndex + detectedProcedures.size
             const nextIdx = codes.indexOf(code) + 1
-            const nextCode = nextIdx < codes.length ? codes[nextIdx] : (label === '1차' ? PHASE2_CODES[0] : null)
+            const nextCode = nextIdx < codes.length ? codes[nextIdx] : (label.startsWith('1차') ? PHASE2_CODES[0] : null)
             sendEvent({
               type: 'progress',
               procedure: code,
@@ -280,7 +341,23 @@ async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, lab
 
   console.log(`[demo][${label}] AI 스트리밍 완료 — ${tokenCount}토큰, ${detectedProcedures.size}/${codes.length}개 절차 감지`)
 
-  // 토큰이 충분하면 파싱 시도
+  // 1순위: 강제 tool 호출의 입력(항상 유효한 JSON) — SDK가 파싱까지 마친 객체를 준다
+  try {
+    const finalMessage = await stream.finalMessage()
+    if (finalMessage.stop_reason === 'max_tokens') {
+      console.warn(`[demo][${label}] max_tokens 절단 발생 — tool 입력이 불완전할 수 있어 텍스트 폴백 시도`)
+    }
+    const toolBlock = finalMessage.content?.find((b) => b.type === 'tool_use' && b.name === 'save_boards')
+    const unwrapped = unwrapBoardsPayload(toolBlock?.input, codes)
+    if (unwrapped) {
+      console.log(`[demo][${label}] tool 입력 파싱: ${Object.keys(unwrapped).length}개 키 — [${Object.keys(unwrapped).join(', ')}]`)
+      return unwrapped
+    }
+  } catch (finalErr) {
+    console.warn(`[demo][${label}] finalMessage 실패 (절단/스트림 오류) — 텍스트 폴백:`, finalErr?.message)
+  }
+
+  // 2순위(폴백): 누적 텍스트를 종전 방식으로 파싱
   if (fullText.length < 100) {
     console.warn(`[demo][${label}] 응답이 너무 짧음 (${fullText.length}자) — 빈 결과 반환`)
     return {}
@@ -289,6 +366,20 @@ async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, lab
   const result = parseAIResponse(fullText, label)
   console.log(`[demo][${label}] 파싱 결과: ${Object.keys(result).length}개 키 — [${Object.keys(result).join(', ')}]`)
   return result
+}
+
+/**
+ * tool 입력에서 절차 코드 키 객체를 찾는다. 모델이 {boards: {...}}처럼
+ * 한 겹 감싸 반환하는 경우를 방어적으로 언랩 (1단계 깊이까지만).
+ */
+function unwrapBoardsPayload(input, codes) {
+  if (!input || typeof input !== 'object') return null
+  const matches = (obj) => Object.keys(obj).some((k) => codes.includes(k))
+  if (matches(input)) return input
+  for (const value of Object.values(input)) {
+    if (value && typeof value === 'object' && !Array.isArray(value) && matches(value)) return value
+  }
+  return null
 }
 
 /**
