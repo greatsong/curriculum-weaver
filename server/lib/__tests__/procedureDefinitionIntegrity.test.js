@@ -17,6 +17,7 @@ import {
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
 import { PROCEDURE_GUIDE } from '../../data/procedureGuide.js'
+import { buildStaticIntro } from '../../routes/chat.js'
 
 const CODES = PROCEDURE_LIST.map((p) => p.code)
 
@@ -85,6 +86,17 @@ describe('절차 가이드 필수 필드 (buildSystemPrompt 크래시 방지)', 
       }
       if (!Array.isArray(g.methods) || g.methods.length === 0) violations.push(`${code}: methods 없음/빈 배열`)
       if (!Array.isArray(g.reflectionQuestions)) violations.push(`${code}: reflectionQuestions 없음`)
+    }
+    expect(violations, violations.join('\n')).toEqual([])
+  })
+
+  it('18개 세부절차 전부 절차 소개(정적 인트로)가 조립되고, 내부 코드 3분절 패턴이 노출되지 않는다', () => {
+    const INTERNAL_CODE = /\b(T|A|Ds|DI|E)-\d+-\d+\b/
+    const violations = []
+    for (const code of GUIDED) {
+      const intro = buildStaticIntro(code)
+      if (!intro || intro.length < 100) { violations.push(`${code}: 인트로 미생성/과소(${intro?.length ?? 0}자)`); continue }
+      if (INTERNAL_CODE.test(intro)) violations.push(`${code}: 인트로에 내부 절차 코드 노출`)
     }
     expect(violations, violations.join('\n')).toEqual([])
   })

@@ -258,10 +258,13 @@ function generateExecutiveSummary(data) {
     lines.push(`팀 비전: ${visionDesign.content.commonVision}`)
   }
 
-  // 통합 목표
+  // 핵심 아이디어·통합 목표
   const objDesign = designMap['A-2-2']
+  if (typeof objDesign?.content?.coreIdea === 'string' && objDesign.content.coreIdea.trim()) {
+    lines.push(`핵심 아이디어: ${objDesign.content.coreIdea.trim()}`)
+  }
   if (objDesign?.content?.integratedObjectives?.length > 0) {
-    lines.push(`통합 학습목표: ${objDesign.content.integratedObjectives.length}개 설정`)
+    lines.push(`통합 수업목표: ${objDesign.content.integratedObjectives.length}개 설정`)
   }
 
   // 참여자

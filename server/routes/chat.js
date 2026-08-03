@@ -32,7 +32,7 @@ import { resolveSelectedMaterialIds } from '../lib/materialSelection.js'
  * 정적 인트로 마크다운 생성 (AI 호출 없음)
  * — 모든 사용자에게 동일한 내용이므로 AI 대신 PROCEDURE_GUIDE + PROCEDURE_STEPS로 구성
  */
-function buildStaticIntro(procedureCode) {
+export function buildStaticIntro(procedureCode) {
   const procInfo = PROCEDURES[procedureCode]
   const guide = PROCEDURE_GUIDE[procedureCode]
   const steps = PROCEDURE_STEPS[procedureCode] || []
