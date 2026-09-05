@@ -47,6 +47,10 @@ def group_for(byeolchaek, subject):
     if base == '실과' or base.startswith('실과'): return '실과'
     if byeolchaek == '별책10': return '기술·가정'
     return base
+# 같은 코드가 두 별책에 다르게 인쇄된 경우 우선할 별책(원문 오식 판단 근거를 함께 기록)
+SOURCE_PREFERENCE = {
+    '[6실04-06]': ('별책2', '별책10 본문은 "인식하다."(비종결형 오식), 별책2는 "인식한다."'),
+}
 def area_std(a, byeolchaek=None):
     """영역 표준형: 앞 번호((1)·1)·가)) 제거, 별책23은 '학습 영역 > 학습 요소' 중 학습 영역만."""
     a = (a or '').strip()
@@ -54,16 +58,27 @@ def area_std(a, byeolchaek=None):
     a = re.sub(r'^[\(（]?\s*\d+\s*[\)）.]\s*', '', a)
     a = re.sub(r'^[가-힣]\)\s*', '', a)
     return re.sub(r'\s+', ' ', a).strip()
+# HWP 특수 글리프(사설영역) → 유니코드. 파서가 못 잡은 잔여분을 정본 적용 단계에서 마지막으로 치환한다.
+PUA_MAP = {
+    '\U000f0854': '『', '\U000f0855': '』',   # HWP 겹낫표(별책6 인문학과 윤리 해설)
+}
+def fix_pua(s):
+    for k, v in PUA_MAP.items(): s = s.replace(k, v)
+    return s
+def ensure_period(s):
+    """성취기준 문장은 마침표로 끝난다(원문 인쇄 누락 2건: [6도03-03]·[12심러01-02])."""
+    s = s.rstrip()
+    return s + '.' if s and s[-1] == '다' else s
 def clean_text(s):
     """원문 텍스트 정리: 줄 끝 공백·과잉 빈 줄·연속 공백 축약(문단 줄바꿈은 유지)."""
-    s = (s or '').replace('\r', '')
+    s = fix_pua((s or '').replace('\r', ''))
     s = re.sub(r'[ \t]+\n', '\n', s); s = re.sub(r'\n{3,}', '\n\n', s); s = re.sub(r'[ \t]{2,}', ' ', s)
     return s.strip()
 _JOSA = r'(에서|에게|에|을|를|이|가|은|는|의|으로|로|과|와|도|만|까지|부터|이나|나|처럼|한다|하고|하여|하는|할|함|하도록|된다|되는|되어|될|시킨다|시키고|시키는|다\.|\.|,|\))'
 def one_line(s):
     """성취기준 문장용: 문장 내부 줄바꿈 제거(조사·어미로 시작하면 붙이고 아니면 공백)."""
     s = clean_text(s)
-    return re.sub(r'\n(\S+)', lambda m: (m.group(1) if re.match(_JOSA, m.group(1)) else ' ' + m.group(1)), s)
+    return ensure_period(re.sub(r'\n(\S+)', lambda m: (m.group(1) if re.match(_JOSA, m.group(1)) else ' ' + m.group(1)), s))
 def bullets(s):
     """적용 고려사항 표준형: 줄마다 '• ' 접두, 빈 줄 제거."""
     lines = [re.sub(r'^[•·▪◦○●\-]\s*', '', l.strip()) for l in clean_text(s).split('\n')]

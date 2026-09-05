@@ -14,8 +14,22 @@ args = ap.parse_args()
 head, rows, tail = load_canonical(); cmap = {codenorm(r['code']): r for r in rows}
 official = load_official(); scope_prefixes = {code_prefix(cn) for cn in official}
 changes = collections.Counter(); log = []
-def pick(recs):
-    """같은 코드가 여러 별책에 있으면 해설·고려사항이 더 풍부한 레코드 우선(초등은 교과 별책 > 별책2)."""
+def distinct_contents(recs): return {norm(x['content']) for x in recs}
+def pick(recs, canon_row=None):
+    """같은 코드가 여러 별책에 있을 때 레코드 선택.
+    1) 정본 과목(subject)과 같은 과목의 레코드 → 2) 정본 문장과 같은 문장의 레코드 → 3) 해설·고려사항이 풍부한 순(초등은 교과 별책 > 별책2).
+    코드 충돌(서로 다른 과목이 같은 코드를 씀: 12심독·12스문)이면 정본 과목과 맞는 쪽만 고르고, 못 고르면 None."""
+    pref = SOURCE_PREFERENCE.get(codenorm(recs[0]['raw_code']))
+    if pref:
+        chosen = [x for x in recs if x['byeolchaek'] == pref[0]]
+        if chosen: recs = chosen
+    if canon_row:
+        same_subj = [x for x in recs if norm(x['subject']) == norm(canon_row.get('subject', ''))]
+        if same_subj: recs = same_subj
+        elif len(distinct_contents(recs)) > 1:
+            same_content = [x for x in recs if norm(x['content']) == norm(canon_row.get('content', ''))]
+            if not same_content: return None
+            recs = same_content
     return sorted(recs, key=lambda x: (x['byeolchaek'] == '별책2', -len(x['explanation']), -len(x['application_notes'])))[0]
 for r in rows:
     cn = codenorm(r['code']); pre = code_number(cn)
@@ -24,7 +38,8 @@ for r in rows:
         if r.get('grade_group') != PREFIX_GRADE[pre]: log.append(('grade_group', r['code'], r.get('grade_group'), PREFIX_GRADE[pre])); r['grade_group'] = PREFIX_GRADE[pre]; changes['grade_group'] += 1
     recs = official.get(cn)
     if not recs: continue
-    o = pick(recs)
+    o = pick(recs, r)
+    if o is None: changes['코드충돌_보류'] += 1; log.append(('collision', r['code'], r.get('subject'), sorted({x['subject'] for x in recs}))); continue
     for field, val in (('content', one_line(o['content'])), ('area', area_std(o['area'], o['byeolchaek'])), ('explanation', clean_text(o['explanation'])), ('application_notes', bullets(o['application_notes']))):
         if field == 'area' and not val: continue
         if val != (r.get(field) or ''): log.append((field, r['code'], (r.get(field) or '')[:100], val[:100])); r[field] = val; changes[field] += 1
@@ -35,7 +50,9 @@ added, pruned = [], []
 if args.add_missing:
     by_subject = collections.defaultdict(list)
     for cn, recs in official.items():
-        if cn not in cmap: by_subject[(recs[0]['byeolchaek'], recs[0]['subject'])].append(pick(recs))
+        if cn in cmap: continue
+        if len(distinct_contents(recs)) > 1: changes['코드충돌_미추가'] += 1; log.append(('collision_new', cn, sorted({x['subject'] for x in recs}))); continue
+        by_subject[(recs[0]['byeolchaek'], recs[0]['subject'])].append(pick(recs))
     for (b, subj), recs in by_subject.items():
         for o in recs:
             cn = codenorm(o['raw_code']); pre = code_number(cn); group = group_for(b, subj)
