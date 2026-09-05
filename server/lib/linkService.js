@@ -26,7 +26,10 @@ export async function fetchAllCurriculumLinks() {
     const { data, error } = await supabaseAdmin
       .from('curriculum_links')
       .select('id, source_code, target_code, link_type, rationale, integration_theme, lesson_hook, semantic_score, quality_score, status, generation_method, created_at')
+      // created_at만으로 정렬하면 같은 배치로 들어온 행들의 타임스탬프가 동일해 페이지 경계가 흔들리고
+      // (중복·누락 — 2026-09-05 실측: 15,691행 중 185행 누락) id를 2차 키로 고정한다.
       .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
       .range(from, from + PAGE_SIZE - 1)
     if (error) throw new Error(`curriculum_links 조회 실패: ${error.message}`)
     rows.push(...data)
