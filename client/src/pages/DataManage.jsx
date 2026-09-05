@@ -6,7 +6,6 @@ import { codeFromKey } from '../lib/standardKey'
 import Logo from '../components/Logo'
 import MathText from '../components/MathText'
 import LinkGuideOverlay, { resetLinkGuide } from '../components/LinkGuideOverlay'
-import { VOCATIONAL_SUBJECTS } from '../../../shared/constants'
 
 const Graph3D = lazy(() =>
   import('../components/Graph3D').catch(() => {
@@ -109,9 +108,13 @@ export default function DataManage() {
       total: standards.length,
       subjects,
       grades,
+      // 산업수요 전문교과는 융합 수업 설계 대상이 아니라 교과 태그에서 뺀다.
+      // 손으로 관리하던 목록(VOCATIONAL_SUBJECTS)은 별책이 추가될 때마다 뒤처졌으므로
+      // (2026-09-05 경영·금융 11과목 누락) 정본의 subject_group으로 판별한다.
       bySubject: subjects.map((s) => ({
         subject: s,
         count: standards.filter((st) => st.subject === s).length,
+        vocational: standards.some((st) => st.subject === s && st.subject_group === '산업수요전문'),
       })),
     })
     setAllStandards(standards)
@@ -214,7 +217,7 @@ export default function DataManage() {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {stats.bySubject.filter((s) => !VOCATIONAL_SUBJECTS.has(s.subject)).map((s) => {
+                  {stats.bySubject.filter((s) => !s.vocational).map((s) => {
                     const picked = pickedSubjects.has(s.subject)
                     return (
                       <button

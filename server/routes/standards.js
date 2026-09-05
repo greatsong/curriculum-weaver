@@ -159,7 +159,7 @@ standardsRouter.get('/all', async (req, res) => {
 
 // 성취기준 간 그래프 데이터 (임베딩 3D 좌표 포함)
 // ?status=published (기본) | ?status=all | ?status=candidate,reviewed
-// /graph 응답 메모이즈 — 노드 4,856+링크 수천 개를 매 요청 재구성하던 것을
+// /graph 응답 메모이즈 — 노드 6,444+링크 수천 개를 매 요청 재구성하던 것을
 // 링크 버전이 같으면 재사용. 링크 변경(add-links·상태 변경·하이드레이션) 시 버전이 올라 자동 무효화.
 const graphResponseCache = new Map() // statusParam → { version, body }
 const GRAPH_CACHE_MAX_KEYS = 8
