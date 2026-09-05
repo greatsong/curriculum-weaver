@@ -21,6 +21,9 @@
  *   --dry-run        DB에 쓰지 않고 변경 통계만 출력 (읽기는 함)
  *   --batch-size N   upsert 배치 크기 (기본 300)
  *   --prune-extra    정본에 없는 잉여 code 행을 삭제 (FK 참조 0건일 때만; 사전 확인 후)
+ *   --canonical-authority  (2026-09-05) 정본이 원문 대조로 검증된 뒤 사용. explanation / area /
+ *                    grade_group / school_level / keywords / considerations(←application_notes)를
+ *                    "빈 값만 채움"이 아니라 정본 값으로 교체한다(다르면 갱신). embedding·기타 rich 메타는 여전히 보존.
  *
  * 실행:
  *   node --env-file=server/.env scripts/seed-standards-from-canonical.mjs --dry-run
@@ -33,6 +36,7 @@ import { ALL_STANDARDS } from '../server/data/standards.js';
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes('--dry-run');
 const PRUNE_EXTRA = args.includes('--prune-extra');
+const AUTHORITY = args.includes('--canonical-authority');
 const BATCH_SIZE = (() => {
   const i = args.indexOf('--batch-size');
   return i >= 0 ? parseInt(args[i + 1]) || 300 : 300;
@@ -90,7 +94,7 @@ async function fetchAllDbRows() {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await sb
       .from('curriculum_standards')
-      .select('code,subject,grade_group,school_level,area,content,explanation,keywords')
+      .select('code,subject,grade_group,school_level,area,content,explanation,keywords,considerations')
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`DB 조회 실패: ${error.message}`);
     if (!data || data.length === 0) break;
@@ -106,7 +110,8 @@ const dbByCode = new Map(dbRows.map(r => [r.code, r]));
 console.log(`기존 DB: ${dbRows.length} codes\n`);
 
 // ── 병합 행 + 변경 통계 ──
-const stats = { contentReplaced: 0, explFilled: 0, areaFilled: 0, gradeFilled: 0, schoolFilled: 0, keywordsFilled: 0, newInsert: 0, unchanged: 0 };
+const stats = { contentReplaced: 0, explFilled: 0, areaFilled: 0, gradeFilled: 0, schoolFilled: 0, keywordsFilled: 0, considerationsSet: 0, authorityReplaced: 0, newInsert: 0, unchanged: 0 };
+const sameKw = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
 const payload = [];
 
 for (const code of canonCodes) {
@@ -122,6 +127,29 @@ for (const code of canonCodes) {
   if (!db) { stats.newInsert++; changed = true; }
   else {
     if (canonContent && canonContent !== (db.content || '').trim()) { stats.contentReplaced++; changed = true; }
+  }
+
+  // ── --canonical-authority: 검증된 정본 값으로 교체 (다르면 갱신) ──
+  if (AUTHORITY) {
+    const derived = deriveSchoolLevel(c);
+    const want = {
+      explanation: c.explanation || '',
+      area: c.area || '',
+      grade_group: c.grade_group || db?.grade_group || null,
+      school_level: derived || db?.school_level || null,
+      keywords: Array.isArray(c.keywords) ? c.keywords : (db?.keywords || []),
+      considerations: c.application_notes || '',
+    };
+    for (const [k, v] of Object.entries(want)) {
+      row[k] = v;
+      const cur = db ? db[k] : undefined;
+      const differs = k === 'keywords' ? !sameKw(cur, v) : ((cur ?? '') !== (v ?? ''));
+      if (db && differs) { stats.authorityReplaced++; changed = true; }
+    }
+    if (row.subject !== db?.subject && db) changed = true;
+    if (!changed && db) { stats.unchanged++; continue; }
+    payload.push(row);
+    continue;
   }
 
   // 아래 필드: 기존 비어있을 때만 채움
@@ -158,6 +186,7 @@ console.log(`  area 채움:                 ${stats.areaFilled}`);
 console.log(`  grade_group 채움:          ${stats.gradeFilled}`);
 console.log(`  school_level 파생/채움:     ${stats.schoolFilled}`);
 console.log(`  keywords 채움:             ${stats.keywordsFilled}`);
+if (AUTHORITY) console.log(`  정본 권위 교체(필드 단위):  ${stats.authorityReplaced}  (--canonical-authority)`);
 console.log(`  신규 insert:               ${stats.newInsert}`);
 console.log(`  변경 없음(skip):           ${stats.unchanged}`);
 console.log(`  → upsert 대상 행:          ${payload.length}`);
