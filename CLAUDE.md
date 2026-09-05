@@ -75,6 +75,17 @@ curriculum-weaver/
 - **명칭 규칙**: 사용자 노출 문구는 반드시 displayCode(`getProcedureLabel`/`getProcedureDisplayCode`) — 내부 코드(T-1-1)는 DB·API 전용
 - 주의: DesignBoard.jsx·StageNav.jsx는 **미사용 레거시**(import 0건)라 스킵 미반영. WorkspaceDetailPage·HostSetupWizard의 `hiddenProcedures` 설정 UI는 **소비처 없는 유령 설정**(별도 정리 필요, 스킵과 다른 개념)
 
+## 성취기준 결점 0 파이프라인 (2026-09-05)
+
+정본 `server/data/standards.js`는 **교육부 고시 별책 원문(PDF)과 전 필드 대조**로 유지한다. 도구는 `scripts/audit/`(README 참조).
+
+- **원문 스냅샷**: `scripts/audit/data/official/별책N.json` (별책 2·5~14·16~23, 파서 `scripts/audit/parsers/bookN.py`). 새 고시가 나오면 별책 PDF를 폴더에 넣고 아래 3단계.
+- **3단계 명령**: `node scripts/update-standards-pipeline.mjs --official-dir <PDF폴더>`(추출+게이트) → `--apply-official [--prune-unsourced]`(정본 재작성, 게이트 0 확인, git diff 검토·커밋) → `--apply --seed-authority`(백업 후 Supabase에 해설·영역·고려사항까지 정본 값으로 교체).
+- **게이트 차원**: A 완결성 · B 문장 verbatim · C 학교급/학년군(코드 접두) · D 교과 귀속(별책↔교과군) · E 영역 · F 해설 · G 적용 고려사항 · H 형식 · I 코드 충돌(정보). 결점 1건이면 시드 차단.
+- **정책**: content 원문 그대로(줄바꿈 없음, 문장 끝 마침표), area=원문 성취기준 소제목(단일 영역 과목은 유지), explanation=코드별 해설(병기 해설은 각 코드에 복제), application_notes=영역 불릿 전체 `• ` 접두, PUA 글리프는 `common.py`의 PUA_MAP·파서 치환표로 0 유지.
+- **알려진 한계**: 교육부 코드 체계 충돌 11건(`[12심독…]` 심화 영어 독해와 작문/심화 독일어, `[12스문…]` 스포츠 문화/스페인어권 문화)은 code 단일 키라 영어·체육만 수록. 해결은 복합 키 설계 필요.
+- **현재 규모(2026-09-05)**: 6,433건(초 611 · 중 714 · 고 3,115 · 전문교과 1,993). 원문 대조 결점 0.
+
 ## 성취기준 데이터 정본 (2026-06-12 일원화)
 
 > **2026-07-23 완결성 복원 (5,665 → 5,907)**: 811 복원이 놓쳤던 필수·선택 교과를 교육부 고시
