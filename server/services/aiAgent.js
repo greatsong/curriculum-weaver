@@ -32,13 +32,64 @@ const xmlProcToken = (code) => getProcedureDisplayCode(code) || code
 
 
 // 동시 AI 요청 제한 (Anthropic API rate limit 준수).
-// 3인×10팀 수업에서 "다음 절차로" 동시 전환 시 인트로 10건 + 채팅이 겹치므로
-// concurrency 12. timeout은 p-queue 특성상 "실행 시간"에만 적용되며 초과 시
-// reject로 스트림이 중단되므로, 12k 토큰 장문 응답을 죽이지 않게 180s로 설정.
+// 4인×10팀 수업에서 "다음 절차로" 동시 전환 시 인트로 10건 + 채팅이 겹치므로
+// concurrency 12 (env AI_QUEUE_CONCURRENCY). 초과분은 실행 슬롯이 날 때까지 큐에서 대기한다.
+//
+// p-queue의 timeout 옵션은 쓰지 않는다. 그 timeout은 add() 프라미스만 reject할 뿐 실행 중인
+// Anthropic 스트림은 멈추지 않아, 슬롯이 풀린 뒤에도 유령 스트림이 끝까지 토큰을 소비했고
+// 사용자에게는 잘린 응답과 오류가 갔다. 대신 runGuardedStream이 AbortSignal로 스트림을
+// 실제로 중단한다.
 const aiQueue = new PQueue({
   concurrency: Number(process.env.AI_QUEUE_CONCURRENCY) || 12,
-  timeout: Number(process.env.AI_QUEUE_TIMEOUT_MS) || 180000,
 })
+
+// 스트림 1건의 최대 실행 시간(큐 대기 시간 제외). 정밀 모드(Opus)의 장문 응답이 3~4분
+// 걸릴 수 있어 5분. 구 env 이름(AI_QUEUE_TIMEOUT_MS)도 그대로 인식한다.
+export const AI_STREAM_TIMEOUT_MS = Number(process.env.AI_STREAM_TIMEOUT_MS)
+  || Number(process.env.AI_QUEUE_TIMEOUT_MS)
+  || 300_000
+
+export const STREAM_TIMEOUT_MESSAGE = 'AI 응답 생성 시간이 초과되어 중단했습니다. 질문을 나누어 다시 시도해주세요.'
+
+/**
+ * Anthropic 스트림을 실행하며 텍스트 델타를 onText로 흘리고, 다음 경우 스트림을 실제로 중단한다.
+ *  - AI_STREAM_TIMEOUT_MS 초과: 멈춘 스트림이 큐 슬롯을 영구 점유하거나 유령으로 남지 않게 한다
+ *  - 외부 signal abort: 호출자가 더 이상 응답을 원하지 않을 때 (선택)
+ * 중단은 예외로 던지지 않고 { timedOut, aborted }로 알린다. 그 밖의 오류는 그대로 던진다.
+ *
+ * @param {(signal: AbortSignal) => AsyncIterable & { finalMessage(): Promise<object> }} createStream
+ * @param {{ onText: (text: string) => void, signal?: AbortSignal }} opts
+ * @returns {Promise<{ finalMessage: object|null, timedOut: boolean, aborted: boolean }>}
+ */
+export async function runGuardedStream(createStream, { onText, signal }) {
+  if (signal?.aborted) return { finalMessage: null, timedOut: false, aborted: true }
+
+  const controller = new AbortController()
+  let timedOut = false
+  const onExternalAbort = () => controller.abort()
+  signal?.addEventListener('abort', onExternalAbort, { once: true })
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, AI_STREAM_TIMEOUT_MS)
+
+  const interrupted = () => ({ finalMessage: null, timedOut, aborted: !timedOut })
+  try {
+    const stream = createStream(controller.signal)
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta?.text) onText(event.delta.text)
+    }
+    if (controller.signal.aborted) return interrupted()
+    const finalMessage = await stream.finalMessage()
+    return { finalMessage, timedOut: false, aborted: false }
+  } catch (error) {
+    if (controller.signal.aborted) return interrupted()
+    throw error
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', onExternalAbort)
+  }
+}
 
 // AI 모델 매핑 (빠른 모드 / 정밀 모드)
 const MODEL_MAP = {
@@ -1309,9 +1360,9 @@ ${boardStr}`)
  * — 절차 가이드 기반으로 첫 스텝의 안내를 포함
  *
  * @param {Object} context - { procedure, sessionTitle, boards }
- * @param {Object} callbacks - { onText, onError }
+ * @param {Object} callbacks - { onText, onError, signal? } — signal이 abort되면 스트림을 중단한다
  */
-export async function buildProcedureIntroResponse(context, { onText, onError }) {
+export async function buildProcedureIntroResponse(context, { onText, onError, signal }) {
   const { procedure, sessionTitle, boards, mode, tone } = context
   const isDemo = mode === 'demo'
   const procInfo = PROCEDURES[procedure] || (isDemo ? DEMO_PROC_INFO[procedure] : null)
@@ -1342,19 +1393,16 @@ ${sessionTitle ? `프로젝트: ${sessionTitle}` : ''}
 
 이 단계를 코치 톤으로 안내하고, 첫 질문으로 대화를 시작해주세요.`
     try {
-      await aiQueue.add(async () => {
-        const stream = getAnthropic().messages.stream({
+      const { timedOut } = await aiQueue.add(() => runGuardedStream(
+        (streamSignal) => getAnthropic().messages.stream({
           model: getModelId(context?.aiModel),
           max_tokens: 1200,
           system: demoSystem,
           messages: [{ role: 'user', content: demoUser }],
-        })
-        for await (const event of stream) {
-          if (event.type === 'content_block_delta' && event.delta?.text) {
-            onText(event.delta.text)
-          }
-        }
-      })
+        }, { signal: streamSignal }),
+        { onText, signal },
+      ))
+      if (timedOut) onError(STREAM_TIMEOUT_MESSAGE)
     } catch (error) {
       console.error('시연 인트로 생성 오류:', error)
       onError(error.message || '인트로 생성 실패')
@@ -1433,20 +1481,16 @@ ${sessionTitle ? `세션: ${sessionTitle}` : ''}
 이 절차를 안내하고, 첫 번째 스텝부터 시작해주세요.`
 
   try {
-    await aiQueue.add(async () => {
-      const stream = getAnthropic().messages.stream({
+    const { timedOut } = await aiQueue.add(() => runGuardedStream(
+      (streamSignal) => getAnthropic().messages.stream({
         model: getModelId(context?.aiModel),
         max_tokens: 1200,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
-      })
-
-      for await (const event of stream) {
-        if (event.type === 'content_block_delta' && event.delta?.text) {
-          onText(event.delta.text)
-        }
-      }
-    })
+      }, { signal: streamSignal }),
+      { onText, signal },
+    ))
+    if (timedOut) onError(STREAM_TIMEOUT_MESSAGE)
   } catch (error) {
     console.error('절차 인트로 생성 오류:', error)
     onError(error.message || '인트로 생성 실패')
@@ -1500,35 +1544,36 @@ export function buildMessages(recentMessages, userMessage) {
  * @param {string} context.userMessage - 현재 사용자 메시지
  * @param {string} context.procedure - 현재 절차 코드
  * @param {number|null} context.currentStep - 현재 스텝 번호
- * @param {Object} callbacks - { onText, onError }
+ * @param {Object} callbacks - { onText, onError, signal? } — signal이 abort되면 스트림을 중단한다
  */
-export async function buildAIResponse(context, { onText, onError }) {
+export async function buildAIResponse(context, { onText, onError, signal }) {
   // context.mentionedMaterialIds와 context.recentMessages가 buildSystemPrompt에 전달된다.
   // buildMessages는 system 메시지를 필터링해 Claude role 오염을 방지한다.
   const systemPrompt = buildSystemPrompt(context)
   const messages = buildMessages(context.recentMessages || [], context.userMessage)
 
   try {
-    await aiQueue.add(async () => {
-      const stream = getAnthropic().messages.stream({
+    const { finalMessage, timedOut, aborted } = await aiQueue.add(() => runGuardedStream(
+      (streamSignal) => getAnthropic().messages.stream({
         model: getModelId(context?.aiModel),
         max_tokens: 12000,
         system: systemPrompt,
         messages,
-      })
+      }, { signal: streamSignal }),
+      { onText, signal },
+    ))
 
-      for await (const event of stream) {
-        if (event.type === 'content_block_delta' && event.delta?.text) {
-          onText(event.delta.text)
-        }
-      }
+    if (aborted) return // 호출자가 중단 — 받을 사람이 없다
+    if (timedOut) {
+      console.warn(`⚠️ AI 응답이 ${AI_STREAM_TIMEOUT_MS}ms 안에 끝나지 않아 스트림을 중단했습니다.`)
+      onError(STREAM_TIMEOUT_MESSAGE)
+      return
+    }
 
-      // 응답 잘림 감지
-      const finalMessage = await stream.finalMessage()
-      if (finalMessage.stop_reason === 'max_tokens') {
-        console.warn('⚠️ AI 응답이 max_tokens에 도달하여 잘렸습니다. ai_suggestion이 누락되었을 수 있습니다.')
-      }
-    })
+    // 응답 잘림 감지
+    if (finalMessage?.stop_reason === 'max_tokens') {
+      console.warn('⚠️ AI 응답이 max_tokens에 도달하여 잘렸습니다. ai_suggestion이 누락되었을 수 있습니다.')
+    }
   } catch (error) {
     // 프로덕션에서는 원본 error.message를 클라이언트에 노출하지 않는다(내부 정보·스택 유출 방지).
     // 상세 메시지는 서버 로그에만 남기고, 클라이언트에는 일반화된 안내 문구를 전달한다.

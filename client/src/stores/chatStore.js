@@ -127,6 +127,21 @@ function stripXmlMarkers(text) {
 
 // ── Store ────────────────────────────────────
 
+/**
+ * SSE 스트림 호출을 감싸, 어떤 경로로 끝나든(정상·오류·예외) streaming 플래그가 남지 않게 한다.
+ * 플래그가 남으면 입력창이 잠기고 탭 복귀 새로고침(loadMessages)까지 막혀, 페이지를 통째로
+ * 새로고침하기 전까지 복구되지 않는다.
+ */
+async function guardStreaming(set, get, streamPromise) {
+  try {
+    await streamPromise
+  } catch (err) {
+    console.error('AI 스트림 처리 오류:', err)
+  } finally {
+    if (get().streaming) set({ streaming: false, streamingText: '' })
+  }
+}
+
 export const useChatStore = create((set, get) => ({
   messages: [],
   loadingMessages: false,
@@ -306,7 +321,7 @@ export const useChatStore = create((set, get) => ({
 
     const aiModel = localStorage.getItem('cw_ai_model') || 'fast'
 
-    await apiStreamPost('/api/chat/message', {
+    await guardStreaming(set, get, apiStreamPost('/api/chat/message', {
       session_id: projectId,
       content,
       stage: procedureCode,
@@ -423,8 +438,10 @@ export const useChatStore = create((set, get) => ({
       onError: (error) => {
         console.error('AI 응답 오류:', error)
         set({ streaming: false, streamingText: '' })
+        // 조용히 실패하면 "AI가 무시했다"로 오해한다 — 원인을 바로 알린다
+        pushToast({ kind: 'error', message: `AI 응답을 받지 못했습니다. ${error || ''}`.trim(), duration: 8_000 })
       },
-    })
+    }))
   },
 
   // ── 절차 인트로 요청 ────
@@ -439,7 +456,7 @@ export const useChatStore = create((set, get) => ({
 
     const aiModel = localStorage.getItem('cw_ai_model') || 'fast'
 
-    await apiStreamPost('/api/chat/stage-intro', {
+    await guardStreaming(set, get, apiStreamPost('/api/chat/stage-intro', {
       session_id: projectId,
       stage: procedureCode,
       aiModel,
@@ -476,7 +493,7 @@ export const useChatStore = create((set, get) => ({
         console.error('절차 인트로 오류:', error)
         set({ streaming: false, streamingText: '' })
       },
-    })
+    }))
   },
 
   // ── 인트로 모달 ────

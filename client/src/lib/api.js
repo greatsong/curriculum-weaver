@@ -218,6 +218,10 @@ export async function apiDeleteMaterial(materialId) {
 
 /**
  * SSE 스트리밍 POST 요청 (AI 채팅용)
+ *
+ * 어떤 실패 경로(요청 실패·HTTP 오류·수신 중 연결 끊김)에서도 throw하지 않고 onError를 부른다.
+ * 호출자(chatStore)는 onError 또는 onDone이 반드시 불린다는 전제로 streaming 상태를 푼다.
+ * (예전엔 수신 도중 reader.read()가 던지면 예외가 그대로 전파돼 streaming이 영원히 true로 남았다.)
  */
 export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardSuggestions, onStageAdvance, onCoherenceCheck, onMessageSaved, onDone, onError }) {
   // Authorization 헤더 추가
@@ -231,11 +235,17 @@ export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardS
     // 인증 없이 계속 진행
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  })
+  let res
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    })
+  } catch {
+    onError?.('네트워크 연결을 확인해주세요.')
+    return
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
@@ -247,35 +257,42 @@ export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardS
   const decoder = new TextDecoder()
   let buffer = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
 
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      const data = line.slice(6)
-      if (data === '[DONE]') {
-        onDone?.()
-        return
-      }
-      try {
-        const parsed = JSON.parse(data)
-        if (parsed.type === 'text') onText?.(parsed.content)
-        else if (parsed.type === 'principles') onPrinciples?.(parsed.principles, parsed.relevantGeneralPrincipleIds)
-        else if (parsed.type === 'board_suggestions') onBoardSuggestions?.(parsed.suggestions, parsed.appliedBoards)
-        else if (parsed.type === 'stage_advance' || parsed.type === 'procedure_advance') onStageAdvance?.(parsed)
-        else if (parsed.type === 'step_advance') onStageAdvance?.(parsed)
-        else if (parsed.type === 'coherence_check') onCoherenceCheck?.(parsed)
-        else if (parsed.type === 'message_saved') onMessageSaved?.(parsed)
-        else if (parsed.type === 'error') onError?.(parsed.message)
-      } catch {
-        // 파싱 실패 무시
+      for (const line of lines) {
+        // 서버 하트비트(': ping') 등 주석 줄과 빈 줄은 무시한다
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6)
+        if (data === '[DONE]') {
+          onDone?.()
+          return
+        }
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed.type === 'text') onText?.(parsed.content)
+          else if (parsed.type === 'principles') onPrinciples?.(parsed.principles, parsed.relevantGeneralPrincipleIds)
+          else if (parsed.type === 'board_suggestions') onBoardSuggestions?.(parsed.suggestions, parsed.appliedBoards)
+          else if (parsed.type === 'stage_advance' || parsed.type === 'procedure_advance') onStageAdvance?.(parsed)
+          else if (parsed.type === 'step_advance') onStageAdvance?.(parsed)
+          else if (parsed.type === 'coherence_check') onCoherenceCheck?.(parsed)
+          else if (parsed.type === 'message_saved') onMessageSaved?.(parsed)
+          else if (parsed.type === 'error') onError?.(parsed.message)
+        } catch {
+          // 파싱 실패 무시
+        }
       }
     }
+  } catch {
+    // 수신 도중 연결이 끊김(네트워크 단절·서버 재시작). 호출자가 streaming 상태를 풀 수 있게 알린다.
+    onError?.('AI 응답을 받는 중 연결이 끊겼습니다. 잠시 후 다시 시도해주세요.')
+    return
   }
   onDone?.()
 }
