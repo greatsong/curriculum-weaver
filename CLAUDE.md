@@ -205,11 +205,24 @@ SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/migrateLinksToDB.js
 
 - **Rate limit 사용자 키** (`server/middleware/rateLimit.js`): limiter가 requireAuth보다 먼저 실행돼 IP 키로만 동작하던 문제(학급 전체가 분당 120/AI 10을 공유 → 수업 시작 429 폭탄) 수정. JWT sub를 서명 검증 없이 디코드해 버킷 키로 사용(`userKey`) + IP 백스톱 분당 3,000회(위조 sub 회전 방어). **새 limiter를 추가할 때 이 함정 주의 — `req.user`는 limiter 시점에 항상 비어 있다.**
 - **로그인 제한 완화**: 종전 IP당 5회/분이 `/api/auth` 전체에 걸려 30명 동시 로그인이 불가능했음 → IP+이메일 키 10회/분, `/api/auth/login`·`signup`에만 마운트
-- **AI 큐** (`aiAgent.js`): concurrency 5→12, timeout 60s→180s (p-queue timeout은 실행 시간에만 적용·초과 시 reject라 12k 토큰 장문 스트림이 중단되던 위험). env `AI_QUEUE_CONCURRENCY`/`AI_QUEUE_TIMEOUT_MS`
+- **AI 큐** (`aiAgent.js`): concurrency 5→12 (env `AI_QUEUE_CONCURRENCY`). "다음 절차로" 동시 전환 시 10팀 인트로+채팅 대응. 타임아웃은 2026-09-05부터 p-queue timeout이 아니라 `runGuardedStream`의 AbortSignal(기본 300s, env `AI_STREAM_TIMEOUT_MS`, 구 `AI_QUEUE_TIMEOUT_MS`도 인식)이 담당 — 아래 40명 섹션 참조
 - **자료 분석 큐** (`materialAnalyzer.js`): analyzeMaterial/analyzeUrlMaterial이 동시성 3의 `analysisQueue`(p-queue) 경유 — 종전 무제한 fire-and-forget은 동시 업로드 수만큼 20MB 버퍼+파싱+Vision 호출이 겹쳐 OOM 위험. 대기 중 상태는 pending/parsing으로 기존 폴링·소켓 UI에 노출. env `MATERIAL_ANALYSIS_CONCURRENCY`
 - **프로젝트 목록 캐시** (`routes/projects.js`): 워크스페이스별 10초 TTL(생성/수정/삭제 시 즉시 무효화, 단일 인스턴스 전제) — 목록 요청당 프로젝트별 메시지 count(N+1) 반복 흡수
 - **compression** (`index.js`, level 4): 그래프 실측 5.7MB→1.4MB. SSE(text/event-stream)는 filter로 제외 — 압축 버퍼링이 스트리밍을 깨뜨림
 - 주의: 캐시·rate limit 모두 인메모리 = **단일 인스턴스 전제**. 수평 확장 시 Redis store 필요
+
+## 40명(4인×10팀)·10시간 연속 운영 안정화 (2026-09-05)
+
+`fix/stability-40x10h` — 10시간 연속 사용에서만 드러나는 결함을 실측 기반으로 수정. 새 기능 없음.
+
+- **소켓 재연결 토큰** (`client/src/lib/socket.js`): `auth`를 함수로 — 연결 시도마다 `supabase.auth.getSession()`으로 현재 토큰을 읽는다. 종전엔 참여 시점 토큰을 고정해, 1시간 뒤 네트워크 단절→재연결 시 만료 토큰으로 서버 미들웨어에 거부됐고 **미들웨어 거부는 socket.io가 자동 재연결하지 않아**(`socket.active === false`) 실시간 동기화가 조용히 죽었다. 거부 시 2s→30s 지수 백오프로 직접 재연결(`scheduleReconnect`), 전송 오류(`active === true`)는 socket.io에 맡김
+- **스트리밍 플래그 고착** (`client/src/lib/api.js`·`stores/chatStore.js`): `apiStreamPost`는 어떤 실패(요청·HTTP·수신 중 단절)에도 throw하지 않고 `onError`를 부른다. chatStore는 `guardStreaming`으로 감싸 finally에서 `streaming`을 반드시 해제 — 남으면 입력창 잠금 + 탭 복귀 새로고침(loadMessages) 차단이 페이지 새로고침 전까지 지속됐다. 실패는 토스트로 안내
+- **AI 스트림 타임아웃 = 실제 중단** (`services/aiAgent.js` `runGuardedStream`): p-queue 9의 `timeout`은 add() 프라미스만 reject하고 실행 중 스트림은 안 멈춰 **유령 스트림**(슬롯은 풀리고 토큰은 계속 소비, 사용자는 잘린 답+오류)이 생겼다. AbortSignal로 스트림을 끊는 방식으로 교체(기본 300s — Opus 장문 대응). 외부 `signal`도 받지만 채팅 라우트는 넘기지 않는다(이탈 후에도 완주해 저장하는 동작 유지)
+- **req 'close'는 이탈 신호가 아니다** (`routes/chat.js`): Node 16+에서 `req.on('close')`는 **바디를 다 읽은 시점**에 발화하며 인증 미들웨어 await 중에 이미 지나가 한 번도 안 불리던 죽은 코드였다(Node 20.20·25.2 실측). `res.on('close')` + `writableFinished === false`로 판별. 이탈 소켓에는 쓰지 않되 `fullResponse`는 계속 누적해 저장. 끝난 응답에 쓰기는 무해(`destroyed` → false 반환, 크래시 없음 — 실측)
+- **SSE 하트비트** (`routes/chat.js` `SSE_HEARTBEAT_MS` 15s): 큐 대기·첫 토큰 전 무응답 구간에 `: ping` 주석 프레임. 클라 파서는 `data: ` 외 줄 무시
+- **Railway** `restartPolicyMaxRetries` 5→20 (기본값 10, 유료 플랜 제한 없음)
+- **코드 밖 운영 체크**: Supabase `/auth/v1/token`은 **IP당 1,800/h·버스트 30** — 학교 공용 IP로 40명 동시 로그인 시 31번째부터 잠시 429 → 전날 로그인(세션 유지) 권장. 기본 SMTP 확인 메일 2통/h → 당일 이메일 가입 불가. Anthropic 등급(ITPM/OTPM) 확인. `AI_QUEUE_TIMEOUT_MS=180000`이 Railway에 남아 있으면 300000으로 올리거나 삭제. 수업 중 배포 금지(SIGTERM이 SSE·소켓 전부 끊음)
+- **미수정 잔여 위험**: 보드 PUT은 content 전체 교체(last-writer-wins) — 4인 동시 편집 시 덮어쓰기 가능, 필드 병합은 설계 변경. 자료 폴링 3s × 동시 5건이면 사용자당 120/min 한도에 근접. Node 20 EOL(2026-04)
 
 ## 컨벤션
 - UI 텍스트/주석: 한국어

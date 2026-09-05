@@ -28,6 +28,11 @@ import { isReadOnlyProject } from '../lib/projectGuards.js'
 import { PROCEDURE_GUIDE } from '../data/procedureGuide.js'
 import { resolveSelectedMaterialIds } from '../lib/materialSelection.js'
 
+// SSE 하트비트 주기. 큐 대기·컨텍스트 조립·첫 토큰까지 수십 초 넘게 바이트가 없을 수 있어,
+// 학교 프록시 등 중간 장비가 유휴 연결을 끊지 않도록 주석 프레임(': ping')을 보낸다.
+// 클라이언트 파서는 'data: '로 시작하지 않는 줄을 무시한다.
+const SSE_HEARTBEAT_MS = 15_000
+
 /**
  * 정적 인트로 마크다운 생성 (AI 호출 없음)
  * — 모든 사용자에게 동일한 내용이므로 AI 대신 PROCEDURE_GUIDE + PROCEDURE_STEPS로 구성
@@ -660,11 +665,22 @@ chatRouter.post('/message', async (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no')
   res.flushHeaders()
 
-  // 클라이언트 disconnect 감지 — AI 토큰 낭비 방지
+  // 클라이언트 이탈 감지.
+  // 주의: req 'close'는 Node 16+에서 "요청 바디를 다 읽은 시점"에 발화한다 — express.json이
+  // 바디를 소비한 직후, 인증 미들웨어의 await 중에 이미 지나가므로 여기서 등록한 req.on('close')는
+  // 한 번도 불리지 않는 죽은 코드였다. 연결의 조기 종료는 res 'close'가 응답 완료 전
+  // (writableFinished=false)에 오는 것으로 판별한다 (Node 20·25 실측).
+  // 이탈 뒤에도 AI 스트림은 끝까지 받아 저장한다 — 새로고침한 사용자가 돌아와 완전한 답을 보게
+  // 하는 기존 동작 유지. 끊긴 소켓으로의 쓰기만 건너뛴다.
   let clientDisconnected = false
-  req.on('close', () => {
-    clientDisconnected = true
+  res.on('close', () => {
+    if (!res.writableFinished) clientDisconnected = true
   })
+
+  const heartbeat = setInterval(() => {
+    if (!clientDisconnected && !res.writableEnded) res.write(': ping\n\n')
+  }, SSE_HEARTBEAT_MS)
+  res.on('close', () => clearInterval(heartbeat))
 
   try {
     // 컨텍스트 로드 (Supabase 영속 저장소)
@@ -841,8 +857,8 @@ chatRouter.post('/message', async (req, res) => {
     let fullResponse = ''
     await buildAIResponse(context, {
       onText: (text) => {
-        if (clientDisconnected) return // 클라이언트 끊김 시 쓰기 중단
-        fullResponse += text
+        fullResponse += text // 이탈 여부와 무관하게 누적 — 완주한 답을 저장한다
+        if (clientDisconnected) return // 끊긴 소켓에는 쓰지 않는다
         res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: text })}\n\n`)
       },
       onError: (error) => {
