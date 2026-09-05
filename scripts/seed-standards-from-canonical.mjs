@@ -80,9 +80,10 @@ function deriveSchoolLevel(std) {
 const empty = (v) => v == null || (typeof v === 'string' && v.trim() === '');
 
 // ── 정본 → 빠른 조회 맵 ──
+const keyOf = (s) => s.key || s.code; // 식별자(복합 키 전환 2026-09-05): 충돌 코드는 "code|subject"
 const canonByCode = new Map();
 for (const s of ALL_STANDARDS) {
-  if (!canonByCode.has(s.code)) canonByCode.set(s.code, s);
+  if (!canonByCode.has(keyOf(s))) canonByCode.set(keyOf(s), s);
 }
 const canonCodes = [...canonByCode.keys()];
 console.log(`[정본] standards.js: ${ALL_STANDARDS.length} rows, ${canonCodes.length} codes\n`);
@@ -94,7 +95,7 @@ async function fetchAllDbRows() {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await sb
       .from('curriculum_standards')
-      .select('code,subject,grade_group,school_level,area,content,explanation,keywords,considerations')
+      .select('key,code,subject,grade_group,school_level,area,content,explanation,keywords,considerations')
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`DB 조회 실패: ${error.message}`);
     if (!data || data.length === 0) break;
@@ -106,7 +107,7 @@ async function fetchAllDbRows() {
 
 console.log('기존 DB 행 수집 중...');
 const dbRows = await fetchAllDbRows();
-const dbByCode = new Map(dbRows.map(r => [r.code, r]));
+const dbByCode = new Map(dbRows.map(r => [r.key || r.code, r]));
 console.log(`기존 DB: ${dbRows.length} codes\n`);
 
 // ── 병합 행 + 변경 통계 ──
@@ -118,7 +119,7 @@ for (const code of canonCodes) {
   const c = canonByCode.get(code);
   const db = dbByCode.get(code); // 없으면 신규 insert
 
-  const row = { code, subject: c.subject || db?.subject || '미분류' };
+  const row = { key: code, code: c.code, subject: c.subject || db?.subject || '미분류' }; // 여기서 변수 code는 식별자(key)
 
   // content: 정본 권위 (비어있지 않으면 교체)
   const canonContent = (c.content || '').trim();
@@ -193,7 +194,7 @@ console.log(`  → upsert 대상 행:          ${payload.length}`);
 
 // ── 잉여 code (정본에 없음) ──
 const canonSet = new Set(canonCodes);
-const extraCodes = dbRows.map(r => r.code).filter(c => !canonSet.has(c));
+const extraCodes = dbRows.map(r => r.key || r.code).filter(c => !canonSet.has(c));
 console.log(`\n정본 외 잉여 DB code: ${extraCodes.length}개`);
 if (extraCodes.length) console.log('  ', extraCodes.slice(0, 30).join(' '));
 
@@ -212,7 +213,7 @@ for (let i = 0; i < payload.length; i += BATCH_SIZE) {
   const batch = payload.slice(i, i + BATCH_SIZE);
   const { error } = await sb
     .from('curriculum_standards')
-    .upsert(batch, { onConflict: 'code', ignoreDuplicates: false });
+    .upsert(batch, { onConflict: 'key', ignoreDuplicates: false });
   if (error) {
     console.error(`  BATCH ERROR (${i}~${i + batch.length}): ${error.message}`);
     fail += batch.length;
@@ -227,7 +228,7 @@ console.log(`upsert 완료: 성공 ${ok}, 실패 ${fail}`);
 // ── 잉여 행 prune (옵션, FK 0건 확인된 경우만) ──
 if (PRUNE_EXTRA && extraCodes.length) {
   console.log(`\n잉여 ${extraCodes.length}개 행 삭제 중...`);
-  const { error } = await sb.from('curriculum_standards').delete().in('code', extraCodes);
+  const { error } = await sb.from('curriculum_standards').delete().in('key', extraCodes);
   if (error) console.error('  prune 실패:', error.message);
   else console.log('  prune 완료');
 }

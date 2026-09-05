@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react
 import { useNavigate } from 'react-router-dom'
 import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, X, GitBranch, HelpCircle } from 'lucide-react'
 import { apiGet, apiPost, apiPatch, apiDelete } from '../lib/api'
+import { codeFromKey } from '../lib/standardKey'
 import Logo from '../components/Logo'
 import MathText from '../components/MathText'
 import LinkGuideOverlay, { resetLinkGuide } from '../components/LinkGuideOverlay'
@@ -62,7 +63,8 @@ export default function DataManage() {
   useEffect(() => { loadReports() }, [loadReports])
   const resolveReport = async (item, action) => {
     const label = action === 'demote' ? '그래프에서 내리기(검토 대기로 강등)' : '문제없음(신고만 닫기)'
-    if (!confirm(`${item.source_code} ↔ ${item.target_code} 신고를 "${label}"로 처리할까요?`)) return
+    // source_code/target_code는 링크 끝점 key(충돌 코드는 "code|과목") — 표시는 code, 요청은 key 그대로
+    if (!confirm(`${codeFromKey(item.source_code)} ↔ ${codeFromKey(item.target_code)} 신고를 "${label}"로 처리할까요?`)) return
     const key = `${item.source_code}|${item.target_code}`
     setResolvingPair(key)
     try {
@@ -362,9 +364,9 @@ export default function DataManage() {
                       <span className="ml-auto text-gray-400">{new Date(item.reports[0].created_at).toLocaleString('ko-KR')}</span>
                     </div>
                     <div className="grid sm:grid-cols-2 gap-3">
-                      {[['source', item.source_code, item.source], ['target', item.target_code, item.target]].map(([k, code, std]) => (
+                      {[['source', item.source_code, item.source], ['target', item.target_code, item.target]].map(([k, endpointKey, std]) => (
                         <div key={k} className="rounded-lg bg-gray-50 border border-gray-100 p-3">
-                          <p className="font-mono text-xs font-bold text-blue-600 mb-1">{code} <span className="font-sans font-normal text-gray-400">{std?.subject || ''}</span></p>
+                          <p className="font-mono text-xs font-bold text-blue-600 mb-1">{std?.code ?? codeFromKey(endpointKey)} <span className="font-sans font-normal text-gray-400">{std?.subject || ''}</span></p>
                           <p className="text-[13px] text-gray-700 leading-relaxed">{std?.content || '(성취기준 미등재)'}</p>
                         </div>
                       ))}

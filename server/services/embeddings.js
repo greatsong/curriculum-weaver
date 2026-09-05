@@ -162,7 +162,7 @@ export function computeEmbedding3D(standards) {
   if (standards.length < 5) return new Map()
 
   // 해시 계산 (code 기반 — ID는 매번 변경됨)
-  const hash = standards.map(s => s.code).sort().join(',')
+  const hash = standards.map(s => s.key || s.code).sort().join(',')
 
   // 1. 메모리 캐시 확인
   if (cachedHash === hash && cachedCoords) {
@@ -177,7 +177,7 @@ export function computeEmbedding3D(standards) {
     console.log('  ✅ 파일 캐시에서 임베딩 복원 (재계산 불필요)')
     const result = new Map()
     for (const s of standards) {
-      const coord = fileCacheByCode.coords[s.code]
+      const coord = fileCacheByCode.coords[s.key || s.code] || fileCacheByCode.coords[s.code]
       if (coord) result.set(s.id, coord)
     }
     // 메모리 캐시에도 저장
@@ -201,7 +201,7 @@ export function computeEmbedding3D(standards) {
   if (openaiCache) {
     console.log('  🤖 OpenAI 시맨틱 임베딩으로 UMAP 계산')
     vectors = standards.map(s => {
-      const emb = openaiCache.embeddings[s.code]
+      const emb = openaiCache.embeddings[s.key || s.code] || openaiCache.embeddings[s.code]
       if (!emb) {
         // 누락된 성취기준은 제로 벡터로 폴백
         console.warn(`  ⚠️ OpenAI 임베딩 누락: ${s.code}`)
@@ -263,7 +263,7 @@ export function computeEmbedding3D(standards) {
       z: ((z - mins[2]) / (maxs[2] - mins[2] || 1) - 0.5) * 2 * scale,
     }
     result.set(s.id, coord)
-    coordsByCode[s.code] = coord
+    coordsByCode[s.key || s.code] = coord
   })
 
   // 메모리 캐시 저장
@@ -284,7 +284,7 @@ export function computeEmbedding3D(standards) {
 export function precomputeEmbeddings(standards) {
   // 파일 캐시가 있으면 즉시 반환
   const fileCache = loadFileCache()
-  const hash = standards.map(s => s.code).sort().join(',')
+  const hash = standards.map(s => s.key || s.code).sort().join(',')
   if (fileCache && fileCache.hash === hash) {
     fileCacheByCode = fileCache
     console.log('  ✅ 임베딩 캐시 유효 — 사전 계산 불필요')

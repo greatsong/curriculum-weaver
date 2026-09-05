@@ -125,8 +125,9 @@ async function loadStandards() {
     if (!c || c.length < 5) return false
     if (/^[\w가-힣[\]-]+의\s*성취기준\s*(내용|해설|코드)/.test(c)) return false
     if (/^적용\s*시\s*고려|^성취기준\s*(내용|해설)/.test(c)) return false
-    if (seen.has(s.code)) return false
-    seen.add(s.code)
+    const k = s.key || s.code // 식별자(복합 키 전환 2026-09-05)
+    if (seen.has(k)) return false
+    seen.add(k)
     return true
   })
 }
@@ -182,8 +183,8 @@ async function loadExistingPairs(supabase) {
 // ─── 1단계: 임베딩 코사인 후보쌍 추출 ───
 function extractCandidatePairs(standards, embeddings, existingPairs) {
   const items = standards
-    .filter(s => embeddings.has(s.code))
-    .map(s => ({ ...s, vec: embeddings.get(s.code) }))
+    .filter(s => embeddings.has(s.key || s.code))
+    .map(s => ({ ...s, key: s.key || s.code, vec: embeddings.get(s.key || s.code) }))
   const noEmbedding = standards.length - items.length
   log(`\n🔍 1단계: 후보쌍 추출 — 대상 ${items.length}개 (임베딩 없음 ${noEmbedding}개 제외)`)
 
@@ -191,7 +192,7 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
   // 각 성취기준별 top-K (교과군 밖, 학교급 인접) 후보 수집
   const perStandard = new Map() // code -> [{code, cos}]
   const perSubjectPair = new Map() // "subjA|subjB" -> [{a, b, cos}] (same-group/cross-method 모드)
-  for (const s of items) perStandard.set(s.code, [])
+  for (const s of items) perStandard.set(s.key, [])
 
   // cross-method: 도구 과목 목록 검증 (오타·데이터에 없는 과목명 조기 경고)
   const toolSet = new Set(TOOL_SUBJECTS)
@@ -232,10 +233,10 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
         // 과목쌍별 수집 (뒤에서 top-N 선발)
         const pairKey = a.subject < b.subject ? `${a.subject}|${b.subject}` : `${b.subject}|${a.subject}`
         if (!perSubjectPair.has(pairKey)) perSubjectPair.set(pairKey, [])
-        perSubjectPair.get(pairKey).push({ a: a.code, b: b.code, cos })
+        perSubjectPair.get(pairKey).push({ a: a.key, b: b.key, cos })
       } else {
-        perStandard.get(a.code).push({ code: b.code, cos })
-        perStandard.get(b.code).push({ code: a.code, cos })
+        perStandard.get(a.key).push({ code: b.key, cos })
+        perStandard.get(b.key).push({ code: a.key, cos })
       }
     }
     if ((i + 1) % 500 === 0) log(`  ...${i + 1}/${items.length} 처리`)
@@ -453,7 +454,7 @@ async function rejudgeExistingLinks(standards) {
   if (!supabase) throw new Error('재판정에는 SUPABASE_URL/SERVICE_ROLE_KEY 필요')
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY 필요')
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  const stdByCode = new Map(standards.map(s => [s.code, s]))
+  const stdByCode = new Map(standards.map(s => [s.key || s.code, s]))
 
   // codes-file 모드: 지정 코드가 낀 링크 전체 (quality_score 무관)
   const targetCodes = CODES_FILE ? new Set(JSON.parse(fs.readFileSync(CODES_FILE, 'utf-8'))) : null
@@ -577,7 +578,7 @@ async function main() {
 
   if (DRY_RUN) {
     log('\n🏁 dry-run 종료 — 상위 10개 후보:')
-    const stdByCode = new Map(standards.map(s => [s.code, s]))
+    const stdByCode = new Map(standards.map(s => [s.key || s.code, s]))
     pairs.slice(0, 10).forEach(p => {
       const A = stdByCode.get(p.a), B = stdByCode.get(p.b)
       log(`  ${p.cos.toFixed(3)} | ${A.code}(${A.subject}) ↔ ${B.code}(${B.subject})`)
@@ -589,7 +590,7 @@ async function main() {
 
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY 필요 (2단계 LLM 판정)')
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  const stdByCode = new Map(standards.map(s => [s.code, s]))
+  const stdByCode = new Map(standards.map(s => [s.key || s.code, s]))
 
   // 배치 구성 (결정적: 코사인 내림차순 정렬 기준)
   // batchId에 파라미터를 포함 — top-k/min-cos가 바뀌면 후보 목록이 달라지므로

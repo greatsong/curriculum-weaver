@@ -142,6 +142,7 @@ standardsRouter.get('/all', async (req, res) => {
     // 기본 필드만 반환 (하위 호환성)
     res.json(standards.map(s => ({
       id: s.id,
+      key: s.key || s.code,
       code: s.code,
       subject: s.subject,
       subject_group: s.subject_group || s.subject,
@@ -265,7 +266,7 @@ standardsRouter.get('/graph3d', async (req, res) => {
   const nodes = []
   for (const n of graph.nodes) {
     if (!linkedIds.has(n.id)) continue
-    let pos = layoutCoords[n.code]
+    let pos = layoutCoords[n.key || n.code] || layoutCoords[n.code]
     if (!pos) {
       const emb = embeddingCoords.get(n.id)
       pos = emb
@@ -273,6 +274,7 @@ standardsRouter.get('/graph3d', async (req, res) => {
         : [codeJitter(n.code, 'x') * 150, codeJitter(n.code, 'y') * 150, codeJitter(n.code, 'z') * 150]
     }
     nodes.push({
+      key: n.key || n.code,
       code: n.code,
       subject: n.subject,
       subject_group: n.subject_group || n.subject,
@@ -286,7 +288,7 @@ standardsRouter.get('/graph3d', async (req, res) => {
     })
   }
 
-  const idToCode = new Map(graph.nodes.map(n => [n.id, n.code]))
+  const idToCode = new Map(graph.nodes.map(n => [n.id, n.key || n.code])) // 링크 끝점은 식별자(key)
   const outLinks = links.map(l => ({
     s: idToCode.get(l.source),
     t: idToCode.get(l.target),
@@ -455,7 +457,7 @@ standardsRouter.post('/links/scenario', requireAuth, async (req, res) => {
       return [`${x}|${y}`, l]
     }))
     const contextBlocks = contexts.map((ctx, i) => {
-      const pk = [concept.code, ctx.code].sort().join('|')
+      const pk = [concept.key || concept.code, ctx.key || ctx.code].sort().join('|')
       const link = linkByPair.get(pk)
       const meta = [
         link?.rationale ? `  · 검증된 연결 근거: ${link.rationale}` : '',
@@ -765,6 +767,7 @@ standardsRouter.get('/project/:projectId/companions', requireAuth, async (req, r
         anchorCode,
         companion: {
           id: companion.id,
+          key: companion.key || companion.code,
           code: companion.code,
           subject: companion.subject,
           subject_group: companion.subject_group || companion.subject,

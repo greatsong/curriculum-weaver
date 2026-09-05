@@ -1,7 +1,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { Search, ChevronRight, Plus, Check, Sparkles } from 'lucide-react'
 import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, isSameGrade, nodeSchoolLevel } from './lensCommon'
-import { useScenario, ScenarioButton, ScenarioPanel } from './scenarioShared'
+import { useScenario, ScenarioButton, ScenarioPanel, scenarioPairKey } from './scenarioShared'
+import { standardKey, codeFromKey } from '../../lib/standardKey'
 import { shuffledNudges } from '../../data/fusionNudges'
 import MathText from '../MathText'
 
@@ -18,20 +19,22 @@ const CONTEXT_TYPES = new Set(['cross_subject', 'application', 'same_concept'])
  *
  * props:
  *  - graph: { nodes, links }
- *  - focusCode: 중심 성취기준 코드 (없으면 검색 안내)
- *  - onFocus(code): 중심 변경 (브레드크럼은 내부 관리)
+ *  - focusKey: 중심 성취기준 key (standardKey — 충돌 코드는 "code|과목"; 없으면 검색 안내)
+ *  - onFocus(key): 중심 변경 (브레드크럼은 내부 관리)
  *  - level: 학교급 필터 — 검색 결과에 적용 (이웃 목록은 학교급을 넘나드는 것이 가치라 필터하지 않음)
- *  - basket, onToggleBasket
+ *  - basket: Set<key>, onToggleBasket(keys[])
+ * 식별·선택·담기는 key, 표시는 code.
  */
-export default function NeighborLens({ graph, focusCode, onFocus, level, basket, onToggleBasket }) {
-  const [trail, setTrail] = useState([]) // 방문 경로 (code[])
+export default function NeighborLens({ graph, focusKey, onFocus, level, basket, onToggleBasket }) {
+  const [trail, setTrail] = useState([]) // 방문 경로 (key[])
   const [query, setQuery] = useState('')
   const [pickSubject, setPickSubject] = useState('') // 빈 상태의 "내 교과 선택" 진입로
   const { scenario, openScenario, closeScenario, moreIdea, setActiveIndex } = useScenario()
-  // 1:N 시나리오 — 맥락 카드 다중 선택 (최대 4)
+  // 1:N 시나리오 — 맥락 카드 다중 선택 (최대 4, key)
   const [picked, setPicked] = useState(() => new Set())
 
   // 융합 넛지 — 클릭 시 concept로 진입 후, center가 로드되면 3개짜리 시나리오를 자동으로 연다
+  // (넛지 프리셋의 concept/contexts는 충돌 없는 코드라 key와 같다)
   const pendingFusionRef = useRef(null)
   const [nudgeSeed] = useState(() => Math.floor(Date.now() / 60000)) // 분 단위로 순서 회전
   const openNudge = (nudge) => {
@@ -39,24 +42,27 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
     setPicked(new Set(nudge.contexts))
     onFocus(nudge.concept)
   }
-  const togglePick = (code) => setPicked(prev => {
+  const togglePick = (key) => setPicked(prev => {
     const next = new Set(prev)
-    if (next.has(code)) next.delete(code)
-    else if (next.size < 4) next.add(code)
+    if (next.has(key)) next.delete(key)
+    else if (next.size < 4) next.add(key)
     return next
   })
 
-  const nodeByCode = useMemo(() => new Map((graph?.nodes || []).map(n => [n.code, n])), [graph])
+  const nodeByKey = useMemo(() => new Map((graph?.nodes || []).map(n => [standardKey(n), n])), [graph])
   const nodeById = useMemo(() => new Map((graph?.nodes || []).map(n => [n.id, n])), [graph])
 
-  const center = focusCode ? nodeByCode.get(focusCode) : null
+  const center = focusKey ? nodeByKey.get(focusKey) : null
+  const centerKey = center ? standardKey(center) : null
+  // key만 아는 값(브레드크럼·묶음 칩)의 표시용 코드
+  const codeOfKey = (key) => nodeByKey.get(key)?.code ?? codeFromKey(key)
 
   // 넛지 클릭 후 concept가 로드되면 3개짜리 시나리오를 자동으로 연다 (한 번만)
   useEffect(() => {
     const pf = pendingFusionRef.current
-    if (center && pf && pf.concept === center.code) {
+    if (center && pf && pf.concept === standardKey(center)) {
       pendingFusionRef.current = null
-      openScenario(center.code, pf.contexts, { angle: pf.angle })
+      openScenario(standardKey(center), pf.contexts, { angle: pf.angle })
     }
   }, [center, openScenario])
 
@@ -86,11 +92,11 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
     return { contextNeighbors: ctx, seriesNeighbors: series }
   }, [neighbors, center])
 
-  const walk = (code) => {
-    setTrail(prev => [...prev.filter(c => c !== code && c !== focusCode), focusCode].filter(Boolean).slice(-6))
+  const walk = (key) => {
+    setTrail(prev => [...prev.filter(k => k !== key && k !== focusKey), focusKey].filter(Boolean).slice(-6))
     closeScenario()
     setPicked(new Set())
-    onFocus(code)
+    onFocus(key)
   }
 
 
@@ -134,7 +140,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
           {pickSubject && (
             <div className="max-h-64 overflow-y-auto flex flex-col gap-1.5 border border-gray-100 rounded-xl p-2 bg-gray-50/50">
               {subjectStandards.map(n => (
-                <button key={n.code} onClick={() => onFocus(n.code)}
+                <button key={standardKey(n)} onClick={() => onFocus(standardKey(n))}
                   className="text-left bg-white border border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 rounded-lg px-3 py-2 transition">
                   <span className="font-mono text-[11px] font-bold text-blue-600">{n.code}</span>
                   <span className="text-[10px] text-gray-400 ml-1.5">{n.grade_group}</span>
@@ -153,7 +159,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
         </div>
         <div className="w-full max-w-md flex flex-col gap-1.5">
           {searchResults.map(n => (
-            <button key={n.code} onClick={() => { setQuery(''); onFocus(n.code) }}
+            <button key={standardKey(n)} onClick={() => { setQuery(''); onFocus(standardKey(n)) }}
               className="text-left border border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 rounded-lg px-3 py-2 transition">
               <span className="font-mono text-[11px] font-bold text-blue-600">{n.code}</span>
               <span className="text-[10px] text-gray-400 ml-1.5">{n.subject}</span>
@@ -168,7 +174,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
               <Sparkles size={12} className="text-violet-400" /> 이런 렌즈는 어때요?
             </p>
             <div className="flex flex-col gap-1.5">
-              {shuffledNudges(nudgeSeed).filter(n => nodeByCode.has(n.concept)).map(n => (
+              {shuffledNudges(nudgeSeed).filter(n => nodeByKey.has(n.concept)).map(n => (
                 <button key={n.id} onClick={() => openNudge(n)}
                   className="group text-left rounded-xl border border-violet-100 bg-violet-50/40 hover:bg-violet-50 hover:border-violet-300 px-3.5 py-2.5 transition">
                   <p className="text-[13px] font-semibold text-violet-800 group-hover:text-violet-900">{n.question}</p>
@@ -182,16 +188,16 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
     )
   }
 
-  const inBasket = basket.has(center.code)
+  const inBasket = basket.has(centerKey)
 
   // 이웃 카드 (맥락·계열 공용) — withScenario면 시나리오 버튼 노출
   const NeighborCard = ({ link, node, withScenario }) => {
-    const pairKey = [center.code, node.code].sort().join('|')
-    const isOpen = scenario?.pairKey === pairKey
+    const nodeKey = standardKey(node)
+    const isOpen = scenario?.pairKey === scenarioPairKey(centerKey, [nodeKey])
     return (
       <div role="button" tabIndex={0}
-        onClick={() => walk(node.code)}
-        onKeyDown={(e) => { if (e.key === 'Enter') walk(node.code) }}
+        onClick={() => walk(nodeKey)}
+        onKeyDown={(e) => { if (e.key === 'Enter') walk(nodeKey) }}
         className="text-left border-l-4 border border-gray-200 rounded-xl px-3 py-2.5 bg-white hover:shadow-md hover:-translate-y-px transition cursor-pointer"
         style={{ borderLeftColor: subjectColor(node) }}>
         <div className="flex items-center gap-1.5 mb-1">
@@ -215,13 +221,13 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
         {withScenario && (
           <div className="mt-1.5 flex items-center gap-3">
             <ScenarioButton isOpen={isOpen}
-              onClick={(e) => { e.stopPropagation(); openScenario(center.code, node.code) }} />
+              onClick={(e) => { e.stopPropagation(); openScenario(centerKey, nodeKey) }} />
             <button
-              onClick={(e) => { e.stopPropagation(); togglePick(node.code) }}
+              onClick={(e) => { e.stopPropagation(); togglePick(nodeKey) }}
               title="여러 맥락을 골라 하나의 시나리오로 묶기 (최대 4개)"
               className={`flex items-center gap-1 text-[11px] font-semibold transition ${
-                picked.has(node.code) ? 'text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}>
-              {picked.has(node.code) ? <><Check size={11} /> 묶임</> : <><Plus size={11} /> 함께 묶기</>}
+                picked.has(nodeKey) ? 'text-emerald-600' : 'text-gray-400 hover:text-emerald-600'}`}>
+              {picked.has(nodeKey) ? <><Check size={11} /> 묶임</> : <><Plus size={11} /> 함께 묶기</>}
             </button>
           </div>
         )}
@@ -234,10 +240,11 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
     <div className="flex flex-col gap-4">
       {/* 브레드크럼 + 재검색 */}
       <div className="flex items-center gap-1.5 flex-wrap text-xs">
-        {trail.map(code => (
-          <span key={code} className="flex items-center gap-1.5">
-            <button onClick={() => { setTrail(t => t.slice(0, t.indexOf(code))); onFocus(code) }}
-              className="font-mono text-gray-400 hover:text-blue-600 transition">{code}</button>
+        {trail.map(key => (
+          <span key={key} className="flex items-center gap-1.5">
+            <button onClick={() => { setTrail(t => t.slice(0, t.indexOf(key))); onFocus(key) }}
+              title={nodeByKey.get(key)?.subject || undefined}
+              className="font-mono text-gray-400 hover:text-blue-600 transition">{codeOfKey(key)}</button>
             <ChevronRight size={11} className="text-gray-300" />
           </span>
         ))}
@@ -252,7 +259,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: subjectColor(center) }} />
           <span className="font-mono text-sm font-bold text-blue-700">{center.code}</span>
           <span className="text-xs text-gray-500">{center.subject} · {center.grade_group}</span>
-          <button onClick={() => onToggleBasket([center.code])}
+          <button onClick={() => onToggleBasket([centerKey])}
             className={`ml-auto flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition ${
               inBasket ? 'bg-emerald-100 text-emerald-700' : 'bg-white border border-gray-300 text-gray-600 hover:border-blue-400'}`}>
             {inBasket ? <><Check size={11} /> 담김</> : <><Plus size={11} /> 담기</>}
@@ -264,8 +271,8 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
       {/* 실생활 문제 시나리오 패널 */}
       {scenario && (
         <ScenarioPanel scenario={scenario} onClose={closeScenario} onMore={moreIdea} onNav={setActiveIndex}
-          subjectOf={(code) => nodeByCode.get(code)?.subject}
-          standardOf={(code) => nodeByCode.get(code)}
+          subjectOf={(key) => nodeByKey.get(key)?.subject}
+          standardOf={(key) => nodeByKey.get(key)}
           basket={basket} onToggleBasket={onToggleBasket} />
       )}
 
@@ -278,12 +285,13 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
             {picked.size > 0 && (
               <div className="mt-2 flex items-center gap-2 flex-wrap">
                 <button
-                  onClick={() => openScenario(center.code, [...picked])}
+                  onClick={() => openScenario(centerKey, [...picked])}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 transition">
                   ✨ 묶은 맥락 {picked.size}개로 시나리오 만들기
                 </button>
-                {[...picked].map(code => (
-                  <span key={code} className="font-mono text-[10.5px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">{code}</span>
+                {[...picked].map(key => (
+                  <span key={key} title={nodeByKey.get(key)?.subject || undefined}
+                    className="font-mono text-[10.5px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">{codeOfKey(key)}</span>
                 ))}
                 <button onClick={() => setPicked(new Set())} className="text-[11px] text-gray-400 hover:text-gray-600 underline underline-offset-2">비우기</button>
               </div>
@@ -291,7 +299,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
             {contextNeighbors.map(({ link, node }) => (
-              <NeighborCard key={node.code} link={link} node={node} withScenario />
+              <NeighborCard key={standardKey(node)} link={link} node={node} withScenario />
             ))}
           </div>
         </div>
@@ -303,7 +311,7 @@ export default function NeighborLens({ graph, focusCode, onFocus, level, basket,
           <h3 className="text-[13px] font-bold text-gray-700 mb-2">📚 학습 계열·같은 교과 <span className="font-normal text-gray-400">({seriesNeighbors.length})</span></h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
             {seriesNeighbors.map(({ link, node }) => (
-              <NeighborCard key={node.code} link={link} node={node} />
+              <NeighborCard key={standardKey(node)} link={link} node={node} />
             ))}
           </div>
         </div>

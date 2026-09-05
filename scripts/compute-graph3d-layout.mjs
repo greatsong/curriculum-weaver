@@ -58,7 +58,7 @@ async function main() {
     .filter(n => linkedIds.has(n.id))
     .map(n => ({
       id: n.id,
-      code: n.code,
+      code: n.key || n.code, // 식별자(key)로 좌표를 저장 (충돌 코드 구분)
       // 임베딩 좌표를 시드로 (없으면 d3 phyllotaxis 기본 배치)
       ...(Number.isFinite(n.x) ? {
         x: n.x * SEED_SCALE, y: n.y * SEED_SCALE, z: n.z * SEED_SCALE,
@@ -95,7 +95,7 @@ async function main() {
 
   const coords = {}
   for (const n of nodes) {
-    coords[n.code] = [
+    coords[n.code] = [ // n.code는 위에서 key로 채워짐
       Math.round(n.x * scale * 10) / 10,
       Math.round(n.y * scale * 10) / 10,
       Math.round(n.z * scale * 10) / 10,

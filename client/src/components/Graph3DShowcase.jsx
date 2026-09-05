@@ -5,11 +5,14 @@
  * 데이터: /api/standards/graph3d (사전계산 좌표 — 클라이언트 force 시뮬레이션 없음)
  * 디자인: _workspace/design/graph3d-showcase-spec.md
  * URL이 상태를 기록: ?subjects= &levels= &focus= &tour=1
+ * 식별자: 성취기준은 복합 키(standardKey — 충돌 코드는 "code|과목")로 식별·선택·담기·URL 기록하고,
+ *         화면 라벨은 code를 쓴다. 링크 끝점(s/t)도 key.
  */
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Play, Pause, Compass, X, Rocket, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, List, HelpCircle, Flag } from 'lucide-react'
 import { apiGet, apiPost } from '../lib/api'
+import { standardKey, codeFromKey, pairId } from '../lib/standardKey'
 import Logo from './Logo'
 import MathText from './MathText'
 import { createNebulaScene } from '../lib/nebulaScene'
@@ -88,7 +91,7 @@ export default function Graph3DShowcase() {
   const [data, setData] = useState(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [uiReady, setUiReady] = useState(false)
-  const [selected, setSelected] = useState(null) // code
+  const [selected, setSelected] = useState(null) // 선택 성취기준 key
   const [hover, setHover] = useState(null)       // { node, x, y }
   const [activeGroups, setActiveGroups] = useState(null) // Set | null(전체)
   const [activeLevels, setActiveLevels] = useState(null)
@@ -98,19 +101,19 @@ export default function Graph3DShowcase() {
   const [browseSubject, setBrowseSubject] = useState('')
   const [helpOpen, setHelpOpen] = useState(false)
   const [themeQuery, setThemeQuery] = useState('') // 주제 스포트라이트 검색어
-  // 담기 트레이 — DesignMode와 sessionStorage 공유
+  // 담기 트레이 — DesignMode와 sessionStorage 공유 (저장값은 성취기준 key)
   const [basket, setBasket] = useState(() => {
     try { return new Set(JSON.parse(sessionStorage.getItem(BASKET_KEY) || '[]')) } catch { return new Set() }
   })
-  const toggleBasket = useCallback((code) => {
+  const toggleBasket = useCallback((key) => {
     setBasket(prev => {
       const next = new Set(prev)
-      if (next.has(code)) next.delete(code); else next.add(code)
+      if (next.has(key)) next.delete(key); else next.add(key)
       sessionStorage.setItem(BASKET_KEY, JSON.stringify([...next]))
       return next
     })
   }, [])
-  // 링크 신고 상태 ("a|b" 정렬 키 → 요청됨/완료)
+  // 링크 신고 상태 (pairId(a, b) → 요청됨/완료)
   const [reportedLinks, setReportedLinks] = useState(() => new Set())
   const [reportingKey, setReportingKey] = useState(null)
   const visitedRef = useRef(new Set())
@@ -148,13 +151,14 @@ export default function Graph3DShowcase() {
   // ── 파생 데이터 ──
   const derived = useMemo(() => {
     if (!data || data.nodes.length === 0) return null
-    const nodesByCode = new Map(data.nodes.map(n => [n.code, n]))
+    // 노드 인덱스는 key 기준 — 같은 코드가 두 과목에 있어도 별이 겹치지 않는다
+    const nodesByKey = new Map(data.nodes.map(n => [standardKey(n), n]))
     const degree = new Map()
-    const adjacency = new Map() // code → [{other, type, theme, hook}]
+    const adjacency = new Map() // key → [{other, type, theme, hook}]
     for (const l of data.links) {
       degree.set(l.s, (degree.get(l.s) || 0) + 1)
       degree.set(l.t, (degree.get(l.t) || 0) + 1)
-      const sn = nodesByCode.get(l.s), tn = nodesByCode.get(l.t)
+      const sn = nodesByKey.get(l.s), tn = nodesByKey.get(l.t)
       if (!sn || !tn) continue
       if (!adjacency.has(l.s)) adjacency.set(l.s, [])
       if (!adjacency.has(l.t)) adjacency.set(l.t, [])
@@ -172,7 +176,7 @@ export default function Graph3DShowcase() {
       gm.count++; gm.cx += n.x; gm.cy += n.y; gm.cz += n.z
     }
     for (const l of data.links) {
-      const sg = nodesByCode.get(l.s)?.subject_group, tg = nodesByCode.get(l.t)?.subject_group
+      const sg = nodesByKey.get(l.s)?.subject_group, tg = nodesByKey.get(l.t)?.subject_group
       if (!sg || !tg) continue
       const gs = groupMap.get(sg), gt = groupMap.get(tg)
       gs.links++; gt.links++
@@ -209,7 +213,7 @@ export default function Graph3DShowcase() {
         .sort((a, b) => b.count - a.count),
     })).filter(g => g.subjects.length > 0)
 
-    return { nodesByCode, degree, maxDegree, adjacency, groups, levels, subjectIndex, subjectsByGroup }
+    return { nodesByKey, degree, maxDegree, adjacency, groups, levels, subjectIndex, subjectsByGroup }
   }, [data])
 
   // ── 씬 생성/파괴 ──
@@ -238,19 +242,19 @@ export default function Graph3DShowcase() {
       const scene = sceneRef.current
       if (!scene) return
       const sceneNodes = data.nodes.map(n => ({
-        code: n.code, group: n.subject_group,
+        key: standardKey(n), code: n.code, subject: n.subject, group: n.subject_group,
         x: n.x, y: n.y, z: n.z,
         color: groupColor(n.subject_group),
-        size: nodeSize(derived.degree.get(n.code) || 0, derived.maxDegree),
+        size: nodeSize(derived.degree.get(standardKey(n)) || 0, derived.maxDegree),
       }))
       scene.setData({ nodes: sceneNodes, links: data.links })
 
       // 교과군 스태거 점등 딜레이 (인덱스 × 120ms — 스펙 §5-1)
       const groupIndex = new Map(derived.groups.map((g, i) => [g.name, i]))
-      const delayByCode = new Map(data.nodes.map(n => [
-        n.code, 200 + (groupIndex.get(n.subject_group) || 0) * TIMING.entryStagger,
+      const delayByKey = new Map(data.nodes.map(n => [
+        standardKey(n), 200 + (groupIndex.get(n.subject_group) || 0) * TIMING.entryStagger,
       ]))
-      scene.playEntry(delayByCode)
+      scene.playEntry(delayByKey)
       scene.introFly()
 
       // 교과군 라벨 (성단 무게중심 상단 — 20개 이상 성단만, 높이 교차로 겹침 완화)
@@ -268,12 +272,13 @@ export default function Graph3DShowcase() {
 
     const uiTimer = setTimeout(() => setUiReady(true), prefersReducedMotion ? 300 : 2400)
 
-    // URL focus 복원 (진입 연출 후 — 마운트 시 캡처해 둔 값 사용)
-    const focusCode = initialFocusRef.current
+    // URL focus 복원 (진입 연출 후 — 마운트 시 캡처해 둔 값 사용). focus 값은 key
+    // (예전 링크의 code 값도 충돌이 없으면 key와 같아 그대로 열린다)
+    const focusKey = initialFocusRef.current
     let focusTimer
-    if (focusCode && derived.nodesByCode.has(focusCode)) {
+    if (focusKey && derived.nodesByKey.has(focusKey)) {
       initialFocusRef.current = '' // 1회만
-      focusTimer = setTimeout(() => selectNodeRef.current?.(focusCode), prefersReducedMotion ? 400 : 3000)
+      focusTimer = setTimeout(() => selectNodeRef.current?.(focusKey), prefersReducedMotion ? 400 : 3000)
     }
     return () => { clearTimeout(uiTimer); clearTimeout(focusTimer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -313,13 +318,13 @@ export default function Graph3DShowcase() {
   const themeMatch = useMemo(() => {
     const q = themeQuery.trim().toLowerCase()
     if (!data || !q) return null
-    const codes = new Set()
+    const keys = new Set()
     let linkCount = 0
     for (const l of data.links) {
       const hay = `${l.theme || ''} ${l.hook || ''} ${l.r || ''}`.toLowerCase()
-      if (hay.includes(q)) { codes.add(l.s); codes.add(l.t); linkCount++ }
+      if (hay.includes(q)) { keys.add(l.s); keys.add(l.t); linkCount++ }
     }
-    return { codes, linkCount }
+    return { keys, linkCount }
   }, [data, themeQuery])
 
   // ── 필터(조명 스위치) + 주제 스포트라이트 → 씬 감광 ──
@@ -329,17 +334,18 @@ export default function Graph3DShowcase() {
     if (!activeGroups && !activeLevels && !themeMatch) { scene.setDim(null); return }
     const dim = new Map()
     for (const n of data.nodes) {
+      const k = standardKey(n)
       // 학교급 미상(빈값)은 배제하지 않음 — /graph 필터와 동일한 관용 원칙
       const on = (!activeGroups || activeGroups.has(n.subject_group)) &&
                  (!activeLevels || !n.school_level || activeLevels.has(n.school_level)) &&
-                 (!themeMatch || themeMatch.codes.has(n.code))
-      dim.set(n.code, on ? 1 : 0)
+                 (!themeMatch || themeMatch.keys.has(k))
+      dim.set(k, on ? 1 : 0)
     }
     scene.setDim(dim)
   }, [activeGroups, activeLevels, themeMatch, data, sceneEpoch])
 
   // ── 선택 → 하이라이트 + 플라이투 + 라벨 ──
-  const selectedNode = selected && derived ? derived.nodesByCode.get(selected) : null
+  const selectedNode = selected && derived ? derived.nodesByKey.get(selected) : null
   const connections = useMemo(() => {
     if (!selected || !derived) return []
     return derived.adjacency.get(selected) || []
@@ -356,11 +362,11 @@ export default function Graph3DShowcase() {
       scene.setTrail(null)
       return
     }
-    const neighborSet = new Set(connections.map(c => c.other.code))
+    const neighborSet = new Set(connections.map(c => standardKey(c.other)))
     scene.setHighlight(selected, neighborSet)
     // 방문한 별을 잇는 별자리 궤적 (2개 이상부터)
     const trailPoints = journeyRef.current
-      .map(code => scene.getNode(code))
+      .map(key => scene.getNode(key))
       .filter(Boolean)
       .map(n => [n.x, n.y, n.z])
     scene.setTrail(trailPoints.length >= 2 ? trailPoints : null)
@@ -370,27 +376,27 @@ export default function Graph3DShowcase() {
       : { x: 175, y: 0 }
     scene.flyToNode(selected, { screenShift })
 
-    // 라벨: 선택 노드 + 이웃 최대 10개 (스펙 §6-4)
+    // 라벨: 선택 노드 + 이웃 최대 10개 (스펙 §6-4) — 라벨 텍스트는 code, 위치 조회는 key
     const selEl = document.createElement('div')
     selEl.className = 'nebula-code-label selected'
-    selEl.textContent = selected
+    selEl.textContent = scene.getNode(selected)?.code ?? codeFromKey(selected)
     scene.addLabel(selected, selEl, { offsetY: 7 })
     connections.slice(0, 10).forEach(c => {
       const el = document.createElement('div')
       el.className = 'nebula-code-label'
       el.textContent = c.other.code
-      scene.addLabel(c.other.code, el)
+      scene.addLabel(standardKey(c.other), el)
     })
   }, [selected, connections, sceneEpoch, isMobile])
 
-  const selectNode = useCallback((code) => {
-    visitedRef.current.add(code)
+  const selectNode = useCallback((key) => {
+    visitedRef.current.add(key)
     // 여행 궤적: 선택이 이어지면 연장, 처음이면 새 여정 시작
     const journey = journeyRef.current
-    if (selectedRef.current === null) journeyRef.current = [code]
-    else if (journey[journey.length - 1] !== code) journeyRef.current = [...journey.slice(-19), code]
+    if (selectedRef.current === null) journeyRef.current = [key]
+    else if (journey[journey.length - 1] !== key) journeyRef.current = [...journey.slice(-19), key]
     setTour(t => (t.active ? { active: false, idx: 0, paused: false } : t))
-    setSelected(code)
+    setSelected(key)
   }, [])
   const selectNodeRef = useRef(selectNode)
   selectNodeRef.current = selectNode
@@ -401,7 +407,7 @@ export default function Graph3DShowcase() {
       if (isMobile) return
       setHover(info ? { node: info.node, x: info.clientX, y: info.clientY } : null)
     },
-    onSelect: (node) => selectNode(node.code),
+    onSelect: (node) => selectNode(standardKey(node)),
     onBackgroundClick: () => {
       if (tour.active) endTour()
       else if (selected) {
@@ -498,8 +504,8 @@ export default function Graph3DShowcase() {
   // ── 다음 연결로 여행 ──
   const travelNext = useCallback(() => {
     if (connections.length === 0) return
-    const next = connections.find(c => !visitedRef.current.has(c.other.code)) || connections[0]
-    selectNode(next.other.code)
+    const next = connections.find(c => !visitedRef.current.has(standardKey(c.other))) || connections[0]
+    selectNode(standardKey(next.other))
   }, [connections, selectNode])
 
   // ── UI 유틸 ──
@@ -540,14 +546,14 @@ export default function Graph3DShowcase() {
     next.set('focus', selected)
     setSearchParams(next)
   }
-  // "이 연결이 이상해요" — 검토 큐로 신고 (링크 자체는 변경되지 않음)
-  const reportLink = async (otherCode) => {
+  // "이 연결이 이상해요" — 검토 큐로 신고 (링크 자체는 변경되지 않음). 끝점은 key로 보낸다
+  const reportLink = async (otherKey) => {
     if (!selected) return
-    const key = [selected, otherCode].sort().join('|')
+    const key = pairId(selected, otherKey)
     if (reportedLinks.has(key) || reportingKey === key) return
     setReportingKey(key)
     try {
-      await apiPost('/api/standards/links/report', { source_code: selected, target_code: otherCode })
+      await apiPost('/api/standards/links/report', { source_code: selected, target_code: otherKey })
       setReportedLinks(prev => new Set(prev).add(key))
     } catch { /* 실패 시 버튼이 다시 활성화됨 — 재시도 가능 */ }
     setReportingKey(null)
@@ -596,12 +602,13 @@ export default function Graph3DShowcase() {
       <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3 space-y-2">
         {connections.map((c, i) => {
           const t = typeInfo(c.type)
-          const reportKey = [selectedNode.code, c.other.code].sort().join('|')
+          const otherKey = standardKey(c.other)
+          const reportKey = pairId(selected, otherKey)
           const isReported = reportedLinks.has(reportKey)
           return (
-            <div key={`${c.other.code}-${i}`} role="button" tabIndex={0}
-              onClick={() => selectNode(c.other.code)}
-              onKeyDown={(e) => { if (e.key === 'Enter') selectNode(c.other.code) }}
+            <div key={`${otherKey}-${i}`} role="button" tabIndex={0}
+              onClick={() => selectNode(otherKey)}
+              onKeyDown={(e) => { if (e.key === 'Enter') selectNode(otherKey) }}
               className="w-full text-left p-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/[0.06] hover:border-white/[0.14] transition-colors duration-150 cursor-pointer">
               <div className="flex items-center gap-1.5 mb-1">
                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
@@ -618,7 +625,7 @@ export default function Graph3DShowcase() {
                   <span className="text-[10.5px] text-slate-500/70">검토 요청됨 ✓</span>
                 ) : (
                   <button title="이 연결이 이상해요 — 검토 요청"
-                    onClick={(e) => { e.stopPropagation(); reportLink(c.other.code) }}
+                    onClick={(e) => { e.stopPropagation(); reportLink(otherKey) }}
                     disabled={reportingKey === reportKey}
                     className="flex items-center gap-1 text-[10.5px] text-slate-500/60 hover:text-amber-300/90 transition-colors disabled:opacity-40">
                     <Flag size={10} /> 이상해요
@@ -638,12 +645,12 @@ export default function Graph3DShowcase() {
           )}
         </button>
         <div className="flex gap-2">
-          <button onClick={() => toggleBasket(selectedNode.code)}
+          <button onClick={() => toggleBasket(selected)}
             className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold border transition-colors duration-150 ${
-              basket.has(selectedNode.code)
+              basket.has(selected)
                 ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-300'
                 : 'bg-white/[0.06] hover:bg-white/[0.12] border-white/[0.08] text-slate-300/90 hover:text-slate-100'}`}>
-            🧺 {basket.has(selectedNode.code) ? '담김 ✓' : '담기'}
+            🧺 {basket.has(selected) ? '담김 ✓' : '담기'}
           </button>
           <button onClick={openInDesign} title="이 성취기준을 설계 모드 이웃 렌즈에서 열기"
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-slate-300/90 hover:text-slate-100 transition-colors duration-150">
@@ -841,10 +848,11 @@ export default function Graph3DShowcase() {
               </p>
             ) : (
               (derived.subjectIndex.get(browseSubject)?.nodes || []).map(n => {
-                const isCurrent = selected === n.code
+                const k = standardKey(n)
+                const isCurrent = selected === k
                 const color = groupColor(n.subject_group)
                 return (
-                  <button key={n.code} onClick={() => selectNode(n.code)}
+                  <button key={k} onClick={() => selectNode(k)}
                     className={`w-full text-left p-2.5 rounded-xl border transition-colors duration-150 ${
                       isCurrent
                         ? 'bg-sky-500/15 border-sky-400/40'
@@ -1004,10 +1012,11 @@ export default function Graph3DShowcase() {
           <div className="flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: groupColor(hover.node.group) }} />
             <span className="font-mono text-[11px] font-semibold text-slate-100">{hover.node.code}</span>
+            {hover.node.subject && <span className="text-[10.5px] text-slate-400/70 truncate max-w-[140px]">{hover.node.subject}</span>}
           </div>
-          {derived?.nodesByCode.get(hover.node.code) && (
+          {derived?.nodesByKey.get(standardKey(hover.node)) && (
             <p className="mt-0.5 text-[11px] leading-snug text-slate-300/90 max-w-[240px] truncate">
-              {<MathText text={derived.nodesByCode.get(hover.node.code).content} />}
+              {<MathText text={derived.nodesByKey.get(standardKey(hover.node)).content} />}
             </p>
           )}
         </div>

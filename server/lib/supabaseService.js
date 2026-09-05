@@ -1366,7 +1366,9 @@ export async function resolveStandardId({ code, id } = {}) {
   // Supabase: code(UNIQUE)로 실제 id 조회
   if (code) {
     const rows = handleResult(
-      await sb.from('curriculum_standards').select('id').eq('code', code).limit(1),
+      // 식별자(key) 정확 일치 우선, 없으면 code 첫 매치 (복합 키 전환 2026-09-05)
+      await sb.from('curriculum_standards').select('id').eq('key', code).limit(1)
+        .then(async (r) => (r.data && r.data.length) ? r : sb.from('curriculum_standards').select('id').eq('code', code).limit(1)),
       '성취기준 코드 조회 실패'
     )
     if (rows && rows.length > 0) return rows[0].id

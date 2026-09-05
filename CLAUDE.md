@@ -83,8 +83,8 @@ curriculum-weaver/
 - **3단계 명령**: `node scripts/update-standards-pipeline.mjs --official-dir <PDF폴더>`(추출+게이트) → `--apply-official [--prune-unsourced]`(정본 재작성, 게이트 0 확인, git diff 검토·커밋) → `--apply --seed-authority`(백업 후 Supabase에 해설·영역·고려사항까지 정본 값으로 교체).
 - **게이트 차원**: A 완결성 · B 문장 verbatim · C 학교급/학년군(코드 접두) · D 교과 귀속(별책↔교과군) · E 영역 · F 해설 · G 적용 고려사항 · H 형식 · I 코드 충돌(정보). 결점 1건이면 시드 차단.
 - **정책**: content 원문 그대로(줄바꿈 없음, 문장 끝 마침표), area=원문 성취기준 소제목(단일 영역 과목은 유지), explanation=코드별 해설(병기 해설은 각 코드에 복제), application_notes=영역 불릿 전체 `• ` 접두, PUA 글리프는 `common.py`의 PUA_MAP·파서 치환표로 0 유지.
-- **알려진 한계**: 교육부 코드 체계 충돌 11건(`[12심독…]` 심화 영어 독해와 작문/심화 독일어, `[12스문…]` 스포츠 문화/스페인어권 문화)은 code 단일 키라 영어·체육만 수록. 해결은 복합 키 설계 필요.
-- **현재 규모(2026-09-05)**: 6,433건(초 611 · 중 714 · 고 3,115 · 전문교과 1,993). 원문 대조 결점 0.
+- **식별자 = (code, subject) 복합 키 (2026-09-05 전환)**: 교육부 코드 체계가 과목 간에 충돌한다(`[12심독…]` 심화 영어 독해와 작문/심화 독일어, `[12스문…]` 스포츠 문화/스페인어권 문화). 앱 식별자는 `standardKey(s)`(`shared/constants.js`) = `s.key || s.code`이며, 충돌 레코드만 정본에 `key: "code|subject"`를 명시한다(11건). **조회·비교·맵 키·링크 끝점(`curriculum_links.source_code/target_code`)·DB 유일 키(`curriculum_standards.key`, 00027)·임베딩 캐시 키는 전부 key, 표시는 code.** `Standards.getByCode(x)`는 key 정확 일치 → code 첫 매치 순. 클라이언트는 `client/src/lib/standardKey.js`의 `standardKey(s)`로 식별한다.
+- **현재 규모(2026-09-05)**: 6,444건(초 611 · 중 714 · 고 3,126 · 전문교과 1,993). 원문 대조 결점 0.
 
 ## 성취기준 데이터 정본 (2026-06-12 일원화)
 

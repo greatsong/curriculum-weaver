@@ -117,17 +117,18 @@ export function selectCandidatePairs(stdsA, stdsB, existingPairKeys, embLookup, 
   const out = []
   for (const a of stdsA) {
     const la = SCHOOL_LEVEL_ORDER[resolveSchoolLevel(a)]
-    const va = embLookup ? embLookup(a.code) : null
+    const va = embLookup ? (embLookup(a.key || a.code) || embLookup(a.code)) : null
     for (const b of stdsB) {
-      if (a.code === b.code) continue
+      if ((a.key || a.code) === (b.key || b.code)) continue
       const lb = SCHOOL_LEVEL_ORDER[resolveSchoolLevel(b)]
       // 그래프 API가 학교급 2단계 격차 링크를 표시에서 제거하므로, 생성 단계에서도 제외
       if (la !== undefined && lb !== undefined && Math.abs(la - lb) > 1) continue
-      const [s, t] = a.code < b.code ? [a.code, b.code] : [b.code, a.code]
+      const ka = a.key || a.code, kb = b.key || b.code
+      const [s, t] = ka < kb ? [ka, kb] : [kb, ka]
       if (existingPairKeys.has(`${s}|${t}`)) continue
-      const vb = embLookup ? embLookup(b.code) : null
+      const vb = embLookup ? (embLookup(b.key || b.code) || embLookup(b.code)) : null
       const cos = va && vb ? cosine(va, vb) : null
-      out.push({ a: a.code, b: b.code, cos })
+      out.push({ a: a.key || a.code, b: b.key || b.code, cos })
     }
   }
   out.sort((x, y) => {
@@ -364,7 +365,7 @@ export function startPairExploration({ subjectA, subjectB, userId }) {
 
   consumeQuota(userId) // 여기서부터 쿼터 소비 (실패 시 runJob이 환불)
 
-  const stdByCode = new Map([...stdsA, ...stdsB].map((s) => [s.code, s]))
+  const stdByCode = new Map([...stdsA, ...stdsB].map((s) => [s.key || s.code, s]))
   const job = {
     id: randomUUID(),
     pairKey,
