@@ -183,6 +183,29 @@ export const useAuthStore = create((set, get) => ({
   },
 
   /**
+   * 투어 외 안내 오버레이(설계 모드 코치·링크 가이드 등)의 '다시 보지 않기'를 영구 저장.
+   * localStorage(빠른 캐시) + Supabase user_metadata.onboarding_flags(기기 무관).
+   * @param {string} key 오버레이별 localStorage 키
+   */
+  markOnboardingDone: async (key) => {
+    try { localStorage.setItem(key, '1') } catch { /* noop */ }
+    const flags = { ...(get().user?.user_metadata?.onboarding_flags || {}), [key]: true }
+    try {
+      const { data } = await supabase.auth.updateUser({ data: { onboarding_flags: flags } })
+      if (data?.user) set({ user: data.user })
+    } catch { /* 서버 실패해도 localStorage 캐시로 이 브라우저에선 안 뜬다 */ }
+  },
+
+  /**
+   * 안내 오버레이를 이미 닫은 적이 있는지. 로컬 캐시 → 계정 기록 순으로 확인한다.
+   * @param {string} key 오버레이별 localStorage 키
+   */
+  isOnboardingDone: (key) => {
+    try { if (localStorage.getItem(key)) return true } catch { /* noop */ }
+    return !!get().user?.user_metadata?.onboarding_flags?.[key]
+  },
+
+  /**
    * 에러 초기화
    */
   clearError: () => set({ error: null }),

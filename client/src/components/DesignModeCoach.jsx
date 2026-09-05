@@ -5,6 +5,7 @@
  * 핵심 흐름만 안내한다. localStorage 'cw_design_coach_done'으로 1회 표시.
  */
 import { useState, useEffect, useCallback } from 'react'
+import { useAuthStore } from '../stores/authStore'
 
 const STORAGE_KEY = 'cw_design_coach_done'
 
@@ -60,13 +61,14 @@ export default function DesignModeCoach({ forceShow = false, onComplete }) {
 
   useEffect(() => {
     if (forceShow) { setStep(0); setVisible(true); return }
-    if (!localStorage.getItem(STORAGE_KEY)) setVisible(true)
+    // 로컬 캐시가 비어도 계정에 '닫음' 기록이 있으면 다시 띄우지 않는다(기기·브라우저 무관)
+    if (!useAuthStore.getState().isOnboardingDone(STORAGE_KEY)) setVisible(true)
   }, [forceShow])
 
   const isLast = step === STEPS.length - 1
 
   const close = useCallback(() => {
-    localStorage.setItem(STORAGE_KEY, '1')
+    useAuthStore.getState().markOnboardingDone(STORAGE_KEY)
     setVisible(false)
     onComplete?.()
   }, [onComplete])
@@ -113,7 +115,7 @@ export default function DesignModeCoach({ forceShow = false, onComplete }) {
           <p className="text-sm text-gray-600 leading-relaxed mb-4">{s.content}</p>
           <div className="bg-gray-50 rounded-xl px-4 py-2 mb-5 border border-gray-100">{s.visual}</div>
           <div className="flex items-center justify-between">
-            <button onClick={close} className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">건너뛰기</button>
+            <button onClick={close} className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">다시 보지 않기</button>
             <div className="flex gap-2">
               {step > 0 && (
                 <button onClick={() => setStep(v => v - 1)}

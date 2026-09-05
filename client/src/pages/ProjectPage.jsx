@@ -20,7 +20,6 @@ import MemberList from '../components/MemberList'
 import StandardSearch from '../components/StandardSearch'
 import ReportDownload from '../components/ReportDownload'
 import MaterialUploadBar from '../components/MaterialUploadBar'
-import Tutorial from '../components/Tutorial'
 import InteractiveTour from '../components/InteractiveTour'
 import ContinueSimulationButton from '../components/ContinueSimulationButton'
 
@@ -196,14 +195,13 @@ export default function ProjectPage() {
   const demoStandards = useProcedureStore((s) => s.standards)
 
   const [showStandardSearch, setShowStandardSearch] = useState(false)
-  // 신규 사용자는 InteractiveTour(6스텝)만 본다. 레거시 Tutorial(9스텝)은
-  // 투어를 이미 끝낸 적이 있는데 튜토리얼은 못 본 과거 사용자에게만 1회 노출 →
-  // 신규 사용자가 투어+튜토리얼 15스텝을 연달아 보던 중복 온보딩을 제거.
-  const [showTutorial, setShowTutorial] = useState(
-    () => !localStorage.getItem('cw_tutorial_done') && !!localStorage.getItem('cw_tour_done')
-  )
+  // 온보딩은 InteractiveTour(6스텝) 하나뿐이다. 레거시 Tutorial(9스텝)은
+  // 투어를 끝낸 사용자에게 뒤이어 한 번 더 뜨던 중복 안내라 노출을 폐지했다.
+  // (도움말이 필요하면 헤더의 [?] 버튼으로 투어를 다시 볼 수 있다.)
   // 투어는 '한 번만' 노출. localStorage(빠른 캐시)와 사용자 프로필(기기 무관 영구)을 모두 확인해
   // 학교/집 등 다른 PC(브라우저마다 localStorage 별개)에서 매번 다시 뜨던 문제를 막는다.
+  // 투어는 '처음 한 번'만. 로컬 캐시(빠름)와 계정 기록(기기·브라우저 무관)을 모두 확인해
+  // 학교/집 등 다른 PC에서 매번 다시 뜨던 문제를 막는다. 닫으면 두 곳 모두에 기록된다.
   const [showTour, setShowTour] = useState(() => {
     if (localStorage.getItem('cw_tour_done')) return false
     if (useAuthStore.getState().user?.user_metadata?.onboarding_tour_done) return false
@@ -693,7 +691,8 @@ export default function ProjectPage() {
             </button>
           ))}
           <button
-            onClick={() => { localStorage.removeItem('cw_tour_done'); setShowTour(true) }}
+            /* 완료 기록은 지우지 않는다 — 다시 본 뒤 새로고침해도 투어가 되살아나지 않게 */
+            onClick={() => setShowTour(true)}
             title="투어 가이드"
             style={{
               display: 'flex',
@@ -1055,19 +1054,13 @@ export default function ProjectPage() {
           onClose={() => setShowReport(false)}
         />
       )}
-      {/* 온보딩(투어·튜토리얼)은 팀·융합·TADDs-DIE 전제라 시연 모드에는 노출하지 않는다.
+      {/* 온보딩 투어는 팀·융합·TADDs-DIE 전제라 시연 모드에는 노출하지 않는다.
           currentProject 로드 전에는 isDemo를 신뢰할 수 없으므로(기본 false) 로드까지 기다려
           시연 프로젝트에서 협력 온보딩이 깜빡 뜨는 것도 막는다. */}
-      {showTutorial && !showTour && currentProject && !isDemo && (
-        <Tutorial onComplete={() => setShowTutorial(false)} />
-      )}
       {showTour && currentProject && !isDemo && <InteractiveTour onComplete={() => {
         setShowTour(false)
-        // 완료/건너뛰기를 사용자 프로필에 영구 저장 → 다른 기기에서도 다시 안 뜬다.
+        // 완료/'다시 보지 않기' 모두 계정에 영구 저장 → 다른 기기에서도 다시 안 뜬다.
         markTourDone()
-        // 투어를 끝낸 신규 사용자에게 레거시 Tutorial이 곧바로 겹쳐 뜨지 않도록 함께 완료 처리
-        localStorage.setItem('cw_tutorial_done', '1')
-        setShowTutorial(false)
         // 투어 완료 후 AI 환영 메시지 요청
         const msgs = useChatStore.getState().messages
         const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
