@@ -6,21 +6,20 @@
  * localStorage 'cw_tour_done' 키로 표시 여부 판별.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { PHASE_LIST, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
 
 // ============================================================
 // 투어 스텝 정의
 // ============================================================
 
-const TOUR_STEPS = [
+export const TOUR_STEPS = [
   {
     id: 'chat-panel',
     title: '채팅 패널',
     description: 'AI 공동설계자와 대화하는 공간입니다. 질문하면 AI가 답하고, 보드 업데이트를 제안합니다.',
-    // CSS selector or position hint for highlight
     targetSelector: '[data-tour="chat-panel"]',
-    fallbackPosition: { top: 60, left: 0, width: 400, height: () => window.innerHeight - 160 },
     arrowPosition: 'right',
   },
   {
@@ -28,31 +27,29 @@ const TOUR_STEPS = [
     title: '설계보드',
     description: '각 절차의 설계 결과물이 여기에 쌓입니다. AI 제안을 수락하거나 직접 편집할 수 있습니다.',
     targetSelector: '[data-tour="design-board"]',
-    fallbackPosition: { top: 60, left: 400, width: () => window.innerWidth - 680, height: () => window.innerHeight - 160 },
     arrowPosition: 'left',
   },
   {
     id: 'procedure-nav',
     title: '절차 네비게이션',
-    description: '5개 과정(T·A·Ds·DI·E), 18개 세부활동을 순서대로 진행합니다. 클릭하여 이동하세요.',
+    description: `준비부터 평가까지 ${PHASE_LIST.length}개 단계, ${PROCEDURE_LIST.length}개 세부 절차를 순서대로 진행합니다. 단계 이름을 누르면 그 안의 절차가 펼쳐지고, 절차를 누르면 이동합니다.`,
     targetSelector: '[data-tour="procedure-nav"]',
-    fallbackPosition: { top: 48, left: 0, width: () => window.innerWidth, height: 48 },
     arrowPosition: 'bottom',
   },
   {
     id: 'ai-suggestion',
-    title: '수락/거부',
-    description: 'AI가 보드 내용을 제안하면 [수락] [편집 후 수락] [거부]를 선택합니다.',
+    title: '수락 / 거부',
+    // AI 제안 카드는 대화가 오간 뒤에 생기므로 첫 투어 시점에는 화면에 없다.
+    // 타깃이 없으면 하이라이트 없이 가운데 안내만 띄운다(엉뚱한 곳을 비추지 않도록).
+    description: 'AI가 보드 내용을 제안하면 설계보드 위에 제안 카드가 나타납니다. [수락] [편집] [거부] 중에서 고르면 보드에 반영됩니다.',
     targetSelector: '[data-tour="ai-suggestion"]',
-    fallbackPosition: { top: 200, left: 20, width: 360, height: 120 },
     arrowPosition: 'right',
   },
   {
     id: 'principle-panel',
     title: '설계 원칙',
-    description: '각 절차에 맞는 설계 원칙이 표시됩니다. 참고하여 설계하세요.',
+    description: '화면 아래 [원칙] 버튼을 누르면 지금 절차에 해당하는 협력 설계 원칙을 펼쳐 볼 수 있습니다.',
     targetSelector: '[data-tour="principle-panel"]',
-    fallbackPosition: { top: 60, left: () => window.innerWidth - 280, width: 280, height: () => window.innerHeight - 160 },
     arrowPosition: 'left',
   },
   {
@@ -60,7 +57,6 @@ const TOUR_STEPS = [
     title: '준비 완료!',
     description: '이제 시작하세요! 첫 번째 절차인 "준비"부터 학습자 정보를 입력해보세요.',
     targetSelector: null,
-    fallbackPosition: null,
     arrowPosition: 'center',
   },
 ]
@@ -70,34 +66,81 @@ const TOUR_STEPS = [
 // ============================================================
 
 function getTargetRect(step) {
-  if (step.targetSelector) {
-    const el = document.querySelector(step.targetSelector)
-    if (el) {
-      const rect = el.getBoundingClientRect()
-      return {
-        top: rect.top,
-        left: rect.left,
-        width: rect.width,
-        height: rect.height,
-      }
-    }
+  if (!step.targetSelector) return null
+  const el = document.querySelector(step.targetSelector)
+  if (!el) return null
+  const rect = el.getBoundingClientRect()
+  // 화면에서 사라진(0×0) 요소는 하이라이트 대상으로 삼지 않는다.
+  if (rect.width === 0 || rect.height === 0) return null
+  return {
+    top: rect.top,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
   }
-  // fallback
-  if (step.fallbackPosition) {
-    const fp = step.fallbackPosition
-    const resolve = (v, defaultValue) => {
-      if (typeof v === 'number') return v
-      if (typeof v === 'function') return v()
-      return defaultValue
-    }
+}
+
+// ============================================================
+// 툴팁 위치 계산 (순수 함수 — 테스트 대상)
+// ============================================================
+
+export const TOOLTIP_WIDTH = 340
+const TOOLTIP_PADDING = 16
+
+const CENTER_STYLE = {
+  position: 'fixed',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+}
+
+/**
+ * 하이라이트 대상 옆에 놓을 툴팁의 좌표를 계산한다.
+ * 계산 결과는 반드시 뷰포트 안으로 가둔다 — 대상이 화면 아래쪽이면 툴팁이
+ * 밖으로 밀려나 [이전][다음][다시 보지 않기]를 누를 수 없었다.
+ *
+ * @param {Object} p
+ * @param {'right'|'left'|'bottom'|'center'} p.arrowPosition 배치 방향
+ * @param {{top:number,left:number,width:number,height:number}|null} p.targetRect 대상 영역
+ * @param {number} p.tooltipHeight 툴팁 실제 높이
+ * @param {{width:number,height:number}} p.viewport 뷰포트 크기
+ * @returns {Object} position:fixed 스타일
+ */
+export function computeTooltipPosition({ arrowPosition, targetRect, tooltipHeight, viewport }) {
+  if (arrowPosition === 'center' || !targetRect) return CENTER_STYLE
+
+  const pad = TOOLTIP_PADDING
+  const clampLeft = (v) => Math.min(Math.max(pad, v), Math.max(pad, viewport.width - TOOLTIP_WIDTH - pad))
+  const clampTop = (v) => Math.min(Math.max(pad, v), Math.max(pad, viewport.height - tooltipHeight - pad))
+
+  // 기본: 타겟 오른쪽
+  if (arrowPosition === 'right') {
     return {
-      top: resolve(fp.top, 0),
-      left: resolve(fp.left, 0),
-      width: resolve(fp.width, 400),
-      height: resolve(fp.height, 300),
+      position: 'fixed',
+      top: clampTop(targetRect.top + 40),
+      left: clampLeft(targetRect.left + targetRect.width + pad),
     }
   }
-  return null
+  // 타겟 왼쪽
+  if (arrowPosition === 'left') {
+    return {
+      position: 'fixed',
+      top: clampTop(targetRect.top + 40),
+      left: clampLeft(targetRect.left - TOOLTIP_WIDTH - pad),
+    }
+  }
+  // 타겟 아래 — 아래 공간이 모자라면 타겟 위로 올린다
+  if (arrowPosition === 'bottom') {
+    const below = targetRect.top + targetRect.height + pad
+    const fitsBelow = below + tooltipHeight + pad <= viewport.height
+    return {
+      position: 'fixed',
+      top: clampTop(fitsBelow ? below : targetRect.top - tooltipHeight - pad),
+      left: clampLeft(targetRect.left + (targetRect.width - TOOLTIP_WIDTH) / 2),
+    }
+  }
+
+  return CENTER_STYLE
 }
 
 // ============================================================
@@ -108,6 +151,7 @@ export default function InteractiveTour({ onComplete }) {
   const [currentStep, setCurrentStep] = useState(0)
   const [targetRect, setTargetRect] = useState(null)
   const tooltipRef = useRef(null)
+  const [tooltipHeight, setTooltipHeight] = useState(200)
 
   const step = TOUR_STEPS[currentStep]
   const isLastStep = currentStep === TOUR_STEPS.length - 1
@@ -141,6 +185,14 @@ export default function InteractiveTour({ onComplete }) {
     }
   }, [currentStep])
 
+  // 툴팁 실제 높이를 재서 클램프에 반영 (스텝마다 설명 길이가 달라 높이가 변한다)
+  useLayoutEffect(() => {
+    const el = tooltipRef.current
+    if (!el) return
+    const h = el.getBoundingClientRect().height
+    if (h > 0 && Math.abs(h - tooltipHeight) > 1) setTooltipHeight(h)
+  }, [currentStep, targetRect, tooltipHeight])
+
   const handleNext = useCallback(() => {
     if (isLastStep) {
       localStorage.setItem('cw_tour_done', '1')
@@ -166,52 +218,13 @@ export default function InteractiveTour({ onComplete }) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleNext, handleSkip, currentStep])
 
-  // 툴팁 위치 계산
-  const getTooltipStyle = () => {
-    if (isCenterStep || !targetRect) {
-      return {
-        position: 'fixed',
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%, -50%)',
-      }
-    }
-
-    const padding = 16
-    const tooltipWidth = 340
-
-    // 기본: 타겟 오른쪽
-    if (step.arrowPosition === 'right') {
-      return {
-        position: 'fixed',
-        top: Math.max(padding, targetRect.top + 40),
-        left: Math.min(targetRect.left + targetRect.width + padding, window.innerWidth - tooltipWidth - padding),
-      }
-    }
-    // 타겟 왼쪽
-    if (step.arrowPosition === 'left') {
-      return {
-        position: 'fixed',
-        top: Math.max(padding, targetRect.top + 40),
-        left: Math.max(padding, targetRect.left - tooltipWidth - padding),
-      }
-    }
-    // 타겟 아래
-    if (step.arrowPosition === 'bottom') {
-      return {
-        position: 'fixed',
-        top: targetRect.top + targetRect.height + padding,
-        left: Math.max(padding, targetRect.left + (targetRect.width - tooltipWidth) / 2),
-      }
-    }
-
-    return {
-      position: 'fixed',
-      top: '50%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-    }
-  }
+  const getTooltipStyle = () =>
+    computeTooltipPosition({
+      arrowPosition: isCenterStep ? 'center' : step.arrowPosition,
+      targetRect,
+      tooltipHeight,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    })
 
   // box-shadow 기반 하이라이트 마스크
   const getMaskStyle = () => {
@@ -265,7 +278,7 @@ export default function InteractiveTour({ onComplete }) {
         style={{
           ...getTooltipStyle(),
           zIndex: 9999,
-          width: 340,
+          width: TOOLTIP_WIDTH,
           background: '#fff',
           borderRadius: 16,
           boxShadow: '0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(0,0,0,0.05)',
@@ -351,7 +364,7 @@ export default function InteractiveTour({ onComplete }) {
               onMouseEnter={(e) => { e.currentTarget.style.background = '#F3F4F6'; e.currentTarget.style.color = '#6B7280' }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#9CA3AF' }}
             >
-              건너뛰기
+              다시 보지 않기
             </button>
 
             <div style={{ display: 'flex', gap: 8 }}>

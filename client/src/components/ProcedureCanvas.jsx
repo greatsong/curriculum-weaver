@@ -9,7 +9,7 @@ import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { BOARD_SCHEMAS, getBoardSchemaForProcedure, createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
 import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
-import ReadableValue from './ReadableValue'
+import ReadableValue, { labelize } from './ReadableValue'
 
 export default function ProcedureCanvas({ projectId, procedureCode, readOnly = false, loading = false, memberRole = null }) {
   const { boards, currentStep, setStep, updateBoard, skippedProcedures, skipProcedure, unskipProcedure } = useProcedureStore()
@@ -591,7 +591,7 @@ function SuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
           <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
         </svg>
         <span style={{ fontSize: 13, fontWeight: 600, color: '#6D28D9' }}>AI 제안</span>
-        <span style={{ fontSize: 12, color: '#A78BFA' }}>{suggestion.field ? `${suggestion.field} 필드` : '보드 정리'}</span>
+        <span style={{ fontSize: 12, color: '#A78BFA' }}>{suggestion.field ? `${labelize(suggestion.field)} 항목` : '보드 정리'}</span>
       </div>
 
       {suggestion.rationale && (

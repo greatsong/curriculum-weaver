@@ -2,41 +2,24 @@
  * HostSetupWizard -- 호스트 워크스페이스 초기 설정 위자드
  *
  * 워크스페이스 생성 직후 또는 프로젝트가 없을 때 표시.
- * 5단계: 기본정보 -> AI설정 -> 워크플로우 -> 팀원초대 -> 완료
+ * 4단계: 기본정보 -> AI설정 -> 팀원초대 -> 완료
+ *
+ * (구 3단계 '워크플로우 설정'은 고른 값을 읽는 곳이 없는 유령 설정이라 제거했다.
+ *  절차를 실제로 건너뛰는 기능은 프로젝트 화면의 절차 생략(project_procedure_skips)이다.)
  */
 
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PROCEDURES, PHASES, PROCEDURE_LIST, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculum-weaver-shared/constants.js'
+import { AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculum-weaver-shared/constants.js'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useProjectStore } from '../stores/projectStore'
 
-const WIZARD_STEPS = [
+export const WIZARD_STEPS = [
   { id: 'info', title: '기본 정보', icon: '1' },
   { id: 'ai', title: 'AI 설정', icon: '2' },
-  { id: 'workflow', title: '워크플로우', icon: '3' },
-  { id: 'invite', title: '팀원 초대', icon: '4' },
-  { id: 'done', title: '완료', icon: '5' },
+  { id: 'invite', title: '팀원 초대', icon: '3' },
+  { id: 'done', title: '완료', icon: '4' },
 ]
-
-// 워크플로우 프리셋
-const WORKFLOW_PRESETS = {
-  elementary: {
-    label: '초등학교 간소화',
-    description: '핵심 절차만 남기고 간소화',
-    hidden: ['T-2-2', 'T-2-3', 'Ds-2-1', 'Ds-2-2', 'DI-1-1', 'E-2-1'],
-  },
-  secondary: {
-    label: '중등 전체',
-    description: '모든 절차를 사용',
-    hidden: [],
-  },
-  custom: {
-    label: '커스텀',
-    description: '직접 선택',
-    hidden: null,
-  },
-}
 
 export default function HostSetupWizard({ workspaceId, workspace, onComplete, onDismiss }) {
   const navigate = useNavigate()
@@ -75,30 +58,11 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
     }
   }
 
-  // Step 3: 워크플로우
-  const [selectedPreset, setSelectedPreset] = useState('secondary')
-  const [hiddenProcedures, setHiddenProcedures] = useState([])
-
-  // Step 4: 초대
+  // 팀원 초대
   const [inviteEmails, setInviteEmails] = useState([''])
   const [inviting, setInviting] = useState(false)
 
   const currentWizardStep = WIZARD_STEPS[step]
-
-  const handlePresetChange = (preset) => {
-    setSelectedPreset(preset)
-    const p = WORKFLOW_PRESETS[preset]
-    if (p.hidden !== null) {
-      setHiddenProcedures(p.hidden)
-    }
-  }
-
-  const toggleProcedure = (code) => {
-    setSelectedPreset('custom')
-    setHiddenProcedures((prev) =>
-      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
-    )
-  }
 
   const handleInvite = async () => {
     setInviting(true)
@@ -111,18 +75,17 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
       }
     }
     setInviting(false)
-    setStep(4)
+    setStep(WIZARD_STEPS.findIndex((w) => w.id === 'done'))
   }
 
   const handleFinish = useCallback(() => {
     onComplete?.({
       aiConfig: { model: aiModel },
-      hiddenProcedures,
       enabledAI,
       aiRole,
       targetGrade,
     })
-  }, [aiModel, hiddenProcedures, enabledAI, aiRole, targetGrade, onComplete])
+  }, [aiModel, enabledAI, aiRole, targetGrade, onComplete])
 
   const handleCreateProjectAndFinish = async () => {
     try {
@@ -207,8 +170,8 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
         </div>
 
         <div style={{ padding: '24px 32px 32px' }}>
-          {/* Step 1: 기본 정보 */}
-          {step === 0 && (
+          {/* 기본 정보 */}
+          {currentWizardStep.id === 'info' && (
             <div>
               <h2 style={titleStyle}>워크스페이스 기본 정보</h2>
               <p style={descStyle}>이미 입력한 이름 외에 추가 정보를 입력하세요.</p>
@@ -271,8 +234,8 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
             </div>
           )}
 
-          {/* Step 2: AI 설정 */}
-          {step === 1 && (
+          {/* AI 설정 */}
+          {currentWizardStep.id === 'ai' && (
             <div>
               <h2 style={titleStyle}>AI 설정</h2>
               <p style={descStyle}>AI 모델과 역할을 설정합니다.</p>
@@ -360,83 +323,8 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
             </div>
           )}
 
-          {/* Step 3: 워크플로우 */}
-          {step === 2 && (
-            <div>
-              <h2 style={titleStyle}>워크플로우 설정</h2>
-              <p style={descStyle}>사용할 절차를 선택하세요. 프리셋으로 빠르게 설정할 수 있습니다.</p>
-
-              {/* 프리셋 */}
-              <div style={{ display: 'flex', gap: 8, marginTop: 16, marginBottom: 16 }}>
-                {Object.entries(WORKFLOW_PRESETS).map(([key, preset]) => (
-                  <button
-                    key={key}
-                    onClick={() => handlePresetChange(key)}
-                    style={{
-                      flex: 1,
-                      padding: '10px 8px',
-                      border: `2px solid ${selectedPreset === key ? '#3B82F6' : '#E5E7EB'}`,
-                      borderRadius: 10,
-                      background: selectedPreset === key ? '#EFF6FF' : '#fff',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                      fontFamily: 'var(--font-sans, inherit)',
-                    }}
-                  >
-                    <div style={{ fontSize: 13, fontWeight: 600, color: selectedPreset === key ? '#2563EB' : '#374151' }}>{preset.label}</div>
-                    <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{preset.description}</div>
-                  </button>
-                ))}
-              </div>
-
-              {/* 절차 목록 */}
-              <div style={{ maxHeight: 280, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {PROCEDURE_LIST.map((proc) => {
-                  const phase = Object.values(PHASES).find((p) => p.id === proc.phase)
-                  const isHidden = hiddenProcedures.includes(proc.code)
-                  return (
-                    <label
-                      key={proc.code}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        padding: '6px 10px',
-                        borderRadius: 8,
-                        cursor: 'pointer',
-                        opacity: isHidden ? 0.45 : 1,
-                        transition: 'all 0.15s',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!isHidden}
-                        onChange={() => toggleProcedure(proc.code)}
-                        style={{ accentColor: phase?.color || '#3B82F6', width: 15, height: 15 }}
-                      />
-                      <span style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        width: 40,
-                        textAlign: 'center',
-                        padding: '2px 0',
-                        borderRadius: 4,
-                        background: (phase?.color || '#3B82F6') + '14',
-                        color: phase?.color || '#3B82F6',
-                        flexShrink: 0,
-                      }}>
-                        {proc.displayCode || proc.code}
-                      </span>
-                      <span style={{ fontSize: 13, color: '#374151' }}>{proc.name}</span>
-                    </label>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Step 4: 팀원 초대 */}
-          {step === 3 && (
+          {/* 팀원 초대 */}
+          {currentWizardStep.id === 'invite' && (
             <div>
               <h2 style={titleStyle}>팀원 초대</h2>
               <p style={descStyle}>동료 선생님의 이메일을 입력하여 초대하세요. 나중에 해도 됩니다.</p>
@@ -482,8 +370,8 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
             </div>
           )}
 
-          {/* Step 5: 완료 */}
-          {step === 4 && (
+          {/* 완료 */}
+          {currentWizardStep.id === 'done' && (
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
               <div style={{
                 width: 64, height: 64, borderRadius: '50%', background: '#DCFCE7',
@@ -527,7 +415,7 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
           )}
 
           {/* 네비게이션 버튼 */}
-          {step < 4 && (
+          {currentWizardStep.id !== 'done' && (
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 28 }}>
               <div>
                 {step > 0 ? (
@@ -537,7 +425,7 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
                 )}
               </div>
               <button
-                onClick={step === 3 ? handleInvite : goNext}
+                onClick={currentWizardStep.id === 'invite' ? handleInvite : goNext}
                 disabled={inviting}
                 style={{
                   padding: '10px 24px', background: '#3B82F6', color: '#fff',
@@ -549,7 +437,7 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
                 onMouseEnter={(e) => !inviting && (e.currentTarget.style.background = '#2563EB')}
                 onMouseLeave={(e) => !inviting && (e.currentTarget.style.background = '#3B82F6')}
               >
-                {step === 3 ? (inviting ? '초대 중...' : '초대 후 다음') : '다음'}
+                {currentWizardStep.id === 'invite' ? (inviting ? '초대 중...' : '초대 후 다음') : '다음'}
               </button>
             </div>
           )}

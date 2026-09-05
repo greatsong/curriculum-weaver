@@ -195,7 +195,13 @@ export default function ProcedureNav({
                 )}
                 <span>{proc.name}</span>
                 {totalSteps > 0 && (
-                  <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>{totalSteps}s</span>
+                  /* 'Ns'는 초 단위로 오해받아 '스텝'을 그대로 적는다 */
+                  <span
+                    style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}
+                    title={`세부 스텝 ${totalSteps}개`}
+                  >
+                    {totalSteps}스텝
+                  </span>
                 )}
                 {status === 'confirmed' && (
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#22C55E' }} />

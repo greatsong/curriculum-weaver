@@ -9,6 +9,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react'
+import { useAuthStore } from '../stores/authStore'
 
 // ============================================================
 // 가이드 스텝 정의
@@ -172,8 +173,8 @@ export default function LinkGuideOverlay({ onComplete, forceShow = false }) {
       setVisible(true)
       return
     }
-    const done = localStorage.getItem(STORAGE_KEY)
-    if (!done) setVisible(true)
+    // 로컬 캐시가 비어도 계정에 '닫음' 기록이 있으면 다시 띄우지 않는다(기기·브라우저 무관)
+    if (!useAuthStore.getState().isOnboardingDone(STORAGE_KEY)) setVisible(true)
   }, [forceShow])
 
   const step = GUIDE_STEPS[currentStep]
@@ -181,7 +182,7 @@ export default function LinkGuideOverlay({ onComplete, forceShow = false }) {
 
   const handleNext = useCallback(() => {
     if (isLastStep) {
-      localStorage.setItem(STORAGE_KEY, '1')
+      useAuthStore.getState().markOnboardingDone(STORAGE_KEY)
       setVisible(false)
       onComplete?.()
     } else {
@@ -190,7 +191,7 @@ export default function LinkGuideOverlay({ onComplete, forceShow = false }) {
   }, [isLastStep, onComplete])
 
   const handleSkip = useCallback(() => {
-    localStorage.setItem(STORAGE_KEY, '1')
+    useAuthStore.getState().markOnboardingDone(STORAGE_KEY)
     setVisible(false)
     onComplete?.()
   }, [onComplete])
@@ -266,7 +267,7 @@ export default function LinkGuideOverlay({ onComplete, forceShow = false }) {
               onClick={handleSkip}
               className="px-3 py-1.5 text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"
             >
-              건너뛰기
+              다시 보지 않기
             </button>
 
             <div className="flex gap-2">

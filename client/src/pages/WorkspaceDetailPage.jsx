@@ -5,7 +5,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
 import { apiGet, apiPost } from '../lib/api'
 import { standardKey, codeFromKey, subjectFromKey } from '../lib/standardKey'
-import { PROCEDURES, PHASES, PROCEDURE_LIST, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, PHASES, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculum-weaver-shared/constants.js'
 import Logo from '../components/Logo'
 import HostSetupWizard from '../components/HostSetupWizard'
 
@@ -57,7 +57,6 @@ export default function WorkspaceDetailPage() {
 
   // Feature 1: 호스트 설정 상태
   const [aiConfig, setAiConfig] = useState({ model: 'claude-sonnet-5' })
-  const [hiddenProcedures, setHiddenProcedures] = useState([])
   const [enabledAI, setEnabledAI] = useState({ guide: true, generate: true, check: true, record: true })
   const [aiRole, setAiRole] = useState(DEFAULT_AI_ROLE)
   const [settingsSaving, setSettingsSaving] = useState(false)
@@ -79,7 +78,6 @@ export default function WorkspaceDetailPage() {
         model: (ac.model === 'claude-opus-5' || ac.model === 'claude-opus-4-8') ? 'claude-opus-5' : 'claude-sonnet-5',
       })
       const wc = currentWorkspace.workflow_config || {}
-      setHiddenProcedures(wc.hiddenProcedures || [])
       setEnabledAI({
         guide: wc.enabledAI?.guide !== false,
         generate: wc.enabledAI?.generate !== false,
@@ -120,7 +118,6 @@ export default function WorkspaceDetailPage() {
       await updateWorkspace(workspaceId, {
         ai_config: aiConfig,
         workflow_config: {
-          hiddenProcedures,
           enabledAI,
           aiRole,
         },
@@ -130,7 +127,7 @@ export default function WorkspaceDetailPage() {
     } finally {
       setSettingsSaving(false)
     }
-  }, [workspaceId, aiConfig, hiddenProcedures, enabledAI, aiRole, updateWorkspace])
+  }, [workspaceId, aiConfig, enabledAI, aiRole, updateWorkspace])
 
   const toggleProcedure = (code) => {
     setHiddenProcedures((prev) =>
@@ -484,7 +481,16 @@ export default function WorkspaceDetailPage() {
                   <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
                 </svg>
                 <p style={{ fontSize: 15, fontWeight: 500, color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>아직 프로젝트가 없습니다</p>
-                <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', margin: 0 }}>새 프로젝트를 만들어 수업 설계를 시작하세요</p>
+                <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', margin: '0 0 20px' }}>수업 하나가 프로젝트 하나입니다. 주제와 참여 교과를 정하면 AI와 설계를 시작합니다</p>
+                {/* 빈 화면에서 바로 다음 행동을 할 수 있게 — 상단 버튼까지 시선을 올리지 않아도 된다 */}
+                <button
+                  onClick={() => setShowCreateProject(true)}
+                  className="btn btn-primary"
+                  style={{ padding: '10px 20px', fontSize: 14 }}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  새 프로젝트 만들기
+                </button>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -883,57 +889,6 @@ export default function WorkspaceDetailPage() {
 
             </SettingsSection>
 
-            {/* 1-B: 워크플로우 커스터마이징 */}
-            <SettingsSection title="워크플로우 설정" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>}>
-              <p style={{ ...hintStyle, marginBottom: 12, marginTop: 0 }}>불필요한 절차를 숨길 수 있습니다</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {PROCEDURE_LIST.map((proc) => {
-                  const phase = Object.values(PHASES).find((p) => p.id === proc.phase)
-                  const isHidden = hiddenProcedures.includes(proc.code)
-                  return (
-                    <label
-                      key={proc.code}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        padding: '8px 12px',
-                        borderRadius: 'var(--radius-md)',
-                        cursor: 'pointer',
-                        transition: 'background var(--transition-fast)',
-                        opacity: isHidden ? 0.5 : 1,
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--color-bg-tertiary)'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!isHidden}
-                        onChange={() => toggleProcedure(proc.code)}
-                        style={{ accentColor: phase?.color || '#3B82F6', width: 16, height: 16 }}
-                      />
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        width: 44,
-                        padding: '2px 0',
-                        borderRadius: 4,
-                        background: (phase?.color || '#3B82F6') + '14',
-                        color: phase?.color || '#3B82F6',
-                        flexShrink: 0,
-                      }}>
-                        {proc.displayCode || proc.code}
-                      </span>
-                      <span style={{ fontSize: 13, color: 'var(--color-text-primary)' }}>{proc.name}</span>
-                    </label>
-                  )
-                })}
-              </div>
-            </SettingsSection>
-
             {/* 저장 버튼 */}
             <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end' }}>
               <button
@@ -1267,12 +1222,10 @@ export default function WorkspaceDetailPage() {
             setShowSetupWizard(false)
             if (config) {
               setAiConfig(config.aiConfig || aiConfig)
-              setHiddenProcedures(config.hiddenProcedures || [])
               setEnabledAI(config.enabledAI || enabledAI)
               updateWorkspace(workspaceId, {
                 ai_config: config.aiConfig || aiConfig,
                 workflow_config: {
-                  hiddenProcedures: config.hiddenProcedures || [],
                   enabledAI: config.enabledAI || enabledAI,
                   aiRole: config.aiRole || 'facilitator',
                 },
