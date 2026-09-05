@@ -20,10 +20,28 @@ export const useAuthStore = create((set, get) => ({
     // 프로덕션 빌드(import.meta.env.DEV === false)에서는 절대 바이패스하지 않음
     if (import.meta.env.DEV && (!supabaseUrl || supabaseUrl === 'https://placeholder.supabase.co')) {
       console.info('[Auth] 개발 모드: Supabase 미설정 → 더미 사용자로 진입')
-      const devUser = {
+      let devUser = {
         id: 'dev-user-001',
         email: 'dev@curriculum-weaver.local',
         user_metadata: { display_name: '개발자' },
+      }
+      // 서버 DEV_AUTH_BYPASS가 쓰는 실제 dev 유저와 id를 맞춘다.
+      // 하드코딩 id를 그대로 두면 owner_id === user.id 판정이 항상 false가 되어
+      // 호스트 셋업 위자드·워크스페이스 설정·삭제 버튼 등 '소유자 전용' UI를
+      // 로컬에서 아예 검증할 수 없다(프로덕션에서만 보이는 화면이 되어버린다).
+      try {
+        const me = await apiGet('/api/auth/me')
+        if (me?.id) {
+          devUser = {
+            ...devUser,
+            id: me.id,
+            email: me.email || devUser.email,
+            user_metadata: { ...devUser.user_metadata, display_name: me.display_name || devUser.user_metadata.display_name },
+          }
+        }
+      } catch {
+        // 서버 미기동이거나 DEV_AUTH_BYPASS가 꺼져 있으면 더미 id로 진행
+        console.info('[Auth] 개발 모드: 서버 dev 유저 조회 실패 → 더미 id 사용')
       }
       set({ user: devUser, session: { access_token: 'dev-token', user: devUser }, loading: false, initialized: true })
       return
