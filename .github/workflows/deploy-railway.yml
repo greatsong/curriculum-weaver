@@ -3,6 +3,15 @@ name: Deploy to Railway
 on:
   push:
     branches: [main]
+  # 수동 재배포 — 코드 변경 없이 서버만 다시 띄워야 할 때 (예: curriculum_links 상태를
+  # DB에서 직접 바꾼 뒤. linkService는 부팅 때 한 번만 하이드레이션하므로 재부팅이 필요하다)
+  #   gh workflow run deploy-railway.yml -f reason="링크 강등 반영"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: '재배포 사유 (실행 이력에 남김)'
+        required: false
+        default: 'DB 변경 반영을 위한 재하이드레이션'
 
 jobs:
   deploy:
