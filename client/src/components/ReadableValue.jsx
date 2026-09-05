@@ -8,14 +8,15 @@ import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
 // 제안 카드가 studentCount·digitalLiteracy 같은 영문 키를 그대로 노출하던 문제를 막는다.
 const SCHEMA_LABELS = (() => {
   const map = {}
+  // 같은 키가 여러 보드에 다른 라벨로 있으면(rationale → '근거' / '제안 근거')
+  // 먼저 만난 쪽을 쓴다. 스키마 파일 편집 순서에 따라 UI 문구가 흔들리지 않게.
+  const put = (key, label) => { if (key && label && !(key in map)) map[key] = label }
   const addField = (field) => {
     if (!field || typeof field !== 'object') return
-    if (field.name && field.label) map[field.name] = field.label
+    put(field.name, field.label)
     // list 필드의 항목 스키마: { 키: { label, type } }
     if (field.itemSchema) {
-      for (const [key, spec] of Object.entries(field.itemSchema)) {
-        if (spec?.label) map[key] = spec.label
-      }
+      for (const [key, spec] of Object.entries(field.itemSchema)) put(key, spec?.label)
     }
     if (Array.isArray(field.fields)) field.fields.forEach(addField)
   }
@@ -25,8 +26,9 @@ const SCHEMA_LABELS = (() => {
   return map
 })()
 
-// 스키마에 없는 범용 키 보완 (없으면 키 그대로 노출)
-const KEY_LABELS = {
+// 어느 보드에도 매이지 않는 범용 키 — 스키마 라벨보다 먼저 쓴다.
+// (스키마를 먼저 두면 'title'이 특정 보드의 '맥락' 같은 라벨로 덮여 오해를 부른다)
+export const KEY_LABELS = {
   assessments: '평가',
   assessment: '평가',
   activities: '활동',
@@ -44,7 +46,7 @@ const KEY_LABELS = {
 }
 
 export function labelize(key) {
-  return SCHEMA_LABELS[key] || KEY_LABELS[key] || key
+  return KEY_LABELS[key] || SCHEMA_LABELS[key] || key
 }
 
 export default function ReadableValue({ value, depth = 0 }) {
