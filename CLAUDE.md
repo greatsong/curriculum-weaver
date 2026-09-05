@@ -109,6 +109,7 @@ curriculum-weaver/
 - **오염 복원 완료 (2026-07-11)**: xlsx 재파싱 때 유입된 content 오염 525건(해설체 혼입·개행 유실·푸터 혼입)을 전량 복원 — ① `scripts/restore-standards-from-backup.mjs`가 backup_20260327에서 475건 복원(해설은 explanation으로 이동) ② 잔여 25건은 교육부 고시 HWP 원문 리서치 후 `scripts/apply-manual-standard-fixes.mjs`로 적용(`scripts/results/restore-manual-20260711.json`, 출처 명기). Supabase·임베딩 캐시 동기화는 `scripts/sync-restored-standards.mjs`. 오염 탐지는 `server/lib/standardsQuality.js` 단일 소스(store.js·report 스크립트 공유), 품질 게이트: `node scripts/report-standards-quality.mjs --max-flagged 30` (현재 플래그 0). 과거 오염필터로 제거되던 145건까지 편입되어 4,711 → 4,856 전체 서빙.
 - **Supabase 재정합**: `scripts/seed-standards-from-canonical.mjs` — 정본 구동, `code` onConflict upsert, 기존 id·rich 메타·embedding 보존(비파괴). content는 정본 권위로 교체, 나머지는 빈 값만 채움.
 - **검증**: `scripts/verify-standards-supabase.mjs` — 검색 code 전부가 Supabase에서 resolve되는지 확인(현재 PASS).
+- **오픈소스 데이터셋 수출**: `node scripts/export-open-dataset.mjs --out ../k-curriculum-2022/data` — 정본 성취기준(모든 행에 `key` 포함)과 curriculum_links(published/candidate 분리, 운영 필드 제거)를 공개 스키마로 내보낸다. 수출 후 데이터셋 리포에서 `node scripts/validate.mjs`(key 기준 고유성·참조 검사).
 - `scripts/seed-standards-to-supabase.mjs`는 레거시(standards_full.json 시드) — **DEPRECATED**, 사용 금지.
 - Supabase에는 정본 외 잉여 code 10개(`[12정치…]`, `[디직 …]`, `[성직 …]`)가 남아 있음. FK 참조 0건이라 삭제 가능하나 검색엔 안 나오므로 무해.
 
