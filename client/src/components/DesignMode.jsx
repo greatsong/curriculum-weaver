@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { X, HelpCircle } from 'lucide-react'
 import { fetchGraphData, invalidateGraphCache } from '../lib/graphDataCache'
+import { standardKey, codeFromKey, subjectFromKey } from '../lib/standardKey'
 import Logo from './Logo'
 import DesignModeCoach from './DesignModeCoach'
 import PairLens from './lenses/PairLens'
@@ -17,13 +18,15 @@ const LENSES = [
   { id: 'pair', label: '과목쌍', hint: '두 교과의 성취기준이 어떻게 붙는지' },
 ]
 
+// 담기 저장값은 성취기준 key(standardKey — 충돌 코드는 "code|과목"). 예전 저장값(code)은
+// 충돌이 없으면 key와 같아 그대로 읽힌다 (마이그레이션 불필요).
 const BASKET_KEY = 'cw_design_basket'
-const BASKET_META_KEY = 'cw_design_basket_meta' // { code: subject_group } — 프로젝트 모달 교과 자동선택용
+const BASKET_META_KEY = 'cw_design_basket_meta' // { key: subject_group } — 프로젝트 모달 교과 자동선택용
 const SCHOOL_LEVELS = ['초등학교', '중학교', '고등학교']
 
 /**
  * 설계 모드 — 교사의 4가지 질문에 답하는 렌즈 셸
- * URL이 상태를 기록: ?mode=design&lens=pair&a=교과A&b=교과B&q=검색어&focus=코드
+ * URL이 상태를 기록: ?mode=design&lens=pair&a=교과A&b=교과B&q=검색어&focus=성취기준key
  */
 export default function DesignMode() {
   const navigate = useNavigate()
@@ -36,7 +39,7 @@ export default function DesignMode() {
   const lens = searchParams.get('lens') || 'neighbor'
   const pair = [searchParams.get('a') || '', searchParams.get('b') || '']
   const query = searchParams.get('q') || ''
-  const focusCode = searchParams.get('focus') || ''
+  const focusKey = searchParams.get('focus') || '' // 이웃·계열 렌즈 중심 성취기준 key
   const level = searchParams.get('level') || '' // 학교급 필터 ('' = 전체)
 
   const patchParams = useCallback((patch) => {
@@ -54,22 +57,22 @@ export default function DesignMode() {
   const [basket, setBasket] = useState(() => {
     try { return new Set(JSON.parse(sessionStorage.getItem(BASKET_KEY) || '[]')) } catch { return new Set() }
   })
-  // 코드→교과(subject_group) 해석용 — 담기 시 교과 메타를 함께 적재(모달 자동선택)
-  const codeToGroupRef = useRef(new Map())
+  // key→교과(subject_group) 해석용 — 담기 시 교과 메타를 함께 적재(모달 자동선택)
+  const keyToGroupRef = useRef(new Map())
   useEffect(() => {
-    codeToGroupRef.current = new Map((graphData?.nodes || []).map(n => [n.code, n.subject_group || n.subject]))
+    keyToGroupRef.current = new Map((graphData?.nodes || []).map(n => [standardKey(n), n.subject_group || n.subject]))
   }, [graphData])
-  const toggleBasket = useCallback((codes) => {
+  const toggleBasket = useCallback((keys) => {
     setBasket(prev => {
       const next = new Set(prev)
-      const allIn = codes.every(c => next.has(c))
-      codes.forEach(c => allIn ? next.delete(c) : next.add(c))
+      const allIn = keys.every(k => next.has(k))
+      keys.forEach(k => allIn ? next.delete(k) : next.add(k))
       sessionStorage.setItem(BASKET_KEY, JSON.stringify([...next]))
-      // 교과 메타 누적 — 담긴 코드의 subject_group을 저장(제거된 코드는 정리)
+      // 교과 메타 누적 — 담긴 key의 subject_group을 저장(제거된 key는 정리)
       try {
         const meta = JSON.parse(sessionStorage.getItem(BASKET_META_KEY) || '{}')
-        for (const c of next) { const g = codeToGroupRef.current.get(c); if (g) meta[c] = g }
-        for (const c of Object.keys(meta)) if (!next.has(c)) delete meta[c]
+        for (const k of next) { const g = keyToGroupRef.current.get(k); if (g) meta[k] = g }
+        for (const k of Object.keys(meta)) if (!next.has(k)) delete meta[k]
         sessionStorage.setItem(BASKET_META_KEY, JSON.stringify(meta))
       } catch { /* noop */ }
       return next
@@ -158,8 +161,8 @@ export default function DesignMode() {
     return groups
   }, [graphData, level])
 
-  // 렌즈 간 이동 헬퍼
-  const openNeighbor = useCallback((code) => patchParams({ lens: 'neighbor', focus: code }), [patchParams])
+  // 렌즈 간 이동 헬퍼 (인자는 성취기준 key)
+  const openNeighbor = useCallback((key) => patchParams({ lens: 'neighbor', focus: key }), [patchParams])
 
   // 탐험 모드로 전환 (선택 교과군을 3D 필터로 이월)
   const toExplore = () => {
@@ -268,13 +271,13 @@ export default function DesignMode() {
                 basket={basket} onToggleBasket={toggleBasket} onOpenNeighbor={openNeighbor} />
             )}
             {lens === 'series' && (
-              <SeriesLens graph={showAllLinks ? graphData : publishedGraph} focusCode={focusCode} level={level}
-                onFocus={(code) => patchParams({ focus: code })}
+              <SeriesLens graph={showAllLinks ? graphData : publishedGraph} focusKey={focusKey} level={level}
+                onFocus={(key) => patchParams({ focus: key })}
                 basket={basket} onToggleBasket={toggleBasket} />
             )}
             {lens === 'neighbor' && (
-              <NeighborLens graph={showAllLinks ? graphData : publishedGraph} focusCode={focusCode} level={level}
-                onFocus={(code) => patchParams({ focus: code })}
+              <NeighborLens graph={showAllLinks ? graphData : publishedGraph} focusKey={focusKey} level={level}
+                onFocus={(key) => patchParams({ focus: key })}
                 basket={basket} onToggleBasket={toggleBasket} />
             )}
           </div>
@@ -298,10 +301,12 @@ export default function DesignMode() {
               className="text-[11px] text-gray-400 hover:text-gray-600 whitespace-nowrap">비우기</button>
           )}
           <div className="flex gap-1.5 overflow-x-auto min-w-0">
-            {basketList.slice(0, 6).map(code => (
-              <span key={code} className="flex items-center gap-1 px-2 py-0.5 bg-gray-100 rounded-lg text-[11px] font-mono text-gray-600 whitespace-nowrap">
-                {code}
-                <button onClick={() => toggleBasket([code])} className="text-gray-400 hover:text-gray-600"><X size={10} /></button>
+            {basketList.slice(0, 6).map(key => (
+              <span key={key} title={subjectFromKey(key) || undefined}
+                className="flex items-center gap-1 px-2 py-0.5 bg-gray-100 rounded-lg text-[11px] font-mono text-gray-600 whitespace-nowrap">
+                {codeFromKey(key)}
+                {subjectFromKey(key) && <span className="font-sans text-[10px] text-gray-400">{subjectFromKey(key)}</span>}
+                <button onClick={() => toggleBasket([key])} className="text-gray-400 hover:text-gray-600"><X size={10} /></button>
               </span>
             ))}
             {basketList.length > 6 && <span className="text-[11px] text-gray-400 self-center whitespace-nowrap">외 {basketList.length - 6}</span>}

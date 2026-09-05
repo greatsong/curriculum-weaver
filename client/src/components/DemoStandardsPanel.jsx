@@ -1,3 +1,5 @@
+import { standardKey } from '../lib/standardKey'
+
 /**
  * 시연 모드 ① 성취기준·단원 선택 화면.
  * 협력 모드의 융합 그래프·"다른 교과 추가" 유도를 걷어내고, 단일 교과 한 차시 준비에 맞춘 안내.
@@ -49,7 +51,7 @@ export default function DemoStandardsPanel({ standards = [], onOpenSearch, onNex
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {items.map((s) => (
               <li
-                key={s.code}
+                key={standardKey(s)}
                 style={{
                   display: 'flex',
                   gap: 10,

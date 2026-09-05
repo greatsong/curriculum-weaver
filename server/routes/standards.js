@@ -767,6 +767,7 @@ standardsRouter.get('/project/:projectId/companions', requireAuth, async (req, r
         anchorCode,
         companion: {
           id: companion.id,
+          key: companion.key || companion.code,
           code: companion.code,
           subject: companion.subject,
           subject_group: companion.subject_group || companion.subject,

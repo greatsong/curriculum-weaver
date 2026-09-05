@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Sparkles, X, Check, ArrowRight } from 'lucide-react'
 import { apiPost } from '../../lib/api'
+import { codeFromKey, pairId } from '../../lib/standardKey'
 
 /**
  * 실생활 문제 시나리오 — 렌즈 공용 (이웃·주제·과목쌍)
@@ -9,9 +10,17 @@ import { apiPost } from '../../lib/api'
  * useScenario(): 상태 + 열기/닫기. 쌍당 1회 생성 후 서버 캐시(link_scenarios)라
  * 같은 쌍의 재요청은 즉시 반환된다.
  * <ScenarioPanel>: 시나리오 표시 + "두 성취기준 담기"·"프로젝트 시작" 액션.
+ *
+ * 성취기준 인자(conceptKey, contextKeys)는 전부 복합 키(standardKey)다 — 서버 요청
+ * (concept_code/context_codes)에도 key를 그대로 보내고, 표시만 code로 한다.
  */
+
+/** 시나리오 열림 여부 비교용 로컬 키 (렌즈 카드의 isOpen 판정과 동일해야 한다) */
+export const scenarioPairKey = (conceptKey, contextKeys, angle = '') =>
+  pairId(conceptKey, ...(Array.isArray(contextKeys) ? contextKeys : [contextKeys])) + (angle ? '@' + angle : '')
+
 export function useScenario() {
-  // state: { pairKey, conceptCode, contexts, items:[{data,cached}|{error}], activeIndex, loading }
+  // state: { pairKey, conceptCode(key), contexts(key[]), items:[{data,cached}|{error}], activeIndex, loading }
   const [state, _setState] = useState(null)
   const stateRef = useRef(null)
   const setState = useCallback((v) => { stateRef.current = v; _setState(v) }, [])
@@ -54,13 +63,13 @@ export function useScenario() {
     }
   }, [setState])
 
-  const openScenario = useCallback((conceptCode, contextCodes, opts = {}) => {
-    const contexts = Array.isArray(contextCodes) ? contextCodes : [contextCodes]
+  const openScenario = useCallback((conceptKey, contextKeys, opts = {}) => {
+    const contexts = Array.isArray(contextKeys) ? contextKeys : [contextKeys]
     const angle = opts.angle || ''
-    const pairKey = [conceptCode, ...contexts].sort().join('|') + (angle ? '@' + angle : '')
+    const pairKey = scenarioPairKey(conceptKey, contexts, angle)
     if (stateRef.current?.pairKey === pairKey && stateRef.current.items[0]?.data) return
-    setState({ pairKey, conceptCode, contexts, angle, items: [], activeIndex: 0, loading: true })
-    fetchVariant(pairKey, conceptCode, contexts, 0, angle)
+    setState({ pairKey, conceptCode: conceptKey, contexts, angle, items: [], activeIndex: 0, loading: true })
+    fetchVariant(pairKey, conceptKey, contexts, 0, angle)
   }, [setState, fetchVariant])
 
   // 다른 아이디어 — 다음 variant 생성(최대 6개: 0~5)
@@ -137,9 +146,9 @@ export function ScenarioButton({ onClick, isOpen, className = '' }) {
  * props:
  *  - scenario: useScenario의 상태
  *  - onClose
- *  - subjectOf(code): 코드 → 과목명 (푸터 안내용, 없으면 '상대 교과')
- *  - standardOf(code): 코드 → { subject, content, grade_group } (엮인 성취기준 표시용)
- *  - basket: Set<code>, onToggleBasket(codes[])
+ *  - subjectOf(key): 성취기준 key → 과목명 (푸터 안내용, 없으면 '상대 교과')
+ *  - standardOf(key): 성취기준 key → { code, subject, content, grade_group } (엮인 성취기준 표시용)
+ *  - basket: Set<key>, onToggleBasket(keys[])
  *  - onMore(): 다른 아이디어(다음 variant) 생성 / onNav(i): variant 이동
  */
 export function ScenarioPanel({ scenario, onClose, subjectOf, standardOf, basket, onToggleBasket, onMore, onNav }) {
@@ -152,14 +161,20 @@ export function ScenarioPanel({ scenario, onClose, subjectOf, standardOf, basket
   const curError = cur?.error
   const cached = cur?.cached
   const total = items.length
-  const contextCodes = sc ? (Array.isArray(sc.context_codes) ? sc.context_codes : [sc.context_code].filter(Boolean)) : []
-  const pairCodes = sc ? [sc.concept_code, ...contextCodes].filter(Boolean) : []
-  const allInBasket = pairCodes.length > 0 && pairCodes.every(c => basket.has(c))
+  // 엮인 성취기준의 식별자는 요청 시점의 key(useScenario 상태)를 정본으로 쓴다 —
+  // 서버 응답의 concept_code/context_codes는 표시용 코드일 수 있어 충돌 코드를 구분하지 못한다.
+  const contextKeys = sc
+    ? (scenario.contexts?.length
+        ? scenario.contexts
+        : (Array.isArray(sc.context_codes) ? sc.context_codes : [sc.context_code].filter(Boolean)))
+    : []
+  const pairKeys = sc ? [scenario.conceptCode || sc.concept_code, ...contextKeys].filter(Boolean) : []
+  const allInBasket = pairKeys.length > 0 && pairKeys.every(k => basket.has(k))
 
   // 프로젝트 시작: 두 성취기준이 담겨 있게 보장한 뒤 워크스페이스로
   // (toggleBasket은 전부 담긴 상태면 빼버리므로, 빠진 것만 추가)
   const startProject = () => {
-    const missing = pairCodes.filter(c => !basket.has(c))
+    const missing = pairKeys.filter(k => !basket.has(k))
     if (missing.length > 0) onToggleBasket(missing)
     // AI가 지은 시나리오 제목·핵심을 프로젝트 제목·설명 추천으로 넘긴다 (사람이 모달에서 손봄)
     try {
@@ -198,14 +213,14 @@ export function ScenarioPanel({ scenario, onClose, subjectOf, standardOf, basket
           </div>
           <p className="text-[13px] text-gray-700 leading-relaxed">{sc.situation}</p>
           {/* 엮는 성취기준 — 각 과목의 실제 성취기준을 코드·교과·내용으로 명시(신뢰) */}
-          {standardOf && pairCodes.length > 0 && (
+          {standardOf && pairKeys.length > 0 && (
             <div className="rounded-lg bg-white border border-violet-100 px-3 py-2 space-y-1.5">
-              <p className="text-[11px] font-bold text-violet-500">🔗 엮는 성취기준 {pairCodes.length}개</p>
-              {pairCodes.map((code) => {
-                const std = standardOf(code)
+              <p className="text-[11px] font-bold text-violet-500">🔗 엮는 성취기준 {pairKeys.length}개</p>
+              {pairKeys.map((key) => {
+                const std = standardOf(key)
                 return (
-                  <div key={code} className="text-[12px] leading-snug">
-                    <span className="font-mono font-semibold text-violet-700">{code}</span>
+                  <div key={key} className="text-[12px] leading-snug">
+                    <span className="font-mono font-semibold text-violet-700">{std?.code ?? codeFromKey(key)}</span>
                     {std?.subject && <span className="ml-1 px-1.5 py-px rounded bg-violet-50 text-violet-600 text-[10.5px] font-medium">{std.subject}</span>}
                     {std?.content && <span className="block text-gray-600 mt-0.5">{std.content}</span>}
                   </div>
@@ -232,12 +247,12 @@ export function ScenarioPanel({ scenario, onClose, subjectOf, standardOf, basket
           {/* 액션: 이 시나리오로 바로 설계 시작 */}
           <div className="flex flex-wrap items-center gap-2 pt-1.5 border-t border-violet-100">
             <button
-              onClick={() => onToggleBasket(pairCodes)}
+              onClick={() => onToggleBasket(pairKeys)}
               className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                 allInBasket
                   ? 'bg-emerald-100 text-emerald-700'
                   : 'bg-white border border-gray-300 text-gray-700 hover:border-violet-400'}`}>
-              {allInBasket ? <><Check size={12} /> 성취기준 {pairCodes.length}개 담김</> : <>🧺 성취기준 {pairCodes.length}개 담기</>}
+              {allInBasket ? <><Check size={12} /> 성취기준 {pairKeys.length}개 담김</> : <>🧺 성취기준 {pairKeys.length}개 담기</>}
             </button>
             <button
               onClick={startProject}
@@ -252,7 +267,7 @@ export function ScenarioPanel({ scenario, onClose, subjectOf, standardOf, basket
               </button>
             )}
             <span className="basis-full sm:basis-auto sm:ml-auto text-[10.5px] text-gray-400">
-              AI가 만든 초안이에요 — {[...new Set(contextCodes.map(c => subjectOf?.(c)).filter(Boolean))].join('·') || '상대 교과'} 선생님과 함께 다듬어 보세요.
+              AI가 만든 초안이에요 — {[...new Set(contextKeys.map(k => subjectOf?.(k)).filter(Boolean))].join('·') || '상대 교과'} 선생님과 함께 다듬어 보세요.
               {cached && ' (캐시된 시나리오)'}
             </span>
           </div>

@@ -3,6 +3,7 @@ import { Sparkles, Plus, Check, Loader2 } from 'lucide-react'
 import { apiGet, apiPost } from '../../lib/api'
 import { useScenario, ScenarioPanel } from './scenarioShared'
 import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, linkPriority, isSameGrade, gradeBucket } from './lensCommon'
+import { standardKey } from '../../lib/standardKey'
 import MathText from '../MathText'
 
 // 탐색 버튼을 보여줄 연결 수 임계 — 이보다 적으면 "더 찾기"가 의미 있다
@@ -21,16 +22,17 @@ const SPARSE_LINK_THRESHOLD = 3
  *  - subjectGroups: [{ label: 학교급, subjects: [과목명] }] — 드롭다운 <optgroup> 용
  *  - pair: [subjectA, subjectB] (없으면 선택 안내)
  *  - onPickPair(nextPair)
- *  - basket: Set<code>, onToggleBasket(codes: string[])
- *  - onOpenNeighbor(code)
+ *  - basket: Set<key>, onToggleBasket(keys: string[])
+ *  - onOpenNeighbor(key)
  *  - subjectLinkCounts: Map<과목명, published 연결 수> — 드롭다운 표기용
  *  - onGraphRefresh(): AI 탐색 완료 후 그래프 재조회
+ * 성취기준 식별·선택·담기는 key(standardKey), 표시는 code.
  */
 export default function PairLens({ graph, subjects, subjectGroups, pair, onPickPair, basket, onToggleBasket, onOpenNeighbor, subjectLinkCounts, onGraphRefresh }) {
   const [selectedLink, setSelectedLink] = useState(null)
   const { scenario, openScenario, closeScenario, moreIdea, setActiveIndex } = useScenario()
   const laneRef = useRef(null)
-  const cardRefs = useRef(new Map()) // code -> element
+  const cardRefs = useRef(new Map()) // `${side}:${key}` -> element
   const [lines, setLines] = useState([])
 
   const [subjA, subjB] = pair || []
@@ -61,15 +63,16 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
         return (pubY + linkPriority(y, y.a, y.b)) - (pubX + linkPriority(x, x.a, x.b))
       })
 
-    // 연결된 코드 → 정렬: 같은 학년군 연결 카드 먼저, 그다음 교차 학년, 미연결은 뒤에 흐리게
-    const connectedA = new Map(), connectedB = new Map() // code -> best priority
+    // 연결된 key → 정렬: 같은 학년군 연결 카드 먼저, 그다음 교차 학년, 미연결은 뒤에 흐리게
+    const connectedA = new Map(), connectedB = new Map() // key -> best priority
     links.forEach(l => {
       const p = linkPriority(l, l.a, l.b)
-      connectedA.set(l.a.code, Math.max(connectedA.get(l.a.code) || 0, p))
-      connectedB.set(l.b.code, Math.max(connectedB.get(l.b.code) || 0, p))
+      const ka = standardKey(l.a), kb = standardKey(l.b)
+      connectedA.set(ka, Math.max(connectedA.get(ka) || 0, p))
+      connectedB.set(kb, Math.max(connectedB.get(kb) || 0, p))
     })
     const sortCol = (stds, connected) => [...stds].sort((x, y) => {
-      const qx = connected.get(x.code) ?? -1, qy = connected.get(y.code) ?? -1
+      const qx = connected.get(standardKey(x)) ?? -1, qy = connected.get(standardKey(y)) ?? -1
       return qy - qx || x.code.localeCompare(y.code)
     })
     const publishedCount = links.filter(l => (l.status || 'published') === 'published').length
@@ -170,10 +173,10 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
     return { forA: topFor(subjA, subjB), forB: topFor(subjB, subjA) }
   }, [graph, subjA, subjB])
 
-  // 카드 위치 측정 → 연결선 좌표 계산
-  const registerCard = useCallback((code) => (el) => {
-    if (el) cardRefs.current.set(code, el)
-    else cardRefs.current.delete(code)
+  // 카드 위치 측정 → 연결선 좌표 계산 (refKey = `${side}:${성취기준 key}`)
+  const registerCard = useCallback((refKey) => (el) => {
+    if (el) cardRefs.current.set(refKey, el)
+    else cardRefs.current.delete(refKey)
   }, [])
 
   useLayoutEffect(() => {
@@ -183,8 +186,8 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
       if (!laneBox) return
       const next = []
       for (const l of data.links) {
-        const elA = cardRefs.current.get(`A:${l.a.code}`)
-        const elB = cardRefs.current.get(`B:${l.b.code}`)
+        const elA = cardRefs.current.get(`A:${standardKey(l.a)}`)
+        const elB = cardRefs.current.get(`B:${standardKey(l.b)}`)
         if (!elA || !elB) continue
         const yA = elA.getBoundingClientRect().top + elA.getBoundingClientRect().height / 2 - laneBox.top
         const yB = elB.getBoundingClientRect().top + elB.getBoundingClientRect().height / 2 - laneBox.top
@@ -378,17 +381,17 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
           </div>
           <div className="flex gap-2 mt-1 flex-wrap">
             <button
-              onClick={() => onToggleBasket([selectedLink.a.code, selectedLink.b.code])}
+              onClick={() => onToggleBasket([standardKey(selectedLink.a), standardKey(selectedLink.b)])}
               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition">
               ＋ 이 연결 담기
             </button>
             <button
-              onClick={() => openScenario(selectedLink.a.code, selectedLink.b.code)}
+              onClick={() => openScenario(standardKey(selectedLink.a), standardKey(selectedLink.b))}
               className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-bold transition">
               ✨ 실생활 문제 시나리오
             </button>
             <button
-              onClick={() => onOpenNeighbor(selectedLink.a.code)}
+              onClick={() => onOpenNeighbor(standardKey(selectedLink.a))}
               className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-medium transition">
               이웃 렌즈로 보기
             </button>
@@ -399,8 +402,8 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
       {/* 실생활 문제 시나리오 (연결 상세에서 생성) */}
       {scenario && (
         <ScenarioPanel scenario={scenario} onClose={closeScenario} onMore={moreIdea} onNav={setActiveIndex}
-          subjectOf={(code) => (selectedLink && [selectedLink.a, selectedLink.b].find(n => n.code === code)?.subject)}
-          standardOf={(code) => (selectedLink && [selectedLink.a, selectedLink.b].find(n => n.code === code))}
+          subjectOf={(key) => (selectedLink && [selectedLink.a, selectedLink.b].find(n => standardKey(n) === key)?.subject)}
+          standardOf={(key) => (selectedLink && [selectedLink.a, selectedLink.b].find(n => standardKey(n) === key))}
           basket={basket} onToggleBasket={onToggleBasket} />
       )}
     </div>
@@ -463,7 +466,8 @@ function PairPicker({ subjects, subjectGroups, pair, onPickPair, compact, subjec
 
 /* ── 성취기준 컬럼 ── */
 function Column({ title, stds, connected, side, registerCard, selectedLink, basket, onToggleBasket }) {
-  const connectedCount = stds.filter(s => connected.has(s.code)).length
+  const connectedCount = stds.filter(s => connected.has(standardKey(s))).length
+  const selKeys = selectedLink ? [standardKey(selectedLink.a), standardKey(selectedLink.b)] : []
   return (
     <div className="min-w-0">
       <div className="flex items-center gap-2 pb-2.5 text-xs font-bold text-gray-700">
@@ -473,11 +477,12 @@ function Column({ title, stds, connected, side, registerCard, selectedLink, bask
       </div>
       <div className="flex flex-col gap-2.5">
         {stds.map(std => {
-          const isConnected = connected.has(std.code)
-          const isSel = selectedLink && (selectedLink.a.code === std.code || selectedLink.b.code === std.code)
-          const inBasket = basket.has(std.code)
+          const stdKey = standardKey(std)
+          const isConnected = connected.has(stdKey)
+          const isSel = selKeys.includes(stdKey)
+          const inBasket = basket.has(stdKey)
           return (
-            <div key={std.code} ref={registerCard(`${side}:${std.code}`)}
+            <div key={stdKey} ref={registerCard(`${side}:${stdKey}`)}
               className={`group border rounded-xl px-3 py-2.5 bg-white transition ${
                 isSel ? 'border-blue-500 ring-2 ring-blue-100'
                   : isConnected ? 'border-gray-200'
@@ -487,7 +492,7 @@ function Column({ title, stds, connected, side, registerCard, selectedLink, bask
                 <span className="font-mono text-[11px] font-bold text-blue-600">{std.code}</span>
                 <span className="text-[10px] text-gray-400">{std.grade_group}</span>
                 <button
-                  onClick={() => onToggleBasket([std.code])}
+                  onClick={() => onToggleBasket([stdKey])}
                   title={inBasket ? '담기 해제' : '담기'}
                   className={`ml-auto p-0.5 rounded transition ${inBasket ? 'text-emerald-600' : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-blue-600'}`}>
                   {inBasket ? <Check size={13} /> : <Plus size={13} />}

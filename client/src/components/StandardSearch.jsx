@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, Plus, Check, X, BookMarked, Link2, ChevronDown, ChevronUp, FileText, AlertTriangle, Sparkles } from 'lucide-react'
 import { apiGet, apiPost, apiDelete } from '../lib/api'
+import { standardKey, projectStandardKey, codeFromKey } from '../lib/standardKey'
 import MathText from './MathText'
 
 // 교과군(subject_group) 기준 색상 매핑
@@ -162,30 +163,31 @@ export default function StandardSearch({ sessionId, onClose }) {
   // 검색 입력/모드 변경 시 AI 추천 결과 종료
   const exitAiMode = () => { if (aiActive) setAiActive(false) }
 
-  // 성취기준 추가/제거 — code(자연키) 기준. 검색 결과의 id는 휘발성이라 사용 불가.
+  // 성취기준 추가/제거 — key(복합 키: 충돌 코드는 "code|과목") 기준. 검색 결과의 id는 휘발성이라 사용 불가.
+  // 서버 요청(standard_code, DELETE 경로)에도 key를 보낸다 — 서버가 code/key 모두 해석하되 충돌 코드는 key여야 정확하다.
   // 낙관적 업데이트: 클릭 즉시 UI에 반영하고 서버 저장은 백그라운드로 처리(실패 시 롤백).
-  const codeOf = (entry) => entry?.curriculum_standards?.code ?? entry?.code
+  const keyOf = projectStandardKey
   const addStandard = async (std) => {
-    const code = std.code
-    if (sessionStandards.some((s) => codeOf(s) === code)) return
+    const key = standardKey(std)
+    if (!key || sessionStandards.some((s) => keyOf(s) === key)) return
     // 낙관적: 검색 결과 객체로 즉시 칩 추가
-    const optimistic = { id: `temp-${code}`, standard_id: std.id, curriculum_standards: std, _optimistic: true }
+    const optimistic = { id: `temp-${key}`, standard_id: std.id, curriculum_standards: std, _optimistic: true }
     setSessionStandards((prev) => [...prev, optimistic])
     try {
-      await apiPost(`/api/standards/project/${sessionId}`, { standard_code: code })
+      await apiPost(`/api/standards/project/${sessionId}`, { standard_code: key })
       loadSessionStandards() // 백그라운드 동기화(실제 id 등)
     } catch (err) {
-      setSessionStandards((prev) => prev.filter((s) => codeOf(s) !== code)) // 롤백
+      setSessionStandards((prev) => prev.filter((s) => keyOf(s) !== key)) // 롤백
       setErrorMsg(err?.message || '성취기준 추가에 실패했습니다.')
     }
   }
 
-  const removeStandard = async (stdOrCode) => {
-    const code = typeof stdOrCode === 'string' ? stdOrCode : stdOrCode.code
+  const removeStandard = async (stdOrKey) => {
+    const key = typeof stdOrKey === 'string' ? stdOrKey : standardKey(stdOrKey)
     const backup = sessionStandards
-    setSessionStandards((prev) => prev.filter((s) => codeOf(s) !== code)) // 낙관적 제거
+    setSessionStandards((prev) => prev.filter((s) => keyOf(s) !== key)) // 낙관적 제거
     try {
-      await apiDelete(`/api/standards/project/${sessionId}/${encodeURIComponent(code)}`)
+      await apiDelete(`/api/standards/project/${sessionId}/${encodeURIComponent(key)}`)
       loadSessionStandards()
     } catch (err) {
       setSessionStandards(backup) // 롤백
@@ -193,15 +195,24 @@ export default function StandardSearch({ sessionId, onClose }) {
     }
   }
 
-  const isAdded = (standardCode) =>
-    sessionStandards.some((s) => (s.curriculum_standards?.code ?? s.code) === standardCode)
+  const isAdded = (key) => sessionStandards.some((s) => keyOf(s) === key)
 
-  // code만 아는 경우(연결 보기 목록의 상대 성취기준 등)의 추가 —
-  // 저장 API는 standard_code만 필요하므로 최소 객체로 addStandard를 재사용한다.
-  const addStandardByCode = (code, stdLike = null) => {
-    if (!code || isAdded(code)) return
-    addStandard(stdLike || { id: `code-${code}`, code })
+  // key만 아는 경우(연결 보기 목록의 상대 성취기준 등)의 추가 —
+  // 저장 API는 standard_code(key)만 필요하므로 최소 객체로 addStandard를 재사용한다.
+  const addStandardByKey = (key, stdLike = null) => {
+    if (!key || isAdded(key)) return
+    addStandard(stdLike || { id: `key-${key}`, key, code: codeFromKey(key) })
   }
+
+  // 같은 코드가 두 과목에 담긴 경우(충돌 코드) 칩에 과목명을 덧붙여 구분한다
+  const duplicateCodes = (() => {
+    const seen = new Map()
+    for (const entry of sessionStandards) {
+      const code = entry.curriculum_standards?.code ?? entry.code
+      if (code) seen.set(code, (seen.get(code) || 0) + 1)
+    }
+    return new Set([...seen.entries()].filter(([, n]) => n > 1).map(([code]) => code))
+  })()
 
   // 연결 보기
   const viewLinks = async (standard) => {
@@ -331,11 +342,15 @@ export default function StandardSearch({ sessionId, onClose }) {
                   return (
                     <span
                       key={entry.id}
+                      title={[std.subject, std.content].filter(Boolean).join(' · ')}
                       className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${colorClass}`}
                     >
                       {std.code}
+                      {duplicateCodes.has(std.code) && std.subject && (
+                        <span className="font-normal opacity-70">{std.subject}</span>
+                      )}
                       <button
-                        onClick={() => removeStandard(std.code)}
+                        onClick={() => removeStandard(standardKey(std))}
                         className="ml-0.5 hover:opacity-70"
                       >
                         <X size={12} />
@@ -349,7 +364,7 @@ export default function StandardSearch({ sessionId, onClose }) {
 
           {/* 융합 궁합이 좋은 성취기준 — 검색어가 없을 때, 검증된 링크 기반 추천 */}
           {!query.trim() && !aiActive && (() => {
-            const visible = companions.filter((c) => c?.companion?.code && !isAdded(c.companion.code))
+            const visible = companions.filter((c) => c?.companion?.code && !isAdded(standardKey(c.companion)))
             if (visible.length === 0) return null
             return (
               <div className="mb-6">
@@ -359,7 +374,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                   {visible.map(({ companion, anchorCode, link }) => {
                     const colorClass = getSubjectColor(companion)
                     return (
-                      <div key={`${anchorCode}-${companion.code}`}
+                      <div key={`${anchorCode}-${standardKey(companion)}`}
                         className="p-3 rounded-lg border border-pink-100 bg-pink-50/30 hover:border-pink-200 transition">
                         <div className="flex items-start gap-2">
                           <div className="flex-1 min-w-0">
@@ -375,7 +390,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                                 </span>
                               )}
                               <span className="px-1.5 py-0.5 bg-gray-100 rounded text-xs text-gray-500 font-mono">
-                                {anchorCode}와 연결
+                                {codeFromKey(anchorCode)}와 연결
                               </span>
                             </div>
                             {link?.lesson_hook && (
@@ -418,7 +433,7 @@ export default function StandardSearch({ sessionId, onClose }) {
               {results.map((std) => {
                 const colorClass = getSubjectColor(std)
                 const catColor = CATEGORY_COLORS[std.curriculum_category] || ''
-                const added = isAdded(std.code)
+                const added = isAdded(standardKey(std))
                 const isExpanded = expandedStandard === std.id
                 const hasDetail = std.explanation || std.application_notes
                 const isSecondary = std._matchField === 'secondary'
@@ -531,8 +546,10 @@ export default function StandardSearch({ sessionId, onClose }) {
               <div className="space-y-2">
                 {links.map((link) => {
                   const isSource = link.source_id === selectedStandard.id
-                  const otherCode = isSource ? link.target_code : link.source_code
-                  const otherAdded = isAdded(otherCode)
+                  // 링크 끝점(source_code/target_code)은 서버가 key로 준다 — 표시는 code로
+                  const otherKey = isSource ? link.target_code : link.source_code
+                  const otherCode = codeFromKey(otherKey)
+                  const otherAdded = isAdded(otherKey)
                   return (
                     <div key={link.id} className="flex items-center gap-2 text-xs">
                       <span className="px-1.5 py-0.5 bg-indigo-100 rounded font-medium text-indigo-700">
@@ -545,7 +562,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                       <span className="font-mono text-indigo-600">{otherCode}</span>
                       <span className="text-gray-500 flex-1 min-w-0 truncate">{link.rationale}</span>
                       <button
-                        onClick={() => addStandardByCode(otherCode)}
+                        onClick={() => addStandardByKey(otherKey)}
                         disabled={otherAdded}
                         className={`shrink-0 p-1 rounded transition flex items-center justify-center ${
                           otherAdded

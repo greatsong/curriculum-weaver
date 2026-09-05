@@ -113,9 +113,12 @@ export function createNebulaScene(container, {
   }
 
   // ── 데이터/상태 ──
-  let nodes = []                // [{code, group, x,y,z, color, size}]
-  let links = []                // [{s, t, type}]
-  let codeToIndex = new Map()
+  // 노드 식별자는 복합 키(key — 충돌 코드는 "code|과목")다. code는 라벨 표시 전용.
+  // 링크 끝점(s/t)·setDim·setHighlight·flyToNode·addLabel·getNode가 받는 값은 전부 key.
+  let nodes = []                // [{key, code, group, x,y,z, color, size}]
+  let links = []                // [{s, t, type}] — s/t는 key
+  let keyToIndex = new Map()
+  const nodeKey = (n) => n.key ?? n.code
   let nodePoints = null
   let linkSegments = null
   let baseColors, baseSizes     // 원본 (Float32Array)
@@ -127,11 +130,11 @@ export function createNebulaScene(container, {
   let linkHighlightMask = null  // 선택 노드에 닿는 링크 (shimmer 대상)
   let lerpActive = false
 
-  // 표시 상태
-  let dimMap = null             // Map<code, 0|1> | null
-  let selectedCode = null
-  let neighborCodes = new Set()
-  let hoverCode = null
+  // 표시 상태 (전부 key 기준)
+  let dimMap = null             // Map<key, 0|1> | null
+  let selectedKey = null
+  let neighborKeys = new Set()
+  let hoverKey = null
   let tourGroup = null
 
   // 진입 연출 상태
@@ -202,7 +205,7 @@ export function createNebulaScene(container, {
 
     nodes = data.nodes
     links = data.links
-    codeToIndex = new Map(nodes.map((n, i) => [n.code, i]))
+    keyToIndex = new Map(nodes.map((n, i) => [nodeKey(n), i]))
 
     const n = nodes.length
     const positions = new Float32Array(n * 3)
@@ -236,7 +239,7 @@ export function createNebulaScene(container, {
     linkHighlightMask = new Uint8Array(m)
     nodeIndexByLink = []
     links.forEach((l, i) => {
-      const si = codeToIndex.get(l.s), ti = codeToIndex.get(l.t)
+      const si = keyToIndex.get(l.s), ti = keyToIndex.get(l.t)
       nodeIndexByLink.push([si, ti])
       const sn = nodes[si], tn = nodes[ti]
       linkPositions[i * 6] = sn.x; linkPositions[i * 6 + 1] = sn.y; linkPositions[i * 6 + 2] = sn.z
@@ -267,23 +270,24 @@ export function createNebulaScene(container, {
    */
   function computeTargets() {
     if (!nodePoints) return
-    const hasSelection = selectedCode !== null
+    const hasSelection = selectedKey !== null
     const nodeVisible = new Float32Array(nodes.length) // 링크 밝기 계산용 (0~1)
 
     nodes.forEach((node, i) => {
-      const filterOn = dimMap ? (dimMap.get(node.code) ?? 1) : 1
+      const k = nodeKey(node)
+      const filterOn = dimMap ? (dimMap.get(k) ?? 1) : 1
       let sizeMul = 1
       let alpha = ALPHA.node
       if (hasSelection) {
-        if (node.code === selectedCode) { sizeMul = SIZE.selected; alpha = 1 }
-        else if (neighborCodes.has(node.code)) { sizeMul = SIZE.neighbor; alpha = 1 }
+        if (k === selectedKey) { sizeMul = SIZE.selected; alpha = 1 }
+        else if (neighborKeys.has(k)) { sizeMul = SIZE.neighbor; alpha = 1 }
         else { sizeMul = SIZE.dim; alpha = ALPHA.nodeDim }
       }
-      if (hoverCode === node.code && node.code !== selectedCode) {
+      if (hoverKey === k && k !== selectedKey) {
         sizeMul = Math.max(sizeMul, 1) * SIZE.hover; alpha = 1
       }
       // 칩 off = 감광 (색 유지, 소멸 금지 — 스펙 §6-2)
-      if (!filterOn && !(hasSelection && (node.code === selectedCode || neighborCodes.has(node.code)))) {
+      if (!filterOn && !(hasSelection && (k === selectedKey || neighborKeys.has(k)))) {
         alpha = ALPHA.nodeDim; sizeMul = SIZE.dim
       }
       if (tourGroup && node.group !== tourGroup) alpha *= ALPHA.tourOff
@@ -297,7 +301,7 @@ export function createNebulaScene(container, {
       const [si, ti] = nodeIndexByLink[i]
       let rgb = LINK_BASE_RGB
       let a
-      const touchesSelection = hasSelection && (l.s === selectedCode || l.t === selectedCode)
+      const touchesSelection = hasSelection && (l.s === selectedKey || l.t === selectedKey)
       if (linkHighlightMask) linkHighlightMask[i] = touchesSelection ? 1 : 0
       if (touchesSelection) {
         rgb = LINK_TYPE_RGB[l.type] || LINK_BASE_RGB
@@ -323,13 +327,14 @@ export function createNebulaScene(container, {
   // ── 상태 API ──
   function setDim(map) { dimMap = map; computeTargets() }
   function setTourFocus(group) { tourGroup = group; computeTargets() }
-  function setHover(code) { if (code !== hoverCode) { hoverCode = code; computeTargets() } }
+  function setHover(key) { if (key !== hoverKey) { hoverKey = key; computeTargets() } }
 
-  function setHighlight(code, neighbors) {
-    selectedCode = code
-    neighborCodes = neighbors || new Set()
-    if (code !== null && codeToIndex.has(code)) {
-      const node = nodes[codeToIndex.get(code)]
+  /** 선택 하이라이트 — key: 선택 노드 키(null=해제), neighbors: 이웃 키 Set */
+  function setHighlight(key, neighbors) {
+    selectedKey = key
+    neighborKeys = neighbors || new Set()
+    if (key !== null && keyToIndex.has(key)) {
+      const node = nodes[keyToIndex.get(key)]
       selectionHalo.position.set(node.x, node.y, node.z)
       haloBaseScale = Math.max(9, node.size * 2.6) // 소프트 텍스처라 여유 있게
       haloMat.color.set(node.color)                // 교과군 색 틴트
@@ -340,10 +345,10 @@ export function createNebulaScene(container, {
     computeTargets()
   }
 
-  /** 진입 연출: 교과군별 스태거 점등 (스펙 §5-1 stage 2·3) */
-  function playEntry(delayByCode) {
+  /** 진입 연출: 교과군별 스태거 점등 (스펙 §5-1 stage 2·3) — delayByKey: Map<key, ms> */
+  function playEntry(delayByKey) {
     entryDelays = new Float32Array(nodes.length)
-    nodes.forEach((n, i) => { entryDelays[i] = delayByCode?.get(n.code) ?? 0 })
+    nodes.forEach((n, i) => { entryDelays[i] = delayByKey?.get(nodeKey(n)) ?? 0 })
     entryT0 = performance.now()
     entryDone = false
     if (prefersReducedMotion) {
@@ -374,8 +379,8 @@ export function createNebulaScene(container, {
    * screenShift: 노드를 화면 중앙에서 {x}px 왼쪽 / {y}px 위로 비껴 배치 —
    * 상세 카드(우측)·바텀 시트가 노드를 가리지 않도록 가시 영역 중앙에 놓는 용도.
    */
-  function flyToNode(code, { distance, duration = TIMING.flyTo, screenShift } = {}) {
-    const i = codeToIndex.get(code)
+  function flyToNode(key, { distance, duration = TIMING.flyTo, screenShift } = {}) {
+    const i = keyToIndex.get(key)
     if (i === undefined) return false
     const dist = distance ?? (isMobile ? CAMERA.mobileNodeFocus : CAMERA.nodeFocus)
     const node = nodes[i]
@@ -433,11 +438,11 @@ export function createNebulaScene(container, {
     scene.add(obj)
     labelObjects.set(key, obj)
   }
-  function addLabel(code, element, { offsetY = 5 } = {}) {
-    const i = codeToIndex.get(code)
+  function addLabel(key, element, { offsetY = 5 } = {}) {
+    const i = keyToIndex.get(key)
     if (i === undefined) return
     const n = nodes[i]
-    addLabelAt(`node:${code}`, [n.x, n.y + offsetY, n.z], element)
+    addLabelAt(`node:${key}`, [n.x, n.y + offsetY, n.z], element)
   }
   function removeLabel(key) {
     const obj = labelObjects.get(key)
@@ -486,7 +491,7 @@ export function createNebulaScene(container, {
     const idx = pick(e)
     if (idx !== hoveredIndex) {
       hoveredIndex = idx
-      setHover(idx >= 0 ? nodes[idx].code : null)
+      setHover(idx >= 0 ? nodeKey(nodes[idx]) : null)
       renderer.domElement.style.cursor = idx >= 0 ? 'pointer' : 'grab'
       onHover?.(idx >= 0 ? { node: nodes[idx], clientX: e.clientX, clientY: e.clientY } : null)
     } else if (idx >= 0) {
@@ -546,7 +551,7 @@ export function createNebulaScene(container, {
     }
 
     // 어트리뷰트 지수 러프 + 진입 스태거 (스펙 §5-1·5-3)
-    if (nodePoints && (lerpActive || !entryDone || selectedCode !== null)) {
+    if (nodePoints && (lerpActive || !entryDone || selectedKey !== null)) {
       const k = 1 - Math.exp(-dt / 130)
       const sizeAttr = nodePoints.geometry.getAttribute('size')
       const alphaAttr = nodePoints.geometry.getAttribute('alpha')
@@ -568,8 +573,8 @@ export function createNebulaScene(container, {
         alphaAttr.array[i] = curAlpha[i] * entryF
       }
       // 선택 노드 펄스 (2000ms sine — 스펙 §6-2)
-      if (selectedCode !== null) {
-        const si = codeToIndex.get(selectedCode)
+      if (selectedKey !== null) {
+        const si = keyToIndex.get(selectedKey)
         if (si !== undefined) {
           const pulse = 1 + Math.sin(now * (Math.PI * 2 / 2000)) * 0.045
           sizeAttr.array[si] = curSize[si] * pulse
@@ -587,7 +592,7 @@ export function createNebulaScene(container, {
       }
       for (let i = 0; i < links.length; i++) {
         // 선택 연결선의 은은한 빛 흐름 (링크별 위상차 — '지식이 흐른다')
-        const shimmer = (selectedCode !== null && linkHighlightMask && linkHighlightMask[i])
+        const shimmer = (selectedKey !== null && linkHighlightMask && linkHighlightMask[i])
           ? 1 + Math.sin(now * 0.0026 + i * 1.7) * 0.18
           : 1
         for (let c = 0; c < 3; c++) {
@@ -598,7 +603,7 @@ export function createNebulaScene(container, {
         }
       }
       linkColorAttr.needsUpdate = true
-      if (maxDelta < 0.002 && entryDone && selectedCode === null) lerpActive = false
+      if (maxDelta < 0.002 && entryDone && selectedKey === null) lerpActive = false
     }
 
     // 선택 헤일로 — 3초 주기의 잔잔한 호흡 (스프라이트라 빌보드 불필요)
@@ -611,7 +616,7 @@ export function createNebulaScene(container, {
     // 오토로테이트: 투어 강제 > idle (8초 무입력 + 선택 없음), 2초 램프
     let targetRotate = 0
     if (forcedRotateDeg !== null) targetRotate = degPerSecToOrbitSpeed(forcedRotateDeg)
-    else if (idleEnabled && selectedCode === null && !cameraTween &&
+    else if (idleEnabled && selectedKey === null && !cameraTween &&
              now - lastInteraction > TIMING.idleDelay) {
       targetRotate = degPerSecToOrbitSpeed(AUTOROTATE.idleDegPerSec)
     }
@@ -655,7 +660,7 @@ export function createNebulaScene(container, {
     addLabel, addLabelAt, removeLabel, clearLabels,
     setIdleAutoRotate: (v) => { idleEnabled = v; markInteraction() },
     setForcedRotate: (degPerSec) => { forcedRotateDeg = degPerSec },
-    getNode: (code) => { const i = codeToIndex.get(code); return i === undefined ? null : nodes[i] },
+    getNode: (key) => { const i = keyToIndex.get(key); return i === undefined ? null : nodes[i] },
     dispose,
   }
 }

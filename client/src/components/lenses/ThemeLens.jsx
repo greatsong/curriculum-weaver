@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { Search, Plus, Check } from 'lucide-react'
 import { apiGet } from '../../lib/api'
 import { subjectColor, simBadge, nodeSchoolLevel, getLinkId, linkQuality, LINK_TYPE_LABELS, LINK_TYPE_COLORS } from './lensCommon'
-import { useScenario, ScenarioButton, ScenarioPanel } from './scenarioShared'
+import { useScenario, ScenarioButton, ScenarioPanel, scenarioPairKey } from './scenarioShared'
+import { standardKey, pairId } from '../../lib/standardKey'
 import MathText from '../MathText'
 
 /**
@@ -12,8 +13,9 @@ import MathText from '../MathText'
  * props:
  *  - query, onQuery(q)
  *  - level: 셸의 학교급 필터 ('' = 전체) — 검색 결과를 필터링
- *  - basket, onToggleBasket
- *  - onOpenNeighbor(code)
+ *  - basket: Set<key>, onToggleBasket(keys[])
+ *  - onOpenNeighbor(key)
+ * 성취기준 식별·선택·담기는 key(standardKey), 표시는 code.
  */
 export default function ThemeLens({ graph, query, onQuery, level, basket, onToggleBasket, onOpenNeighbor }) {
   // 입력창은 로컬 state로 관리한다. query/onQuery는 URL(searchParams)에 바로
@@ -61,16 +63,16 @@ export default function ThemeLens({ graph, query, onQuery, level, basket, onTogg
   // 주제 매칭 성취기준 사이의 검증된 교과군 간 연결 — 시나리오 생성의 좋은 출발점
   const themePairs = useMemo(() => {
     if (!graph || filtered.length < 2) return []
-    const matchedCodes = new Set(filtered.map(r => r.code))
+    const matchedKeys = new Set(filtered.map(r => standardKey(r)))
     const nodeById = new Map(graph.nodes.map(n => [n.id, n]))
     const pairs = []
     const seen = new Set()
     for (const l of graph.links) {
       const a = nodeById.get(getLinkId(l, 'source'))
       const b = nodeById.get(getLinkId(l, 'target'))
-      if (!a || !b || !matchedCodes.has(a.code) || !matchedCodes.has(b.code)) continue
+      if (!a || !b || !matchedKeys.has(standardKey(a)) || !matchedKeys.has(standardKey(b))) continue
       if ((a.subject_group || a.subject) === (b.subject_group || b.subject)) continue
-      const key = [a.code, b.code].sort().join('|')
+      const key = pairId(standardKey(a), standardKey(b))
       if (seen.has(key)) continue
       seen.add(key)
       pairs.push({ link: l, a, b })
@@ -131,8 +133,9 @@ export default function ThemeLens({ graph, query, onQuery, level, basket, onTogg
           </p>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {themePairs.map(({ link, a, b }) => {
-              const key = [a.code, b.code].sort().join('|')
-              const isOpen = scenario?.pairKey === key
+              const aKey = standardKey(a), bKey = standardKey(b)
+              const key = pairId(aKey, bKey)
+              const isOpen = scenario?.pairKey === scenarioPairKey(aKey, [bKey])
               return (
                 <div key={key} className="w-[260px] shrink-0 border border-gray-200 rounded-xl px-3 py-2.5 bg-white hover:shadow-sm transition">
                   <div className="flex items-center gap-1.5 mb-1">
@@ -145,15 +148,15 @@ export default function ThemeLens({ graph, query, onQuery, level, basket, onTogg
                   <p className="font-mono text-[10.5px] font-bold text-blue-600">{a.code} ↔ {b.code}</p>
                   {link.integration_theme && <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">🔗 {link.integration_theme}</p>}
                   <ScenarioButton isOpen={isOpen} className="mt-1.5"
-                    onClick={() => openScenario(a.code, b.code)} />
+                    onClick={() => openScenario(aKey, bKey)} />
                 </div>
               )
             })}
           </div>
           {scenario && (
             <ScenarioPanel scenario={scenario} onClose={closeScenario} onMore={moreIdea} onNav={setActiveIndex}
-              subjectOf={(code) => filtered.find(r => r.code === code)?.subject}
-              standardOf={(code) => filtered.find(r => r.code === code)}
+              subjectOf={(key) => filtered.find(r => standardKey(r) === key)?.subject}
+              standardOf={(key) => filtered.find(r => standardKey(r) === key)}
               basket={basket} onToggleBasket={onToggleBasket} />
           )}
         </div>
@@ -175,12 +178,13 @@ export default function ThemeLens({ graph, query, onQuery, level, basket, onTogg
                 </div>
                 <div className="flex flex-col gap-2">
                   {col.items.map(std => {
+                    const stdKey = standardKey(std)
                     const badge = simBadge(std._similarity)
-                    const inBasket = basket.has(std.code)
+                    const inBasket = basket.has(stdKey)
                     return (
-                      <div key={std.code} className="group border border-gray-200 rounded-xl px-3 py-2 bg-white hover:shadow-sm transition">
+                      <div key={stdKey} className="group border border-gray-200 rounded-xl px-3 py-2 bg-white hover:shadow-sm transition">
                         <div className="flex items-center gap-1.5">
-                          <button onClick={() => onOpenNeighbor(std.code)} title="이웃 렌즈로 보기"
+                          <button onClick={() => onOpenNeighbor(stdKey)} title="이웃 렌즈로 보기"
                             className="font-mono text-[11px] font-bold text-blue-600 hover:underline underline-offset-2">{std.code}</button>
                           {badge && (
                             <span className={`px-1.5 py-px rounded border text-[9.5px] font-bold ${badge.cls}`}
@@ -188,7 +192,7 @@ export default function ThemeLens({ graph, query, onQuery, level, basket, onTogg
                               {badge.label}
                             </span>
                           )}
-                          <button onClick={() => onToggleBasket([std.code])}
+                          <button onClick={() => onToggleBasket([stdKey])}
                             className={`ml-auto p-0.5 rounded transition ${inBasket ? 'text-emerald-600' : 'text-gray-300 opacity-0 group-hover:opacity-100 hover:text-blue-600'}`}>
                             {inBasket ? <Check size={12} /> : <Plus size={12} />}
                           </button>

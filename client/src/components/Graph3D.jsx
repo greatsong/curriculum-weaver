@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import { Search, X, RotateCcw, ChevronLeft, ChevronRight, Link2, Send, MessageCircle, List, Plus, Check, Crosshair, HelpCircle, Sparkles } from 'lucide-react'
 import { apiGet, apiPost, API_BASE, getHeaders } from '../lib/api'
 import { fetchGraphData, invalidateGraphCache } from '../lib/graphDataCache'
+import { standardKey } from '../lib/standardKey'
 import { fixEmphasisFlanking } from '../lib/markdownFix'
 import Logo from './Logo'
 import MathText from './MathText'
@@ -360,11 +361,11 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
       try {
         const results = await apiGet('/api/standards/semantic-search', { q: searchQuery.trim() })
         if (!Array.isArray(results)) throw new Error('invalid response')
-        // 서버 결과의 code를 그래프 노드와 매칭 (3D 좌표 포함)
-        const codeToNode = new Map(graphData.nodes.map(n => [n.code, n]))
+        // 서버 결과를 그래프 노드와 key(복합 키)로 매칭 (3D 좌표 포함) — 충돌 코드도 정확한 과목의 노드로
+        const keyToNode = new Map(graphData.nodes.map(n => [standardKey(n), n]))
         const matched = results
           .map(r => {
-            const node = codeToNode.get(r.code)
+            const node = keyToNode.get(standardKey(r))
             if (!node) return null
             return { ...node, _similarity: r._similarity, _matchField: 'semantic' }
           })
@@ -1399,14 +1400,14 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
               <p className="text-xs text-gray-500 mb-2">탐색한 성취기준을 담아 바로 융합 수업 설계를 시작하세요.</p>
               <button
                 onClick={() => {
-                  // 설계 모드와 동일한 담기(basket) 패턴 — 선택한 성취기준을
+                  // 설계 모드와 동일한 담기(basket) 패턴 — 선택한 성취기준을 key로
                   // sessionStorage에 담고, 워크스페이스에서 생성 모달이 자동으로 열린다.
-                  const codes = new Set()
+                  const keys = new Set()
                   try {
-                    JSON.parse(sessionStorage.getItem('cw_design_basket') || '[]').forEach(c => codes.add(c))
+                    JSON.parse(sessionStorage.getItem('cw_design_basket') || '[]').forEach(k => keys.add(k))
                   } catch { /* 손상된 값은 무시하고 새로 시작 */ }
-                  if (selectedNode) codes.add(selectedNode.code)
-                  sessionStorage.setItem('cw_design_basket', JSON.stringify([...codes]))
+                  if (selectedNode) keys.add(standardKey(selectedNode))
+                  sessionStorage.setItem('cw_design_basket', JSON.stringify([...keys]))
                   navigate?.('/workspaces?createProject=1')
                 }}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">

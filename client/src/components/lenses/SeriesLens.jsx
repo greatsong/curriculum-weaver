@@ -1,20 +1,22 @@
 import { useState, useMemo } from 'react'
 import { Search, Plus, Check } from 'lucide-react'
 import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, gradeBucket, linkQuality, nodeSchoolLevel } from './lensCommon'
+import { standardKey } from '../../lib/standardKey'
 import MathText from '../MathText'
 
 /**
  * 계열 렌즈 — 성취기준을 중심으로 연결된 항목을 학년군 타임라인 위에 배치
  * 방향은 학년 순서로 추론: 중심보다 낮은 학년 = 선수 후보, 높은 학년 = 심화 후보
  *
- * props: graph, focusCode, onFocus(code), level(학교급 필터 — 검색 결과에 적용), basket, onToggleBasket
+ * props: graph, focusKey(중심 성취기준 key), onFocus(key), level(학교급 필터 — 검색 결과에 적용), basket(Set<key>), onToggleBasket(keys[])
+ * 식별은 key(standardKey), 표시는 code.
  */
-export default function SeriesLens({ graph, focusCode, onFocus, level, basket, onToggleBasket }) {
+export default function SeriesLens({ graph, focusKey, onFocus, level, basket, onToggleBasket }) {
   const [query, setQuery] = useState('')
 
-  const nodeByCode = useMemo(() => new Map((graph?.nodes || []).map(n => [n.code, n])), [graph])
+  const nodeByKey = useMemo(() => new Map((graph?.nodes || []).map(n => [standardKey(n), n])), [graph])
   const nodeById = useMemo(() => new Map((graph?.nodes || []).map(n => [n.id, n])), [graph])
-  const center = focusCode ? nodeByCode.get(focusCode) : null
+  const center = focusKey ? nodeByKey.get(focusKey) : null
 
   // 중심의 이웃을 학년 버킷으로 분류
   const lanes = useMemo(() => {
@@ -66,7 +68,7 @@ export default function SeriesLens({ graph, focusCode, onFocus, level, basket, o
         </div>
         <div className="w-full max-w-md flex flex-col gap-1.5">
           {searchResults.map(n => (
-            <button key={n.code} onClick={() => { setQuery(''); onFocus(n.code) }}
+            <button key={standardKey(n)} onClick={() => { setQuery(''); onFocus(standardKey(n)) }}
               className="text-left border border-gray-200 hover:border-blue-400 hover:bg-blue-50/50 rounded-lg px-3 py-2 transition">
               <span className="font-mono text-[11px] font-bold text-blue-600">{n.code}</span>
               <span className="text-[10px] text-gray-400 ml-1.5">{n.subject} · {n.grade_group}</span>
@@ -74,7 +76,7 @@ export default function SeriesLens({ graph, focusCode, onFocus, level, basket, o
             </button>
           ))}
         </div>
-        {!query.trim() && nodeByCode.has('[12인기03-01]') && (
+        {!query.trim() && nodeByKey.has('[12인기03-01]') && (
           <button onClick={() => onFocus('[12인기03-01]')}
             className="px-3.5 py-2 rounded-full border border-blue-300 bg-blue-50/60 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition">
             예시: 인공지능 기초의 학년 계열 보기 (중 → 고)
@@ -125,13 +127,13 @@ export default function SeriesLens({ graph, focusCode, onFocus, level, basket, o
                         <div className="flex items-center gap-1.5">
                           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: subjectColor(center) }} />
                           <span className="font-mono text-[10.5px] font-bold text-blue-700">{center.code}</span>
-                          <BasketBtn code={center.code} basket={basket} onToggleBasket={onToggleBasket} />
+                          <BasketBtn stdKey={standardKey(center)} basket={basket} onToggleBasket={onToggleBasket} />
                         </div>
                         <p className="text-[11px] text-gray-700 leading-relaxed mt-0.5 line-clamp-3"><MathText text={center.content} /></p>
                       </div>
                     )}
                     {lane.items.map(({ link, node }) => (
-                      <button key={node.code} onClick={() => onFocus(node.code)}
+                      <button key={standardKey(node)} onClick={() => onFocus(standardKey(node))}
                         className="group text-left border border-gray-200 bg-white rounded-lg px-2.5 py-2 hover:border-blue-300 hover:shadow-sm transition">
                         <div className="flex items-center gap-1.5">
                           <span className="px-1 py-px rounded text-white text-[9px] font-bold"
@@ -139,7 +141,7 @@ export default function SeriesLens({ graph, focusCode, onFocus, level, basket, o
                             {LINK_TYPE_LABELS[link.link_type] || link.link_type}
                           </span>
                           <span className="font-mono text-[10.5px] font-bold text-gray-700">{node.code}</span>
-                          <BasketBtn code={node.code} basket={basket} onToggleBasket={onToggleBasket} hoverOnly />
+                          <BasketBtn stdKey={standardKey(node)} basket={basket} onToggleBasket={onToggleBasket} hoverOnly />
                         </div>
                         <p className="text-[11px] text-gray-600 leading-relaxed mt-0.5 line-clamp-2"><MathText text={node.content} /></p>
                         <p className="text-[9.5px] text-gray-400 mt-0.5">{node.subject}</p>
@@ -161,12 +163,12 @@ export default function SeriesLens({ graph, focusCode, onFocus, level, basket, o
   )
 }
 
-function BasketBtn({ code, basket, onToggleBasket, hoverOnly }) {
-  const inBasket = basket.has(code)
+function BasketBtn({ stdKey, basket, onToggleBasket, hoverOnly }) {
+  const inBasket = basket.has(stdKey)
   return (
     <span role="button" tabIndex={0}
-      onClick={(e) => { e.stopPropagation(); onToggleBasket([code]) }}
-      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onToggleBasket([code]) } }}
+      onClick={(e) => { e.stopPropagation(); onToggleBasket([stdKey]) }}
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onToggleBasket([stdKey]) } }}
       className={`ml-auto p-0.5 rounded cursor-pointer transition ${
         inBasket ? 'text-emerald-600' : `text-gray-300 hover:text-blue-600 ${hoverOnly ? 'opacity-0 group-hover:opacity-100' : ''}`}`}>
       {inBasket ? <Check size={12} /> : <Plus size={12} />}

@@ -4,6 +4,7 @@ import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
 import { apiGet, apiPost } from '../lib/api'
+import { standardKey, codeFromKey, subjectFromKey } from '../lib/standardKey'
 import { PROCEDURES, PHASES, PROCEDURE_LIST, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculum-weaver-shared/constants.js'
 import Logo from '../components/Logo'
 import HostSetupWizard from '../components/HostSetupWizard'
@@ -168,7 +169,7 @@ export default function WorkspaceDetailPage() {
           const sg = s.subject_group || s.subject
           if (!perSubject[sg]) perSubject[sg] = 0
           if (perSubject[sg] < 5 && (s._relevance > 0 || recs.length <= 20)) {
-            autoSelected.add(s.code)
+            autoSelected.add(standardKey(s))
             perSubject[sg]++
           }
         }
@@ -197,11 +198,12 @@ export default function WorkspaceDetailPage() {
   useEffect(() => {
     if (!showCreateProject) return
     try {
-      const codes = JSON.parse(sessionStorage.getItem('cw_design_basket') || '[]')
-      setDesignBasket(codes)
-      // 교과 메타(코드→subject_group)로 교과 칩 자동 선택 (사용자가 이미 고른 게 없을 때만)
+      // 담기 저장값은 성취기준 key(충돌 코드는 "code|과목") — 서버 bulk 요청에도 그대로 보낸다
+      const keys = JSON.parse(sessionStorage.getItem('cw_design_basket') || '[]')
+      setDesignBasket(keys)
+      // 교과 메타(key→subject_group)로 교과 칩 자동 선택 (사용자가 이미 고른 게 없을 때만)
       const meta = JSON.parse(sessionStorage.getItem('cw_design_basket_meta') || '{}')
-      const groups = [...new Set(codes.map(c => meta[c]).filter(Boolean))]
+      const groups = [...new Set(keys.map(k => meta[k]).filter(Boolean))]
       if (groups.length > 0) {
         setProjectSubjects(prev => (prev.length > 0 ? prev : [...new Set([...prev, ...groups])]))
       }
@@ -245,12 +247,12 @@ export default function WorkspaceDetailPage() {
         grade: projectGrade,
       })
 
-      // 선택된 성취기준 + 설계 모드에서 담아온 성취기준 일괄 저장
-      const allCodes = [...new Set([...selectedStandardIds, ...designBasket])]
-      if (allCodes.length > 0) {
+      // 선택된 성취기준 + 설계 모드에서 담아온 성취기준 일괄 저장 (값은 전부 key — 서버가 해석)
+      const allKeys = [...new Set([...selectedStandardIds, ...designBasket])]
+      if (allKeys.length > 0) {
         try {
           await apiPost(`/api/standards/project/${project.id}/bulk`, {
-            standard_codes: allCodes,
+            standard_codes: allKeys,
           })
           // 담아온 성취기준은 프로젝트에 반영됐으므로 장바구니 비움
           sessionStorage.removeItem('cw_design_basket')
@@ -1060,16 +1062,19 @@ export default function WorkspaceDetailPage() {
                     🧺 교과 연결에서 담아온 성취기준 {designBasket.length}개 — 프로젝트에 자동 포함됩니다
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {designBasket.map(code => (
-                      <span key={code} style={{
+                    {designBasket.map(key => (
+                      <span key={key} title={subjectFromKey(key) || undefined} style={{
                         display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px',
                         background: '#fff', border: '1px solid #dbeafe', borderRadius: 6,
                         fontSize: 11, fontFamily: 'ui-monospace, monospace', color: '#374151',
                       }}>
-                        {code}
+                        {codeFromKey(key)}
+                        {subjectFromKey(key) && (
+                          <span style={{ fontFamily: 'inherit', fontSize: 10, color: '#9ca3af' }}>{subjectFromKey(key)}</span>
+                        )}
                         <button type="button" title="제외"
                           onClick={() => {
-                            const next = designBasket.filter(c => c !== code)
+                            const next = designBasket.filter(k => k !== key)
                             setDesignBasket(next)
                             sessionStorage.setItem('cw_design_basket', JSON.stringify(next))
                           }}
@@ -1098,7 +1103,7 @@ export default function WorkspaceDetailPage() {
                       추천 성취기준 ({selectedStandardIds.size}/{filtered.length}{q ? ` · 전체 ${recommendedStandards.length}` : ''}개)
                     </span>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button type="button" onClick={() => setSelectedStandardIds(new Set([...selectedStandardIds, ...filtered.map(s => s.code)]))}
+                      <button type="button" onClick={() => setSelectedStandardIds(new Set([...selectedStandardIds, ...filtered.map(s => standardKey(s))]))}
                         style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer', color: 'var(--color-text-secondary)' }}>
                         전체 선택
                       </button>
@@ -1132,13 +1137,14 @@ export default function WorkspaceDetailPage() {
                       <div key={subj} style={{ marginBottom: 8 }}>
                         <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-primary)', marginBottom: 4 }}>{subj} ({stds.length}개)</div>
                         {stds.map(s => (
-                          <label key={s.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '3px 0', cursor: 'pointer', fontSize: 12, color: 'var(--color-text-primary)' }}>
+                          <label key={s.id ?? standardKey(s)} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '3px 0', cursor: 'pointer', fontSize: 12, color: 'var(--color-text-primary)' }}>
                             <input
                               type="checkbox"
-                              checked={selectedStandardIds.has(s.code)}
+                              checked={selectedStandardIds.has(standardKey(s))}
                               onChange={() => {
+                                const k = standardKey(s)
                                 const next = new Set(selectedStandardIds)
-                                next.has(s.code) ? next.delete(s.code) : next.add(s.code)
+                                next.has(k) ? next.delete(k) : next.add(k)
                                 setSelectedStandardIds(next)
                               }}
                               style={{ marginTop: 2, flexShrink: 0 }}
