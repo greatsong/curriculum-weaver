@@ -13,12 +13,15 @@ jobs:
       - name: Install Railway CLI
         run: npm i -g @railway/cli
 
-      # OpenAI 키(임베딩·시맨틱 검색)를 Railway 변수와 동기화 — GitHub secret에 있을 때만
+      # OpenAI 키(임베딩·시맨틱 검색)를 Railway 변수와 동기화 — secret이 비어 있으면 건너뜀
+      # (secrets 컨텍스트는 step if에서 못 쓰므로 env로 옮겨 검사)
       - name: Sync OPENAI_API_KEY to Railway
-        if: ${{ secrets.OPENAI_API_KEY != '' }}
-        run: railway variables --service curriculum-weaver-server --set "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" --skip-deploys
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then echo "OPENAI_API_KEY secret 없음 — 동기화 건너뜀"; exit 0; fi
+          railway variables --service curriculum-weaver-server --set "OPENAI_API_KEY=$OPENAI_API_KEY" --skip-deploys
 
       - name: Deploy to Railway
         run: railway up --service curriculum-weaver-server
