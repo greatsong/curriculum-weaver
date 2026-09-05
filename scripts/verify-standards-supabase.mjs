@@ -24,7 +24,7 @@ if (!url || !key) {
 const sb = createClient(url, key);
 
 // 정본 코드 집합 (검색이 반환할 수 있는 전체 code)
-const canonicalSet = new Set(ALL_STANDARDS.map(s => s.code));
+const canonicalSet = new Set(ALL_STANDARDS.map(s => s.key || s.code)); // 식별자(key) 기준
 const canonicalCodes = [...canonicalSet];
 console.log(`[정본] standards.js code: ${canonicalCodes.length}개 (rows=${ALL_STANDARDS.length})`);
 
@@ -35,11 +35,11 @@ async function fetchAllDbCodes() {
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await sb
       .from('curriculum_standards')
-      .select('code')
+      .select('key,code')
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`DB code 조회 실패: ${error.message}`);
     if (!data || data.length === 0) break;
-    for (const r of data) codes.add(r.code);
+    for (const r of data) codes.add(r.key || r.code);
     if (data.length < PAGE) break;
   }
   return codes;

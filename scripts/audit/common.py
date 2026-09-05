@@ -40,6 +40,12 @@ def norm_bullets(s):
     """불릿 기호(•·▪-)까지 제거한 정규화 — 적용 고려사항 비교용."""
     return re.sub(r'[·▪\-◦○●]', '', norm(s))
 def codenorm(c): return re.sub(r'\s+', '', unicodedata.normalize('NFKC', c or ''))
+def standard_key(r):
+    """정본 레코드의 앱 식별자: key 필드가 있으면 그것, 없으면 code. (복합 키 전환 2026-09-05)"""
+    return r.get('key') or r.get('code')
+def composite_key(code, subject):
+    """코드 충돌 시 정본에 명시하는 key 표현: "code|subject"."""
+    return f"{code}|{subject}"
 CODE_RE = re.compile(r'^\[(?:\d{1,2}[가-힣A-Za-z0-9·()ⅠⅡⅢⅣⅤ]+?-\d{2}(?:-\d{2})?|[가-힣]{2,4}\s?\d{2}-\d{2}(?:-\d{2})?)\]$')
 def code_prefix(cn):
     m = re.match(r'\[(\d{1,2})?([가-힣A-Za-z]+)', cn)

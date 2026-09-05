@@ -11,7 +11,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import *
 ap = argparse.ArgumentParser(); ap.add_argument('--dry-run', action='store_true'); ap.add_argument('--add-missing', action='store_true'); ap.add_argument('--prune-unsourced', action='store_true'); ap.add_argument('--out', default=STANDARDS_JS)
 args = ap.parse_args()
-head, rows, tail = load_canonical(); cmap = {codenorm(r['code']): r for r in rows}
+head, rows, tail = load_canonical()
+cmap = {}  # codenorm(code) → [정본 레코드...] (복합 키: 충돌 코드는 과목별로 여러 행)
+for r in rows: cmap.setdefault(codenorm(r['code']), []).append(r)
 official = load_official(); scope_prefixes = {code_prefix(cn) for cn in official}
 changes = collections.Counter(); log = []
 def distinct_contents(recs): return {norm(x['content']) for x in recs}
@@ -38,6 +40,8 @@ for r in rows:
         if r.get('grade_group') != PREFIX_GRADE[pre]: log.append(('grade_group', r['code'], r.get('grade_group'), PREFIX_GRADE[pre])); r['grade_group'] = PREFIX_GRADE[pre]; changes['grade_group'] += 1
     recs = official.get(cn)
     if not recs: continue
+    if r.get('key') and '|' in r['key']:  # 복합 키 레코드: 같은 과목의 원문만
+        recs = [x for x in recs if norm(x['subject']) == norm(r.get('subject', ''))] or recs
     o = pick(recs, r)
     if o is None: changes['코드충돌_보류'] += 1; log.append(('collision', r['code'], r.get('subject'), sorted({x['subject'] for x in recs}))); continue
     for field, val in (('content', one_line(o['content'])), ('area', area_std(o['area'], o['byeolchaek'])), ('explanation', clean_text(o['explanation'])), ('application_notes', bullets(o['application_notes']))):
@@ -50,25 +54,33 @@ added, pruned = [], []
 if args.add_missing:
     by_subject = collections.defaultdict(list)
     for cn, recs in official.items():
-        if cn in cmap: continue
-        if len(distinct_contents(recs)) > 1: changes['코드충돌_미추가'] += 1; log.append(('collision_new', cn, sorted({x['subject'] for x in recs}))); continue
-        by_subject[(recs[0]['byeolchaek'], recs[0]['subject'])].append(pick(recs))
+        have = cmap.get(cn, [])
+        if have and len(distinct_contents(recs)) <= 1: continue  # 이미 수록(단일 문장)
+        if cn in SOURCE_PREFERENCE and have: continue
+        if not have:
+            by_subject[(recs[0]['byeolchaek'], recs[0]['subject'])].append(pick(recs)); continue
+        # 코드 충돌: 정본에 없는 과목의 원문 레코드를 복합 키로 추가
+        for x in recs:
+            if any(norm(x['content']) == norm(h['content']) or norm(x['subject']) == norm(h.get('subject', '')) for h in have): continue
+            if any(norm(x['content']) == norm(y['content']) for y in recs if y is not x and any(norm(y['content']) == norm(h['content']) for h in have)): continue
+            x = dict(x, _composite=True); by_subject[(x['byeolchaek'], x['subject'])].append(x)
+            changes['코드충돌_복합키추가'] += 1
     for (b, subj), recs in by_subject.items():
         for o in recs:
             cn = codenorm(o['raw_code']); pre = code_number(cn); group = group_for(b, subj)
             # 같은 과목의 기존 정본 레코드가 있으면 과목명·학교급 표기를 그대로 따른다(명칭 일관성)
             sib = next((r for r in rows if r['subject_group'] == group and norm(r['subject']) == norm(subj)), None)
-            rec = {'code': o['raw_code'], 'subject_group': group, 'subject': sib['subject'] if sib else subj,
+            rec = {'code': o['raw_code'], **({'key': composite_key(o['raw_code'], sib['subject'] if sib else subj)} if o.get('_composite') else {}), 'subject_group': group, 'subject': sib['subject'] if sib else subj,
                    'grade_group': PREFIX_GRADE.get(pre, '기타'), 'school_level': PREFIX_LEVEL.get(pre, sib['school_level'] if sib else ''),
                    'curriculum_category': o.get('curriculum_category', '') or (sib.get('curriculum_category', '') if sib else ''),
                    'area': area_std(o['area'], b), 'domain': '', 'content': one_line(o['content']), 'keywords': keywords_for(one_line(o['content'])),
                    'explanation': clean_text(o['explanation']), 'application_notes': bullets(o['application_notes'])}
-            rows.append(rec); cmap[cn] = rec; added.append(rec['code']); changes['added'] += 1
+            rows.append(rec); cmap.setdefault(cn, []).append(rec); added.append(rec.get('key') or rec['code']); changes['added'] += 1
 if args.prune_unsourced:
     keep = []
     for r in rows:
         cn = codenorm(r['code'])
-        if cn not in official and code_prefix(cn) in scope_prefixes: pruned.append(r['code']); changes['pruned'] += 1
+        if cn not in official and code_prefix(cn) in scope_prefixes: pruned.append(standard_key(r)); changes['pruned'] += 1
         else: keep.append(r)
     rows = keep
 print(json.dumps(changes, ensure_ascii=False))

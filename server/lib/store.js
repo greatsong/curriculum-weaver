@@ -1,3 +1,4 @@
+import { standardKey } from 'curriculum-weaver-shared/constants.js'
 /**
  * 인메모리 데이터 저장소
  * Supabase 없이 작동하기 위한 로컬 저장소
@@ -96,18 +97,18 @@ export function initStore() {
   // 제거/플래그 기준은 standardsQuality.js가 단일 소스 (report-standards-quality.mjs와 공유)
   let filteredCount = 0
   const flagCounts = {} // quality flag -> count
-  const seenCodes = new Set()
+  const seenCodes = new Set() // 식별자(key) 기준 중복 제거 — code는 과목 간 충돌 가능
   for (const s of ALL_STANDARDS) {
-    if (seenCodes.has(s.code)) continue
+    if (seenCodes.has(standardKey(s))) continue
     // 완전히 제거: placeholder / 더미 / 빈 content
     if (shouldRemoveStandard(s.content)) { filteredCount++; continue }
     // 마킹만: 문두 결손 해설체, 해설문 혼입, 푸터 혼입, 잘린 본문
     // — 제거하면 성취기준이 사라지므로 _quality 플래그로 표시
     const quality = classifyStandardQuality(s.content)
     if (quality !== 'ok') flagCounts[quality] = (flagCounts[quality] || 0) + 1
-    seenCodes.add(s.code)
+    seenCodes.add(standardKey(s))
     const id = uuid()
-    standards.set(id, { id, ...s, _quality: quality, created_at: new Date().toISOString() })
+    standards.set(id, { id, ...s, key: standardKey(s), _quality: quality, created_at: new Date().toISOString() })
   }
   const flaggedCount = Object.values(flagCounts).reduce((a, b) => a + b, 0)
   if (filteredCount > 0 || flaggedCount > 0) {
@@ -118,8 +119,8 @@ export function initStore() {
   }
 
   // 성취기준 간 연결 로드 (코드→ID 맵으로 O(1) 조회)
-  const codeToId = new Map()
-  for (const [id, s] of standards) codeToId.set(s.code, s)
+  const codeToId = new Map() // key(식별자) → 성취기준
+  for (const [id, s] of standards) codeToId.set(s.key, s)
   // 압축 형식: [source, target, link_type, rationale]
   // link_type 축약: cs→cross_subject, sc→same_concept, ap→application
   const ltMap = { cs: 'cross_subject', sc: 'same_concept', ap: 'application', pr: 'prerequisite', ex: 'extension' }
@@ -560,7 +561,9 @@ export const Standards = {
 
   get: (id) => standards.get(id) || null,
 
-  getByCode: (code) => [...standards.values()].find((s) => s.code === code) || null,
+  /** 식별자(key) 정확 일치 우선, 없으면 code 첫 매치 (충돌 코드는 key로 지정해야 특정 과목이 잡힌다) */
+  getByCode: (code) => [...standards.values()].find((s) => s.key === code) || [...standards.values()].find((s) => s.code === code) || null,
+  getByKey: (key) => [...standards.values()].find((s) => s.key === key) || null,
 
   subjects: () => [...new Set([...standards.values()].map((s) => s.subject))].sort(),
 
@@ -575,10 +578,10 @@ export const Standards = {
   addBulk: (items) => {
     const added = []
     for (const item of items) {
-      const existing = [...standards.values()].find((s) => s.code === item.code)
+      const existing = [...standards.values()].find((s) => s.key === standardKey(item))
       if (existing) continue
       const id = uuid()
-      const std = { id, ...item, created_at: new Date().toISOString() }
+      const std = { id, ...item, key: standardKey(item), created_at: new Date().toISOString() }
       standards.set(id, std)
       added.push(std)
     }
@@ -643,20 +646,20 @@ export const Standards = {
     // 새 데이터 로드 (품질 플래그 포함)
     const seenCodes = new Set()
     for (const s of newData) {
-      if (seenCodes.has(s.code)) continue
-      seenCodes.add(s.code)
+      if (seenCodes.has(standardKey(s))) continue
+      seenCodes.add(standardKey(s))
       const c = (s.content || '').trim()
       let quality = 'ok'
       if (/^이\s*성취기준은\s/.test(c)) quality = 'explanation_as_content'
       else if (/[을를의에서와과는은이가로]\s*$/.test(c) && c.length > 15) quality = 'truncated'
       else if (/\d+\s*(공통|선택)\s*교육과정/.test(c)) quality = 'page_tag_mixed'
       const id = uuid()
-      standards.set(id, { id, ...s, _quality: quality, created_at: new Date().toISOString() })
+      standards.set(id, { id, ...s, key: standardKey(s), _quality: quality, created_at: new Date().toISOString() })
     }
 
     // 링크 재바인딩 — 새 UUID로 만들어진 성취기준에 맞춰 링크도 갱신
     const codeToNewStd = new Map()
-    for (const [, s] of standards) codeToNewStd.set(s.code, s)
+    for (const [, s] of standards) codeToNewStd.set(s.key, s)
 
     const oldLinkCount = standardLinks.size
     const reboundLinks = new Map()
@@ -717,8 +720,8 @@ export const StandardLinks = {
    */
   replaceAll: (rows) => {
     _linksVersion += 1
-    const codeToStd = new Map()
-    for (const [, s] of standards) codeToStd.set(s.code, s)
+    const codeToStd = new Map() // key → std (링크 끝점 값은 key)
+    for (const [, s] of standards) codeToStd.set(s.key, s)
     const typeSim = { same_concept: 0.9, prerequisite: 0.85, cross_subject: 0.7 }
     const next = new Map()
     let skipped = 0
@@ -767,7 +770,7 @@ export const StandardLinks = {
   getLinksAmongCodes: (codes, { status = 'published', minQuality = 0.7, limit = 20, schoolLevel = null } = {}) => {
     const codeSet = new Set(codes)
     const codeToStd = new Map()
-    for (const [, s] of standards) if (codeSet.has(s.code)) codeToStd.set(s.code, s)
+    for (const [, s] of standards) if (codeSet.has(s.key)) codeToStd.set(s.key, s)
     const levelOf = (code) => resolveSchoolLevel(codeToStd.get(code))
     return [...standardLinks.values()]
       .filter((l) => codeSet.has(l.source_code) && codeSet.has(l.target_code))
@@ -795,7 +798,7 @@ export const StandardLinks = {
   getCompanionsForCodes: (codes, { status = 'published', minQuality = 0.7, limit = 20, schoolLevel = null } = {}) => {
     const codeSet = new Set(codes)
     const codeToStd = new Map()
-    for (const [, s] of standards) codeToStd.set(s.code, s)
+    for (const [, s] of standards) codeToStd.set(s.key, s)
     const results = []
     for (const l of standardLinks.values()) {
       const srcIn = codeSet.has(l.source_code)
@@ -821,6 +824,7 @@ export const StandardLinks = {
   getGraph: () => {
     const nodes = [...standards.values()].map((s) => ({
       id: s.id,
+      key: s.key,
       code: s.code,
       subject: s.subject,
       subject_group: s.subject_group || s.subject,
@@ -862,10 +866,10 @@ export const StandardLinks = {
     for (const item of items) {
       const sourceStd = item.source_id
         ? standards.get(item.source_id)
-        : [...standards.values()].find((s) => s.code === item.source)
+        : ([...standards.values()].find((s) => s.key === item.source) || [...standards.values()].find((s) => s.code === item.source))
       const targetStd = item.target_id
         ? standards.get(item.target_id)
-        : [...standards.values()].find((s) => s.code === item.target)
+        : ([...standards.values()].find((s) => s.key === item.target) || [...standards.values()].find((s) => s.code === item.target))
       if (!sourceStd || !targetStd) continue
 
       // 중복 검사 (양방향)
@@ -878,8 +882,8 @@ export const StandardLinks = {
         id,
         source_id: sourceStd.id,
         target_id: targetStd.id,
-        source_code: sourceStd.code,
-        target_code: targetStd.code,
+        source_code: sourceStd.key,
+        target_code: targetStd.key,
         link_type: item.link_type,
         rationale: item.rationale || '',
         similarity: item.similarity || 0.7,

@@ -9,53 +9,65 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import *
 ap = argparse.ArgumentParser(); ap.add_argument('--report', default=os.path.join(DATA, 'gate_report.json')); ap.add_argument('--allow-missing-official', action='store_true', help='원문 JSON이 없는 별책 범위의 정본 코드는 결점으로 세지 않음(항상 정보성)')
 args = ap.parse_args()
-_, canon, _ = load_canonical(); cmap = {codenorm(r['code']): r for r in canon}
+_, canon, _ = load_canonical()
+cmap = {}  # codenorm(code) → [정본 레코드...] (충돌 코드는 2개 이상)
+for r in canon: cmap.setdefault(codenorm(r['code']), []).append(r)
 official = load_official()
 scope_prefixes = {code_prefix(cn) for cn in official}
 D = collections.defaultdict(list)
 for cn, recs in official.items():
-    if cn not in cmap and len({norm(x['content']) for x in recs}) <= 1: D['A_정본누락'].append({'code': recs[0]['raw_code'], 'subject': recs[0]['subject'], 'byeolchaek': recs[0]['byeolchaek'], 'content': recs[0]['content']})
-for cn, r in cmap.items():
-    if cn not in official:
-        D['A_원문미확인' if code_prefix(cn) in scope_prefixes else 'A_원문범위밖'].append({'code': r['code'], 'subject': f"{r['subject_group']}/{r['subject']}"})
-        continue
-    recs = official[cn]
-    pref = SOURCE_PREFERENCE.get(cn)
-    brecs = [x for x in recs if x['byeolchaek'] == pref[0]] if pref else recs
-    # 코드 충돌(같은 코드·다른 과목)이면 정본 과목과 같은 과목의 레코드만 비교 대상으로 삼는다
-    if len({norm(x['content']) for x in brecs}) > 1:
-        same = [x for x in brecs if norm(x['subject']) == norm(r.get('subject', '')) or norm(x['content']) == norm(r.get('content', ''))]
-        if same: brecs = same
-    if not any(norm(x['content']) == norm(r['content']) for x in brecs): D['B_content불일치'].append({'code': r['code'], '정본': r['content'], '원문': recs[0]['content'], 'byeolchaek': recs[0]['byeolchaek']})
-    pre = code_number(cn)
-    if pre:
-        if (r.get('school_level') or '') != PREFIX_LEVEL[pre]: D['C_학교급'].append({'code': r['code'], '정본': r.get('school_level'), '기대': PREFIX_LEVEL[pre]})
-        if (r.get('grade_group') or '') != PREFIX_GRADE[pre]: D['C_학년군'].append({'code': r['code'], '정본': r.get('grade_group'), '기대': PREFIX_GRADE[pre]})
-    groups = {group_for(x['byeolchaek'], x['subject']) for x in recs} | set().union(*(BYEOL_GROUPS_ALLOWED.get(x['byeolchaek'], set()) for x in recs))
-    if r['subject_group'] not in groups: D['D_교과귀속'].append({'code': r['code'], '정본': r['subject_group'], '원문': sorted(groups)})
-    ca = norm(area_std(r.get('area', '')))
-    oas = {norm(area_std(x['area'], x['byeolchaek'])) for x in recs}
-    # 원문에 영역 소제목이 없는 과목(oas == {''})은 정본 영역을 검사하지 않는다(단일 영역 과목).
-    if not ca and any(oas): D['E_영역비어있음'].append({'code': r['code'], '원문': sorted(area_std(x['area'], x['byeolchaek']) for x in recs)})
-    elif ca and any(oas) and ca not in oas: D['E_영역불일치'].append({'code': r['code'], '정본': r.get('area'), '원문': sorted(area_std(x['area'], x['byeolchaek']) for x in recs)})
-    ce = norm(r.get('explanation', '')); oes = [norm(x['explanation']) for x in brecs]
-    if ce and ce not in oes: D['F_해설불일치'].append({'code': r['code'], '정본': (r.get('explanation') or '')[:200], '원문': (recs[0]['explanation'] or '')[:200]})
-    if not ce and any(oes): D['F_해설누락'].append({'code': r['code'], '원문': (recs[0]['explanation'] or '')[:200]})
-    cg = norm_bullets(r.get('application_notes', '')); ogs = [norm_bullets(x['application_notes']) for x in brecs]
-    if cg and cg not in ogs: D['G_적용고려사항불일치'].append({'code': r['code'], '정본': (r.get('application_notes') or '')[:160], '원문': (recs[0]['application_notes'] or '')[:160]})
-    if not cg and any(ogs): D['G_적용고려사항누락'].append({'code': r['code']})
-    if '\n' in (r.get('content') or ''): D['H_content줄바꿈'].append(r['code'])
-    if not CODE_RE.match(cn): D['H_코드형식'].append(r['code'])
-    if not (r.get('keywords') or []): D['H_키워드없음'].append(r['code'])
+    # 원문 (code, subject)마다 정본에 같은 코드·같은 문장(또는 같은 과목)의 레코드가 있어야 한다
+    have = cmap.get(cn, [])
+    if cn in SOURCE_PREFERENCE and have: continue  # 별책 간 인쇄 차이는 우선 별책 기준으로 B에서 검사
+    for x in recs:
+        matched = any(norm(x['content']) == norm(r['content']) or norm(x['subject']) == norm(r.get('subject', '')) for r in have)
+        if not matched and not any(norm(x['content']) == norm(y['content']) for y in recs if y is not x and any(norm(y['content']) == norm(r['content']) for r in have)):
+            D['A_정본누락'].append({'code': x['raw_code'], 'subject': x['subject'], 'byeolchaek': x['byeolchaek'], 'content': x['content']})
+for cn, rows_ in cmap.items():
+  for r in rows_:
+      if cn not in official:
+          D['A_원문미확인' if code_prefix(cn) in scope_prefixes else 'A_원문범위밖'].append({'code': r['code'], 'subject': f"{r['subject_group']}/{r['subject']}"})
+          continue
+      recs = official[cn]
+      pref = SOURCE_PREFERENCE.get(cn)
+      brecs = [x for x in recs if x['byeolchaek'] == pref[0]] if pref else recs
+      # 코드 충돌(같은 코드·다른 과목)이면 정본 과목과 같은 과목의 레코드만 비교 대상으로 삼는다
+      if len({norm(x['content']) for x in brecs}) > 1:
+          same = [x for x in brecs if norm(x['subject']) == norm(r.get('subject', '')) or norm(x['content']) == norm(r.get('content', ''))]
+          if same: brecs = same
+      if not any(norm(x['content']) == norm(r['content']) for x in brecs): D['B_content불일치'].append({'code': r['code'], '정본': r['content'], '원문': recs[0]['content'], 'byeolchaek': recs[0]['byeolchaek']})
+      pre = code_number(cn)
+      if pre:
+          if (r.get('school_level') or '') != PREFIX_LEVEL[pre]: D['C_학교급'].append({'code': r['code'], '정본': r.get('school_level'), '기대': PREFIX_LEVEL[pre]})
+          if (r.get('grade_group') or '') != PREFIX_GRADE[pre]: D['C_학년군'].append({'code': r['code'], '정본': r.get('grade_group'), '기대': PREFIX_GRADE[pre]})
+      groups = {group_for(x['byeolchaek'], x['subject']) for x in recs} | set().union(*(BYEOL_GROUPS_ALLOWED.get(x['byeolchaek'], set()) for x in recs))
+      if r['subject_group'] not in groups: D['D_교과귀속'].append({'code': r['code'], '정본': r['subject_group'], '원문': sorted(groups)})
+      ca = norm(area_std(r.get('area', '')))
+      oas = {norm(area_std(x['area'], x['byeolchaek'])) for x in brecs}
+      # 원문에 영역 소제목이 없는 과목(oas == {''})은 정본 영역을 검사하지 않는다(단일 영역 과목).
+      if not ca and any(oas): D['E_영역비어있음'].append({'code': r['code'], '원문': sorted(area_std(x['area'], x['byeolchaek']) for x in brecs)})
+      elif ca and any(oas) and ca not in oas: D['E_영역불일치'].append({'code': r['code'], '정본': r.get('area'), '원문': sorted(area_std(x['area'], x['byeolchaek']) for x in brecs)})
+      ce = norm(r.get('explanation', '')); oes = [norm(x['explanation']) for x in brecs]
+      if ce and ce not in oes: D['F_해설불일치'].append({'code': r['code'], '정본': (r.get('explanation') or '')[:200], '원문': (recs[0]['explanation'] or '')[:200]})
+      if not ce and any(oes): D['F_해설누락'].append({'code': r['code'], '원문': (recs[0]['explanation'] or '')[:200]})
+      cg = norm_bullets(r.get('application_notes', '')); ogs = [norm_bullets(x['application_notes']) for x in brecs]
+      if cg and cg not in ogs: D['G_적용고려사항불일치'].append({'code': r['code'], '정본': (r.get('application_notes') or '')[:160], '원문': (recs[0]['application_notes'] or '')[:160]})
+      if not cg and any(ogs): D['G_적용고려사항누락'].append({'code': r['code']})
+      if '\n' in (r.get('content') or ''): D['H_content줄바꿈'].append(r['code'])
+      if not CODE_RE.match(cn): D['H_코드형식'].append(r['code'])
+      if not (r.get('keywords') or []): D['H_키워드없음'].append(r['code'])
 # I. 원문 코드 충돌(서로 다른 과목이 같은 코드 사용, 예: 12심독=심화 영어 독해와 작문/심화 독일어) — 정본은 code 단일 키라 한 과목만 담김. 정보성 항목.
 for cn, recs in official.items():
     contents = {}
     for x in recs: contents.setdefault(norm(x['content']), set()).add(x['subject'])
     if len(contents) > 1 and cn not in SOURCE_PREFERENCE:
-        r = cmap.get(cn); held = r['subject'] if r else None
-        D['I_코드충돌'].append({'code': recs[0]['raw_code'], '원문과목': sorted({s for v in contents.values() for s in v}), '정본수록': held})
-codes = [r['code'] for r in canon]
-D['H_중복코드'].extend([c for c, n in collections.Counter(codes).items() if n > 1])
+        held = sorted({r['subject'] for r in cmap.get(cn, [])})
+        want = sorted({s for v in contents.values() for s in v})
+        D['I_코드충돌'].append({'code': recs[0]['raw_code'], '원문과목': want, '정본수록': held, '복합키로 해소': len(held) >= len(contents)})
+keys = [standard_key(r) for r in canon]
+D['H_중복식별자'].extend([c for c, n in collections.Counter(keys).items() if n > 1])
+pairs = [(r['code'], r.get('subject')) for r in canon]
+D['H_중복코드과목'].extend([f'{c}|{s}' for (c, s), n in collections.Counter(pairs).items() if n > 1])
 D = {k: v for k, v in D.items() if v}
 summary = {k: len(v) for k, v in D.items()}
 os.makedirs(os.path.dirname(args.report), exist_ok=True)

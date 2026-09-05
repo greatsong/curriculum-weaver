@@ -66,7 +66,7 @@ export async function ensureEmbeddingsCache(standards) {
       totalTokens += response.usage.total_tokens
 
       response.data.forEach((item, idx) => {
-        embeddings[batch[idx].code] = item.embedding
+        embeddings[batch[idx].key || batch[idx].code] = item.embedding
       })
       console.log(`    배치 ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(standards.length / BATCH_SIZE)} 완료`)
     }
@@ -118,7 +118,7 @@ export async function semanticSearch(query, standards, limit = 50) {
   // 2. 모든 성취기준과 유사도 계산
   const scored = standards
     .map(s => {
-      const vec = getEmbedding(s.code)
+      const vec = getEmbedding(s.key || s.code) || getEmbedding(s.code)
       if (!vec) return null
       const similarity = cosineSimilarity(queryVec, vec)
       return { ...s, _similarity: similarity, _matchField: 'semantic' }

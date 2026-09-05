@@ -270,7 +270,7 @@ const backupRows = [];
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await sb.from('curriculum_standards')
-      .select('id,code,subject,grade_group,school_level,area,content,explanation,keywords,considerations')
+      .select('id,key,code,subject,grade_group,school_level,area,content,explanation,keywords,considerations')
       .range(from, from + PAGE - 1);
     if (error) { console.error(`❌ 백업 실패: ${error.message} — 중단`); process.exit(1); }
     if (!data || data.length === 0) break;
@@ -284,12 +284,12 @@ console.log(`  백업 완료: ${backupRows.length}행 → ${path.relative(ROOT, 
 
 // ═══ B. 정본↔DB content diff → 변경 code 목록 ═══
 console.log('\n━━━ B. 정본↔DB content diff ━━━');
-const dbByCode = new Map(backupRows.map(r => [r.code, r]));
+const dbByCode = new Map(backupRows.map(r => [r.key || r.code, r]));
 const changedCodes = [];
 const newCodes = [];
 for (const s of ALL_STANDARDS) {
-  const db = dbByCode.get(s.code);
-  if (!db) { newCodes.push(s.code); continue; }
+  const db = dbByCode.get(s.key || s.code);
+  if (!db) { newCodes.push(s.key || s.code); continue; }
   const canonContent = (s.content || '').trim();
   if (canonContent && canonContent !== (db.content || '').trim()) changedCodes.push(s.code);
   else if (SEED_AUTHORITY && ((s.explanation || '') !== (db.explanation || '') || (s.area || '') !== (db.area || ''))) changedCodes.push(s.code);
