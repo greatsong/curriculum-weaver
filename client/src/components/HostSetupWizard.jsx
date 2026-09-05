@@ -14,7 +14,7 @@ import { AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculu
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useProjectStore } from '../stores/projectStore'
 
-const WIZARD_STEPS = [
+export const WIZARD_STEPS = [
   { id: 'info', title: '기본 정보', icon: '1' },
   { id: 'ai', title: 'AI 설정', icon: '2' },
   { id: 'invite', title: '팀원 초대', icon: '3' },

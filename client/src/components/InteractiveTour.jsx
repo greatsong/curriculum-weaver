@@ -14,7 +14,7 @@ import { PHASE_LIST, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.j
 // 투어 스텝 정의
 // ============================================================
 
-const TOUR_STEPS = [
+export const TOUR_STEPS = [
   {
     id: 'chat-panel',
     title: '채팅 패널',
@@ -78,6 +78,69 @@ function getTargetRect(step) {
     width: rect.width,
     height: rect.height,
   }
+}
+
+// ============================================================
+// 툴팁 위치 계산 (순수 함수 — 테스트 대상)
+// ============================================================
+
+export const TOOLTIP_WIDTH = 340
+const TOOLTIP_PADDING = 16
+
+const CENTER_STYLE = {
+  position: 'fixed',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)',
+}
+
+/**
+ * 하이라이트 대상 옆에 놓을 툴팁의 좌표를 계산한다.
+ * 계산 결과는 반드시 뷰포트 안으로 가둔다 — 대상이 화면 아래쪽이면 툴팁이
+ * 밖으로 밀려나 [이전][다음][다시 보지 않기]를 누를 수 없었다.
+ *
+ * @param {Object} p
+ * @param {'right'|'left'|'bottom'|'center'} p.arrowPosition 배치 방향
+ * @param {{top:number,left:number,width:number,height:number}|null} p.targetRect 대상 영역
+ * @param {number} p.tooltipHeight 툴팁 실제 높이
+ * @param {{width:number,height:number}} p.viewport 뷰포트 크기
+ * @returns {Object} position:fixed 스타일
+ */
+export function computeTooltipPosition({ arrowPosition, targetRect, tooltipHeight, viewport }) {
+  if (arrowPosition === 'center' || !targetRect) return CENTER_STYLE
+
+  const pad = TOOLTIP_PADDING
+  const clampLeft = (v) => Math.min(Math.max(pad, v), Math.max(pad, viewport.width - TOOLTIP_WIDTH - pad))
+  const clampTop = (v) => Math.min(Math.max(pad, v), Math.max(pad, viewport.height - tooltipHeight - pad))
+
+  // 기본: 타겟 오른쪽
+  if (arrowPosition === 'right') {
+    return {
+      position: 'fixed',
+      top: clampTop(targetRect.top + 40),
+      left: clampLeft(targetRect.left + targetRect.width + pad),
+    }
+  }
+  // 타겟 왼쪽
+  if (arrowPosition === 'left') {
+    return {
+      position: 'fixed',
+      top: clampTop(targetRect.top + 40),
+      left: clampLeft(targetRect.left - TOOLTIP_WIDTH - pad),
+    }
+  }
+  // 타겟 아래 — 아래 공간이 모자라면 타겟 위로 올린다
+  if (arrowPosition === 'bottom') {
+    const below = targetRect.top + targetRect.height + pad
+    const fitsBelow = below + tooltipHeight + pad <= viewport.height
+    return {
+      position: 'fixed',
+      top: clampTop(fitsBelow ? below : targetRect.top - tooltipHeight - pad),
+      left: clampLeft(targetRect.left + (targetRect.width - TOOLTIP_WIDTH) / 2),
+    }
+  }
+
+  return CENTER_STYLE
 }
 
 // ============================================================
@@ -155,51 +218,13 @@ export default function InteractiveTour({ onComplete }) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleNext, handleSkip, currentStep])
 
-  // 툴팁 위치 계산 — 계산한 좌표는 반드시 뷰포트 안으로 가둔다.
-  // (하이라이트 대상이 화면 아래쪽이면 툴팁이 화면 밖으로 밀려나 [다음]을 누를 수 없었다)
-  const getTooltipStyle = () => {
-    const centerStyle = {
-      position: 'fixed',
-      top: '50%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-    }
-    if (isCenterStep || !targetRect) return centerStyle
-
-    const padding = 16
-    const tooltipWidth = 340
-    const clampLeft = (v) => Math.min(Math.max(padding, v), Math.max(padding, window.innerWidth - tooltipWidth - padding))
-    const clampTop = (v) => Math.min(Math.max(padding, v), Math.max(padding, window.innerHeight - tooltipHeight - padding))
-
-    // 기본: 타겟 오른쪽
-    if (step.arrowPosition === 'right') {
-      return {
-        position: 'fixed',
-        top: clampTop(targetRect.top + 40),
-        left: clampLeft(targetRect.left + targetRect.width + padding),
-      }
-    }
-    // 타겟 왼쪽
-    if (step.arrowPosition === 'left') {
-      return {
-        position: 'fixed',
-        top: clampTop(targetRect.top + 40),
-        left: clampLeft(targetRect.left - tooltipWidth - padding),
-      }
-    }
-    // 타겟 아래 — 아래 공간이 모자라면 타겟 위로 올린다
-    if (step.arrowPosition === 'bottom') {
-      const below = targetRect.top + targetRect.height + padding
-      const fitsBelow = below + tooltipHeight + padding <= window.innerHeight
-      return {
-        position: 'fixed',
-        top: clampTop(fitsBelow ? below : targetRect.top - tooltipHeight - padding),
-        left: clampLeft(targetRect.left + (targetRect.width - tooltipWidth) / 2),
-      }
-    }
-
-    return centerStyle
-  }
+  const getTooltipStyle = () =>
+    computeTooltipPosition({
+      arrowPosition: isCenterStep ? 'center' : step.arrowPosition,
+      targetRect,
+      tooltipHeight,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    })
 
   // box-shadow 기반 하이라이트 마스크
   const getMaskStyle = () => {
@@ -253,7 +278,7 @@ export default function InteractiveTour({ onComplete }) {
         style={{
           ...getTooltipStyle(),
           zIndex: 9999,
-          width: 340,
+          width: TOOLTIP_WIDTH,
           background: '#fff',
           borderRadius: 16,
           boxShadow: '0 20px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(0,0,0,0.05)',
