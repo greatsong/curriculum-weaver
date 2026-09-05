@@ -12,6 +12,7 @@
  *   node scripts/promoteLinks.mjs --demote-below 0.7 --dry-run  # published 중 quality<0.7 → candidate 강등
  *   node scripts/promoteLinks.mjs --vocational-min-quality 0.85          # 전문↔전문만 더 높은 문턱으로 승격
  *   node scripts/promoteLinks.mjs --vocational-min-quality 0.85 --demote-vocational --dry-run
+ *   node scripts/promoteLinks.mjs --no-vocational-pairs --demote-vocational  # 전문↔전문 전면 비게시
  */
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -35,7 +36,12 @@ const DEMOTE_BELOW = args.includes('--demote-below') ? Number(opt('--demote-belo
 // 하루 만에 154 → 320으로 늘었다. 172개 과목쌍에 최대 6건씩 고르게 퍼져 있어
 // 과목쌍 상한으로는 잡히지 않고, 총량을 누르려면 문턱을 올리는 쪽이 맞다.
 // 보통↔전문은 대상이 아니다 — 일반 교과 교사가 실제로 쓰는 다리라 남긴다.
-const VOC_MIN_QUALITY = args.includes('--vocational-min-quality')
+// --no-vocational-pairs: 전문↔전문을 아예 게시하지 않는다. 서비스 대상이 일반고라
+// 양쪽 다 특성화고 전용 과목인 링크는 쓸 교사가 없다는 판단(2026-09-05).
+// quality_score는 최대 1.0이므로 그보다 높은 문턱을 두어 전량을 걸러낸다.
+const NO_VOC_PAIRS = flag('--no-vocational-pairs')
+const VOC_MIN_QUALITY = NO_VOC_PAIRS ? 1.01
+  : args.includes('--vocational-min-quality')
   ? Number(opt('--vocational-min-quality', 0.85)) : null
 // 위 문턱을 기존 published 전문↔전문에도 소급 적용해 미달분을 candidate로 되돌린다.
 const DEMOTE_VOCATIONAL = flag('--demote-vocational')
@@ -97,10 +103,11 @@ async function main() {
       : targets.filter(t => !isVocPair(t) || t.quality_score >= VOC_MIN_QUALITY)
     targets.length = 0
     targets.push(...kept)
+    const bar = NO_VOC_PAIRS ? '전면 비게시' : `문턱 ${VOC_MIN_QUALITY}`
     console.log(
       DEMOTE_VOCATIONAL
-        ? `전문↔전문 소급 적용 (문턱 ${VOC_MIN_QUALITY}): published ${before}건 중 ${targets.length}건이 미달 → 강등 대상`
-        : `전문↔전문 문턱 ${VOC_MIN_QUALITY}: ${before - targets.length}건 보류 (보통↔전문·보통↔보통은 제한 없음)`
+        ? `전문↔전문 소급 적용 (${bar}): published ${before}건 중 ${targets.length}건 → 강등 대상`
+        : `전문↔전문 ${bar}: ${before - targets.length}건 보류 (보통↔전문·보통↔보통은 제한 없음)`
     )
   } else if (DEMOTE_VOCATIONAL) {
     console.error('--demote-vocational은 --vocational-min-quality와 함께 써야 합니다')
@@ -112,7 +119,7 @@ async function main() {
   const targetStatus = demoting ? 'candidate' : TO_STATUS
   if (demoting) {
     console.log(DEMOTE_VOCATIONAL
-      ? `대상: published 전문↔전문 중 quality < ${VOC_MIN_QUALITY} → candidate 강등`
+      ? `대상: published 전문↔전문 ${NO_VOC_PAIRS ? '전량' : `중 quality < ${VOC_MIN_QUALITY}`} → candidate 강등`
       : `대상: published 중 quality < ${DEMOTE_BELOW} → candidate 강등 (quality null은 제외)`)
   } else {
     console.log(`대상: candidate 중 quality >= ${MIN_QUALITY} → ${TO_STATUS}`)
