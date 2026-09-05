@@ -356,7 +356,7 @@ function MockRealtimeCollab() {
         <div className="space-y-2">
           {[
             { name: '김수진', action: '팀 비전 보드를 편집 중...', time: '방금', color: '#3B82F6' },
-            { name: '이정현', action: '주제선정 보드에 댓글 추가', time: '1분 전', color: '#8B5CF6' },
+            { name: '이정현', action: '주제 선정 보드의 AI 제안 수락', time: '1분 전', color: '#8B5CF6' },
           ].map((a, i) => (
             <div key={i} className="flex items-center gap-2.5 bg-white rounded-lg border border-slate-100 p-2.5">
               <div className="w-5 h-5 rounded-full text-white text-[9px] font-bold flex items-center justify-center shrink-0" style={{ background: a.color }}>
@@ -372,10 +372,10 @@ function MockRealtimeCollab() {
             </div>
           ))}
         </div>
-        {/* 커서 표시 */}
+        {/* AI 제안 알림 */}
         <div className="bg-blue-50 rounded-lg p-2.5 border border-blue-100 text-[11px] text-blue-700">
           <span className="inline-block w-0.5 h-3.5 bg-blue-500 mr-1 animate-pulse" />
-          김수진 님이 입력 중...
+          AI 공동설계자가 보드 초안을 제안했습니다
         </div>
       </div>
     </BrowserFrame>
@@ -395,15 +395,15 @@ const FAQ_DATA = [
   },
   {
     q: '몇 명까지 함께 설계할 수 있나요?',
-    a: '하나의 워크스페이스에 최대 20명까지 참여할 수 있습니다. 실시간 동시 편집은 현재 5명까지 안정적으로 지원되며, 점진적으로 확대할 예정입니다.',
+    a: '인원 제한은 따로 두지 않습니다. 같은 프로젝트를 여러 명이 동시에 열면 보드 편집, 절차 이동, AI 대화가 실시간으로 동기화됩니다. 한 학급 규모(30명 안팎)가 동시에 사용하는 상황까지 점검했습니다.',
   },
   {
     q: '생성된 수업 설계를 다운로드할 수 있나요?',
-    a: 'PDF와 DOCX 형식으로 내보내기가 가능합니다. 18개 세부활동별 보드 내용, AI 대화 기록, 팀 댓글까지 포함된 완전한 설계 문서를 받아보실 수 있습니다.',
+    a: 'HTML, Markdown, PDF(인쇄) 형식으로 내보낼 수 있습니다. 18개 세부활동별 보드 내용과 관련 성취기준, AI 정합성 점검 결과, 대화 통계를 담은 설계 보고서입니다. 앱 안에서 바로 열어 볼 수도 있습니다.',
   },
   {
     q: '교육과정 성취기준은 어떻게 활용되나요?',
-    a: '2022 개정 교육과정 성취기준 4,800여 개가 내장되어 있습니다. 주제를 선정하면 AI가 관련 성취기준을 자동으로 추천하고, 교과 간 연결 가능성을 분석해 줍니다.',
+    a: '2022 개정 교육과정 성취기준 6,400여 개가 내장되어 있습니다. 주제를 선정하면 AI가 관련 성취기준을 자동으로 추천하고, 교과 간 연결 가능성을 분석해 줍니다.',
   },
 ]
 
@@ -575,7 +575,7 @@ export default function GuidePage() {
             AI와 함께<br className="sm:hidden" /> 융합 수업을<br />설계하세요
           </h1>
           <p className="text-base sm:text-lg text-slate-500 max-w-xl mx-auto mb-10 leading-relaxed">
-            4,800여 개 성취기준이 별처럼 펼쳐진 교육과정의 우주 —<br className="hidden sm:block" />
+            6,400여 개 성취기준이 별처럼 펼쳐진 교육과정의 우주 —<br className="hidden sm:block" />
             그 안에서 교과를 잇고, 동료·AI와 함께 수업이라는 별자리를 완성합니다.<br className="hidden sm:block" />
             5가지 협력 원리와 5개 과정·18개 세부활동이 그 길을 안내합니다.
           </p>
@@ -766,7 +766,7 @@ export default function GuidePage() {
               {[
                 'AI가 절차에 맞는 보드 초안을 자동 생성',
                 '교사가 수락/편집/거부로 의사결정',
-                '팀원 간 댓글과 피드백 기능',
+                '다른 팀원이 같은 보드를 고치면 덮어쓰기 전에 경고',
                 '진행 상황 실시간 추적',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-2.5">
@@ -812,14 +812,14 @@ export default function GuidePage() {
             <span className="text-xs font-semibold text-amber-600 tracking-widest uppercase mb-3 block">Real-time Collaboration</span>
             <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4">실시간 협업</h2>
             <p className="text-sm text-slate-600 leading-relaxed mb-5">
-              같은 프로젝트에서 동시에 작업하세요. 보드 편집, 댓글, AI 대화가 실시간으로 동기화됩니다.
+              같은 프로젝트에서 동시에 작업하세요. 보드 편집, 절차 이동, AI 대화가 실시간으로 동기화됩니다.
             </p>
             <ul className="space-y-2.5 text-sm text-slate-600">
               {[
-                '실시간 동시 편집 및 커서 표시',
-                '절차별 댓글과 스레드형 피드백',
-                '역할 기반 권한 관리 (관리자/편집자/뷰어)',
-                '오프라인 작업 후 자동 동기화',
+                '접속 중인 팀원과 팀 절차 커서를 실시간 동기화',
+                '초대 링크로 동료 초대 (가입자는 즉시 추가, 미가입자는 7일 링크)',
+                '역할 기반 권한 관리 (소유자/호스트/편집자/열람자)',
+                '탭을 다시 열면 최신 상태를 자동으로 불러오기',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-2.5">
                   <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -840,7 +840,7 @@ export default function GuidePage() {
             <span className="text-xs font-semibold text-cyan-600 tracking-widest uppercase mb-3 block">Curriculum Graph</span>
             <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4">교과 연결 탐색</h2>
             <p className="text-sm text-slate-600 leading-relaxed mb-5">
-              4,800여 개 성취기준과 AI가 검증한 교과 간 연결을 탐색하세요.
+              6,400여 개 성취기준과 AI가 검증한 교과 간 연결을 탐색하세요.
               교사의 질문에 하나씩 대응하는 <b>설계 모드 렌즈 4개</b>와,
               교육과정 전체를 성운처럼 조망하는 <b>탐험 3D 모드</b>를 오가며 융합 수업 소재를 발견할 수 있습니다.
             </p>
