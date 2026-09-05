@@ -1,7 +1,31 @@
 // AI 제안 value(문자열/객체/배열/중첩)를 사람이 읽기 좋은 형태로 렌더한다.
 // 기존엔 JSON.stringify로 raw JSON을 노출해 "프로그램 오류처럼 보인다"는 의견이 있었다.
 
-// 자주 쓰이는 영어 키 → 한국어 라벨 (없으면 키 그대로 노출)
+import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
+
+// 보드 스키마(shared/boardSchemas.js)에 정의된 필드 라벨을 그대로 쓴다.
+// 스키마에 '학생 수'·'디지털 리터러시 수준' 같은 한국어 라벨이 이미 있는데도
+// 제안 카드가 studentCount·digitalLiteracy 같은 영문 키를 그대로 노출하던 문제를 막는다.
+const SCHEMA_LABELS = (() => {
+  const map = {}
+  const addField = (field) => {
+    if (!field || typeof field !== 'object') return
+    if (field.name && field.label) map[field.name] = field.label
+    // list 필드의 항목 스키마: { 키: { label, type } }
+    if (field.itemSchema) {
+      for (const [key, spec] of Object.entries(field.itemSchema)) {
+        if (spec?.label) map[key] = spec.label
+      }
+    }
+    if (Array.isArray(field.fields)) field.fields.forEach(addField)
+  }
+  for (const schema of Object.values(BOARD_SCHEMAS)) {
+    (schema.fields || []).forEach(addField)
+  }
+  return map
+})()
+
+// 스키마에 없는 범용 키 보완 (없으면 키 그대로 노출)
 const KEY_LABELS = {
   assessments: '평가',
   assessment: '평가',
@@ -19,8 +43,8 @@ const KEY_LABELS = {
   grade: '학년',
 }
 
-function labelize(key) {
-  return KEY_LABELS[key] || key
+export function labelize(key) {
+  return SCHEMA_LABELS[key] || KEY_LABELS[key] || key
 }
 
 export default function ReadableValue({ value, depth = 0 }) {

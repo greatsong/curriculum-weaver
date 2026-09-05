@@ -328,9 +328,27 @@ export default function WorkspacesPage() {
             <p style={{ fontSize: 15, fontWeight: 500, color: 'var(--color-text-secondary)', margin: '0 0 4px' }}>
               아직 워크스페이스가 없습니다
             </p>
-            <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', margin: 0 }}>
-              새 워크스페이스를 만들거나 초대 링크로 참여하세요
+            <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', margin: '0 0 20px' }}>
+              워크스페이스는 함께 설계할 교사 팀의 공간입니다. 그 안에 수업별 프로젝트를 만듭니다
             </p>
+            {/* 빈 화면에서 바로 다음 행동을 할 수 있게 — 상단 버튼까지 시선을 올리지 않아도 된다 */}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="btn btn-primary"
+                style={{ padding: '10px 20px', fontSize: 14 }}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                워크스페이스 만들기
+              </button>
+              <button
+                onClick={() => setShowJoinByLink(true)}
+                className="btn btn-secondary"
+                style={{ padding: '10px 20px', fontSize: 14 }}
+              >
+                초대 링크로 참여
+              </button>
+            </div>
           </div>
         ) : (
           <div style={{

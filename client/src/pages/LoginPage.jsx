@@ -392,12 +392,39 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {/* 처음 온 사용자를 위한 안내 진입로 — 로그인 전에는 이 앱이 무엇인지 알 길이 없었다 */}
+          <div style={{ textAlign: 'center', marginTop: 20 }}>
+            <button
+              type="button"
+              onClick={() => navigate('/guide')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '8px 14px',
+                background: 'none',
+                border: 'none',
+                borderRadius: 'var(--radius-md)',
+                fontSize: 13,
+                color: 'var(--color-text-secondary)',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-sans)',
+                transition: 'all var(--transition-fast)',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg-tertiary)'; e.currentTarget.style.color = 'var(--color-text-primary)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--color-text-secondary)' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              커리큘럼 위버가 처음이신가요? 사용 안내 보기
+            </button>
+          </div>
+
           {/* 하단 설명 */}
           <p style={{
             textAlign: 'center',
             fontSize: 11,
             color: 'var(--color-text-tertiary)',
-            marginTop: 24,
+            marginTop: 16,
           }}>
             서울특별시교육청 &middot; Human-AI Agency
           </p>
