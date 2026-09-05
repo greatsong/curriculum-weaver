@@ -328,7 +328,7 @@ def assemble(pdf, hwp, corpus, notes, volume):
                 hx = hunits.get(('expl', nc), []) if hwp else []
                 ex_texts = []
                 for i, e in enumerate(ex_items):
-                    ref = hx[i]['text'] if i < len(hx) else None
+                    ref = ' '.join(hx[i]['parts']) if i < len(hx) else None  # HWP 문단 원문(코드 표기 포함)과 대조
                     t, sc = finish(e['parts'], ref)
                     # 해설 본문: 선행 코드 표기 제거 후의 텍스트만 남긴다
                     t = _strip_prefix(t)
@@ -393,13 +393,23 @@ def extract_volume(volume, pdf_path, hwp_path=None):
             for c in a['codes']:
                 for f in ('content', 'explanation'):
                     if PUA.search(c[f]): notes.append(f'{c["code"]} {f}에 사설영역 문자 잔존: ' + repr(PUA.findall(c[f])[:6]))
-                    if re.search(r'[\U000f0000-\U000ffffd]', c[f]): notes.append(f'{c["code"]} {f}에 HWP 특수기호(보조 사설영역) 잔존: 원문 그대로 둠')
+                    if SPUA.search(c[f]): notes.append(f'{c["code"]} {f}에 HWP 기호글꼴 사설문자 잔존(원문 그대로 둠): ' + _spua_desc(c[f]))
             if PUA.search(a['application_notes']): notes.append(f'{s["subject"]} {a["area"]} application_notes에 사설영역 문자 잔존: ' + repr(PUA.findall(a['application_notes'])[:6]))
-            if re.search(r'[\U000f0000-\U000ffffd]', a['application_notes']): notes.append(f'{s["subject"]} {a["area"]} application_notes에 HWP 특수기호(보조 사설영역 U+F0040 등, PDF는 HyhwpEQ 글리프) 잔존: 원문 그대로 둠(닮음 기호로 추정되나 미확정)')
+            if SPUA.search(a['application_notes']): notes.append(f'{s["subject"]} {a["area"]} application_notes에 HWP 기호글꼴 사설문자 잔존(원문 그대로 둠, PDF도 HyhwpEQ 사설 글리프): ' + _spua_desc(a['application_notes']))
     seen = set(); uniq = []
     for n in notes:
         if n not in seen: seen.add(n); uniq.append(n)
     return {'byeolchaek': f'별책{volume}', 'source_file': os.path.basename(pdf_path), 'subjects': subjects, 'notes': uniq}
+
+SPUA = re.compile('[\U000f0000-\U000ffffd]')
+SPUA_GUESS = {0xF0854: '『(겹낫표 여는 기호로 추정)', 0xF0855: '』(겹낫표 닫는 기호로 추정)', 0xF0040: '∽(닮음 기호로 추정)'}
+def _spua_desc(text):
+    seen = []
+    for ch in SPUA.findall(text):
+        cp = ord(ch)
+        d = f'U+{cp:05X}' + (' ' + SPUA_GUESS[cp] if cp in SPUA_GUESS else ' (의미 미확정)')
+        if d not in seen: seen.append(d)
+    return ', '.join(seen)
 
 def _diff_snip(p, h):
     p1 = re.sub(r'\s+', ' ', p).strip(); h1 = re.sub(r'\s+', ' ', h).strip()

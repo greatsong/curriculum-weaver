@@ -17,10 +17,23 @@ def write_canonical(path, head, rows, tail):
     head = re.sub(r'\* 총 \d+개 성취기준', f'* 총 {len(rows)}개 성취기준', head)
     open(path, 'w', encoding='utf-8').write(head + json.dumps(rows, ensure_ascii=False, indent=2) + tail)
 
+# HWP 특수 글리프(사설영역) → 유니코드. 파서가 못 잡은 잔여분을 정본 적용 단계에서 마지막으로 치환한다.
+PUA_MAP = {
+    '\U000f0854': '『', '\U000f0855': '』',   # HWP 겹낫표(별책6 인문학과 윤리 해설)
+    '\U000f0040': '∽',                      # HWP 수식 글리프 닮음 기호(별책8 중학교 도형 용어·기호 목록, PDF 45쪽 렌더링으로 확인)
+}
+def fix_pua(s):
+    for k, v in PUA_MAP.items(): s = s.replace(k, v)
+    return s
+def ensure_period(s):
+    """성취기준 문장은 마침표로 끝난다(원문 인쇄 누락 2건: [6도03-03]·[12심러01-02])."""
+    s = s.rstrip()
+    return s + '.' if s and s[-1] == '다' else s
 _PUNCT = [('⋅','·'),('･','·'),('•','·'),('‧','·'),('∙','·'),('–','-'),('—','-'),('－','-'),('～','~'),('∼','~'),('“',''),('”',''),('"',''),('’',"'"),('‘',"'"),('「',''),('」',''),('『',''),('』','')]
 def norm(s):
-    """비교용 정규화: NFKC, 공백 제거, 기호 통일, 끝 마침표 무시."""
+    """비교용 정규화: NFKC, 공백 제거, 기호 통일, 사설영역 글리프 치환(PUA_MAP), 끝 마침표 무시."""
     s = unicodedata.normalize('NFKC', s or ''); s = re.sub(r'\s+', '', s)
+    for k, v in PUA_MAP.items(): s = s.replace(k, v)
     for a, b in _PUNCT: s = s.replace(a, b)
     return s.rstrip('.')
 def norm_bullets(s):
@@ -58,17 +71,6 @@ def area_std(a, byeolchaek=None):
     a = re.sub(r'^[\(（]?\s*\d+\s*[\)）.]\s*', '', a)
     a = re.sub(r'^[가-힣]\)\s*', '', a)
     return re.sub(r'\s+', ' ', a).strip()
-# HWP 특수 글리프(사설영역) → 유니코드. 파서가 못 잡은 잔여분을 정본 적용 단계에서 마지막으로 치환한다.
-PUA_MAP = {
-    '\U000f0854': '『', '\U000f0855': '』',   # HWP 겹낫표(별책6 인문학과 윤리 해설)
-}
-def fix_pua(s):
-    for k, v in PUA_MAP.items(): s = s.replace(k, v)
-    return s
-def ensure_period(s):
-    """성취기준 문장은 마침표로 끝난다(원문 인쇄 누락 2건: [6도03-03]·[12심러01-02])."""
-    s = s.rstrip()
-    return s + '.' if s and s[-1] == '다' else s
 def clean_text(s):
     """원문 텍스트 정리: 줄 끝 공백·과잉 빈 줄·연속 공백 축약(문단 줄바꿈은 유지)."""
     s = fix_pua((s or '').replace('\r', ''))
