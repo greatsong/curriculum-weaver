@@ -597,8 +597,10 @@ ${candidateList}
 선택 코드:` }],
         })
 
-        const aiText = selectionResponse.content[0]?.text || ''
-        const codeMatches = aiText.match(/\[[\d\w가-힣 ]+-[\d]+-[\d]+\]/g) || []
+        // Sonnet 5는 thinking 블록이 content[0]에 올 수 있어 text 블록만 결합 (종전 content[0]?.text → 빈 문자열 → 항상 키워드 폴백)
+        const aiText = selectionResponse.content.filter((b) => b.type === 'text').map((b) => b.text).join('')
+        // 하이픈 1개 코드([12정05-03], 정본의 64%)도 매칭되도록 (?:-\d+)+
+        const codeMatches = aiText.match(/\[[\d\w가-힣 ]+(?:-\d+)+\]/g) || []
         const selectedCodes = new Set(codeMatches)
 
         if (selectedCodes.size >= 4) {
