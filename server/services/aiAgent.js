@@ -91,10 +91,30 @@ export async function runGuardedStream(createStream, { onText, signal }) {
   }
 }
 
-// AI 모델 매핑 (빠른 모드 / 정밀 모드)
+// AI 모델 매핑 (빠른 모드 / 정밀 모드) — 2026-09-05 정밀 모드 Opus 4.8 → Opus 5
 const MODEL_MAP = {
   fast: 'claude-sonnet-5',
-  precise: 'claude-opus-4-8',
+  precise: 'claude-opus-5',
+}
+
+/**
+ * 정밀 모드(Opus 5)는 thinking이 기본 활성이라 max_tokens가 thinking+본문을 함께 캡한다.
+ * Opus 4.8 시절 값(인트로 1200·채팅 12000)을 그대로 두면 답변이 중간에 잘리므로
+ * 정밀 모드에서는 상한을 넉넉히 올리고 effort는 medium으로 고정(채팅 지연 억제).
+ * 빠른 모드(Sonnet 5)는 종전과 동일.
+ */
+const PRECISE_MAX_TOKENS_MULTIPLIER = 3
+function modelRequestParams(aiModel, maxTokens) {
+  const model = getModelId(aiModel)
+  if (model === MODEL_MAP.precise) {
+    return {
+      model,
+      max_tokens: maxTokens * PRECISE_MAX_TOKENS_MULTIPLIER,
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'medium' },
+    }
+  }
+  return { model, max_tokens: maxTokens }
 }
 
 /**
@@ -1395,8 +1415,7 @@ ${sessionTitle ? `프로젝트: ${sessionTitle}` : ''}
     try {
       const { timedOut } = await aiQueue.add(() => runGuardedStream(
         (streamSignal) => getAnthropic().messages.stream({
-          model: getModelId(context?.aiModel),
-          max_tokens: 1200,
+          ...modelRequestParams(context?.aiModel, 1200),
           system: demoSystem,
           messages: [{ role: 'user', content: demoUser }],
         }, { signal: streamSignal }),
@@ -1483,8 +1502,7 @@ ${sessionTitle ? `세션: ${sessionTitle}` : ''}
   try {
     const { timedOut } = await aiQueue.add(() => runGuardedStream(
       (streamSignal) => getAnthropic().messages.stream({
-        model: getModelId(context?.aiModel),
-        max_tokens: 1200,
+        ...modelRequestParams(context?.aiModel, 1200),
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
       }, { signal: streamSignal }),
@@ -1555,8 +1573,7 @@ export async function buildAIResponse(context, { onText, onError, signal }) {
   try {
     const { finalMessage, timedOut, aborted } = await aiQueue.add(() => runGuardedStream(
       (streamSignal) => getAnthropic().messages.stream({
-        model: getModelId(context?.aiModel),
-        max_tokens: 12000,
+        ...modelRequestParams(context?.aiModel, 12000),
         system: systemPrompt,
         messages,
       }, { signal: streamSignal }),

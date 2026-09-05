@@ -75,8 +75,8 @@ export default function WorkspaceDetailPage() {
     if (currentWorkspace) {
       const ac = currentWorkspace.ai_config || {}
       setAiConfig({
-        // 레거시 저장값(claude-sonnet-4-6 등)은 Sonnet 5로 정규화 — select 옵션과 불일치 방지
-        model: ac.model === 'claude-opus-4-8' ? 'claude-opus-4-8' : 'claude-sonnet-5',
+        // 레거시 저장값 정규화 — select 옵션과 불일치 방지. Opus 4.8 저장값은 Opus 5로 승계, 그 외(claude-sonnet-4-6 등)는 Sonnet 5
+        model: (ac.model === 'claude-opus-5' || ac.model === 'claude-opus-4-8') ? 'claude-opus-5' : 'claude-sonnet-5',
       })
       const wc = currentWorkspace.workflow_config || {}
       setHiddenProcedures(wc.hiddenProcedures || [])
@@ -823,7 +823,7 @@ export default function WorkspaceDetailPage() {
                   style={inputStyle}
                 >
                   <option value="claude-sonnet-5">Claude Sonnet 5 (기본, 빠름)</option>
-                  <option value="claude-opus-4-8">Claude Opus 4.8 (최고 품질, 느림)</option>
+                  <option value="claude-opus-5">Claude Opus 5 (최고 품질, 느림)</option>
                 </select>
                 <p style={hintStyle}>모든 프로젝트에 동일하게 적용됩니다</p>
               </div>

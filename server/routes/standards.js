@@ -1129,7 +1129,7 @@ ${candidateText}
       messages: [{ role: 'user', content: aiPrompt }],
     })
 
-    const aiText = response.content[0]?.text || ''
+    const aiText = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('') // thinking 블록 대비
 
     // 3. AI 응답에서 코드 추출 → DB 검증 → 유효한 것만 반환
     let selected = []
@@ -1139,7 +1139,7 @@ ${candidateText}
       selected = parsed.selected || []
     } catch {
       // JSON 파싱 실패 시 코드만 추출
-      const codeMatches = aiText.match(/\[[\d\w가-힣 ]+-[\d]+-[\d]+\]/g) || []
+      const codeMatches = aiText.match(/\[[\d\w가-힣 ]+(?:-\d+)+\]/g) || [] // 하이픈 1개 코드 포함
       selected = codeMatches.map(code => ({ code, reason: '' }))
     }
 

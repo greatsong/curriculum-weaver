@@ -422,7 +422,7 @@ ${text}
     }],
   })
 
-  const aiText = response.content[0].text
+  const aiText = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('') // thinking 블록 대비
 
   try {
     const jsonMatch = aiText.match(/```json\s*([\s\S]*?)\s*```/) || aiText.match(/(\{[\s\S]*\})/)
