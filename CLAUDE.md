@@ -40,8 +40,8 @@ curriculum-weaver/
 
 `?mode=explore`를 발표·감상 전용 "교육과정 성운"으로 전면 재구축. 구 Graph3D(1,717줄, react-force-graph-3d)는 `?mode=explore-legacy`로 검증 기간 유지 후 삭제 예정.
 
-- **역할 선언**: 읽기 전용 프레젠테이션. AI 채팅·링크 추가·복잡 필터는 전부 제거(설계는 DesignMode 렌즈 담당). published + 교과군 간 연결 + 연결 노드만 표시(1,476노드/1,636링크)
-- **레이아웃 사전계산**: `scripts/compute-graph3d-layout.mjs` — /graph에서 published 그래프를 받아 d3-force-3d를 오프라인 실행(UMAP 임베딩 좌표 시드 + 약한 복원력으로 의미 지형 보존, 결정적), `server/data/graph3dLayout.json`(46KB) 출력. **링크 대량 변경 시 재실행 후 JSON 커밋 필요**
+- **역할 선언**: 읽기 전용 프레젠테이션. AI 채팅·링크 추가·복잡 필터는 전부 제거(설계는 DesignMode 렌즈 담당). published + 교과군 간 연결 + 연결 노드만 표시(2026-09-05 현재 2,036노드/2,723링크). **전문교과 1,993건은 전부 `subject_group='산업수요전문'` 단일 그룹이라 전문↔전문 링크는 애초에 여기 안 나온다** — 전문↔전문 강등 뒤 재계산해도 좌표가 안 바뀌므로 커밋 불필요
+- **레이아웃 사전계산**: `scripts/compute-graph3d-layout.mjs` — /graph에서 published 그래프를 받아 d3-force-3d를 오프라인 실행(UMAP 임베딩 좌표 시드 + 약한 복원력으로 의미 지형 보존, 결정적), `server/data/graph3dLayout.json`(64KB) 출력. **링크 대량 변경 시 재실행 후 JSON 커밋 필요**
 - **API**: `GET /api/standards/graph3d` — 좌표 포함 경량 페이로드 867KB(기존 /graph 5.7MB 대비 -85%), 링크 버전 캐시. 레이아웃 없는 신규 노드는 임베딩 좌표 → code 해시 지터 폴백
 - **렌더러**: `client/src/lib/nebulaScene.js` — three.js 커스텀. 노드 전체=Points 1드로우콜(글로우 셰이더, gl_PointSize에 pixelRatio 곱 필수), 링크 전체=LineSegments 1드로우콜(additive라 색 밝기=알파). 상태 전환은 타깃 배열+프레임당 지수 러프 — **오브젝트 재생성 0**. force 시뮬레이션 없음
 - **디자인 단일 소스**: `client/src/lib/nebulaTheme.js` (다크 보정 팔레트·알파·타이밍·카메라). 원 스펙: `_workspace/design/graph3d-showcase-spec.md`. 절제 원칙: 기본 링크는 단일색 안개(#7C89B8 @0.08), 타입 5색은 선택 하이라이트에만
@@ -95,17 +95,17 @@ curriculum-weaver/
 > 신규 242코드 융합 연결 1,677 생성(published 475), Supabase seed·메타 동기 완료. 오픈소스
 > 데이터셋(k-curriculum-2022)에도 동일 반영. **후속: graph3dLayout 좌표 재계산(서버 기동 필요).**
 
-성취기준 데이터는 **`server/data/standards.js` (`ALL_STANDARDS`, 5,907개 code)** 가 **정본**이다.
+성취기준 데이터는 **`server/data/standards.js` (`ALL_STANDARDS`, 6,444건 — 2026-09-05 결점 0 파이프라인 기준)** 가 **정본**이다.
 검색 런타임·reload·Supabase 시드가 모두 이 단일 파일을 소스로 쓴다.
 
 | 파일 | 역할 | 비고 |
 |------|------|------|
-| `server/data/standards.js` | **정본** (4,856 code) | `store.js`가 import. `parse-xlsx-to-standards.mjs`가 직접 출력 |
+| `server/data/standards.js` | **정본** (6,444건) | `store.js`가 import. `parse-xlsx-to-standards.mjs`가 직접 출력 |
 | `server/data/standards_full.js` | **레거시 ETL** (4,484 code) | 풍부한 메타(competencies/content_system/assessment_guide)의 원천이나 일부 content가 잘림 + 정본 외 10개 code. 더 이상 런타임 소스 아님 |
 | `server/data/standards_social.js` | 사회과 412개 (`SOCIAL_STANDARDS`) | 오프라인 링크생성 스크립트 전용. 검색 런타임 미사용(standards.js에 사회 145개 별도 포함) |
 
-- **검색**: `routes/standards.js`의 `/search`는 항상 `store.js`의 인메모리 `Standards`(= standards.js, 4,856개 전체 — 오염 0)를 단일 소스로 사용. Supabase `searchStandards`는 미사용.
-- **reload()**: `store.js`의 `Standards.reload()`는 정본 standards.js만 로드(과거 standards_full.js 우선 → 4,484로 되돌아가던 버그 제거). initStore와 동일하게 4,856 반환.
+- **검색**: `routes/standards.js`의 `/search`는 항상 `store.js`의 인메모리 `Standards`(= standards.js, 6,444건 전체 — 오염 0)를 단일 소스로 사용. Supabase `searchStandards`는 미사용.
+- **reload()**: `store.js`의 `Standards.reload()`는 정본 standards.js만 로드(과거 standards_full.js 우선 → 4,484로 되돌아가던 버그 제거). initStore와 동일하게 정본 전체(6,444)를 반환.
 - **오염 복원 완료 (2026-07-11)**: xlsx 재파싱 때 유입된 content 오염 525건(해설체 혼입·개행 유실·푸터 혼입)을 전량 복원 — ① `scripts/restore-standards-from-backup.mjs`가 backup_20260327에서 475건 복원(해설은 explanation으로 이동) ② 잔여 25건은 교육부 고시 HWP 원문 리서치 후 `scripts/apply-manual-standard-fixes.mjs`로 적용(`scripts/results/restore-manual-20260711.json`, 출처 명기). Supabase·임베딩 캐시 동기화는 `scripts/sync-restored-standards.mjs`. 오염 탐지는 `server/lib/standardsQuality.js` 단일 소스(store.js·report 스크립트 공유), 품질 게이트: `node scripts/report-standards-quality.mjs --max-flagged 30` (현재 플래그 0). 과거 오염필터로 제거되던 145건까지 편입되어 4,711 → 4,856 전체 서빙.
 - **Supabase 재정합**: `scripts/seed-standards-from-canonical.mjs` — 정본 구동, `code` onConflict upsert, 기존 id·rich 메타·embedding 보존(비파괴). content는 정본 권위로 교체, 나머지는 빈 값만 채움.
 - **검증**: `scripts/verify-standards-supabase.mjs` — 검색 code 전부가 Supabase에서 resolve되는지 확인(현재 PASS).
@@ -163,17 +163,21 @@ node scripts/generateLinksV2.mjs --dry-run           # 1단계 통계만 (비용
 node scripts/generateLinksV2.mjs --min-cos 0.6       # 전체 실행 + DB candidate 적재
 node scripts/generateLinksV2.mjs --backfill-semantic # 기존 링크 semantic_score 백필
 node scripts/promoteLinks.mjs --dry-run              # 승격 대상 확인 (quality>=0.8 → published)
+node scripts/promoteLinks.mjs --no-vocational-pairs  # 전문↔전문은 승격 제외 (서비스 대상 일반고)
 ```
 **모드**: 기본(교과군 간) | `--same-group`(같은 교과군 내 과목 간, 과목쌍별 top-N 보장 — 계열성·선수학습) |
 `--rejudge`(기존 링크 재판정) | `--import-results`(결과 파일 → DB 복구 적재) | `--backfill-semantic`.
-승격/강등: `promoteLinks.mjs` (`--min-quality`, `--demote-below`).
+승격/강등: `promoteLinks.mjs` (`--min-quality`, `--demote-below`, `--vocational-min-quality N`, `--no-vocational-pairs`, `--demote-vocational`).
+**DB만 바꾼 뒤 프로덕션 반영**: 링크는 부팅 때 한 번만 하이드레이션되므로 `gh workflow run deploy-railway.yml -f reason="…"`로 재배포(PR #118).
 
 2026-07-08 전면 재정비 결과:
 - 교차군 생성 2,938쌍 → 1,660 채택 / 같은군 생성 8,907쌍 → 4,342 채택 (데이터 과학↔인공지능 기초 등 커버)
 - v1 2,021개 재판정: 통과 1,314 / 기각 460, quality<0.7 854개 candidate 강등
 - **게시 정책: quality_score ≥ 0.8 자동 승격, < 0.7 강등 — 게시 링크는 전부 0.7 이상**
+- **서비스 대상 = 일반고 (2026-09-05 확정)**: 양쪽 다 산업수요 전문교과인 **전문↔전문 링크는 게시하지 않는다**(320건 강등, `--no-vocational-pairs`). 보통↔전문(창업 일반·금융 일반·성공적인 직업 생활 등 일반고 개설 가능 과목)은 유지. 보통↔보통은 과목쌍이 두꺼워도 제한하지 않는다
 - 최종: published 2,938 / candidate 5,085. 전 링크 실측 semantic_score 보유. v1 스크립트(generateLinksAI/Mission)는 레거시.
-- 2026-07-11 성취기준 오염 복원 후속: 복원 코드가 낀 링크 1,258건을 `--rejudge --codes-file`(신규 옵션, rationale·theme·hook까지 새 판정으로 교체)로 재판정 → 통과 906 / 기각 353, 정책 적용(강등 182·승격 66). **현재: published 2,812 / candidate 5,202** (그래프 노드 4,856 — 복원으로 링크 해석 가능 성취기준 증가).
+- 2026-07-11 성취기준 오염 복원 후속: 복원 코드가 낀 링크 1,258건을 `--rejudge --codes-file`(신규 옵션, rationale·theme·hook까지 새 판정으로 교체)로 재판정 → 통과 906 / 기각 353, 정책 적용(강등 182·승격 66). 당시: published 2,812 / candidate 5,202.
+- 2026-09-05 정본 재작성(6,444) 후속: 신규 538건 후보 1,413 적재 → 0.8+ 208 승격, 0.7대 405 재판정 → 59 승격, 전문↔전문 320 강등. **현재: published 3,874 / candidate 11,817**. `/graph?status=published`는 학교급 2단계 격차(초↔고) 66건을 빼고 3,808을 돌려준다(버그 아님).
 
 ### 테이블: `curriculum_links` (`supabase/migrations/00015_curriculum_links.sql`)
 | 컬럼 | 설명 |
