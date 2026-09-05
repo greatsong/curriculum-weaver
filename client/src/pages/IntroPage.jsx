@@ -14,7 +14,7 @@ const FEATURES = [
   { icon: MessageSquare, title: 'AI 퍼실리테이터', desc: '단계별 핵심 질문과 예시로 설계를 안내합니다' },
   { icon: LayoutDashboard, title: '설계 보드', desc: 'AI 대화 내용이 보드에 자동 반영됩니다' },
   { icon: BookOpen, title: '5가지 협력 원리', desc: '검증된 협력 원리로 설계 품질을 높입니다' },
-  { icon: Users, title: '실시간 협업', desc: '초대 코드로 동료 교사와 함께 설계합니다' },
+  { icon: Users, title: '실시간 협업', desc: '초대 링크로 동료 교사와 함께 설계합니다' },
 ]
 
 export default function IntroPage() {
