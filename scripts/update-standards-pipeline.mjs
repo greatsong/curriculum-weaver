@@ -195,7 +195,8 @@ if (!HAS_SUPABASE_ENV) {
   record('5. Supabase 정합', 'SKIP', 'SUPABASE_URL/SERVICE_ROLE_KEY 없음 (server/.env 확인)');
 } else {
   const ok = runChild('Supabase 정합 검증', 'scripts/verify-standards-supabase.mjs');
-  record('5. Supabase 정합', ok ? 'PASS' : 'FAIL', ok ? '정본 code 전부 resolve' : '누락 code 존재 — 시드 필요');
+  // 신규 code가 있으면 시드 전엔 당연히 누락이므로, --apply 모드에서는 WARN(시드가 해소 수단)으로 두어 진행을 막지 않는다.
+  record('5. Supabase 정합', ok ? 'PASS' : (APPLY ? 'WARN' : 'FAIL'), ok ? '정본 code 전부 resolve' : '누락 code 존재 — 시드 필요' + (APPLY ? ' (이번 --apply가 해소)' : ''));
 }
 
 // ═══ 6. 링크 참조 무결성 (read-only) ═══
