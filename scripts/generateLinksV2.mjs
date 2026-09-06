@@ -18,6 +18,7 @@
  *
  * 옵션: --top-k 6  --min-cos 0.45  --concurrency 3  --batch-size 25
  *   --partner-subjects "과목1,과목2"  cross-method에서 도구 과목의 상대를 이 과목들로 한정
+ *   --partner-levels "초등학교,중학교"  cross-method에서 상대의 학교급을 한정 (같은 이름 '국어'가 초·중·고에 걸치므로)
  *   --guide-file <txt>               판정 프롬프트에 붙일 추가 지침(교과 특성 설명 등)
  *   --run-tag <tag>                  진행 기록 batchId에 붙일 꼬리표(같은 파라미터의 다른 실행 구분)
  * 필요 env (server/.env에서 자동 로드): OPENAI 임베딩 캐시(파일), ANTHROPIC_API_KEY,
@@ -81,6 +82,12 @@ const TOOL_SUBJECTS = (() => {
 // (세계 지리·세계사·문학·화법·진로 등)로 좁혀 판정 비용을 줄이면서 억지 연결을 피한다.
 const PARTNER_SUBJECTS = (() => {
   const i = args.indexOf('--partner-subjects')
+  return i >= 0 && args[i + 1] ? new Set(args[i + 1].split(',').map((t) => t.trim()).filter(Boolean)) : null
+})()
+// --partner-levels: cross-method에서 상대 성취기준의 school_level을 한정한다. 과목명이 학교급을
+// 가로지르므로('국어'는 초1-2부터 중학까지) 이름만으로는 초1-2 통합교과의 상대를 초등으로 못 묶는다.
+const PARTNER_LEVELS = (() => {
+  const i = args.indexOf('--partner-levels')
   return i >= 0 && args[i + 1] ? new Set(args[i + 1].split(',').map((t) => t.trim()).filter(Boolean)) : null
 })()
 // --guide-file: 판정 프롬프트에 붙일 추가 지침 파일. 교과 특성(예: 외국어 성취기준은 언어 기능을
@@ -238,6 +245,11 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
           const aTool = toolSet.has(a.subject), bTool = toolSet.has(b.subject)
           const other = aTool && bTool ? null : aTool ? b.subject : a.subject
           if (other === null || !PARTNER_SUBJECTS.has(other)) { stats.notToolPair++; continue }
+        }
+        if (PARTNER_LEVELS) {
+          const aTool = toolSet.has(a.subject), bTool = toolSet.has(b.subject)
+          const otherLevel = aTool && bTool ? null : aTool ? b.school_level : a.school_level
+          if (otherLevel === null || !PARTNER_LEVELS.has(otherLevel)) { stats.notToolPair++; continue }
         }
       } else if (SAME_GROUP) {
         // 같은 교과군 내 "다른 과목" 쌍만 (같은 과목 내부는 제외)
