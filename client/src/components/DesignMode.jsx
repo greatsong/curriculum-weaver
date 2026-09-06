@@ -4,6 +4,7 @@ import { X, HelpCircle } from 'lucide-react'
 import { fetchGraphData, invalidateGraphCache } from '../lib/graphDataCache'
 import { standardKey, codeFromKey, subjectFromKey } from '../lib/standardKey'
 import Logo from './Logo'
+import { useAuthStore } from '../stores/authStore'
 import DesignModeCoach from './DesignModeCoach'
 import PairLens from './lenses/PairLens'
 import { nodeSchoolLevel } from './lenses/lensCommon'
@@ -30,6 +31,7 @@ const SCHOOL_LEVELS = ['초등학교', '중학교', '고등학교']
  */
 export default function DesignMode() {
   const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
   const [searchParams, setSearchParams] = useSearchParams()
   const [graphData, setGraphData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -211,6 +213,14 @@ export default function DesignMode() {
               className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
             AI 제안 포함
           </label>
+          {!user && (
+            <button
+              onClick={() => navigate('/login', { state: { from: { pathname: window.location.pathname, search: window.location.search } } })}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition"
+              title="로그인하면 AI 시나리오와 프로젝트 시작을 쓸 수 있어요">
+              로그인
+            </button>
+          )}
           <div className="flex bg-gray-100 rounded-xl p-0.5">
             <span className="px-4 py-1.5 rounded-[10px] text-xs font-bold bg-blue-600 text-white shadow-sm">🧭 설계</span>
             <button onClick={toExplore}

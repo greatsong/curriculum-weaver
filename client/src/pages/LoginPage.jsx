@@ -1,10 +1,24 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import Logo from '../components/Logo'
 
+/** 로그인 뒤 돌아갈 경로 — ProtectedRoute의 state.from, ?next=, 없으면 워크스페이스 (같은 출처의 상대 경로만 허용) */
+export function resolveLoginNext(location) {
+  const from = location?.state?.from
+  let candidate = null
+  if (typeof from === 'string') candidate = from
+  else if (from && typeof from === 'object') candidate = (from.pathname || '') + (from.search || '')
+  if (!candidate) candidate = new URLSearchParams(location?.search || '').get('next')
+  return candidate && candidate.startsWith('/') && !candidate.startsWith('//') ? candidate : '/workspaces'
+}
+
+export const LOGIN_NEXT_KEY = 'cw_login_next'
+
 export default function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const nextPath = resolveLoginNext(location)
   const { login, signup, signInWithGoogle, error, clearError } = useAuthStore()
   const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
@@ -22,6 +36,8 @@ export default function LoginPage() {
     setGoogleSubmitting(true)
     clearError()
     try {
+      // OAuth는 브라우저가 Google로 나갔다가 /auth/callback 으로 돌아오므로 복귀 경로를 세션에 남긴다
+      try { sessionStorage.setItem(LOGIN_NEXT_KEY, nextPath) } catch { /* 저장 불가 환경이면 워크스페이스로 */ }
       await signInWithGoogle()
       // Supabase가 브라우저를 Google로 리다이렉트하므로 여기서 navigate 불필요
     } catch {
@@ -47,7 +63,7 @@ export default function LoginPage() {
     try {
       if (mode === 'login') {
         await login(email.trim(), password)
-        navigate('/workspaces', { replace: true })
+        navigate(nextPath, { replace: true })
       } else {
         const data = await signup(email.trim(), password, displayName.trim(), {
           school_name: schoolName.trim(),
@@ -56,7 +72,7 @@ export default function LoginPage() {
         if (data.user && !data.session) {
           setSuccessMessage('인증 이메일이 발송되었습니다. 이메일을 확인해주세요.')
         } else {
-          navigate('/workspaces', { replace: true })
+          navigate(nextPath, { replace: true })
         }
       }
     } catch {
