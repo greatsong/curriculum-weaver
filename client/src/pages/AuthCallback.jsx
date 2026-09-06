@@ -16,17 +16,29 @@ export default function AuthCallback() {
   useEffect(() => {
     let unsub = null
 
+    // 로그인 페이지가 저장해 둔 복귀 경로 (예: /graph 에서 로그인 버튼을 눌렀을 때) — 같은 출처의 상대 경로만 허용
+    const readNext = () => {
+      try {
+        const v = sessionStorage.getItem('cw_login_next')
+        sessionStorage.removeItem('cw_login_next')
+        return v && v.startsWith('/') && !v.startsWith('//') ? v : '/workspaces'
+      } catch {
+        return '/workspaces'
+      }
+    }
+    const next = readNext()
+
     // 이미 세션이 확립된 상태로 들어온 경우 즉시 이동
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        navigate('/workspaces', { replace: true })
+        navigate(next, { replace: true })
       }
     })
 
     // OAuth 리다이렉트 직후 세션 확립을 기다린다
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        navigate('/workspaces', { replace: true })
+        navigate(next, { replace: true })
       } else if (event === 'SIGNED_OUT') {
         navigate('/login', { replace: true })
       }
