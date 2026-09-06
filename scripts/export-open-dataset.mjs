@@ -61,11 +61,22 @@ const { ALL_STANDARDS } = await import('../server/data/standards.js')
 // (code, subject) → 별책 번호·원문 파일명을 붙인다. 공공 데이터셋 소비자가 각 행을 교육부 원문
 // 어느 문서에서 대조해야 하는지 알게 하기 위함이다.
 const OFFICIAL_DIR = path.join(__dirname, 'audit', 'data', 'official')
+// 별책 번호 → 교육부 문서 제목. official JSON의 source_file은 작업 파일명(b8.pdf 같은 축약 포함)이라
+// 공개용 제목은 여기서 고정한다. NCIC(https://ncic.re.kr)에서 같은 제목으로 열람할 수 있다.
+const BOOK_TITLES = {
+  별책2: '초등학교 교육과정', 별책5: '국어과 교육과정', 별책6: '도덕과 교육과정', 별책7: '사회과 교육과정',
+  별책8: '수학과 교육과정', 별책9: '과학과 교육과정', 별책10: '실과(기술·가정)/정보과 교육과정',
+  별책11: '체육과 교육과정', 별책12: '음악과 교육과정', 별책13: '미술과 교육과정', 별책14: '영어과 교육과정',
+  별책16: '제2외국어과 교육과정', 별책17: '한문과 교육과정', 별책18: '중학교 선택 교과 교육과정',
+  별책19: '고등학교 교양 교과 교육과정', 별책20: '과학 계열 선택 과목 교육과정',
+  별책21: '체육 계열 선택 과목 교육과정', 별책22: '예술 계열 선택 교과 교육과정', 별책23: '경영·금융 전문 교과 교육과정',
+}
 const provenance = new Map() // "code\tsubject" -> { book, doc }
 if (fs.existsSync(OFFICIAL_DIR)) {
   for (const f of fs.readdirSync(OFFICIAL_DIR).filter((f) => f.endsWith('.json')).sort()) {
     const j = JSON.parse(fs.readFileSync(path.join(OFFICIAL_DIR, f), 'utf8'))
-    const doc = (j.source_file || '').replace(/\.(pdf|hwp)$/i, '')
+    if (!BOOK_TITLES[j.byeolchaek]) throw new Error(`BOOK_TITLES에 없는 별책: ${j.byeolchaek} (${f})`)
+    const doc = `[${j.byeolchaek}] ${BOOK_TITLES[j.byeolchaek]}`
     for (const subj of j.subjects || []) for (const area of subj.areas || []) for (const c of area.codes || []) {
       const k = `${c.code}\t${subj.subject}`
       if (!provenance.has(k)) provenance.set(k, { book: j.byeolchaek, doc })
