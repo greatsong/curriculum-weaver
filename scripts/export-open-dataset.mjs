@@ -11,6 +11,9 @@
  *  - 링크는 Supabase curriculum_links가 정본. status별로 published/candidate 파일로 나누고
  *    id·타임스탬프·reviewed_by 같은 운영 필드는 싣지 않는다(공개 스키마 유지).
  *  - 링크 끝점(source_code/target_code)은 DB 값 그대로 = key 형식. 소비자는 standards의 `key`로 조인한다.
+ *  - candidate에서 재판정 기각 표식(quality_score 0.2)은 뺀다 — "AI 제안"이 아니라 "판정에서 떨어진 것"이다.
+ *  - `domain`은 정본에서 한 번도 채워진 적이 없어 공개 스키마에서 뺀다.
+ *  - data/manifest.json에 스키마 버전·출처 커밋·건수·게시 정책을 기록해 소비자가 변경을 감지하게 한다.
  *  - 출력은 결정적(정렬 고정)이라 diff로 변경분을 볼 수 있다.
  */
 import fs from 'fs'
@@ -18,6 +21,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { config as dotenvConfig } from 'dotenv'
 import { createClient } from '@supabase/supabase-js'
+import { execSync } from 'child_process'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenvConfig({ path: path.join(__dirname, '..', 'server', '.env'), override: true })
@@ -34,7 +38,9 @@ const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KE
 if (!url || !key || url.includes('placeholder')) { console.error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 필요'); process.exit(1) }
 const supabase = createClient(url, key)
 
-const STANDARD_FIELDS = ['code', 'key', 'subject_group', 'subject', 'grade_group', 'school_level', 'curriculum_category', 'area', 'domain', 'content', 'keywords', 'explanation', 'application_notes']
+const STANDARD_FIELDS = ['code', 'key', 'subject_group', 'subject', 'grade_group', 'school_level', 'curriculum_category', 'area', 'content', 'keywords', 'explanation', 'application_notes']
+const SCHEMA_VERSION = 2 // 1: code 단일 키 · 2: key 도입, domain 제거, 기각 candidate 제외
+const REJECTED_MARK = 0.2 // 앱의 재판정 기각 표식 (promoteLinks/generateLinksV2 규약)
 const LINK_FIELDS = ['source_code', 'target_code', 'link_type', 'rationale', 'integration_theme', 'lesson_hook', 'semantic_score', 'quality_score', 'generation_method']
 
 const { ALL_STANDARDS } = await import('../server/data/standards.js')
@@ -62,7 +68,9 @@ async function fetchLinks(status) {
 }
 
 const published = await fetchLinks('published')
-const candidate = await fetchLinks('candidate')
+const candidateAll = await fetchLinks('candidate')
+const candidate = candidateAll.filter((l) => l.quality_score == null || l.quality_score > REJECTED_MARK)
+console.log(`  candidate 중 기각 표식(≤${REJECTED_MARK}) ${candidateAll.length - candidate.length}건 제외`)
 
 fs.mkdirSync(OUT, { recursive: true })
 const write = (name, data) => { fs.writeFileSync(path.join(OUT, name), JSON.stringify(data, null, 1) + '\n'); console.log(`  ${name}: ${data.length}건`) }
@@ -70,6 +78,31 @@ console.log(`📦 수출 → ${OUT}`)
 write('standards.json', standards)
 write('links.published.json', published)
 write('links.candidate.json', candidate)
+
+// 출처·건수·정책 기록 — 소비자가 버전을 식별하고 변경을 감지하는 단일 지점
+let sourceCommit = 'unknown'
+try { sourceCommit = execSync('git rev-parse --short HEAD', { cwd: path.join(__dirname, '..') }).toString().trim() } catch {}
+const manifest = {
+  schema_version: SCHEMA_VERSION,
+  generated_at: new Date().toISOString(),
+  source: { app: 'greatsong/curriculum-weaver', commit: sourceCommit, standards: 'server/data/standards.js', links: 'supabase curriculum_links' },
+  counts: {
+    standards: standards.length,
+    subjects: new Set(standards.map((s) => s.subject)).size,
+    subject_groups: new Set(standards.map((s) => s.subject_group)).size,
+    links_published: published.length,
+    links_candidate: candidate.length,
+  },
+  identity: { field: 'key', note: 'key === code 가 기본. 같은 code가 두 과목에 쓰인 항목만 "code|subject" 형식. 링크 끝점은 key 값.' },
+  policy: {
+    published_min_quality: 0.7,
+    published_excludes_vocational_pairs: true,
+    vocational_subject_group: '산업수요전문',
+    candidate_excludes_rejected: true,
+  },
+}
+fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
+console.log('  manifest.json: schema v' + SCHEMA_VERSION + ', commit ' + sourceCommit)
 
 // README·KNOWN_ISSUES 갱신에 필요한 통계
 const avg = (xs) => (xs.reduce((a, x) => a + x, 0) / xs.length)
