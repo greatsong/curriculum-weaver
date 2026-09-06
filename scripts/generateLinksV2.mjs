@@ -17,6 +17,9 @@
  *   node scripts/generateLinksV2.mjs --cross-method --dry-run # 방법×대상 융합쌍 후보 통계
  *
  * 옵션: --top-k 6  --min-cos 0.45  --concurrency 3  --batch-size 25
+ *   --partner-subjects "과목1,과목2"  cross-method에서 도구 과목의 상대를 이 과목들로 한정
+ *   --guide-file <txt>               판정 프롬프트에 붙일 추가 지침(교과 특성 설명 등)
+ *   --run-tag <tag>                  진행 기록 batchId에 붙일 꼬리표(같은 파라미터의 다른 실행 구분)
  * 필요 env (server/.env에서 자동 로드): OPENAI 임베딩 캐시(파일), ANTHROPIC_API_KEY,
  *   SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (DB 적재 시)
  */
@@ -72,6 +75,20 @@ const TOOL_SUBJECTS = (() => {
     ? args[i + 1].split(',').map((t) => t.trim()).filter(Boolean)
     : DEFAULT_TOOL_SUBJECTS
 })()
+// --partner-subjects: cross-method에서 도구 과목의 상대 과목을 한정한다.
+// 배경(2026-09-06): 제2외국어 27과목은 임베딩 유사도로는 후보가 전혀 안 나와 published 0건이었다.
+// 상대를 전 교과로 열면 27×250과목 쌍이 폭발하므로, 언어 기능을 연습할 제재를 주는 교과
+// (세계 지리·세계사·문학·화법·진로 등)로 좁혀 판정 비용을 줄이면서 억지 연결을 피한다.
+const PARTNER_SUBJECTS = (() => {
+  const i = args.indexOf('--partner-subjects')
+  return i >= 0 && args[i + 1] ? new Set(args[i + 1].split(',').map((t) => t.trim()).filter(Boolean)) : null
+})()
+// --guide-file: 판정 프롬프트에 붙일 추가 지침 파일. 교과 특성(예: 외국어 성취기준은 언어 기능을
+// 서술하므로 상대 교과 제재를 연습 재료로 삼는 수업이 성립하는지 보라)을 저지에게 알려준다.
+const GUIDE_FILE = (() => { const i = args.indexOf('--guide-file'); return i >= 0 ? args[i + 1] : null })()
+const EXTRA_GUIDE = GUIDE_FILE ? fs.readFileSync(GUIDE_FILE, 'utf8').trim() : ''
+// --run-tag: 같은 파라미터로 다른 대상(예: 다른 도구 목록)을 돌릴 때 진행 기록이 겹쳐 잘못 스킵되는 것을 막는다.
+const RUN_TAG = (() => { const i = args.indexOf('--run-tag'); return i >= 0 && args[i + 1] ? args[i + 1] : '' })()
 // cross-method는 MIN_COS를 적용하지 않되, 완전 무관 쌍 판정 낭비를 막는 최소 바닥값만 사용
 const CROSS_METHOD_COS_FLOOR = 0.15
 // rejudge 모드: quality_score가 없는 기존 DB 링크(v1)를 동일 저지로 재판정해 점수 기록
@@ -161,7 +178,7 @@ async function loadExistingPairs(supabase) {
         const { data, error } = await supabase.from('curriculum_links')
           .select('source_code, target_code').range(from, from + 999)
         if (error) throw new Error(error.message)
-        data.forEach(r => pairs.add(`${r.source_code}|${r.target_code}`))
+        data.forEach(r => pairs.add(`${r.source_code}\t${r.target_code}`))
         if (data.length < 1000) break
       }
       log(`  기존 DB 링크 쌍 ${pairs.size}개 (중복 생성 제외 대상)`)
@@ -216,6 +233,12 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
         // 도구 과목이 최소 한쪽 + 교과군 교차 쌍만
         if (groupA === groupB) { stats.sameGroup++; continue }
         if (!toolSet.has(a.subject) && !toolSet.has(b.subject)) { stats.notToolPair++; continue }
+        if (PARTNER_SUBJECTS) {
+          // 도구가 아닌 쪽(둘 다 도구면 양쪽)이 상대 과목 목록에 있어야 한다
+          const aTool = toolSet.has(a.subject), bTool = toolSet.has(b.subject)
+          const other = aTool && bTool ? null : aTool ? b.subject : a.subject
+          if (other === null || !PARTNER_SUBJECTS.has(other)) { stats.notToolPair++; continue }
+        }
       } else if (SAME_GROUP) {
         // 같은 교과군 내 "다른 과목" 쌍만 (같은 과목 내부는 제외)
         if (groupA !== groupB || a.subject === b.subject) { stats.sameGroup++; continue }
@@ -242,7 +265,7 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
     if ((i + 1) % 500 === 0) log(`  ...${i + 1}/${items.length} 처리`)
   }
 
-  const pairMap = new Map() // "a|b" -> cos
+  const pairMap = new Map() // "a\tb" -> cos — 복합 key("코드|과목")에 '|'가 들어가므로 구분자는 탭
   if (SAME_GROUP || CROSS_METHOD) {
     // 과목쌍별 top-N 보장 선발 + 기존 링크 제외
     for (const [, candidates] of perSubjectPair) {
@@ -251,7 +274,7 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
       for (const c of candidates) {
         if (taken >= PAIR_TOP) break
         const [a, b] = normalizePair(c.a, c.b)
-        const key = `${a}|${b}`
+        const key = `${a}\t${b}`
         if (existingPairs.has(key)) { stats.existing++; continue }
         if (!pairMap.has(key)) { pairMap.set(key, c.cos); taken++ }
       }
@@ -262,7 +285,7 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
       neighbors.sort((x, y) => y.cos - x.cos)
       for (const n of neighbors.slice(0, TOP_K)) {
         const [a, b] = normalizePair(code, n.code)
-        const key = `${a}|${b}`
+        const key = `${a}\t${b}`
         if (existingPairs.has(key)) { stats.existing++; continue }
         if (!pairMap.has(key) || pairMap.get(key) < n.cos) pairMap.set(key, n.cos)
       }
@@ -270,7 +293,7 @@ function extractCandidatePairs(standards, embeddings, existingPairs) {
   }
 
   let pairs = [...pairMap.entries()]
-    .map(([key, cos]) => { const [a, b] = key.split('|'); return { a, b, cos } })
+    .map(([key, cos]) => { const [a, b] = key.split('\t'); return { a, b, cos } })
     .sort((x, y) => y.cos - x.cos)
 
   // --touch-codes-file: 지정 코드 집합이 한 끝에라도 낀 쌍만 (신규 복원 코드 연결 한정, 기존-기존 증가 방지)
@@ -300,12 +323,13 @@ B: ${B.code} [${B.subject} · ${B.grade_group || B.school_level || ''}] ${B.cont
 - 두 과목의 문장이 서로 달라 보여도, 한 과목의 방법·기능(예: 통계 분석, 데이터 처리, 프로그래밍)을
   다른 과목의 탐구 대상·제재에 적용하는 수업이 성립하면 application 유형으로 적극 검토하세요.
   (예: 확률·통계의 자료 분석 기능으로 사회 현상 탐구하기)` : ''
+  const extraGuide = EXTRA_GUIDE ? `\n${EXTRA_GUIDE.split('\n').map((l) => (l.startsWith('-') ? l : `- ${l}`)).join('\n')}` : ''
 
   return `당신은 한국 2022 개정 교육과정 기반 융합 수업 설계 전문가입니다.
 아래 성취기준 후보 쌍들이 "실제 수업에서 함께 다루면 시너지가 나는 교육적 연결"인지 판정하세요.
 
 ## 판정 기준
-- 표면적 단어 일치가 아닌 개념적·교육적 연결만 accept. 애매하면 reject.${crossMethodGuide}
+- 표면적 단어 일치가 아닌 개념적·교육적 연결만 accept. 애매하면 reject.${crossMethodGuide}${extraGuide}
 - accept 시 반드시: link_type, quality(0.0~1.0), rationale(교사용 2~3문장, 어떤 수업 활동으로 연결되는지 구체적으로), integration_theme(융합 주제 한 구절), lesson_hook(수업 아이디어 한 문장)
 - link_type: cross_subject(같은 현상을 다른 관점으로) | same_concept(본질적으로 동일 개념) | prerequisite(선수학습 관계) | application(한쪽 개념을 다른 쪽에서 적용) | extension(심화·확장)
 - quality: 0.9+=바로 수업 가능한 강한 연결, 0.7~0.8=좋은 연결, 0.5~0.6=쓸만함, 그 미만이면 reject하세요.
@@ -595,7 +619,7 @@ async function main() {
   // 배치 구성 (결정적: 코사인 내림차순 정렬 기준)
   // batchId에 파라미터를 포함 — top-k/min-cos가 바뀌면 후보 목록이 달라지므로
   // 다른 파라미터의 진행 기록과 섞여 잘못 스킵되는 것을 방지
-  const runKey = `${CROSS_METHOD ? `xm-p${PAIR_TOP}-` : SAME_GROUP ? 'sg-' : ''}k${TOP_K}c${MIN_COS}s${BATCH_SIZE}`
+  const runKey = `${RUN_TAG ? `${RUN_TAG}-` : ''}${CROSS_METHOD ? `xm-p${PAIR_TOP}-` : SAME_GROUP ? 'sg-' : ''}k${TOP_K}c${MIN_COS}s${BATCH_SIZE}`
   const batches = []
   for (let i = 0; i < pairs.length; i += BATCH_SIZE) {
     batches.push({ batchId: `${runKey}-b${Math.floor(i / BATCH_SIZE)}`, pairs: pairs.slice(i, i + BATCH_SIZE) })
