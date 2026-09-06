@@ -3,7 +3,13 @@
  * 오픈소스 데이터셋(k-curriculum-2022) 수출 — 정본 성취기준 + curriculum_links를
  * 공개 스키마로 내보낸다.
  *
- *   node scripts/export-open-dataset.mjs --out ../k-curriculum-2022/data
+ *   node scripts/export-open-dataset.mjs \
+ *     --out-standards ../k-curriculum-2022/data \
+ *     --out-links ../k-curriculum-2022-links/data --standards-release v3.0.0
+ *
+ * 2026-09-06부터 데이터셋은 두 리포로 나뉜다(사용자 결정: 성취기준은 공공재로 안정적으로,
+ * 연결은 빠르게 실험). 성취기준 리포는 교육부 원문 verbatim만, 연결 리포는 성취기준의 특정
+ * 릴리스 태그에 고정(pin)된 AI 생성 연결만 담는다. 둘 중 하나만 지정해도 된다.
  *
  * 규칙:
  *  - 성취기준은 server/data/standards.js(정본) 전체. 식별자 `key`(= s.key || s.code)를
@@ -27,12 +33,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenvConfig({ path: path.join(__dirname, '..', 'server', '.env'), override: true })
 
 const args = process.argv.slice(2)
-const outIdx = args.indexOf('--out')
-if (outIdx < 0 || !args[outIdx + 1]) {
-  console.error('사용법: node scripts/export-open-dataset.mjs --out <k-curriculum-2022/data 경로>')
+const optPath = (name) => { const i = args.indexOf(name); return i >= 0 && args[i + 1] ? path.resolve(args[i + 1]) : null }
+const OUT_STD = optPath('--out-standards')
+const OUT_LINKS = optPath('--out-links')
+const STANDARDS_RELEASE = (() => { const i = args.indexOf('--standards-release'); return i >= 0 && args[i + 1] ? args[i + 1] : null })()
+if (!OUT_STD && !OUT_LINKS) {
+  console.error('사용법: node scripts/export-open-dataset.mjs [--out-standards <dir>] [--out-links <dir> --standards-release <tag>]')
   process.exit(1)
 }
-const OUT = path.resolve(args[outIdx + 1])
+if (OUT_LINKS && !STANDARDS_RELEASE) {
+  console.error('--out-links에는 --standards-release <성취기준 리포 태그>가 필요합니다 (연결은 성취기준 릴리스에 고정)')
+  process.exit(1)
+}
 
 const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY
 if (!url || !key || url.includes('placeholder')) { console.error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 필요'); process.exit(1) }
@@ -67,51 +79,53 @@ async function fetchLinks(status) {
     .sort((a, b) => (a.source_code + a.target_code < b.source_code + b.target_code ? -1 : 1))
 }
 
-const published = await fetchLinks('published')
-const candidateAll = await fetchLinks('candidate')
-const candidate = candidateAll.filter((l) => l.quality_score == null || l.quality_score > REJECTED_MARK)
-console.log(`  candidate 중 기각 표식(≤${REJECTED_MARK}) ${candidateAll.length - candidate.length}건 제외`)
-
-fs.mkdirSync(OUT, { recursive: true })
-const write = (name, data) => { fs.writeFileSync(path.join(OUT, name), JSON.stringify(data, null, 1) + '\n'); console.log(`  ${name}: ${data.length}건`) }
-console.log(`📦 수출 → ${OUT}`)
-write('standards.json', standards)
-write('links.published.json', published)
-write('links.candidate.json', candidate)
-
-// 출처·건수·정책 기록 — 소비자가 버전을 식별하고 변경을 감지하는 단일 지점
 let sourceCommit = 'unknown'
 try { sourceCommit = execSync('git rev-parse --short HEAD', { cwd: path.join(__dirname, '..') }).toString().trim() } catch {}
-const manifest = {
-  schema_version: SCHEMA_VERSION,
-  generated_at: new Date().toISOString(),
-  source: { app: 'greatsong/curriculum-weaver', commit: sourceCommit, standards: 'server/data/standards.js', links: 'supabase curriculum_links' },
-  counts: {
-    standards: standards.length,
-    subjects: new Set(standards.map((s) => s.subject)).size,
-    subject_groups: new Set(standards.map((s) => s.subject_group)).size,
-    links_published: published.length,
-    links_candidate: candidate.length,
-  },
-  identity: { field: 'key', note: 'key === code 가 기본. 같은 code가 두 과목에 쓰인 항목만 "code|subject" 형식. 링크 끝점은 key 값.' },
-  policy: {
-    published_min_quality: 0.7,
-    published_excludes_vocational_pairs: true,
-    vocational_subject_group: '산업수요전문',
-    candidate_excludes_rejected: true,
-  },
-}
-fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
-console.log('  manifest.json: schema v' + SCHEMA_VERSION + ', commit ' + sourceCommit)
+const writeJson = (dir, name, data, pretty) => { fs.writeFileSync(path.join(dir, name), JSON.stringify(data, null, pretty ? 2 : 1) + '\n') }
+const identity = { field: 'key', note: 'key === code 가 기본. 같은 code가 두 과목에 쓰인 11건만 "code|subject" 형식.' }
 
-// README·KNOWN_ISSUES 갱신에 필요한 통계
-const avg = (xs) => (xs.reduce((a, x) => a + x, 0) / xs.length)
-const isVoc = (k) => !ALL_STANDARDS.find((s) => (s.key || s.code) === k)?.school_level
-const stdByKey = new Map(ALL_STANDARDS.map((s) => [s.key || s.code, s]))
-const vocPair = (l) => !stdByKey.get(l.source_code)?.school_level && !stdByKey.get(l.target_code)?.school_level
-console.log('\n📊 통계')
-console.log(`  성취기준 ${standards.length} · 과목 ${new Set(standards.map((s) => s.subject)).size} · 교과군 ${new Set(standards.map((s) => s.subject_group)).size}`)
-console.log(`  code 중복(과목 다름) ${standards.length - new Set(standards.map((s) => s.code)).size}건 → key로 구분`)
-console.log(`  school_level 빈값 ${standards.filter((s) => !s.school_level).length} · grade_group 값: ${[...new Set(standards.map((s) => s.grade_group))].join(', ')}`)
-console.log(`  published ${published.length} (quality 평균 ${avg(published.map((l) => l.quality_score ?? 0)).toFixed(2)}, 최소 ${Math.min(...published.map((l) => l.quality_score ?? 1))}, 전문↔전문 ${published.filter(vocPair).length})`)
-console.log(`  candidate ${candidate.length} (전문↔전문 ${candidate.filter(vocPair).length})`)
+// ── 성취기준 리포 ──
+if (OUT_STD) {
+  fs.mkdirSync(OUT_STD, { recursive: true })
+  writeJson(OUT_STD, 'standards.json', standards)
+  writeJson(OUT_STD, 'manifest.json', {
+    schema_version: SCHEMA_VERSION,
+    generated_at: new Date().toISOString(),
+    source: { app: 'greatsong/curriculum-weaver', commit: sourceCommit, file: 'server/data/standards.js', origin: '교육부 고시 2022 개정 교육과정 별책(NCIC)' },
+    counts: {
+      standards: standards.length,
+      subjects: new Set(standards.map((s) => s.subject)).size,
+      subject_groups: new Set(standards.map((s) => s.subject_group)).size,
+    },
+    identity,
+  }, true)
+  console.log(`📦 성취기준 → ${OUT_STD}: standards.json ${standards.length}건, manifest.json`)
+}
+
+// ── 연결 리포 (성취기준 릴리스에 고정) ──
+if (OUT_LINKS) {
+  const published = await fetchLinks('published')
+  const candidateAll = await fetchLinks('candidate')
+  const candidate = candidateAll.filter((l) => l.quality_score == null || l.quality_score > REJECTED_MARK)
+  console.log(`  candidate 중 기각 표식(≤${REJECTED_MARK}) ${candidateAll.length - candidate.length}건 제외`)
+  fs.mkdirSync(OUT_LINKS, { recursive: true })
+  writeJson(OUT_LINKS, 'links.published.json', published)
+  writeJson(OUT_LINKS, 'links.candidate.json', candidate)
+  writeJson(OUT_LINKS, 'manifest.json', {
+    schema_version: 1, // 연결 리포 자체의 스키마 버전 (분리 시점 2026-09-06 = 1)
+    generated_at: new Date().toISOString(),
+    source: { app: 'greatsong/curriculum-weaver', commit: sourceCommit, table: 'supabase curriculum_links' },
+    standards_release: { repo: 'greatsong/k-curriculum-2022', tag: STANDARDS_RELEASE, standards: standards.length },
+    counts: { links_published: published.length, links_candidate: candidate.length },
+    identity: { ...identity, note: identity.note + ' 링크 끝점(source_code/target_code)은 성취기준의 key 값.' },
+    policy: {
+      published_min_quality: 0.7,
+      published_excludes_vocational_pairs: true,
+      vocational_subject_group: '산업수요전문',
+      candidate_excludes_rejected: true,
+    },
+  }, true)
+  console.log(`📦 연결 → ${OUT_LINKS}: published ${published.length} · candidate ${candidate.length} · manifest(standards ${STANDARDS_RELEASE})`)
+}
+
+console.log(`\n📊 성취기준 ${standards.length} · 과목 ${new Set(standards.map((s) => s.subject)).size} · 교과군 ${new Set(standards.map((s) => s.subject_group)).size} · code 중복(과목 다름) ${standards.length - new Set(standards.map((s) => s.code)).size}건 → key로 구분`)
