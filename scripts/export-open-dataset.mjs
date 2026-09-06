@@ -50,14 +50,37 @@ const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KE
 if (!url || !key || url.includes('placeholder')) { console.error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 필요'); process.exit(1) }
 const supabase = createClient(url, key)
 
-const STANDARD_FIELDS = ['code', 'key', 'subject_group', 'subject', 'grade_group', 'school_level', 'curriculum_category', 'area', 'content', 'keywords', 'explanation', 'application_notes']
-const SCHEMA_VERSION = 2 // 1: code 단일 키 · 2: key 도입, domain 제거, 기각 candidate 제외
+const STANDARD_FIELDS = ['code', 'key', 'subject_group', 'subject', 'grade_group', 'school_level', 'curriculum_category', 'area', 'content', 'keywords', 'explanation', 'application_notes', 'source_book', 'source_doc']
+const SCHEMA_VERSION = 3 // 1: code 단일 키 · 2: key 도입, domain 제거 · 3: 행 단위 출처(source_book·source_doc) 추가, 성취기준·연결 리포 분리
 const REJECTED_MARK = 0.2 // 앱의 재판정 기각 표식 (promoteLinks/generateLinksV2 규약)
 const LINK_FIELDS = ['source_code', 'target_code', 'link_type', 'rationale', 'integration_theme', 'lesson_hook', 'semantic_score', 'quality_score', 'generation_method']
 
 const { ALL_STANDARDS } = await import('../server/data/standards.js')
+
+// 행 단위 출처 — 결점 0 파이프라인의 별책별 구조화 원문(scripts/audit/data/official/별책N.json)에서
+// (code, subject) → 별책 번호·원문 파일명을 붙인다. 공공 데이터셋 소비자가 각 행을 교육부 원문
+// 어느 문서에서 대조해야 하는지 알게 하기 위함이다.
+const OFFICIAL_DIR = path.join(__dirname, 'audit', 'data', 'official')
+const provenance = new Map() // "code\tsubject" -> { book, doc }
+if (fs.existsSync(OFFICIAL_DIR)) {
+  for (const f of fs.readdirSync(OFFICIAL_DIR).filter((f) => f.endsWith('.json')).sort()) {
+    const j = JSON.parse(fs.readFileSync(path.join(OFFICIAL_DIR, f), 'utf8'))
+    const doc = (j.source_file || '').replace(/\.(pdf|hwp)$/i, '')
+    for (const subj of j.subjects || []) for (const area of subj.areas || []) for (const c of area.codes || []) {
+      const k = `${c.code}\t${subj.subject}`
+      if (!provenance.has(k)) provenance.set(k, { book: j.byeolchaek, doc })
+    }
+  }
+}
+let unsourced = 0
 const standards = ALL_STANDARDS
-  .map((s) => { const row = {}; for (const f of STANDARD_FIELDS) row[f] = f === 'key' ? (s.key || s.code) : (s[f] ?? (Array.isArray(s[f]) ? [] : '')); return row })
+  .map((s) => {
+    const row = {}
+    for (const f of STANDARD_FIELDS) row[f] = f === 'key' ? (s.key || s.code) : (s[f] ?? (Array.isArray(s[f]) ? [] : ''))
+    const pv = provenance.get(`${s.code}\t${s.subject}`) || [...provenance.entries()].find(([k]) => k.startsWith(`${s.code}\t`))?.[1]
+    if (pv) { row.source_book = pv.book; row.source_doc = pv.doc } else { row.source_book = ''; row.source_doc = ''; unsourced++ }
+    return row
+  })
   .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
 const keys = new Set(standards.map((s) => s.key))
 
@@ -128,4 +151,5 @@ if (OUT_LINKS) {
   console.log(`📦 연결 → ${OUT_LINKS}: published ${published.length} · candidate ${candidate.length} · manifest(standards ${STANDARDS_RELEASE})`)
 }
 
-console.log(`\n📊 성취기준 ${standards.length} · 과목 ${new Set(standards.map((s) => s.subject)).size} · 교과군 ${new Set(standards.map((s) => s.subject_group)).size} · code 중복(과목 다름) ${standards.length - new Set(standards.map((s) => s.code)).size}건 → key로 구분`)
+console.log(`\n📊 성취기준 ${standards.length} · 과목 ${new Set(standards.map((s) => s.subject)).size} · 교과군 ${new Set(standards.map((s) => s.subject_group)).size} · code 중복(과목 다름) ${standards.length - new Set(standards.map((s) => s.code)).size}건 → key로 구분 · 출처(별책) 미매핑 ${unsourced}건`)
+console.log(`  별책별: ${Object.entries(standards.reduce((o, s) => { o[s.source_book || '(없음)'] = (o[s.source_book || '(없음)'] || 0) + 1; return o }, {})).sort().map(([k, v]) => k + ' ' + v).join(' · ')}`)
