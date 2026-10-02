@@ -22,7 +22,7 @@ import { verifyTokenCached } from './middleware/auth.js'
 import { hydrateLinksFromDB } from './lib/linkService.js'
 
 // ── Rate Limiter 임포트 ──
-import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter, ipBackstopLimiter } from './middleware/rateLimit.js'
+import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter, ipBackstopLimiter, futures2Limiter } from './middleware/rateLimit.js'
 
 // ── 라우트 임포트 ──
 import authRouter from './routes/auth.js'
@@ -36,6 +36,7 @@ import { chatRouter } from './routes/chat.js'
 import { standardsRouter } from './routes/standards.js'
 import { materialsRouter } from './routes/materials.js'
 import { principlesRouter } from './routes/principles.js'
+import { futures2Router } from './routes/futures2.js'
 import { reportRouter } from './routes/report.js'
 import { commentsRouter } from './routes/comments.js'
 import { boardsRouter } from './routes/boards.js'
@@ -335,6 +336,7 @@ app.use('/api/standards/graph/chat', aiChatLimiter)
 app.use('/api/standards/recommend-ai', aiChatLimiter)
 // 과목쌍 탐색 시작만 제한 — 상태 폴링(/pairs/jobs)은 일반 API 한도로 충분
 app.use('/api/standards/pairs/explore', aiChatLimiter)
+app.use('/api/futures2', futures2Limiter)
 
 // 파일 업로드: 분당 5회 (사용자당)
 app.use('/api/materials/upload', uploadLimiter)
@@ -379,6 +381,9 @@ app.use('/api/standards', standardsRouter)
 
 // 설계 원리 (공개)
 app.use('/api/principles', principlesRouter)
+
+// 미래 보기 2: 성취기준 2~6개로 수업의 미래를 그린다 (인증 필요)
+app.use('/api/futures2', futures2Router)
 
 // 설계 보드
 app.use('/api/boards', boardsRouter)

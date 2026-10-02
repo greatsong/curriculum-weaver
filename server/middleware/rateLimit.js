@@ -85,6 +85,18 @@ export const aiChatLimiter = rateLimit({
   validate: { xForwardedForHeader: false, default: true },
 })
 
+// ── 미래 보기 2: 분당 40회 (사용자당), 기존 채팅 한도와 별도 버킷 ──
+export const futures2Limiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 40,
+  skip: (req) => req.method === 'GET',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userKey,
+  message: { error: '미래를 너무 빠르게 넘기고 있어요. 잠시 후 다시 넘겨 주세요.' },
+  validate: { xForwardedForHeader: false, default: true },
+})
+
 // ── 로그인/가입: 분당 10회 (IP+이메일당) — brute force 방지 ──
 // IP 단독 키는 학교 NAT에서 학급 전체가 분당 5회를 공유해 수업 시작 로그인이
 // 막히던 문제가 있었다. 계정(brute force) 단위 보호가 목적이므로 이메일을 키에 포함.
