@@ -1,0 +1,196 @@
+/* 미래 보기 — 모든 규칙은 .futures-root 아래에만 적용한다(다른 화면에 새지 않게). 키프레임 이름은 fu- 접두. */
+.futures-root {
+  --bg-in: #061816; --bg-mid: #030a0e; --bg-out: #010305;
+  --g: #2BF59B; --g2: #5CFFB5; --g3: #B8FFE0; --core: #E9FFF5;
+  --text: #E6F0EE; --muted: #93A7A6; --line: rgba(160,200,195,.16);
+  --card: rgba(3,12,14,.86);
+  min-height: 100vh; position: relative; overflow-x: hidden;
+  background: radial-gradient(ellipse at 50% 46%, var(--bg-in) 0%, var(--bg-mid) 48%, var(--bg-out) 100%);
+  color: var(--text);
+}
+.futures-root *, .futures-root *::before, .futures-root *::after { box-sizing: border-box; }
+.futures-root .fu-dust { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.futures-root .fu-main { position: relative; z-index: 2; max-width: 1100px; margin: 0 auto; padding: 18px 16px 70px; }
+
+/* 머리 */
+.futures-root .fu-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.futures-root .fu-back { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12.5px; background: none; border: 0; padding: 0; margin-bottom: 8px; cursor: pointer; }
+.futures-root .fu-back:hover { color: var(--g3); }
+/* "미래 보기" 글씨 = 타임스톤 초록 단색. 그라데이션·강한 발광 없이 은은한 번짐만 */
+.futures-root h1 { font-size: 22px; margin: 0; font-weight: 800; color: var(--g); letter-spacing: .02em; text-shadow: 0 0 14px rgba(43,245,155,.3); }
+.futures-root h1 span { color: var(--g2); }
+.futures-root .fu-sub { color: var(--muted); font-size: 13px; margin-top: 4px; line-height: 1.55; }
+.futures-root .fu-models { display: flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: rgba(1,6,8,.7); }
+.futures-root .fu-models button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.futures-root .fu-models button.on { background: rgba(43,245,155,.14); color: var(--g3); box-shadow: inset 0 0 0 1px rgba(92,255,181,.45); }
+.futures-root .fu-models small { opacity: .65; margin-left: 4px; }
+
+/* 성취기준 넣기 · 연결 */
+.futures-root .fu-top { margin-top: 18px; }
+.futures-root .fu-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 880px) { .futures-root .fu-pick { grid-template-columns: 1fr; } }
+.futures-root .fu-panel { border: 1px solid var(--line); border-radius: 18px; background: rgba(2,9,12,.6); backdrop-filter: blur(6px); padding: 14px; min-width: 0; }
+.futures-root .fu-panel h2 { font-size: 13px; color: var(--muted); margin: 0 0 10px; font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+.futures-root .fu-searchrow { display: flex; gap: 6px; }
+.futures-root .fu-search { flex: 1; min-width: 0; border: 1px solid rgba(92,255,181,.28); background: rgba(0,0,0,.35); color: var(--text); border-radius: 12px; padding: 10px 12px; font: inherit; font-size: 13.5px; outline: none; }
+.futures-root .fu-search:focus { border-color: rgba(92,255,181,.7); box-shadow: 0 0 0 3px rgba(43,245,155,.12); }
+.futures-root .fu-search::placeholder { color: #5E706E; }
+.futures-root .fu-level { border: 1px solid var(--line); background: rgba(0,0,0,.35); color: var(--text); border-radius: 12px; padding: 0 8px; font: inherit; font-size: 12.5px; }
+.futures-root .fu-results { margin-top: 8px; max-height: 260px; overflow-y: auto; display: grid; gap: 4px; }
+.futures-root .fu-result { display: grid; grid-template-columns: 10px 1fr auto; gap: 10px; align-items: start; text-align: left; width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,.025); color: inherit; font: inherit; cursor: pointer; }
+.futures-root .fu-result:hover, .futures-root .fu-result:focus-visible { border-color: rgba(92,255,181,.4); background: rgba(43,245,155,.06); outline: none; }
+.futures-root .fu-result:disabled { opacity: .45; cursor: default; }
+.futures-root .fu-result .fu-plus { color: var(--g2); font-weight: 800; font-size: 15px; line-height: 1; padding-top: 2px; }
+.futures-root .fu-result mark { background: rgba(43,245,155,.25); color: var(--core); border-radius: 3px; }
+.futures-root .fu-empty, .futures-root .fu-pastenote { font-size: 12px; color: var(--muted); padding: 8px 2px 2px; line-height: 1.55; }
+.futures-root .fu-pastenote .miss { color: #FFB4A8; }
+.futures-root .fu-example { margin-top: 6px; border: 1px dashed rgba(92,255,181,.35); background: transparent; color: var(--g3); border-radius: 10px; padding: 7px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+.futures-root .fu-slots { display: grid; gap: 7px; }
+.futures-root .fu-slots-empty { border: 1px dashed var(--line); border-radius: 12px; padding: 18px 12px; text-align: center; font-size: 12.5px; color: #5E706E; }
+.futures-root .fu-chip { display: grid; grid-template-columns: 10px 1fr auto; gap: 10px; padding: 9px 11px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.03); animation: fu-dropIn .35s ease-out both; }
+@keyframes fu-dropIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.futures-root .fu-chip .fu-x { border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; align-self: start; }
+.futures-root .fu-chip .fu-x:hover { color: #FFB4A8; }
+.futures-root .fu-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; background: var(--c, #5CFFB5); box-shadow: 0 0 9px var(--c, #5CFFB5); }
+.futures-root .fu-chip b, .futures-root .fu-result b, .futures-root .fu-role b { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--g3); font-weight: 700; }
+.futures-root .fu-chip em, .futures-root .fu-result em, .futures-root .fu-role i { font-style: normal; font-size: 11px; color: var(--muted); margin-left: 6px; }
+.futures-root .fu-chip p, .futures-root .fu-result p { margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: #C9DCD8; }
+.futures-root .fu-constellation { width: 100%; height: 250px; display: block; }
+.futures-root .fu-summary { font-size: 12px; color: var(--muted); line-height: 1.55; }
+.futures-root .fu-summary b { color: var(--g2); }
+
+/* 시간의 고리 */
+.futures-root .fu-ritual { position: relative; margin-top: 18px; min-height: 620px; display: grid; place-items: center; perspective: 1100px; }
+.futures-root .fu-mandala-wrap { position: absolute; width: min(640px, 96vw); aspect-ratio: 1; transform: rotateX(16deg) rotateY(-12deg); transition: opacity .8s, transform 1s cubic-bezier(.2,.9,.2,1); opacity: .22; pointer-events: none; }
+.futures-root .fu-ritual.casting .fu-mandala-wrap { opacity: 1; transform: rotateX(10deg) rotateY(-8deg) scale(1.02); animation: fu-summon 1.1s cubic-bezier(.2,.9,.2,1) both; }
+@keyframes fu-summon { from { transform: rotateX(30deg) rotateY(-20deg) scale(.15) rotate(-120deg); opacity: 0; filter: brightness(2.2); } to { transform: rotateX(10deg) rotateY(-8deg) scale(1.02); opacity: 1; filter: none; } }
+.futures-root .fu-mandala { width: 100%; height: 100%; overflow: visible; }
+.futures-root .fu-spin-a, .futures-root .fu-spin-b, .futures-root .fu-spin-c, .futures-root .fu-spin-d { transform-origin: 300px 300px; animation: fu-spin 26s linear infinite; }
+.futures-root .fu-spin-b { animation-duration: 38s; animation-direction: reverse; }
+.futures-root .fu-spin-c { animation-duration: 17s; }
+.futures-root .fu-spin-d { animation-duration: 52s; animation-direction: reverse; }
+.futures-root .fu-ritual.casting .fu-spin-a { animation-duration: 6s; }
+.futures-root .fu-ritual.casting .fu-spin-b { animation-duration: 9s; }
+.futures-root .fu-ritual.casting .fu-spin-c { animation-duration: 4s; }
+@keyframes fu-spin { to { transform: rotate(360deg); } }
+.futures-root .fu-kick { transform-origin: 300px 300px; }
+.futures-root .fu-kick.go { animation: fu-kickCast 2.4s cubic-bezier(.12,.85,.2,1); }
+@keyframes fu-kickCast { from { transform: rotate(0); } to { transform: rotate(540deg); } }
+.futures-root .fu-cast-label { position: absolute; bottom: 6%; font-size: 13px; color: var(--g3); letter-spacing: .05em; opacity: 0; transition: opacity .4s; text-shadow: 0 0 10px var(--g); }
+.futures-root .fu-ritual.casting .fu-cast-label { opacity: 1; }
+.futures-root .fu-start { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); white-space: nowrap; z-index: 3; border: 1px solid rgba(43,245,155,.55); border-radius: 999px; padding: 15px 28px; font: inherit; font-weight: 800; font-size: 16px; letter-spacing: .04em; max-width: calc(100% - 32px); cursor: pointer;
+  background: rgba(3,18,13,.78); color: var(--g); text-shadow: 0 0 10px rgba(43,245,155,.45); backdrop-filter: blur(4px);
+  box-shadow: 0 0 22px rgba(43,245,155,.22), inset 0 0 18px rgba(43,245,155,.10); transition: box-shadow .3s, border-color .3s; }
+.futures-root .fu-start:not(:disabled):hover { border-color: rgba(92,255,181,.9); box-shadow: 0 0 34px rgba(43,245,155,.38), inset 0 0 22px rgba(43,245,155,.16); }
+.futures-root .fu-start:disabled { opacity: .35; cursor: default; }
+.futures-root .fu-start-hint { position: absolute; bottom: 2%; left: 0; right: 0; text-align: center; font-size: 12.5px; color: var(--muted); }
+.futures-root .fu-ritual.casting .fu-start, .futures-root .fu-ritual.viewing .fu-start, .futures-root .fu-ritual.viewing .fu-start-hint { display: none; }
+.futures-root .fu-wave { transform-origin: 300px 300px; fill: none; stroke: #7CFFC6; animation: fu-wave 1.4s cubic-bezier(.15,.8,.25,1) both; }
+@keyframes fu-wave { from { transform: scale(.22); opacity: .8; stroke-width: 6; } to { transform: scale(1.45); opacity: 0; stroke-width: .4; } }
+/* 문양 띠가 돌면서 바깥으로 펼쳐진다 */
+.futures-root .fu-runering { transform-origin: 300px 300px; fill: none; stroke: #9BFFD3; animation: fu-runering 1.6s cubic-bezier(.15,.8,.25,1) both; }
+@keyframes fu-runering { from { transform: scale(.35) rotate(-30deg); opacity: .95; } to { transform: scale(1.55) rotate(40deg); opacity: 0; } }
+.futures-root .fu-flash { transform-origin: 300px 300px; animation: fu-flash .8s ease-out forwards; }
+@keyframes fu-flash { from { transform: scale(.8); opacity: .6; } to { transform: scale(3.2); opacity: 0; } }
+
+/* 시작 버튼 — 타임스톤 초록 글씨, 어두운 유리 */
+.futures-root .fu-startrow { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+.futures-root .fu-start { border: 1px solid rgba(43,245,155,.55); border-radius: 999px; padding: 14px 28px; font: inherit; font-weight: 800; font-size: 16px; letter-spacing: .04em; cursor: pointer;
+  background: rgba(3,18,13,.78); color: var(--g); text-shadow: 0 0 10px rgba(43,245,155,.45);
+  box-shadow: 0 0 22px rgba(43,245,155,.2), inset 0 0 18px rgba(43,245,155,.1); transition: box-shadow .3s, border-color .3s; }
+.futures-root .fu-start:not(:disabled):hover { border-color: rgba(92,255,181,.9); box-shadow: 0 0 32px rgba(43,245,155,.34), inset 0 0 22px rgba(43,245,155,.15); }
+.futures-root .fu-start:disabled { opacity: .35; cursor: default; }
+.futures-root .fu-start-hint { font-size: 12.5px; color: var(--muted); }
+
+.futures-root .fu-result-flow { scroll-margin-top: 16px; }
+.futures-root .fu-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 28px 2px 8px; }
+.futures-root .fu-section-head h2 { margin: 0; font-size: 16px; font-weight: 800; color: var(--g); letter-spacing: .02em; text-shadow: 0 0 12px rgba(43,245,155,.25); }
+.futures-root .fu-section-sub { font-size: 12.5px; color: var(--muted); }
+.futures-root .fu-section-sub b { color: var(--g2); }
+.futures-root .fu-pulse { animation: fu-pulse 1.6s ease-in-out infinite; }
+@keyframes fu-pulse { 50% { opacity: .45; } }
+
+/* ① 키워드 성운 */
+.futures-root .fu-nebula { animation: fu-fadeUp .6s ease-out both; }
+/* 좁은 화면에서는 글씨 크기를 지키고 옆으로 밀어 본다 */
+.futures-root .fu-nebula-scroll { overflow-x: auto; border-radius: 18px; }
+.futures-root .fu-nebula-svg { display: block; width: 100%; min-width: 760px; height: auto; border: 1px solid var(--line); border-radius: 18px; background: radial-gradient(ellipse at 50% 50%, rgba(10,40,32,.55), rgba(1,6,8,.6) 70%); }
+.futures-root .fu-neb-cloud { opacity: 0; animation: fu-fade 1.2s ease-out forwards; animation-delay: var(--d); }
+.futures-root .fu-neb-meetglow { opacity: 0; }
+.futures-root .fu-nebula-svg.ready .fu-neb-meetglow { animation: fu-fade 1s ease-out forwards; animation-delay: var(--d); }
+.futures-root .fu-neb-spokes line { stroke: rgba(210,230,225,.16); stroke-width: 1; }
+.futures-root .fu-neb-links path { fill: none; stroke: #2BF59B; stroke-width: 2.2; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: fu-draw .9s cubic-bezier(.4,0,.2,1) forwards; animation-delay: var(--d); }
+.futures-root .fu-neb-std circle { fill: color-mix(in srgb, var(--c) 35%, #fff); }
+.futures-root .fu-neb-std text, .futures-root .fu-neb-kw text, .futures-root .fu-neb-label text { paint-order: stroke; stroke: rgba(1,8,10,.92); stroke-width: 5px; stroke-linejoin: round; }
+.futures-root .fu-neb-subject { font-size: 17px; font-weight: 800; fill: #E6F0EE; text-anchor: middle; }
+.futures-root .fu-neb-code { font-size: 11.5px; fill: #8FA6A1; text-anchor: middle; font-family: ui-monospace, Menlo, monospace; }
+.futures-root .fu-neb-kw { opacity: 0; animation: fu-fade .5s ease-out forwards; animation-delay: var(--d); }
+.futures-root .fu-neb-kw circle { fill: #B9CCC7; }
+.futures-root .fu-neb-kw text { font-size: 15px; fill: #B5C8C3; }
+.futures-root .fu-neb-kw.hit circle { fill: #F4FFF9; filter: drop-shadow(0 0 5px #2BF59B); }
+.futures-root .fu-neb-kw.hit text { font-size: 17px; font-weight: 800; fill: #FFFFFF; }
+.futures-root .fu-neb-label { opacity: 0; animation: fu-fade .5s ease-out forwards; animation-delay: var(--d); cursor: help; }
+.futures-root .fu-neb-label rect { fill: rgba(2,16,11,.94); stroke: rgba(43,245,155,.7); stroke-width: 1.2; }
+.futures-root .fu-neb-label text { font-size: 14px; font-weight: 800; fill: #9BFFD3; stroke-width: 0; }
+
+/* ② 미래 마방진 — 3×3, 가운데 별 */
+.futures-root .fu-square { display: grid; gap: 14px; grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas: "c0 c1 c2" "c7 mid c3" "c6 c5 c4"; }
+.futures-root .fu-square-mid { grid-area: mid; display: grid; place-items: center; min-height: 230px; }
+@media (max-width: 880px) {
+  .futures-root .fu-square { grid-template-columns: 1fr; grid-template-areas: "mid" "c0" "c1" "c2" "c3" "c4" "c5" "c6" "c7"; }
+  .futures-root .fu-square-mid { min-height: 0; }
+  .futures-root .fu-star { max-width: 220px; }
+}
+.futures-root .fu-star { width: 100%; max-width: 260px; aspect-ratio: 1; overflow: visible; }
+.futures-root .fu-star-lines { fill: none; stroke: #2BF59B; stroke-width: 1.4; opacity: .8; }
+.futures-root .fu-star-lines .thin { stroke-width: .8; opacity: .7; }
+.futures-root .fu-star-lines .dash { stroke-width: .8; stroke-dasharray: 2 6; }
+.futures-root .fu-star-ring { animation: fu-spin 90s linear infinite; }
+.futures-root .fu-star-ring.rev { animation-duration: 60s; animation-direction: reverse; }
+@keyframes fu-spin { to { transform: rotate(360deg); } }
+.futures-root .fu-star-core { animation: fu-breathe 4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes fu-breathe { 50% { opacity: .7; transform: scale(1.08); } }
+/* 꼭지 = 스톤. 색은 꼭지에만 */
+.futures-root .fu-star-tip { cursor: default; }
+.futures-root .fu-star-tip .gem { fill: color-mix(in srgb, var(--stone) 20%, #03100c); stroke: var(--stone); stroke-width: 1.5; transition: fill .5s, r .3s; }
+.futures-root .fu-star-tip .halo { fill: var(--stone); opacity: 0; transition: opacity .5s; }
+.futures-root .fu-star-tip.loading .gem { animation: fu-pulse 1.4s ease-in-out infinite; }
+.futures-root .fu-star-tip.ready .gem { fill: var(--stone); }
+.futures-root .fu-star-tip.ready .halo { opacity: .22; }
+.futures-root .fu-star-tip.on .gem { r: 8; stroke: #fff; }
+.futures-root .fu-star-tip.on .halo { opacity: .5; }
+
+/* 카드 — 제목 + 2~3문장 */
+.futures-root .fu-fcard { min-height: 214px; display: flex; flex-direction: column; gap: 8px; padding: 16px 16px 12px; border-radius: 16px; border: 1px solid rgba(92,255,181,.18);
+  background: rgba(3,12,14,.82); box-shadow: 0 10px 30px rgba(0,0,0,.35); transition: border-color .3s, box-shadow .3s; }
+.futures-root .fu-fcard.ready { animation: fu-fadeUp .5s ease-out both; }
+.futures-root .fu-fcard.on, .futures-root .fu-fcard.ready:hover { border-color: rgba(92,255,181,.55); box-shadow: 0 0 0 1px rgba(43,245,155,.12), 0 0 28px rgba(43,245,155,.12), 0 10px 30px rgba(0,0,0,.35); }
+.futures-root .fu-fcard-head { font-size: 12px; color: var(--muted); font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.futures-root .fu-gem { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--stone); box-shadow: 0 0 8px var(--stone); }
+.futures-root .fu-fcard h3 { margin: 0; font-size: 16.5px; line-height: 1.4; font-weight: 800; color: #F0FAF7; }
+.futures-root .fu-pitch { margin: 0; font-size: 13.5px; line-height: 1.65; color: #C9DCD8; flex: 1; }
+.futures-root .fu-fcard-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; padding-top: 4px; }
+.futures-root .fu-meet { color: var(--g2); font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.futures-root .fu-meet::before { content: '✦ '; color: var(--g); }
+.futures-root .fu-honest-i { color: var(--muted); cursor: help; font-size: 13px; }
+.futures-root .fu-fcard-actions { margin-left: auto; display: flex; gap: 6px; }
+.futures-root .fu-fcard-actions button, .futures-root .fu-fcard-msg button { border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--text); border-radius: 9px; padding: 5px 9px; font: inherit; font-size: 12px; cursor: pointer; }
+.futures-root .fu-fcard-actions button.go { border-color: rgba(43,245,155,.5); color: var(--g3); }
+.futures-root .fu-fcard-actions button:hover:not(:disabled) { border-color: rgba(92,255,181,.8); }
+.futures-root .fu-fcard-actions button:disabled { opacity: .7; cursor: default; }
+.futures-root .fu-fcard-msg { font-size: 13px; color: #FFB4A8; display: grid; gap: 8px; justify-items: start; }
+.futures-root .fu-fcard-msg p { margin: 0; }
+.futures-root .fu-skeleton { display: grid; gap: 9px; padding-top: 4px; }
+.futures-root .fu-skeleton i { display: block; height: 11px; width: 100%; border-radius: 6px; background: linear-gradient(90deg, rgba(160,200,195,.08), rgba(92,255,181,.16), rgba(160,200,195,.08)); background-size: 200% 100%; animation: fu-shimmer 1.6s linear infinite; }
+.futures-root .fu-skeleton i:first-child { height: 15px; }
+.futures-root .fu-skeleton small { font-size: 11.5px; color: #5E706E; }
+@keyframes fu-shimmer { to { background-position: -200% 0; } }
+
+@keyframes fu-fade { to { opacity: 1; } }
+@keyframes fu-draw { to { stroke-dashoffset: 0; } }
+@keyframes fu-fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.futures-root .fu-note { margin-top: 18px; font-size: 12px; color: #5E706E; text-align: center; line-height: 1.6; }
+@media (prefers-reduced-motion: reduce) {
+  .futures-root *, .futures-root *::before, .futures-root *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
+}
