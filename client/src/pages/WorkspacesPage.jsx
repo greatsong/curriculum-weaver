@@ -249,6 +249,25 @@ export default function WorkspacesPage() {
               데모 체험
             </button>
             <button
+              onClick={() => navigate('/futures')}
+              className="btn"
+              title="성취기준 2~6개로 가능한 수업의 미래를 미리 봅니다"
+              style={{
+                padding: '8px 16px',
+                fontSize: 13,
+                fontWeight: 700,
+                background: '#08110E',
+                color: '#2BF59B', // 타임스톤 초록 — 단색 글씨, 은은한 번짐만
+                textShadow: '0 0 8px rgba(43,245,155,.35)',
+                boxShadow: 'inset 0 0 0 1px rgba(43,245,155,.35)',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(43,245,155,.7), 0 0 12px rgba(43,245,155,.22)'}
+              onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(43,245,155,.35)'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 3.5l2.2 6.3 6.3 2.2-6.3 2.2-2.2 6.3-2.2-6.3-6.3-2.2 6.3-2.2z"/></svg>
+              미래 보기
+            </button>
+            <button
               onClick={() => navigate('/graph?mode=explore')}
               className="btn"
               style={{
