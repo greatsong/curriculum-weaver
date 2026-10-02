@@ -46,6 +46,7 @@ const DemoMode = lazyWithReload(() => import('./components/DemoMode'), 'DemoMode
 const DemoPrepPage = lazyWithReload(() => import('./pages/DemoPrepPage'), 'DemoPrepPage')
 const GuidePage = lazyWithReload(() => import('./pages/GuidePage'), 'GuidePage')
 const AuthCallback = lazyWithReload(() => import('./pages/AuthCallback'), 'AuthCallback')
+const FuturesPage = lazyWithReload(() => import('./pages/FuturesPage'), 'FuturesPage')
 
 // 레거시 호환: /session/:id 로 들어오면 워크스페이스로 돌려보냄
 function LegacySessionRedirect() {
@@ -283,6 +284,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <InviteAcceptPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 미래 보기 — 성취기준 조합으로 가능한 수업의 미래 */}
+        <Route
+          path="/futures"
+          element={
+            <ProtectedRoute>
+              <FuturesPage />
             </ProtectedRoute>
           }
         />
