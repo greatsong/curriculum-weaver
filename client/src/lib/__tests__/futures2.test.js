@@ -13,9 +13,13 @@ const list = [
 ]
 
 describe('URL 상태', () => {
-  it('codes와 model을 읽고 중복을 없애며 최대 6개로 자른다', () => {
-    const r = parseFuturesSearch('?codes=a,b,a,c,d,e,f,g&model=precise')
-    expect(r.keys).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
+  it('과목 이름에 쉼표가 들어가는 충돌 키도 새로고침과 공유에서 보존한다', () => {
+    const keys = ['[10공수1-03-01]|공통수학1, 공통수학2', '[12음02-01]']
+    expect(parseFuturesSearch(buildFuturesSearch(keys, 'fast'))).toEqual({ keys, model: 'fast' })
+  })
+  it('codes와 model을 읽고 중복을 없애며 최대 7개로 자른다', () => {
+    const r = parseFuturesSearch('?codes=a,b,a,c,d,e,f,g,h&model=precise')
+    expect(r.keys).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g'])
     expect(r.model).toBe('precise')
     expect(parseFuturesSearch('').model).toBe('fast')
   })
@@ -61,8 +65,8 @@ describe('코드 여러 개 붙여 넣기', () => {
     const repeated = mergeStandardCodes(list, '[12생과01-05], [12생과01-05]', selected)
     expect(repeated).toMatchObject({ added: 0, duplicates: 1, overflow: 0, missing: [] })
   })
-  it('6개 제한을 넘는 새 코드와 찾지 못한 코드를 각각 안내한다', () => {
-    const selected = ['a', 'b', 'c', 'd', list[0].key]
+  it('7개 제한을 넘는 새 코드와 찾지 못한 코드를 각각 안내한다', () => {
+    const selected = ['a', 'b', 'c', 'd', 'e', list[0].key]
     expect(mergeStandardCodes(list, '[12생과01-05], [12운건01-01], [12없음99-99]', selected)).toEqual({
       keys: [...selected, list[1].key], added: 1, duplicates: 0, overflow: 1, missing: ['[12없음99-99]'],
     })

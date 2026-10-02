@@ -1,5 +1,5 @@
 /**
- * 미래 보기 2 — 성취기준 2~6개를 넣으면 그 조합으로 가능한 수업의 미래를 별의 꼭지마다 하나씩 보여 준다.
+ * 미래 보기 2 — 성취기준 2~7개를 넣으면 그 조합으로 가능한 수업의 미래를 별의 꼭지마다 하나씩 보여 준다.
  *
  * 흐름: 성취기준 넣기 → (뒤에서) 연결 찾기: 성취기준별 원문 키워드 + 키워드 사이 연결 → 연결 별자리가 이어지며 초록으로 켜짐
  *       → 시간의 고리 → 여덟 꼭지 별, 꼭지마다 그 연결 위에서 그린 미래
@@ -11,16 +11,16 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { apiGet, apiPost } from '../lib/api'
 import {
-  FUTURE_MAX, FUTURE_MODEL_OPTIONS, buildFuturesSearch, catalogFromBody, codesIn, mergeStandardCodes, parseFuturesSearch, resolveCodes, searchStandards,
+  FUTURE_MAX, FUTURE_MODEL_OPTIONS, buildFuturesSearch, catalogFromBody, codesIn, mergeStandardCodes, parseFuturesSearch, searchStandards,
 } from '../lib/futures2'
 import { colorOfStandard, colorOfStone, createFuturesScene, startDust } from '../lib/futures2Scene'
 import './futures2.css'
+import { FUTURE_PRACTICE_SETS, resolvePracticeSet } from '../lib/futures2Practice'
+import { groupFutureStandards } from '../lib/futures2GraphLayout'
 
 const LEVELS = [
   { id: '고등학교', label: '고등' }, { id: '중학교', label: '중학' }, { id: '초등학교', label: '초등' }, { id: '', label: '전체' },
 ]
-// 처음 온 교사를 위한 예시 조합 (고등 일반 과목 4개 — 건강한 생활)
-const EXAMPLE_CODES = ['[12생과01-05]', '[12운건01-01]', '[12기가01-03]', '[12독작01-11]']
 const BASKET_KEY = 'cw_design_basket'
 const BASKET_META_KEY = 'cw_design_basket_meta'
 const BRIDGE_DELAY_MS = 700 // 성취기준을 연달아 넣는 동안은 연결을 찾지 않는다
@@ -64,6 +64,8 @@ export default function Futures2Page({ get = apiGet, post = apiPost } = {}) {
   const picked = useMemo(() => keys.map((k) => byKey.get(k)).filter(Boolean), [keys, byKey])
   const pickedKeys = useMemo(() => picked.map((s) => s.key), [picked])
   const pickedSig = pickedKeys.join(',')
+  const subjectGroups = useMemo(() => groupFutureStandards(picked), [picked])
+  const colorIndexOfKey = useMemo(() => new Map(subjectGroups.flatMap(g => g.indices.map(i => [picked[i].key, g.colorIndex]))), [subjectGroups, picked])
 
   // 떠다니는 빛 먼지
   useEffect(() => (dustRef.current ? startDust(dustRef.current) : undefined), [])
@@ -129,6 +131,12 @@ export default function Futures2Page({ get = apiGet, post = apiPost } = {}) {
   const full = pickedKeys.length >= FUTURE_MAX
   const add = (s) => { if (!s || full || pickedKeys.includes(s.key)) return; setUrl([...pickedKeys, s.key]); setPasteNote(null) }
   const remove = (key) => setUrl(pickedKeys.filter((k) => k !== key))
+  const applyPractice = (preset) => {
+    const result = resolvePracticeSet(catalog, preset)
+    if (result.missing.length) { setPasteNote({ added: 0, duplicates: 0, overflow: 0, missing: result.missing }); return }
+    setLevel(preset.level); setSubject(''); setQuery(''); setBulkText(''); setPasteNote(null)
+    setUrl(result.standards.map(s => s.key))
+  }
   const addMany = (text, requireMultiple = true) => {
     const chunks = codesIn(text)
     if (!chunks.length || (requireMultiple && chunks.length < 2) || !catalog) return false
@@ -161,7 +169,7 @@ export default function Futures2Page({ get = apiGet, post = apiPost } = {}) {
           <div>
             <button type="button" className="fu-back" onClick={() => navigate('/workspaces')}>‹ 워크스페이스</button>
             <h1>미래보기(타임스톤) <span>✦</span></h1>
-            <div className="fu-sub">성취기준 2~6개를 고르고 연결을 확인한 뒤, ‘미래 보기’를 눌러 수업의 가능성을 엽니다.</div>
+            <div className="fu-sub">성취기준 2~7개를 고르고 연결을 확인한 뒤, ‘미래 보기’를 눌러 수업의 가능성을 엽니다. 같은 과목의 성취기준은 함께 묶여 보입니다.</div>
           </div>
           <div className="fu-models" role="radiogroup" aria-label="AI 모델">
             {FUTURE_MODEL_OPTIONS.map((o) => (
@@ -174,7 +182,12 @@ export default function Futures2Page({ get = apiGet, post = apiPost } = {}) {
 
         <section className="fu-top">
           <div className="fu-panel">
-            <h2><span>넣은 성취기준</span><span>{pickedKeys.length} / {FUTURE_MAX}</span></h2>
+            <h2><span>넣은 성취기준</span><span>{subjectGroups.length}과목 · {pickedKeys.length} / {FUTURE_MAX}개</span></h2>
+            <div className="fu2-practice" aria-label="연습용 기본 세트">
+              <span>연습용 기본 세트 <small>고등학교 · 3과목 · 성취기준 6개</small></span>
+              <div>{FUTURE_PRACTICE_SETS.map(preset => <button key={preset.id} type="button" className="fu-example" disabled={!catalog} onClick={() => applyPractice(preset)} title={preset.description}>{preset.label}</button>)}</div>
+              {pickedKeys.length > 0 && <small>세트를 고르면 현재 성취기준 조합을 바꿉니다.</small>}
+            </div>
             <div className="fu-pick">
               <div>
                 <div className="fu-searchrow">
@@ -184,7 +197,7 @@ export default function Futures2Page({ get = apiGet, post = apiPost } = {}) {
                     onChange={(e) => { setQuery(e.target.value); setPasteNote(null) }}
                     onPaste={onPaste}
                     onKeyDown={onKeyDown}
-                    placeholder={full ? '6개까지 넣었습니다' : '코드나 낱말로 찾기 (예: 12생과01-05, 기후)'}
+                    placeholder={full ? '7개까지 넣었습니다' : '코드나 낱말로 찾기 (예: 12생과01-05, 기후)'}
                     disabled={!catalog || full}
                     aria-label="성취기준 검색"
                   />
@@ -231,16 +244,13 @@ export default function Futures2Page({ get = apiGet, post = apiPost } = {}) {
                 {!query.trim() && !subject && catalog && (
                   <div className="fu-empty">
                     코드를 알면 코드로 찾는 것이 가장 빠릅니다. 코드 여러 개를 한 번에 붙여 넣어도 됩니다.
-                    {pickedKeys.length === 0 && (
-                      <div><button type="button" className="fu-example" onClick={() => setUrl(resolveCodes(catalog, EXAMPLE_CODES).found.map(s => s.key))}>예시 조합으로 보기 (생명과학·운동과 건강·기술·가정·독서와 작문)</button></div>
-                    )}
                   </div>
                 )}
               </div>
               <div className="fu-slots">
                 {picked.length === 0 && <div className="fu-slots-empty">넣은 성취기준이 여기에 쌓입니다.</div>}
-                {picked.map((s, index) => (
-                  <div key={s.key} className="fu-chip" style={{ '--c': colorOfStone(index) }}>
+                {picked.map((s) => (
+                  <div key={s.key} className="fu-chip" style={{ '--c': colorOfStone(colorIndexOfKey.get(s.key)) }}>
                     <span className="fu-dot" />
                     <div><b>{s.code}</b><em>{s.subject}</em><p>{s.content}</p></div>
                     <button type="button" className="fu-x" onClick={() => remove(s.key)} aria-label={`${s.code} 빼기`}>×</button>
@@ -251,7 +261,7 @@ export default function Futures2Page({ get = apiGet, post = apiPost } = {}) {
           </div>
         </section>
 
-        {picked.length >= 2 && <p className="fu-graph-key">큰 스톤: 성취기준 · 작은 별: 키워드 · 연결선: 소속과 교과 간 관계</p>}
+        {picked.length >= 2 && <p className="fu-graph-key">{subjectGroups.length}과목 · 성취기준 {picked.length}개 — 같은 색은 같은 과목 · 스톤은 성취기준 · 작은 별은 키워드</p>}
         <div ref={sceneRootRef} />
         <p className="fu-note">연결과 미래는 AI가 성취기준 원문을 바탕으로 그린 수업 아이디어입니다. 키워드는 원문에 있는 말만 쓰고, 이어지지 않는 성취기준은 억지로 엮지 않습니다. 한 번 본 미래는 저장되어 다시 열면 바로 보입니다.</p>
       </main>

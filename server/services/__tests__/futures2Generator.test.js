@@ -66,16 +66,29 @@ beforeEach(() => {
 })
 
 describe('요청 검증', () => {
+  it('실제 성취기준 7개를 받고 S7의 본문과 역할도 정확히 변환한다', () => {
+    const seven = Standards.list().slice(0, 7)
+    const resolved = resolveFutureRequest({ codes: seven.map(s => s.key), model: 'fast', index: 0 })
+    expect(resolved.error).toBeUndefined()
+    expect(resolved.standards).toHaveLength(7)
+    const payload = JSON.parse(goodJson(seven.map((s, i) => `S${i + 1}`)))
+    payload.honesty_note = 'S7도 수업에 참여한다.'
+    const f = parseFuture(JSON.stringify(payload), seven)
+    expect(f.roles).toHaveLength(7)
+    expect(f.missing_roles).toEqual([])
+    expect(f.honesty_note).toContain(seven[6].code)
+    expect(f.honesty_note).not.toContain('S7')
+  })
   it('전용 큐는 유효한 설정이 없으면 동시 생성 8개로 시작한다', () => {
     const configured = Number(process.env.FUTURES2_QUEUE_CONCURRENCY)
     expect(futures2Queue.concurrency).toBe(Number.isInteger(configured) && configured > 0 ? configured : 8)
   })
 
-  it('성취기준 2~6개, 모델, 번호를 검증한다', () => {
+  it('성취기준 2~7개, 모델, 번호를 검증한다', () => {
     expect(resolveFutureRequest({ codes: keys, model: 'fast', index: 0 }).standards).toHaveLength(3)
-    expect(resolveFutureRequest({ codes: keys.slice(0, 1), index: 0 }).error).toMatch('2~6')
-    const extra = Standards.list().filter((s) => !keys.includes(s.key)).slice(0, 4).map((s) => s.key)
-    expect(resolveFutureRequest({ codes: [...keys, ...extra], index: 0 }).error).toMatch('2~6')
+    expect(resolveFutureRequest({ codes: keys.slice(0, 1), index: 0 }).error).toMatch('2~7')
+    const extra = Standards.list().filter((s) => !keys.includes(s.key)).slice(0, 5).map((s) => s.key)
+    expect(resolveFutureRequest({ codes: [...keys, ...extra], index: 0 }).error).toMatch('2~7')
     expect(resolveFutureRequest({ codes: [...keys, '[없는코드-99]'], index: 0 }).error).toMatch('찾을 수 없는')
     expect(resolveFutureRequest({ codes: keys, index: 30 }).error).toMatch('미래 번호')
     expect(resolveFutureRequest({ codes: keys, index: -1 }).error).toMatch('미래 번호')

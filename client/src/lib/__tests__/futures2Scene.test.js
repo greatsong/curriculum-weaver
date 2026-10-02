@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFuturesScene } from '../futures2Scene'
 
-const criteria = Array.from({ length: 6 }, (_, i) => ({
+const criteria = Array.from({ length: 7 }, (_, i) => ({
   key: `criterion-${i}`, code: `[12교과01-0${i + 1}]`, subject: `교과 ${i + 1}`, subject_group: '과학', content: `자료 ${i + 1}을 분석한다.`,
 }))
 const future = (index, title = `수업의 미래 ${index + 1}`) => ({
@@ -64,6 +64,18 @@ afterEach(() => {
 })
 
 describe('미래 보기 2 장면의 진행과 재시도', () => {
+  it('3과목의 성취기준 7개를 과목별로 묶고 동일 과목의 색을 일치시킨다', async () => {
+    const standards = criteria.map((s, i) => ({ ...s, subject: ['음악', '음악', '수학', '수학', '국어', '국어', '음악'][i] }))
+    scene = createFuturesScene(root, { standards, requestFuture })
+    scene.setBridges(noLinks)
+    expect(root.querySelectorAll('.fu2-subject-region')).toHaveLength(3)
+    expect(root.querySelectorAll('.fu-wc')).toHaveLength(7)
+    const stones = [...root.querySelectorAll('.fu-wc')]
+    expect(stones[0].style.getPropertyValue('--c')).toBe(stones[6].style.getPropertyValue('--c'))
+    expect(stones[0].getAttribute('transform')).not.toBe(stones[6].getAttribute('transform'))
+    await advance(90_000)
+    expect(requestFuture).not.toHaveBeenCalled()
+  })
   it('성취기준이 1개일 때 시작과 선행 생성을 하지 않는다', async () => {
     mount(1)
     expect(root.querySelector('.fu-start').disabled).toBe(true)
