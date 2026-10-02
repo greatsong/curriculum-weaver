@@ -4,7 +4,7 @@
  * - index마다 다른 관점(FUTURE_LENSES)을 배정해 넘길 때마다 다른 미래가 나오게 한다.
  * - 검증된 연결(published)의 근거·주제·수업 씨앗을 프롬프트에 넣고, 연결이 약한 조합은
  *   억지로 잇지 말고 솔직히 밝히게 한다(honesty_note).
- * - 같은 조합·모델·index는 scenario_cache에 'future:v4:' 접두 키로 캐시한다. 캐시 장애는
+ * - 같은 조합·모델·index는 scenario_cache에 'future:v5:' 접두 키로 캐시한다. 캐시 장애는
  *   생성을 막지 않는다. (기존 시나리오 캐시 키는 '['로 시작하는 코드라 겹치지 않는다)
  * - 서버 전체 동시 생성 수를 futuresQueue로 묶는다. 채팅과 같은 API 키를 쓰므로, 미래 보기가
  *   몰려도 분당 출력 토큰 한도를 다 쓰지 못하게 해 채팅이 429를 맞지 않게 한다.
@@ -17,6 +17,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 export const FUTURE_MIN_STANDARDS = 2
 export const FUTURE_MAX_STANDARDS = 6
 export const FUTURE_MAX_INDEX = 29 // 한 조합당 미래 30개까지
+export const FUTURE_PITCH_MAX = 140 // 카드 설명 글자 상한(프롬프트는 100자 이내를 요구, 넘치면 문장 경계에서 자른다)
 
 // 서버 전체 동시 생성 상한 (기본 80 = 연수 최대 10명 × 꼭지 8개 → 10명이 한꺼번에 열어도 줄 서지 않는다).
 // 실측 한 건 ≈ 11초·입력 1,750·출력 1,250토큰(2026-10-02) → 상한이 꽉 차도 분당 출력 ≈ 50만으로 키 한도(200만)의
@@ -24,9 +25,9 @@ export const FUTURE_MAX_INDEX = 29 // 한 조합당 미래 30개까지
 export const futuresQueue = new PQueue({ concurrency: Number(process.env.FUTURES_QUEUE_CONCURRENCY) || 80 })
 
 export const FUTURE_MODELS = {
-  // 생각 깊이 '보통': 실측 평균 17.1초 → 11.7초, 품질(역할·흐름) 동일 (2026-10-02, 고등 3과목 조합 4회씩)
-  fast: { id: 'claude-sonnet-5-5', maxTokens: 6000, effort: 'medium' },
-  precise: { id: 'claude-opus-5-5', maxTokens: 16000, effort: 'medium' },
+  // 생각 깊이 '보통'. 카드는 제목+2~3문장이라 출력이 짧다(긴 수업 계획은 쓰지 않는다)
+  fast: { id: 'claude-sonnet-5-5', maxTokens: 2000, effort: 'medium' },
+  precise: { id: 'claude-opus-5-5', maxTokens: 6000, effort: 'medium' },
 }
 
 // 별의 꼭지 8개 = 미래의 관점 8개. 관점마다 장면과 결과물 유형을 따로 정해 성격이 겹치지 않게 한다.
@@ -43,7 +44,7 @@ export const FUTURE_LENSES = [
 ]
 const lensOf = (index) => FUTURE_LENSES[index % FUTURE_LENSES.length]
 
-const cacheKeyOf = (modelKey, keys, index) => `future:v4:${modelKey}:${[...keys].sort().join('|')}#${index}`
+const cacheKeyOf = (modelKey, keys, index) => `future:v5:${modelKey}:${[...keys].sort().join('|')}#${index}`
 const inflight = new Map()
 
 /** 요청 값 검증 — 성취기준은 key(충돌 코드는 'code|과목')로 받는다. */
@@ -111,28 +112,19 @@ ${conceptLines.join('\n')}${isolatedIds.length ? `\n- 어느 연결에도 엮이
 ## 원칙
 1. 하나의 수업 장면이 고른 성취기준들을 자연스럽게 관통해야 합니다. 성취기준마다 따로 노는 짜깁기는 실패작입니다.
 2. 성취기준이 실제로 다루는 내용 요소와 활동만 사용하세요. 성취기준에 없는 내용을 만들어 내지 마세요.
-3. 연결이 약한 성취기준은 억지로 늘이지 말고 보조 역할로 두되, 그 사실을 honesty_note에 솔직히 적으세요.
-4. 데이터와 자료는 학생이 실제로 구하거나 만들 수 있는 것만 쓰세요(공공데이터, 교실 측정, 설문 등).
-5. 가짜 인물·가짜 수치·지어낸 고전 구절은 쓰지 마세요. 사실이 확실하지 않으면 학생 탐구 과제로 넘기세요.
-6. 톤은 담담하게 쓰세요. 비장하거나 선정적인 제목 대신 무엇을 하는 수업인지 드러나는 제목을 쓰세요.
-   평이한 현대어로 쓰세요. '견주다' 같은 문어투 대신 '비교하다'를 쓰고, 은유나 과장된 표현은 피하세요.
-7. S1, S2 같은 번호는 roles의 id에만 쓰세요. 다른 모든 문장에서는 교과명이나 성취기준 내용으로 부르세요.${conceptLines.length ? `
-8. 연결 지도에서 이번 관점에 가장 맞는 연결을 1~2개 골라 수업의 축으로 삼으세요. 그 연결의 키워드들이 활동 흐름에서 실제로 만나야 합니다. 고른 연결 이름을 axis에 그대로 적으세요.` : ''}
+3. 가짜 인물·가짜 수치·지어낸 고전 구절은 쓰지 마세요.
+4. 평이한 현대어로 담담하게 쓰세요. 비장하거나 과장된 표현, 은유, '견주다' 같은 문어투는 피하세요.
+5. S1, S2 같은 번호는 쓰지 마세요. 교과명이나 성취기준 내용으로 부르세요.${conceptLines.length ? `
+6. 연결 지도에서 이번 관점에 가장 맞는 연결을 1~2개 골라 수업의 축으로 삼고, 고른 연결 이름을 axis에 그대로 적으세요.` : ''}
 
-## 응답 형식 — 아래 JSON만 출력 (코드펜스·다른 텍스트 금지, 전체 1,500자 이내)
-{
-  "title": "미래 제목 한 줄",
-  "lens": "이 미래의 관점을 한 구절로",
-  "situation": "수업이 시작되는 문제 상황 3~4문장",
-  "driving_question": "학생이 답을 찾아가는 핵심 질문 한 문장",
-  "roles": [{"id": "S1", "role": "이 수업에서 이 성취기준이 맡는 역할 한 문장"}],
-  "activity_steps": ["차시 흐름 4~5단계, 각 한 줄"],
-  "data_sources": ["학생이 실제로 쓸 수 있는 자료 2~3개"],
-  "student_output": "학생이 만들어 내는 결과물 한 줄",
-  "assessment_idea": "과정 중심 평가 아이디어 1~2문장",
-  "honesty_note": "억지스러운 연결이 있으면 한 문장으로 솔직하게, 없으면 빈 문자열"${conceptLines.length ? ',\n  "axis": ["수업의 축으로 삼은 연결 이름 1~2개"]' : ''}
-}
-roles에는 S1~S${standards.length}가 모두 한 번씩 들어가야 합니다.`
+## 쓰는 방법 — 교사가 읽고 "아, 이런 수업도 괜찮겠네" 하고 떠올릴 수 있는 짧은 카드
+- title: 무엇을 하는 수업인지 드러나는 제목(25자 이내).
+- pitch: 2문장, 100자 이내, '~한다'로 끝나는 평서문. 학생이 무엇을 하고 무엇을 만들어 내는지, 성취기준들이 어디서 만나는지를 구체적인 장면으로 쓰세요.
+  차시 계획·단계·평가 방법·자료 목록은 쓰지 마세요.
+- honesty_note: 억지스러운 연결이 있을 때만 40자 이내 한 문장, 없으면 빈 문자열.
+
+## 응답 형식 — 아래 JSON만 출력 (코드펜스·다른 텍스트 금지)
+{"title": "…", "pitch": "…", "honesty_note": ""${conceptLines.length ? ', "axis": ["연결 이름"]' : ''}}`
 }
 
 /** 본문에 남은 S1·S2 같은 내부 번호를 "교과 [코드]"로 바꾼다(사용자는 번호를 모른다). */
@@ -144,36 +136,29 @@ function replaceInternalIds(value, standards) {
   })
 }
 
-/** 모델 응답 → 미래 객체. JSON이 없거나 깨지면 null. */
+// 설명이 길면 문장 경계에서 자른다(카드는 4~5줄 이내)
+export function clampPitch(text, max = FUTURE_PITCH_MAX) {
+  if (text.length <= max) return text
+  const cut = text.slice(0, max)
+  const end = Math.max(cut.lastIndexOf('다.'), cut.lastIndexOf('요.'))
+  if (end > 0) return cut.slice(0, end + 2).trim() // 마지막으로 끝난 문장까지
+  const space = cut.lastIndexOf(' ')
+  return `${(space > max * .6 ? cut.slice(0, space) : cut).trim()}…`
+}
+
+/** 모델 응답 → 미래 카드 { title, pitch, honesty_note, axis }. JSON이 없거나 제목·설명이 없으면 null. */
 export function parseFuture(text, standards) {
   const match = typeof text === 'string' ? text.match(/\{[\s\S]*\}/) : null
   if (!match) return null
   let data
   try { data = JSON.parse(match[0]) } catch { return null }
-  if (!data || typeof data.title !== 'string' || typeof data.driving_question !== 'string') return null
-  const byId = new Map(standards.map((s, i) => [`S${i + 1}`, s]))
-  const roles = (Array.isArray(data.roles) ? data.roles : [])
-    .map((r) => {
-      const std = byId.get(String(r?.id || '').trim())
-      return std && typeof r.role === 'string' ? { key: std.key, code: std.code, subject: std.subject, role: replaceInternalIds(r.role, standards) } : null
-    })
-    .filter(Boolean)
-  const missing = standards.filter((s) => !roles.some((r) => r.key === s.key)).map((s) => s.key)
-  const text1 = (v) => replaceInternalIds(v, standards)
-  const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string').map(text1) : [])
+  if (!data || typeof data.title !== 'string' || typeof data.pitch !== 'string' || !data.title.trim() || !data.pitch.trim()) return null
+  const text1 = (v) => replaceInternalIds(v, standards).trim()
   return {
     title: text1(data.title),
-    lens: text1(data.lens),
-    situation: text1(data.situation),
-    driving_question: text1(data.driving_question),
-    roles,
-    missing_roles: missing,
-    activity_steps: list(data.activity_steps),
-    data_sources: list(data.data_sources),
-    student_output: text1(data.student_output),
-    assessment_idea: text1(data.assessment_idea),
+    pitch: clampPitch(text1(data.pitch)),
     honesty_note: text1(data.honesty_note),
-    axis: list(data.axis).slice(0, 3),
+    axis: (Array.isArray(data.axis) ? data.axis : []).filter((x) => typeof x === 'string').map(text1).filter(Boolean).slice(0, 3),
   }
 }
 
