@@ -281,7 +281,9 @@ chatRouter.use(requireAuth)
 chatRouter.use(checkProjectAccess)
 
 // ─── 채팅 메시지 목록 조회 ───
-chatRouter.get('/:sessionId', async (req, res) => {
+// 라우터 수준 use()에서는 req.params가 비어 있어 GET의 :sessionId를 읽지 못한다.
+// 그래서 이 라우트에 멤버십 검사를 직접 붙인다(본문 session_id가 없는 GET 전용).
+chatRouter.get('/:sessionId', checkProjectAccess, async (req, res) => {
   try {
     // 최근 메시지를 시간순으로 로드. getMessages(오름차순 range)는 200개를 넘는 프로젝트에서
     // '가장 오래된' 200개만 줘서, 새로고침 시 최근 대화가 통째로 안 보이던 버그가 있었다.

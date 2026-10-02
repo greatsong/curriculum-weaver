@@ -17,8 +17,10 @@ import { getProject, getMemberRole } from '../lib/supabaseService.js'
 export const reportRouter = Router()
 
 // 인증 필수 + 멤버십 검증
+// 멤버십 검사는 각 라우트에 붙인다. 라우터 수준 use()에서는 req.params가 비어 있어
+// :projectId를 읽지 못하고 검사 없이 통과하던 문제가 있었다.
 reportRouter.use(requireAuth)
-reportRouter.use(async (req, res, next) => {
+async function checkReportAccess(req, res, next) {
   const projectId = req.params.projectId
   if (!projectId) return next()
   try {
@@ -36,13 +38,13 @@ reportRouter.use(async (req, res, next) => {
     }
   }
   next()
-})
+}
 
 /**
  * GET /api/report/:projectId/html
  * HTML 보고서 파일 다운로드
  */
-reportRouter.get('/:projectId/html', async (req, res) => {
+reportRouter.get('/:projectId/html', checkReportAccess, async (req, res) => {
   try {
     const data = await collectReportData(req.params.projectId)
     if (!data) {
@@ -65,7 +67,7 @@ reportRouter.get('/:projectId/html', async (req, res) => {
  * GET /api/report/:projectId/md
  * Markdown 보고서 파일 다운로드
  */
-reportRouter.get('/:projectId/md', async (req, res) => {
+reportRouter.get('/:projectId/md', checkReportAccess, async (req, res) => {
   try {
     const data = await collectReportData(req.params.projectId)
     if (!data) {
@@ -88,7 +90,7 @@ reportRouter.get('/:projectId/md', async (req, res) => {
  * GET /api/report/:projectId/preview
  * HTML 프리뷰 (브라우저에서 인라인 표시, window.print()로 PDF 변환 가능)
  */
-reportRouter.get('/:projectId/preview', async (req, res) => {
+reportRouter.get('/:projectId/preview', checkReportAccess, async (req, res) => {
   try {
     const data = await collectReportData(req.params.projectId)
     if (!data) {
