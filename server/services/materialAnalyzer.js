@@ -53,7 +53,7 @@ export const VISION_IMAGE_MIME = {
 /**
  * 자료 분석용 AI 모델 — aiAgent.js의 MODEL_MAP.fast와 일치.
  */
-const ANALYZER_MODEL = 'claude-sonnet-5'
+const ANALYZER_MODEL = 'claude-sonnet-5-5'
 
 // ── 시스템 프롬프트 (캐싱 대상, intent 블록은 끝에 배치) ──
 // 앞 부분(공통 규칙)을 고정해 프롬프트 캐시 히트율을 유지한다.
@@ -637,7 +637,7 @@ async function extractText(buffer, ext) {
  * @param {{intent?: string, intentNote?: string|null}} [options]
  */
 async function callClaudeAnalysis(source, { intent = DEFAULT_MATERIAL_INTENT, intentNote = null } = {}) {
-  const instruction = '위 자료를 분석하여 submit_material_analysis 도구로 결과를 제출해주세요.'
+  const instruction = '위 자료를 분석하여 submit_material_analysis 도구로 결과를 제출해주세요. 설명 문장 없이 도구를 한 번만 호출하세요.'
   let content
   let timeoutMs = AI_TIMEOUT_MS
 
@@ -666,12 +666,16 @@ async function callClaudeAnalysis(source, { intent = DEFAULT_MATERIAL_INTENT, in
 
   const systemText = buildSystemPrompt({ intent, intentNote })
 
+  // Sonnet 5.5는 강제 도구 선택(tool_choice: tool/any)을 400으로 거부한다. auto + 지시문으로 호출을
+  // 유도하고, 아래에서 tool_use가 없으면 AI_SCHEMA_INVALID로 처리한다. 추출형 작업이라 effort는
+  // low로 두어 thinking을 짧게 유지하고, thinking이 max_tokens를 함께 쓰므로 상한을 넉넉히 둔다.
   const aiCall = getClient().messages.create({
     model: ANALYZER_MODEL,
-    max_tokens: 4096,
+    max_tokens: 8192,
+    output_config: { effort: 'low' },
     system: [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }],
     tools: [buildAnalyzeTool(intent)],
-    tool_choice: { type: 'tool', name: 'submit_material_analysis' },
+    tool_choice: { type: 'auto' },
     messages: [{ role: 'user', content }],
   })
 
@@ -679,6 +683,8 @@ async function callClaudeAnalysis(source, { intent = DEFAULT_MATERIAL_INTENT, in
     setTimeout(() => reject(new Error('AI_TIMEOUT')), timeoutMs)
   )
   const response = await Promise.race([aiCall, timeout])
+
+  if (response?.stop_reason === 'refusal') throw new Error('AI_REFUSAL')
 
   const toolUse = Array.isArray(response?.content)
     ? response.content.find((b) => b.type === 'tool_use')
@@ -983,6 +989,8 @@ async function analyzeSource(materialId, source, { intent, intentNote, projectId
     if (msg === 'AI_TIMEOUT') {
       const limit = isVision ? AI_TIMEOUT_VISION_MS : AI_TIMEOUT_MS
       structured = `${E.AI_TIMEOUT}: AI 분석 타임아웃 (${Math.round(limit / 1000)}s) — 재분석을 시도해주세요.`
+    } else if (msg === 'AI_REFUSAL') {
+      structured = `${E.INTERNAL}: AI가 이 자료의 분석을 거절했습니다. 다른 자료로 시도하거나 내용을 나누어 올려주세요.`
     } else if (msg === 'AI_SCHEMA_INVALID') {
       structured = `${E.AI_SCHEMA_INVALID}: AI 응답 스키마가 올바르지 않습니다. 재분석을 시도해주세요.`
     } else if (/timeout/i.test(msg)) {
@@ -1000,6 +1008,7 @@ async function analyzeSource(materialId, source, { intent, intentNote, projectId
 
 // 내부 테스트용 export
 export const _internal = {
+  callClaudeAnalysis,
   filterHallucinations,
   extractText,
   buildSystemPrompt,

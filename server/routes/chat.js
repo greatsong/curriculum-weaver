@@ -857,7 +857,7 @@ chatRouter.post('/message', async (req, res) => {
 
     // Claude API 스트리밍 응답
     let fullResponse = ''
-    await buildAIResponse(context, {
+    const aiResult = await buildAIResponse(context, {
       onText: (text) => {
         fullResponse += text // 이탈 여부와 무관하게 누적 — 완주한 답을 저장한다
         if (clientDisconnected) return // 끊긴 소켓에는 쓰지 않는다
@@ -868,6 +868,13 @@ chatRouter.post('/message', async (req, res) => {
         res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.ERROR, message: error })}\n\n`)
       },
     })
+
+    // 모델이 거절한 응답은 일부 텍스트가 있어도 저장하지 않는다(안내 문구는 onError로 전송됨)
+    if (aiResult?.refused) {
+      if (!clientDisconnected) res.write(`data: [DONE]\n\n`)
+      res.end()
+      return
+    }
 
     // ─── AI 응답 파싱 ───
     let processedText = fullResponse

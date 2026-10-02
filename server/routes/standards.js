@@ -514,7 +514,7 @@ ${multi ? '5' : '4'}. "철수가 사과를…" 식 가짜 인물·가짜 수치 
         let lastErr
         for (let attempt = 0; attempt < 2; attempt++) {
           const response = await getAnthropic().messages.create({
-            model: 'claude-sonnet-5',
+            model: 'claude-sonnet-5-5',
             max_tokens: 5000,
             messages: [{ role: 'user', content: prompt }],
           })
@@ -531,7 +531,7 @@ ${multi ? '5' : '4'}. "철수가 사과를…" 식 가짜 인물·가짜 수치 
             scenario.context_codes = contexts.map(c => c.code)
             scenario.context_code = contexts[0].code // 구버전 클라이언트 호환
             await supabaseAdmin.from('scenario_cache').upsert({
-              key, codes: [concept.code, ...contexts.map(c => c.code)], scenario, model: 'claude-sonnet-5',
+              key, codes: [concept.code, ...contexts.map(c => c.code)], scenario, model: 'claude-sonnet-5-5',
             }, { onConflict: 'key', ignoreDuplicates: true })
             return scenario
           } catch (e) { lastErr = e }
@@ -1124,7 +1124,7 @@ ${candidateText}
 \`\`\``
 
     const response = await getAnthropic().messages.create({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-5-5',
       max_tokens: 4096,
       messages: [{ role: 'user', content: aiPrompt }],
     })
@@ -1325,7 +1325,7 @@ ${overviewSection}`
 
     let fullResponse = ''
     const stream = getAnthropic().messages.stream({
-      model: 'claude-sonnet-5',
+      model: 'claude-sonnet-5-5',
       max_tokens: 4096,
       system: systemPrompt,
       messages,
