@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parseFuturesSearch, buildFuturesSearch, catalogFromBody, normCode, searchStandards, codesIn, resolveCodes,
+  parseFuturesSearch, buildFuturesSearch, catalogFromBody, normCode, searchStandards, codesIn, resolveCodes, mergeStandardCodes,
 } from '../futures2'
 
 // 고등학교 일반 과목 위주 (충돌 코드 key 하나 포함)
@@ -56,6 +56,22 @@ describe('성취기준 검색', () => {
 })
 
 describe('코드 여러 개 붙여 넣기', () => {
+  it('이미 담긴 코드와 중복 입력은 한도 초과로 보고하지 않는다', () => {
+    const selected = list.map(s => s.key)
+    const repeated = mergeStandardCodes(list, '[12생과01-05], [12생과01-05]', selected)
+    expect(repeated).toMatchObject({ added: 0, duplicates: 1, overflow: 0, missing: [] })
+  })
+  it('6개 제한을 넘는 새 코드와 찾지 못한 코드를 각각 안내한다', () => {
+    const selected = ['a', 'b', 'c', 'd', list[0].key]
+    expect(mergeStandardCodes(list, '[12생과01-05], [12운건01-01], [12없음99-99]', selected)).toEqual({
+      keys: [...selected, list[1].key], added: 1, duplicates: 0, overflow: 1, missing: ['[12없음99-99]'],
+    })
+  })
+  it('모든 코드가 잘못되어도 현재 선택을 보존하고 오류를 알려준다', () => {
+    expect(mergeStandardCodes(list, '[12없음99-99], [12없음99-99]', [list[0].key])).toEqual({
+      keys: [list[0].key], added: 0, duplicates: 0, overflow: 0, missing: ['[12없음99-99]'],
+    })
+  })
   it('쉼표·줄바꿈·붙은 대괄호를 모두 나눈다', () => {
     expect(codesIn('[12생과01-05], [12운건01-01]')).toEqual(['[12생과01-05]', '[12운건01-01]'])
     expect(codesIn('[12생과01-05]\n[12운건01-01]')).toHaveLength(2)
@@ -67,5 +83,14 @@ describe('코드 여러 개 붙여 넣기', () => {
     const { found, missing } = resolveCodes(list, ['12생과01-05', '[12운건01-01]', '[12없음99-99]', '[12생과01-05]'])
     expect(found.map((s) => s.key)).toEqual(['[12생과01-05]', '[12운건01-01]'])
     expect(missing).toEqual(['[12없음99-99]'])
+  })
+})
+
+describe('교과별 성취기준 목록', () => {
+  it('검색어 없이 교과를 골라 목록을 보고 학교급·선택 제외를 적용한다', () => {
+    const catalog = list.map(s => ({ ...s, subject_group: s.subject === '확률과 통계' || s.subject === '수학' ? '수학' : s.subject }))
+    expect(searchStandards(catalog, '', { subject: '수학' }).map(s => s.key)).toEqual(['[12확통01-01]', '[9수01-01]'])
+    expect(searchStandards(catalog, '', { subject: '수학', level: '중학교' }).map(s => s.key)).toEqual(['[9수01-01]'])
+    expect(searchStandards(catalog, '', { subject: '수학', exclude: new Set(['[9수01-01]']) }).map(s => s.key)).toEqual(['[12확통01-01]'])
   })
 })

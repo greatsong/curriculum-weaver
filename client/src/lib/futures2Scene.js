@@ -600,6 +600,9 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
       text.setAttribute('x', x + (anchor === 'start' ? radius + 9 : anchor === 'end' ? -radius - 9 : 0))
       text.setAttribute('y', anchor === 'middle' ? y - radius - 8 : y + fontSize * .32)
       group.querySelector('.fu-kw-halo').setAttribute('r', radius * 2.3)
+      const rays = group.querySelector('.fu2-keyword-rays'), span = radius * 1.8
+      rays.setAttribute('d', `M${x - span},${y}H${x + span}M${x},${y - span}V${y + span}`)
+      group.querySelector('.fu2-keyword-core').setAttribute('r', radius * .35)
       const glint = group.querySelector('.fu2-keyword-glint')
       glint.setAttribute('cx', x - radius * .3); glint.setAttribute('cy', y - radius * .35); glint.setAttribute('r', radius * .23)
     })
@@ -645,7 +648,7 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
         // 바깥쪽 글씨는 무대 안쪽으로 향하게 해 모바일에서도 잘리지 않게 한다.
         const anchor = p.x > 780 ? 'end' : p.x < 220 ? 'start' : c > .35 ? 'start' : c < -.35 ? 'end' : 'middle'
         const tx = lx + (anchor === 'start' ? 9 : anchor === 'end' ? -9 : 0), ty = ly + (anchor === 'middle' ? (Math.sin(p.a) > 0 ? 20 : -11) : 5)
-        return `<g class="fu-kw" data-w="${esc(w)}" style="--k:${k * 110}ms;--keyword-fill:url(#fu2-keyword-${i})"><circle class="fu-kw-halo" cx="${lx}" cy="${ly}" r="18" fill="url(#fu2-standard-${i}-aura)"/><circle class="fu2-keyword-node" cx="${lx}" cy="${ly}" r="8"/><circle class="fu2-keyword-glint" cx="${lx - 2}" cy="${ly - 3}" r="2"/><text x="${tx}" y="${ty}" text-anchor="${anchor}">${esc(w)}</text></g>`
+        return `<g class="fu-kw" data-w="${esc(w)}" style="--k:${k * 110}ms;--keyword-fill:url(#fu2-keyword-${i})"><circle class="fu-kw-halo" cx="${lx}" cy="${ly}" r="18" fill="url(#fu2-standard-${i}-aura)"/><path class="fu2-keyword-rays"/><circle class="fu2-keyword-node" cx="${lx}" cy="${ly}" r="8"/><circle class="fu2-keyword-core" cx="${lx}" cy="${ly}" r="2.8"/><circle class="fu2-keyword-glint" cx="${lx - 2}" cy="${ly - 3}" r="2"/><text x="${tx}" y="${ty}" text-anchor="${anchor}">${esc(w)}</text></g>`
       }).join('')
       // 모든 키워드를 해당 성취기준에 직접 연결한다. 근거 없는 키워드 간 삼각형은 만들지 않는다.
       const lines = list.map((word, k) => {

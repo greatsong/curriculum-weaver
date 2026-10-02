@@ -45,15 +45,17 @@ const squash = (s) => String(s ?? '').toLowerCase().replace(/\s+/g, '')
  * 성취기준 검색 — 코드를 아는 교사가 빨리 찾도록 코드 일치를 맨 앞에 둔다.
  * 띄어쓰기는 무시하고(개인정보 = 개인 정보), 낱말이 여럿이면 모두 들어 있어야 한다.
  */
-export function searchStandards(list, query, { level = '', exclude = new Set(), limit = 60 } = {}) {
+export function searchStandards(list, query, { level = '', subject = '', exclude = new Set(), limit = 60 } = {}) {
   const q = String(query || '').trim().toLowerCase()
-  if (!q) return []
+  if (!q && !subject) return []
   const tokens = q.split(/\s+/).filter(Boolean).map(squash)
   const qCode = normCode(q)
   const scored = []
   for (const s of list || []) {
     if (exclude.has(s.key)) continue
     if (level && s.school_level !== level) continue
+    if (subject && (s.subject_group || s.subject) !== subject) continue
+    if (!q) { scored.push([0, s]); continue }
     const nc = normCode(s.code), sub = squash(s.subject), con = squash(s.content)
     let score
     if (nc === qCode) score = -1 // 코드 정확 일치
@@ -90,4 +92,17 @@ export function resolveCodes(list, chunks) {
     if (hit) { if (!found.includes(hit)) found.push(hit) } else missing.push(`[${String(c).replace(/[[\]]/g, '').trim()}]`)
   }
   return { found, missing }
+}
+
+/** 여러 코드 입력 결과. 이미 고른 코드와 한도 초과를 구분해 교사에게 안내한다. */
+export function mergeStandardCodes(list, text, selectedKeys = []) {
+  const { found, missing } = resolveCodes(list, codesIn(text))
+  const selected = [...new Set(selectedKeys)].slice(0, FUTURE_MAX)
+  const candidates = found.filter(s => !selected.includes(s.key))
+  const added = candidates.slice(0, FUTURE_MAX - selected.length)
+  return {
+    keys: [...selected, ...added.map(s => s.key)], added: added.length,
+    duplicates: found.length - candidates.length, overflow: candidates.length - added.length,
+    missing: [...new Set(missing)],
+  }
 }

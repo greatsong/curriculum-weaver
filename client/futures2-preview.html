@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>미래 보기 2 · 애니메이션 미리보기</title>
+  <title>미래보기(타임스톤) · 애니메이션 미리보기</title>
   <style>
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif; }
     .preview-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 20px 0 6px; }
@@ -14,10 +14,10 @@
     #feedback { min-height: 20px; color: #b2dbc3; font-size: 13px; }
   </style>
 </head>
-<body class="futures-root futures2-root">
+<body class="futures2-root">
   <canvas class="fu-dust" aria-hidden="true"></canvas>
   <main class="fu-main">
-    <header class="fu-header"><div><h1>미래 보기 <span>2</span></h1><p class="fu-sub">여섯 개의 성취기준이 연결되고, 시간의 고리를 통해 수업의 가능성이 열립니다.</p></div></header>
+    <header class="fu-header"><div><h1>미래보기(타임스톤)</h1><p class="fu-sub">여섯 개의 성취기준이 연결되고, 시간의 고리를 통해 수업의 가능성이 열립니다.</p></div></header>
     <div class="preview-tools" aria-label="애니메이션 검토 도구">
       <button type="button" data-count="6" class="on">스톤 6개</button>
       <button type="button" data-count="3">스톤 3개</button>
@@ -26,6 +26,7 @@
       <label>응답 <select id="response"><option value="ready">정상</option><option value="slow">생성 지연</option><option value="bridge-error">연결 분석 실패</option><option value="future-error">미래 생성 실패</option></select></label>
     </div>
     <p class="preview-note">애니메이션 확인용 예시입니다. AI 호출과 데이터 저장은 발생하지 않습니다.</p>
+    <p class="fu-graph-key">큰 스톤: 성취기준 · 작은 별: 키워드 · 연결선: 소속과 교과 간 관계</p>
     <div id="scene"></div>
     <div id="feedback" role="status"></div>
   </main>

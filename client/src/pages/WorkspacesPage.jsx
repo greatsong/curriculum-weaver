@@ -144,7 +144,7 @@ export default function WorkspacesPage() {
               }}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M3 3l2 2m14 14 2 2"/></svg>
-              미래 보기 2
+              미래보기(타임스톤)
             </button>
             <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }} className="hidden sm:inline">
               {user?.email}
