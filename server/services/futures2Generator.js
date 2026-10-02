@@ -1,5 +1,5 @@
 /**
- * 미래 보기 2 — 교사가 고른 성취기준 2~6개로 "가능한 수업의 미래"를 하나씩 생성한다.
+ * 미래 보기 2 — 교사가 고른 성취기준 2~7개로 "가능한 수업의 미래"를 하나씩 생성한다.
  *
  * - index마다 다른 관점(FUTURE_LENSES)을 배정해 넘길 때마다 다른 미래가 나오게 한다.
  * - 검증된 연결(published)의 근거·주제·수업 씨앗을 프롬프트에 넣고, 연결이 약한 조합은
@@ -15,7 +15,7 @@ import { Standards, StandardLinks } from '../lib/store.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 
 export const FUTURE_MIN_STANDARDS = 2
-export const FUTURE_MAX_STANDARDS = 6
+export const FUTURE_MAX_STANDARDS = 7
 export const FUTURE_MAX_INDEX = 29 // 한 조합당 미래 30개까지
 
 // 미래 보기 2 전용 큐. 실제 공급자 RPM/TPM은 검증 전이므로 기본 8개씩 실행한다.
@@ -140,7 +140,7 @@ roles에는 S1~S${standards.length}가 모두 한 번씩 들어가야 합니다.
 /** 본문에 남은 S1·S2 같은 내부 번호를 "교과 [코드]"로 바꾼다(사용자는 번호를 모른다). */
 function replaceInternalIds(value, standards) {
   if (typeof value !== 'string') return ''
-  return value.replace(/\bS([1-6])\b/g, (whole, n) => {
+  return value.replace(/\bS([1-7])\b/g, (whole, n) => {
     const std = standards[Number(n) - 1]
     return std ? `${std.subject} ${std.code}` : whole
   })

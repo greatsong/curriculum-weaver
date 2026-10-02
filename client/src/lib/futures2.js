@@ -2,7 +2,7 @@
  * 미래 보기 2 — 화면 공용 순수 함수 (URL 상태, 성취기준 검색·코드 여러 개 붙여 넣기)
  */
 export const FUTURE_MIN = 2
-export const FUTURE_MAX = 6
+export const FUTURE_MAX = 7
 export const FUTURE_TIPS = 8 // 별의 꼭지 = 관점 8개 (서버 FUTURE_LENSES와 같은 순서)
 
 export const FUTURE_MODEL_OPTIONS = [
@@ -10,11 +10,18 @@ export const FUTURE_MODEL_OPTIONS = [
   { id: 'precise', label: '정밀', model: 'Opus 5.5' },
 ]
 
-/** ?codes=k1,k2&model=precise → { keys, model } (중복 제거, 최대 6개) */
+/** ?codes=k1,k2&model=precise → { keys, model } (중복 제거, 최대 7개) */
 export function parseFuturesSearch(search) {
   const params = new URLSearchParams(search || '')
+  const value = params.get('codes') || ''
+  let candidates = value.split(',')
+  // 충돌 키의 과목명에 쉼표가 있을 수 있다. 새 URL은 이 경우만 JSON 배열로 보존한다.
+  if (value.startsWith('["')) {
+    try { const parsed = JSON.parse(value); if (Array.isArray(parsed)) candidates = parsed } catch { /* 기존 쉼표 URL 처리 */ }
+  }
   const keys = []
-  for (const raw of (params.get('codes') || '').split(',')) {
+  for (const raw of candidates) {
+    if (typeof raw !== 'string') continue
     const key = raw.trim()
     if (key && !keys.includes(key)) keys.push(key)
     if (keys.length === FUTURE_MAX) break
@@ -25,7 +32,7 @@ export function parseFuturesSearch(search) {
 /** { keys, model } → '?codes=...&model=...' (빠른 모드는 생략) */
 export function buildFuturesSearch(keys, model) {
   const params = new URLSearchParams()
-  if (keys.length) params.set('codes', keys.join(','))
+  if (keys.length) params.set('codes', keys.some(key => key.includes(',')) ? JSON.stringify(keys) : keys.join(','))
   if (model === 'precise') params.set('model', 'precise')
   const s = params.toString()
   return s ? `?${s}` : ''

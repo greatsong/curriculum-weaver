@@ -1,7 +1,7 @@
 /**
  * 미래 보기 2 라우트
  *
- * POST /api/futures2 — body: { codes: string[2..6], model: 'fast'|'precise', index: 0..29 }
+ * POST /api/futures2 — body: { codes: string[2..7], model: 'fast'|'precise', index: 0..29 }
  *   교사가 고른 성취기준으로 index번째 "수업의 미래"를 생성(캐시 우선)해 돌려준다.
  * GET /api/futures2/catalog — 성취기준 검색용 가벼운 목록(전체, 메모리 캐시)
  * POST /api/futures2/bridges — body: { codes } → 고른 성취기준을 엮는 연결 개념 지도(조합당 1회 생성·캐시)

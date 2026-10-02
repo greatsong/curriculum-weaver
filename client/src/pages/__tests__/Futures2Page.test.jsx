@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Futures2Page from '../Futures2Page'
+import { ALL_STANDARDS } from '../../../../server/data/standards.js'
 
 vi.mock('../../lib/api', () => ({ apiGet: vi.fn(), apiPost: vi.fn() }))
 vi.mock('../../lib/futures2Scene', () => ({
@@ -42,6 +43,21 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.clearAllMocks() })
 
 describe('타임스톤 성취기준 입력', () => {
+  it('실제 기본 세트 두 개를 전환하고 3과목 6개를 표시하며 미래는 자동 생성하지 않는다', async () => {
+    const standards = ALL_STANDARDS.map(s => ({ ...s, key: `${s.code}|${s.subject}` }))
+    get.mockResolvedValue({ fields, rows: standards.map(s => fields.map(f => s[f])) })
+    await mount()
+    await click('음악 · 수학 · 국어')
+    expect(host.querySelectorAll('.fu-chip')).toHaveLength(6)
+    expect(host.querySelector('h2').textContent).toContain('3과목 · 6 / 7개')
+    expect(host.querySelector('[aria-label="학교급"]').value).toBe('고등학교')
+    await act(async () => vi.advanceTimersByTime(1000))
+    expect(post.mock.calls.every(([url]) => url === '/api/futures2/bridges')).toBe(true)
+    await click('미술 · 정보 · 영어')
+    expect(host.querySelectorAll('.fu-chip')).toHaveLength(6)
+    expect(host.querySelector('.fu-slots').textContent).toContain('[12미01-03]')
+    expect(host.querySelector('.fu-slots').textContent).not.toContain('[12음02-01]')
+  })
   it('교과 목록에서 골라 URL에 반영하고 2개부터 연결 분석만 요청한다', async () => {
     await mount()
     await change(host.querySelector('#fu2-subject'), '과학')

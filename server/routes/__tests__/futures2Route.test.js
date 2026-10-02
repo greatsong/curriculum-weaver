@@ -82,7 +82,7 @@ describe('GET /api/futures2/catalog · POST /api/futures2/bridges', () => {
     const first = Standards.list()[0]
     expect(res.body.rows[0]).toEqual([first.key, first.code, first.subject, first.subject_group, first.school_level, first.curriculum_category || '', first.content])
   })
-  it('연결 찾기는 성취기준 2~6개를 검증하고 생성 결과를 돌려준다', async () => {
+  it('연결 찾기는 성취기준 2~7개를 검증하고 생성 결과를 돌려준다', async () => {
     const one = await request(app).post('/api/futures2/bridges').set('x-test-user', 't').send({ codes: keys.slice(0, 1) })
     expect(one.status).toBe(400)
     expect(generateBridges).not.toHaveBeenCalled()

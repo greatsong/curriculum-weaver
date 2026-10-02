@@ -7,6 +7,7 @@
  */
 import { FUTURE_TIPS } from './futures2'
 import { crystalMarkup, portalMarkup, energyPath, colorOfStone } from './timeStone2Visuals'
+import { buildFutureGraphLayout, subjectOfStandard } from './futures2GraphLayout'
 export { colorOfStone } from './timeStone2Visuals'
 
 // 꼭지 순서 = 서버 FUTURE_LENSES 순서 (index % 8)
@@ -157,7 +158,7 @@ function starPath(cx, cy, r, n, step, rot = 0) {
 /**
  * @param {HTMLElement} root 의식 구간을 그릴 빈 요소
  * @param {object} opts
- * @param {object[]} opts.standards 고른 성취기준 2~6개 ({ key, code, subject, subject_group })
+ * @param {object[]} opts.standards 고른 성취기준 2~7개 ({ key, code, subject, subject_group })
  * @param {'fast'|'precise'} opts.model
  * @param {(index:number, model:string) => Promise<object>} opts.requestFuture 미래 하나 요청 (실패 시 Error.message가 안내 문구)
  * @param {(future:object) => void} opts.onStartProject
@@ -513,41 +514,60 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
   // ── 그래프: 성취기준 노드 → 원문 키워드 노드 → 실제 교과 간 키워드 연결 ──
   // 연결 그래프를 먼저 완성해 유지하고, 미래 보기는 교사의 클릭으로만 시작한다.
   const weave = $('.fu-weave'), caption = $('.fu-weave-caption')
-  const WC = { x: 500, y: 278, rx: 350, ry: 195, RK: 86 } // 아래쪽은 시작 버튼 자리
-  const circlePos = standards.map((_, i) => {
-    const n = standards.length
-    const a = -Math.PI / 2 + (i * 2 * Math.PI) / n + (n % 2 === 0 ? Math.PI / n : 0)
-    return { x: WC.x + WC.rx * Math.cos(a), y: WC.y + WC.ry * Math.sin(a) }
-  })
+  let compactGraph = (weave.getBoundingClientRect().width || innerWidth) < 620
+  let graphLayout = buildFutureGraphLayout(standards, { compact: compactGraph })
+  const WC = { ...graphLayout.center, RK: 112 }
+  const circlePos = graphLayout.positions
+  const stoneColor = i => colorOfStone(circlePos[i]?.groupIndex ?? i)
   const indexOfKey = new Map(standards.map((s, i) => [s.key, i]))
   let bridges, bridgesSettled = false, linksReady = false, linkingStarted = false, started = false
   const createdAt = performance.now()
   const startButton = $('.fu-start')
-  const shortSubject = (s) => String(s.subject || '').replace(/\(.*\)/, '').split(',')[0].trim()
+  const shortSubject = subjectOfStandard
   ;(() => {
     if (!standards.length) return
     weave.innerHTML = `
       <defs>
         <!-- 연결선: 무대 좌표 전체(수평·수직선도 사라지지 않게) / 별자리: 자기 영역 기준(옮겨진 그룹이라 무대 좌표를 쓰면 일부만 보인다) -->
-        <filter id="fu-wglow" filterUnits="userSpaceOnUse" x="0" y="0" width="1000" height="620"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <filter id="fu-wglow" filterUnits="userSpaceOnUse" x="0" y="0" width="${graphLayout.width}" height="${graphLayout.height}"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
         <filter id="fu-wcglow" x="-35%" y="-35%" width="170%" height="170%"><feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
         <radialGradient id="fu-starhalo"><stop offset="0%" stop-color="#fff" stop-opacity=".85"/><stop offset="35%" stop-color="#CFE3DE" stop-opacity=".32"/><stop offset="100%" stop-color="#CFE3DE" stop-opacity="0"/></radialGradient>
         <radialGradient id="fu-starhalo-g"><stop offset="0%" stop-color="#F4FFF9" stop-opacity="1"/><stop offset="30%" stop-color="#5CFFB5" stop-opacity=".6"/><stop offset="100%" stop-color="#2BF59B" stop-opacity="0"/></radialGradient>
       </defs>
+      <g class="fu2-subject-regions"></g>
       <g class="fu2-gather-trails"></g>
       <g class="fu-wlinks"></g>
       ${standards.map((s, i) => `
-        <g class="fu-wc" data-i="${i}" transform="translate(${circlePos[i].x} ${circlePos[i].y})" style="--c:${colorOfStone(i)}; --d:${i * 140}ms; --gx:${WC.x - circlePos[i].x}px; --gy:${WC.y - circlePos[i].y}px; --gather-delay:${i * 70}ms">
+        <g class="fu-wc" data-i="${i}" data-subject="${esc(shortSubject(s))}" transform="translate(${circlePos[i].x} ${circlePos[i].y})" style="--c:${stoneColor(i)}; --d:${i * 140}ms; --gx:${WC.x - circlePos[i].x}px; --gy:${WC.y - circlePos[i].y}px; --gather-delay:${i * 70}ms">
           <g class="fu-wc-in">
-            <defs><radialGradient id="fu2-keyword-${i}" cx=".32" cy=".27" r=".78"><stop stop-color="#f4fffa"/><stop offset=".22" stop-color="${colorOfStone(i)}"/><stop offset=".7" stop-color="${colorOfStone(i)}"/><stop offset="1" stop-color="#101c22"/></radialGradient></defs>
+            <defs><radialGradient id="fu2-keyword-${i}" cx=".32" cy=".27" r=".78"><stop stop-color="#f4fffa"/><stop offset=".22" stop-color="${stoneColor(i)}"/><stop offset=".7" stop-color="${stoneColor(i)}"/><stop offset="1" stop-color="#101c22"/></radialGradient></defs>
             <g class="fu-clines"></g>
-            <g class="fu2-stone-float">${crystalMarkup('fu2-standard-' + i, colorOfStone(i))}</g>
+            <g class="fu2-stone-float">${crystalMarkup('fu2-standard-' + i, stoneColor(i))}</g>
             <text class="fu-wc-subject" y="53">${esc(shortSubject(s))}</text>
             <text class="fu-wc-code" y="70">${esc(s.code)}</text>
             <g class="fu-wc-kws"></g>
           </g>
         </g>`).join('')}`
   })()
+  function applyGraphLayout() {
+    weave.setAttribute('viewBox', `0 0 ${graphLayout.width} ${graphLayout.height}`)
+    weave.style.aspectRatio = `${graphLayout.width} / ${graphLayout.height}`
+    const glow = weave.querySelector('#fu-wglow')
+    glow?.setAttribute('width', graphLayout.width); glow?.setAttribute('height', graphLayout.height)
+    weave.querySelector('.fu2-subject-regions')?.replaceChildren()
+    if (!standards.length) return
+    weave.querySelector('.fu2-subject-regions').innerHTML = graphLayout.regions.map(g => `
+      <g class="fu2-subject-region" data-subject="${esc(g.subject)}" style="--c:${colorOfStone(g.colorIndex)}">
+        <rect x="${g.x}" y="${g.y}" width="${g.width}" height="${g.height}" rx="24"/>
+        <text class="fu2-subject-heading" x="${g.x + 22}" y="${g.y + 30}">${esc(g.subject)}<tspan class="fu2-subject-count" dx="12">성취기준 ${g.indices.length}개</tspan></text>
+      </g>`).join('')
+    weave.querySelectorAll('.fu-wc').forEach(stone => {
+      const p = circlePos[+stone.dataset.i]
+      stone.setAttribute('transform', `translate(${p.x} ${p.y})`)
+      stone.style.setProperty('--gx', `${WC.x - p.x}px`); stone.style.setProperty('--gy', `${WC.y - p.y}px`)
+    })
+  }
+  applyGraphLayout()
   // 키워드 별 자리: 다른 별자리와 이어지는 키워드는 그쪽을 향한 자리에, 나머지는 빈자리에 고르게
   function layoutKeywords() {
     const words = bridges?.keywords || {}
@@ -579,7 +599,7 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
         free.delete(best)
         const a = slots[best]
         const h = [...w].reduce((t, ch) => (t * 31 + ch.charCodeAt(0)) % 997, 7) // 키워드마다 같은 자리(재현 가능)
-        const r = WC.RK * (.78 + (h % 40) / 100)
+        const r = WC.RK * (.97 + (h % 12) / 100)
         pos.set(`${i}|${w}`, { x: circlePos[i].x + r * Math.cos(a), y: circlePos[i].y + r * Math.sin(a), a })
       }
     })
@@ -587,10 +607,17 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
   }
   let kwPos = new Map()
   function fitKeywordType() {
-    // SVG가 줄어도 키워드의 실제 화면 글씨는 약 14px로 유지한다.
-    const width = weave.getBoundingClientRect().width || 1000
-    const fontSize = Math.max(17, Math.min(44, 14 * 1000 / width))
-    const radius = Math.max(7, Math.min(14, 5 * 1000 / width))
+    const width = weave.getBoundingClientRect().width || graphLayout.width
+    const compact = width < 620
+    if (compact !== compactGraph) {
+      compactGraph = compact; graphLayout = buildFutureGraphLayout(standards, { compact })
+      circlePos.splice(0, circlePos.length, ...graphLayout.positions); Object.assign(WC, graphLayout.center)
+      applyGraphLayout()
+      if (bridges) { drawKeywords(); return }
+    }
+    // 과목별 영역과 스톤 간격을 늘리고, SVG가 줄어도 실제 글자 크기는 유지한다.
+    const fontSize = Math.max(18, Math.min(34, 16 * graphLayout.width / width))
+    const radius = Math.max(7, Math.min(11, 5.5 * graphLayout.width / width))
     weave.style.setProperty('--kw-size', `${fontSize}px`)
     weave.style.setProperty('--kw-radius', `${radius}px`)
     weave.querySelectorAll('.fu-kw').forEach(group => {
@@ -598,7 +625,7 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
       const x = +node.getAttribute('cx'), y = +node.getAttribute('cy')
       const anchor = text.getAttribute('text-anchor')
       text.setAttribute('x', x + (anchor === 'start' ? radius + 9 : anchor === 'end' ? -radius - 9 : 0))
-      text.setAttribute('y', anchor === 'middle' ? y - radius - 8 : y + fontSize * .32)
+      text.setAttribute('y', y + radius + fontSize + 5)
       group.querySelector('.fu-kw-halo').setAttribute('r', radius * 2.3)
       const rays = group.querySelector('.fu2-keyword-rays'), span = radius * 1.8
       rays.setAttribute('d', `M${x - span},${y}H${x + span}M${x},${y - span}V${y + span}`)
@@ -607,10 +634,10 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
       glint.setAttribute('cx', x - radius * .3); glint.setAttribute('cy', y - radius * .35); glint.setAttribute('r', radius * .23)
     })
     // 커진 키워드와 교과 이름이 겹치지 않도록 스톤 아래의 이름표도 간격을 둔다.
-    weave.querySelectorAll('.fu-wc-subject').forEach(el => el.setAttribute('y', fontSize > 26 ? '86' : '60'))
-    weave.querySelectorAll('.fu-wc-code').forEach(el => el.setAttribute('y', fontSize > 26 ? '110' : '78'))
-    // 모바일에서 이름표만 위·아래로 옮긴다. 그래프 노드와 연결 끝점은 그대로 유지한다.
-    if (fontSize > 26) {
+    weave.querySelectorAll('.fu-wc-subject').forEach(el => el.setAttribute('y', '55'))
+    weave.querySelectorAll('.fu-wc-code').forEach(el => el.setAttribute('y', '76'))
+    // 이름표만 옮겨 겹침과 잘림을 줄인다. 그래프 노드와 연결 끝점은 그대로 유지한다.
+    if (typeof weave.querySelector('.fu-kw text')?.getBBox === 'function') {
       const labels = [], obstacles = []
       const overlaps = (a, b) => a.x < b.x + b.width + 5 && a.x + a.width + 5 > b.x && a.y < b.y + b.height + 5 && a.y + a.height + 5 > b.y
       weave.querySelectorAll('.fu-wc').forEach(stone => {
@@ -624,6 +651,8 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
       weave.querySelectorAll('.fu-kw text').forEach(text => {
         const center = circlePos[+text.closest('.fu-wc').dataset.i], b = text.getBBox()
         const base = { x: center.x + b.x, y: center.y + b.y, width: b.width, height: b.height }
+        const dx = Math.max(12 - base.x, Math.min(0, graphLayout.width - 12 - base.x - base.width))
+        if (dx) { text.setAttribute('x', +text.getAttribute('x') + dx); base.x += dx }
         const offset = [0, -1.3, 1.3, -2.6, 2.6, -3.9, 3.9].map(n => n * fontSize).find(dy => ![...labels, ...obstacles].some(other => overlaps({ ...base, y: base.y + dy }, other))) || 0
         if (offset) text.setAttribute('y', +text.getAttribute('y') + offset)
         labels.push({ ...base, y: base.y + offset })
@@ -638,17 +667,17 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
     cleanups.push(() => observer.disconnect())
   }
   function drawKeywords() {
+    const activeWords = new Map([...weave.querySelectorAll('.fu-wc')].map(stone => [stone.dataset.i, new Map([...stone.querySelectorAll('.fu-kw')].map(word => [word.dataset.w, word.getAttribute('class')]))]))
+    const activeLinks = new Map([...weave.querySelectorAll('.fu-wlink')].map(link => [link.dataset.n, link.getAttribute('class')]))
     kwPos = layoutKeywords()
     standards.forEach((s, i) => {
       const g = weave.querySelector(`.fu-wc[data-i="${i}"] .fu-wc-kws`); if (!g) return
       const list = bridges?.keywords?.[s.key] || []
       g.innerHTML = list.map((w, k) => {
         const p = kwPos.get(`${i}|${w}`); if (!p) return ''
-        const lx = p.x - circlePos[i].x, ly = p.y - circlePos[i].y, c = Math.cos(p.a)
-        // 바깥쪽 글씨는 무대 안쪽으로 향하게 해 모바일에서도 잘리지 않게 한다.
-        const anchor = p.x > 780 ? 'end' : p.x < 220 ? 'start' : c > .35 ? 'start' : c < -.35 ? 'end' : 'middle'
-        const tx = lx + (anchor === 'start' ? 9 : anchor === 'end' ? -9 : 0), ty = ly + (anchor === 'middle' ? (Math.sin(p.a) > 0 ? 20 : -11) : 5)
-        return `<g class="fu-kw" data-w="${esc(w)}" style="--k:${k * 110}ms;--keyword-fill:url(#fu2-keyword-${i})"><circle class="fu-kw-halo" cx="${lx}" cy="${ly}" r="18" fill="url(#fu2-standard-${i}-aura)"/><path class="fu2-keyword-rays"/><circle class="fu2-keyword-node" cx="${lx}" cy="${ly}" r="8"/><circle class="fu2-keyword-core" cx="${lx}" cy="${ly}" r="2.8"/><circle class="fu2-keyword-glint" cx="${lx - 2}" cy="${ly - 3}" r="2"/><text x="${tx}" y="${ty}" text-anchor="${anchor}">${esc(w)}</text></g>`
+        const lx = p.x - circlePos[i].x, ly = p.y - circlePos[i].y
+        const anchor = 'middle', tx = lx, ty = ly + 25
+        return `<g class="${esc(activeWords.get(String(i))?.get(w) || 'fu-kw')}" data-w="${esc(w)}" style="--k:${k * 110}ms;--keyword-fill:url(#fu2-keyword-${i})"><circle class="fu-kw-halo" cx="${lx}" cy="${ly}" r="18" fill="url(#fu2-standard-${i}-aura)"/><path class="fu2-keyword-rays"/><circle class="fu2-keyword-node" cx="${lx}" cy="${ly}" r="8"/><circle class="fu2-keyword-core" cx="${lx}" cy="${ly}" r="2.8"/><circle class="fu2-keyword-glint" cx="${lx - 2}" cy="${ly - 3}" r="2"/><text x="${tx}" y="${ty}" text-anchor="${anchor}">${esc(w)}</text></g>`
       }).join('')
       // 모든 키워드를 해당 성취기준에 직접 연결한다. 근거 없는 키워드 간 삼각형은 만들지 않는다.
       const lines = list.map((word, k) => {
@@ -682,7 +711,7 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
       const w = Math.max(88, [...c.label].length * 22 + 26)
       const from = indexOfKey.get(c.ends[0]?.key) ?? 0
       const to = indexOfKey.get(c.ends[c.ends.length - 1]?.key) ?? 0
-      return `<g class="fu-wlink" data-n="${n}" style="--from:${colorOfStone(from)};--to:${colorOfStone(to)}"><defs><linearGradient id="fu2-connection-${n}" gradientUnits="userSpaceOnUse" x1="${ends[0].x}" y1="${ends[0].y}" x2="${ends[ends.length - 1].x}" y2="${ends[ends.length - 1].y}"><stop stop-color="${colorOfStone(from)}" stop-opacity=".85"/><stop offset=".5" stop-color="#c7ffe5"/><stop offset="1" stop-color="${colorOfStone(to)}" stop-opacity=".85"/></linearGradient></defs><g stroke="url(#fu2-connection-${n})">${paths}</g>${flights}<g transform="translate(${hx} ${hy})"><circle class="fu2-meet-flare" r="22"/><g class="fu-wlabel"><rect x="${-w / 2}" y="-17" width="${w}" height="34" rx="17"/><text y="7" text-anchor="middle">${esc(c.label)}</text></g></g></g>`
+      return `<g class="${esc(activeLinks.get(String(n)) || 'fu-wlink')}" data-n="${n}" style="--from:${stoneColor(from)};--to:${stoneColor(to)}"><defs><linearGradient id="fu2-connection-${n}" gradientUnits="userSpaceOnUse" x1="${ends[0].x}" y1="${ends[0].y}" x2="${ends[ends.length - 1].x}" y2="${ends[ends.length - 1].y}"><stop stop-color="${stoneColor(from)}" stop-opacity=".85"/><stop offset=".5" stop-color="#c7ffe5"/><stop offset="1" stop-color="${stoneColor(to)}" stop-opacity=".85"/></linearGradient></defs><g stroke="url(#fu2-connection-${n})">${paths}</g>${flights}<g transform="translate(${hx} ${hy})"><circle class="fu2-meet-flare" r="22"/><g class="fu-wlabel"><rect x="${-w / 2}" y="-17" width="${w}" height="34" rx="17"/><text y="7" text-anchor="middle">${esc(c.label)}</text></g></g></g>`
     }).join('')
     fitKeywordType()
   }
@@ -729,7 +758,10 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
         const i = indexOfKey.get(e.key)
         const keyword = weave.querySelector(`.fu-wc[data-i="${i}"] .fu-kw[data-w="${CSS.escape(e.word)}"]`)
         keyword?.classList.add('connecting')
-        later(() => { keyword?.classList.remove('connecting'); keyword?.classList.add('hit') }, meetAt)
+        later(() => {
+          const liveKeyword = weave.querySelector(`.fu-wc[data-i="${i}"] .fu-kw[data-w="${CSS.escape(e.word)}"]`)
+          liveKeyword?.classList.remove('connecting'); liveKeyword?.classList.add('hit')
+        }, meetAt)
         if (!lit.has(i)) {
           lit.add(i)
           later(() => {
@@ -743,7 +775,7 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
         const hub = g.querySelector('.fu2-meet-flare')?.parentElement.getAttribute('transform')?.match(/translate\(([-\d.]+) ([-\d.]+)\)/)
         if (hub) { const p = weaveToScreen(+hub[1], +hub[2]); if (p) FX.pour({ x: p.x, y: p.y, angle: -Math.PI / 2, n: 8, spread: 3, speed: 1.4, over: 150 }) }
       }, meetAt)
-      later(() => g.classList.remove('active'), off ? 0 : 1150)
+      later(() => weave.querySelector(`.fu-wlink[data-n="${n}"]`)?.classList.remove('active'), off ? 0 : 1150)
     }, n * interval))
     later(() => {
       const isolated = (bridges.isolated || []).length
@@ -759,7 +791,7 @@ export function createFuturesScene(root, { standards, model: initialModel = 'fas
     const trails = weave.querySelector('.fu2-gather-trails')
     if (!reducedMotion()) trails.innerHTML = circlePos.map((p, i) => {
       const curve = energyPath(p, WC, { x: WC.x, y: WC.y - 100 })
-      return `<path class="fu2-inward-haze" d="${curve.d}" stroke="${colorOfStone(i)}" pathLength="1" style="--gather-delay:${i * 70}ms"/>`
+      return `<path class="fu2-inward-haze" d="${curve.d}" stroke="${stoneColor(i)}" pathLength="1" style="--gather-delay:${i * 70}ms"/>`
     }).join('')
     later(() => {
       ritual.classList.remove('gathering'); ritual.classList.add('casting')
