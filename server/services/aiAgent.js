@@ -91,17 +91,22 @@ export async function runGuardedStream(createStream, { onText, signal }) {
   }
 }
 
-// AI 모델 매핑 (빠른 모드 / 정밀 모드) — 2026-09-05 정밀 모드 Opus 4.8 → Opus 5
+// AI 모델 매핑 (빠른 모드 / 정밀 모드) — 2026-09-05 정밀 모드 Opus 4.8 → Opus 5,
+// 2026-10-02 빠른 Sonnet 5 → Sonnet 5.5, 정밀 Opus 5 → Opus 5.5
 const MODEL_MAP = {
-  fast: 'claude-sonnet-5',
-  precise: 'claude-opus-5',
+  fast: 'claude-sonnet-5-5',
+  precise: 'claude-opus-5-5',
 }
 
+// 5.5 모델은 안전 분류기가 넓어 드물게 답변을 거절한다(stop_reason: 'refusal').
+export const REFUSAL_MESSAGE = 'AI가 이 요청에는 답할 수 없습니다. 질문 표현을 바꿔 다시 시도해 주세요.'
+
 /**
- * 정밀 모드(Opus 5)는 thinking이 기본 활성이라 max_tokens가 thinking+본문을 함께 캡한다.
+ * 정밀 모드(Opus 5.5)는 thinking이 항상 켜져 있어 max_tokens가 thinking+본문을 함께 캡한다.
+ * Opus 5.5는 effort 기본값이 medium이지만 명시해 둔다.
  * Opus 4.8 시절 값(인트로 1200·채팅 12000)을 그대로 두면 답변이 중간에 잘리므로
  * 정밀 모드에서는 상한을 넉넉히 올리고 effort는 medium으로 고정(채팅 지연 억제).
- * 빠른 모드(Sonnet 5)는 종전과 동일.
+ * 빠른 모드(Sonnet 5.5)는 종전과 동일.
  */
 const PRECISE_MAX_TOKENS_MULTIPLIER = 3
 function modelRequestParams(aiModel, maxTokens) {
@@ -1425,7 +1430,7 @@ ${sessionTitle ? `프로젝트: ${sessionTitle}` : ''}
 
 이 단계를 코치 톤으로 안내하고, 첫 질문으로 대화를 시작해주세요.`
     try {
-      const { timedOut } = await aiQueue.add(() => runGuardedStream(
+      const { finalMessage, timedOut } = await aiQueue.add(() => runGuardedStream(
         (streamSignal) => getAnthropic().messages.stream({
           ...modelRequestParams(context?.aiModel, 1200),
           system: demoSystem,
@@ -1434,6 +1439,7 @@ ${sessionTitle ? `프로젝트: ${sessionTitle}` : ''}
         { onText, signal },
       ))
       if (timedOut) onError(STREAM_TIMEOUT_MESSAGE)
+      else if (finalMessage?.stop_reason === 'refusal') onError(REFUSAL_MESSAGE)
     } catch (error) {
       console.error('시연 인트로 생성 오류:', error)
       onError(error.message || '인트로 생성 실패')
@@ -1512,7 +1518,7 @@ ${sessionTitle ? `세션: ${sessionTitle}` : ''}
 이 절차를 안내하고, 첫 번째 스텝부터 시작해주세요.`
 
   try {
-    const { timedOut } = await aiQueue.add(() => runGuardedStream(
+    const { finalMessage, timedOut } = await aiQueue.add(() => runGuardedStream(
       (streamSignal) => getAnthropic().messages.stream({
         ...modelRequestParams(context?.aiModel, 1200),
         system: systemPrompt,
@@ -1521,6 +1527,7 @@ ${sessionTitle ? `세션: ${sessionTitle}` : ''}
       { onText, signal },
     ))
     if (timedOut) onError(STREAM_TIMEOUT_MESSAGE)
+    else if (finalMessage?.stop_reason === 'refusal') onError(REFUSAL_MESSAGE)
   } catch (error) {
     console.error('절차 인트로 생성 오류:', error)
     onError(error.message || '인트로 생성 실패')
@@ -1575,6 +1582,7 @@ export function buildMessages(recentMessages, userMessage) {
  * @param {string} context.procedure - 현재 절차 코드
  * @param {number|null} context.currentStep - 현재 스텝 번호
  * @param {Object} callbacks - { onText, onError, signal? } — signal이 abort되면 스트림을 중단한다
+ * @returns {Promise<{refused: true}|undefined>} 모델이 거절하면 { refused: true }
  */
 export async function buildAIResponse(context, { onText, onError, signal }) {
   // context.mentionedMaterialIds와 context.recentMessages가 buildSystemPrompt에 전달된다.
@@ -1597,6 +1605,13 @@ export async function buildAIResponse(context, { onText, onError, signal }) {
       console.warn(`⚠️ AI 응답이 ${AI_STREAM_TIMEOUT_MS}ms 안에 끝나지 않아 스트림을 중단했습니다.`)
       onError(STREAM_TIMEOUT_MESSAGE)
       return
+    }
+
+    // 거절: 부분 응답을 완성된 답으로 저장하지 않도록 호출자에게 알린다
+    if (finalMessage?.stop_reason === 'refusal') {
+      console.warn('⚠️ AI가 요청을 거절했습니다:', finalMessage.stop_details?.category || '분류 없음')
+      onError(REFUSAL_MESSAGE)
+      return { refused: true }
     }
 
     // 응답 잘림 감지

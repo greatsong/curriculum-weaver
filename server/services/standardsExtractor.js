@@ -351,7 +351,7 @@ function mergeResults(regexResult, aiResult) {
  */
 async function extractWithAI(text) {
   const response = await getAnthropic().messages.create({
-    model: 'claude-sonnet-5',
+    model: 'claude-sonnet-5-5',
     max_tokens: 8192,
     messages: [{
       role: 'user',

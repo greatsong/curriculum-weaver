@@ -289,9 +289,12 @@ async function streamAttempt({ systemPrompt, userPrompt, codes, startIndex, labe
   // 재시도·보충 호출이 같은 프리픽스를 재사용하도록 캐시 브레이크포인트를 건다
   const userContent = [{ type: 'text', text: userPrompt, cache_control: { type: 'ephemeral' } }]
   if (focusInstruction) userContent.push({ type: 'text', text: focusInstruction })
+  // Sonnet 5.5는 강제 도구 선택을 거부하므로 auto + 지시문으로 save_boards 호출을 유도한다.
+  // 도구 호출이 없으면 아래 텍스트 폴백 파싱이 이어받는다.
+  userContent.push({ type: 'text', text: '결과는 설명 문장 없이 save_boards 도구를 한 번 호출해 제출하세요.' })
 
   const stream = getAnthropic().messages.stream({
-    model: 'claude-sonnet-5',
+    model: 'claude-sonnet-5-5',
     max_tokens: 32000,
     system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: userContent }],
@@ -300,7 +303,7 @@ async function streamAttempt({ systemPrompt, userPrompt, codes, startIndex, labe
       description: `생성한 절차별 보드(board)와 교사 대화(conversation)를 저장한다. 최상위 키는 반드시 절차 코드(${codes.join(', ')})이며 ${codes.length}개 전부 포함해야 한다.`,
       input_schema: inputSchema,
     }],
-    tool_choice: { type: 'tool', name: 'save_boards' },
+    tool_choice: { type: 'auto' },
   })
 
   try {
@@ -341,7 +344,7 @@ async function streamAttempt({ systemPrompt, userPrompt, codes, startIndex, labe
 
   console.log(`[demo][${label}] AI 스트리밍 완료 — ${tokenCount}토큰, ${detectedProcedures.size}/${codes.length}개 절차 감지`)
 
-  // 1순위: 강제 tool 호출의 입력(항상 유효한 JSON) — SDK가 파싱까지 마친 객체를 준다
+  // 1순위: save_boards tool 호출의 입력 — SDK가 파싱까지 마친 객체를 준다
   try {
     const finalMessage = await stream.finalMessage()
     if (finalMessage.stop_reason === 'max_tokens') {
@@ -559,7 +562,7 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
           return line
         }).join('\n')
         const selectionResponse = await getAnthropic().messages.create({
-          model: 'claude-sonnet-5',
+          model: 'claude-sonnet-5-5',
           max_tokens: 2048,
           messages: [{ role: 'user', content: `당신은 2022 개정 교육과정 기반 융합수업 설계 전문가입니다.
 아래 프로젝트에 가장 적합한 성취기준을 교과별 3~5개씩 선별하세요.
