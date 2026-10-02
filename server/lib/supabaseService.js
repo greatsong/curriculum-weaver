@@ -115,6 +115,22 @@ export async function createWorkspace(data) {
  * @param {string} id - 워크스페이스 ID
  * @returns {Promise<object|null>}
  */
+/**
+ * 워크스페이스 설정(workflow_config)만 가볍게 조회한다 — 채팅마다 쓰므로 멤버 조인을 하지 않는다.
+ * @param {string} id
+ * @returns {Promise<object|null>}
+ */
+export async function getWorkspaceWorkflowConfig(id) {
+  if (!id) return null
+  const sb = getSupabase()
+  if (!sb) return mem.workspaces.get(id)?.workflow_config || null
+  const data = handleResult(
+    await sb.from('workspaces').select('workflow_config').eq('id', id).maybeSingle(),
+    '워크스페이스 설정 조회 실패'
+  )
+  return data?.workflow_config || null
+}
+
 export async function getWorkspace(id) {
   const sb = getSupabase()
   if (!sb) {

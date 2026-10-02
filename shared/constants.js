@@ -612,6 +612,45 @@ export const AI_ROLE_PRESETS = {
 /** 기본 AI 역할 프리셋 */
 export const DEFAULT_AI_ROLE = 'facilitator'
 
+// ──────────────────────────────────────────
+// 팀 진행 방식 (workspaces.workflow_config.participationMode)
+// ──────────────────────────────────────────
+// 1인 기록: 팀 논의는 대면으로 하고 기록자 한 명이 결과를 요약해 입력한다(교사 연수용).
+// 팀 채팅: 팀원 모두가 채팅에 참여한다(종전 동작).
+// DB 마이그레이션 없이 기존 JSON 설정 칸에 저장한다. 기능을 없앨 때는 이 상수, aiAgent의
+// [진행 방식 — 1인 기록] 블록, ParticipationModePicker와 그 사용처만 지우면 된다.
+export const PARTICIPATION_MODES = {
+  RECORDER: 'recorder',
+  TEAM_CHAT: 'team_chat',
+}
+
+export const PARTICIPATION_MODE_OPTIONS = [
+  {
+    id: PARTICIPATION_MODES.RECORDER,
+    label: '1인 기록',
+    description: '팀 논의는 대면으로 하고, 기록자 한 명이 결과를 요약해 입력합니다. AI는 선생님별 의견을 따로 묻지 않습니다.',
+  },
+  {
+    id: PARTICIPATION_MODES.TEAM_CHAT,
+    label: '팀 채팅',
+    description: '팀원 모두가 채팅에 참여해 의견을 나눕니다.',
+  },
+]
+
+/** 새로 만드는 팀의 기본 진행 방식 */
+export const DEFAULT_PARTICIPATION_MODE_FOR_NEW_TEAM = PARTICIPATION_MODES.RECORDER
+
+/**
+ * 저장된 설정에서 진행 방식을 읽는다. 값이 없는 기존 팀은 종전 동작(팀 채팅)으로 본다.
+ * @param {object|null|undefined} workflowConfig
+ * @returns {'recorder'|'team_chat'}
+ */
+export function resolveParticipationMode(workflowConfig) {
+  return workflowConfig?.participationMode === PARTICIPATION_MODES.RECORDER
+    ? PARTICIPATION_MODES.RECORDER
+    : PARTICIPATION_MODES.TEAM_CHAT
+}
+
 /**
  * AI 역할 프리셋을 order 순으로 정렬한 배열 (UI 렌더링용)
  * @type {Array<{id: string, name: string, icon: string, description: string, detail: string, enabledActions: Object, promptTone: string, order: number}>}
