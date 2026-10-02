@@ -16,11 +16,11 @@ import { buildAIResponse, buildProcedureIntroResponse } from '../services/aiAgen
 import {
   getMessages, getMessage, createMessage, getRecentMessages,
   getProject, getMemberRole, getDesignsByProject,
-  getStandardsByProject, upsertDesign, getProjectSkips,
+  getStandardsByProject, upsertDesign, getProjectSkips, getWorkspaceWorkflowConfig,
 } from '../lib/supabaseService.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
-import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode, isDemoBoardCode } from 'curriculum-weaver-shared/constants.js'
+import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode, isDemoBoardCode, resolveParticipationMode } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
@@ -702,7 +702,7 @@ chatRouter.post('/message', async (req, res) => {
         return Materials.list(session_id) || []
       }
     }
-    const [designs, allMessages, standards, skippedCodes, materials, mentionedResolved] = await Promise.all([
+    const [designs, allMessages, standards, skippedCodes, materials, mentionedResolved, workflowConfig] = await Promise.all([
       getDesignsByProject(session_id).catch(() => []),
       // '최근' 메시지를 컨텍스트로 로드. getMessages는 오름차순 range라 긴 프로젝트에서
       // 가장 오래된 메시지만 줘서 AI가 최근 결정·제약(예: "SUNO 안 씀")을 못 보던 버그가 있었다.
@@ -716,6 +716,8 @@ chatRouter.post('/message', async (req, res) => {
       loadProjectMaterials(),
       // @멘션 교차 검증 (project_id 일치 항목만 통과)
       resolveMentionedMaterials(mentionedRaw, session_id),
+      // 팀 진행 방식(1인 기록/팀 채팅) — 조회 실패 시 종전 동작(팀 채팅)으로 둔다
+      getWorkspaceWorkflowConfig(project?.workspace_id).catch(() => null),
     ])
 
     // 현재 절차의 대화를 우선 포함 + 최근 전체 대화도 포함.
@@ -803,6 +805,7 @@ chatRouter.post('/message', async (req, res) => {
       procedure: activeProcedure,
       currentStep: currentStep ? Number(currentStep) : null,
       aiRole: isDemo ? 'coach' : (aiRole || undefined),
+      participationMode: isDemo ? undefined : resolveParticipationMode(workflowConfig),
       aiModel: aiModel || undefined,
       mentionedMaterialIds: mentionedIds,
       mentionedMaterials,

@@ -4,6 +4,8 @@ import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { apiGet } from '../lib/api'
 import Logo from '../components/Logo'
+import ParticipationModePicker from '../components/ParticipationModePicker'
+import { DEFAULT_PARTICIPATION_MODE_FOR_NEW_TEAM } from 'curriculum-weaver-shared/constants.js'
 
 export default function WorkspacesPage() {
   const navigate = useNavigate()
@@ -14,6 +16,7 @@ export default function WorkspacesPage() {
   const [showJoinByLink, setShowJoinByLink] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [participationMode, setParticipationMode] = useState(DEFAULT_PARTICIPATION_MODE_FOR_NEW_TEAM)
   const [inviteToken, setInviteToken] = useState('')
   const [creating, setCreating] = useState(false)
 
@@ -46,10 +49,15 @@ export default function WorkspacesPage() {
     if (!name.trim()) return
     setCreating(true)
     try {
-      const ws = await createWorkspace({ name: name.trim(), description: description.trim() })
+      const ws = await createWorkspace({
+        name: name.trim(),
+        description: description.trim(),
+        workflow_config: { participationMode },
+      })
       setShowCreate(false)
       setName('')
       setDescription('')
+      setParticipationMode(DEFAULT_PARTICIPATION_MODE_FOR_NEW_TEAM)
       navigate(detailPath(ws.id))
     } catch (err) {
       alert(`워크스페이스 생성 실패: ${err.message}`)
@@ -454,6 +462,11 @@ export default function WorkspacesPage() {
                 rows={2}
                 style={{ width: '100%', padding: '10px 14px', fontSize: 14, resize: 'none', boxSizing: 'border-box' }}
               />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 6 }}>진행 방식</div>
+                <ParticipationModePicker value={participationMode} onChange={setParticipationMode} disabled={creating} />
+                <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', margin: '6px 0 0' }}>만든 뒤에도 워크스페이스 설정에서 바꿀 수 있습니다.</p>
+              </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
               <button type="button" onClick={() => setShowCreate(false)} className="btn btn-ghost" style={{ fontSize: 13 }}>

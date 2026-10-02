@@ -5,7 +5,8 @@ import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
 import { apiGet, apiPost } from '../lib/api'
 import { standardKey, codeFromKey, subjectFromKey } from '../lib/standardKey'
-import { PROCEDURES, PHASES, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, PHASES, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE, resolveParticipationMode } from 'curriculum-weaver-shared/constants.js'
+import ParticipationModePicker from '../components/ParticipationModePicker'
 import Logo from '../components/Logo'
 import HostSetupWizard from '../components/HostSetupWizard'
 
@@ -59,6 +60,7 @@ export default function WorkspaceDetailPage() {
   const [aiConfig, setAiConfig] = useState({ model: 'claude-sonnet-5-5' })
   const [enabledAI, setEnabledAI] = useState({ guide: true, generate: true, check: true, record: true })
   const [aiRole, setAiRole] = useState(DEFAULT_AI_ROLE)
+  const [participationMode, setParticipationMode] = useState(() => resolveParticipationMode(null))
   const [settingsSaving, setSettingsSaving] = useState(false)
 
   // Feature 3: 셋업 위자드
@@ -86,6 +88,7 @@ export default function WorkspaceDetailPage() {
       })
       // 과거에 저장된 'custom'은 미지원 — 기본 프리셋으로 정규화 (커스텀 UI 제거, 2026-07-13)
       setAiRole(!wc.aiRole || wc.aiRole === 'custom' ? DEFAULT_AI_ROLE : wc.aiRole)
+      setParticipationMode(resolveParticipationMode(wc))
     }
   }, [currentWorkspace])
 
@@ -120,6 +123,7 @@ export default function WorkspaceDetailPage() {
         workflow_config: {
           enabledAI,
           aiRole,
+          participationMode,
         },
       })
     } catch (err) {
@@ -127,7 +131,7 @@ export default function WorkspaceDetailPage() {
     } finally {
       setSettingsSaving(false)
     }
-  }, [workspaceId, aiConfig, enabledAI, aiRole, updateWorkspace])
+  }, [workspaceId, aiConfig, enabledAI, aiRole, participationMode, updateWorkspace])
 
   const toggleProcedure = (code) => {
     setHiddenProcedures((prev) =>
@@ -835,6 +839,12 @@ export default function WorkspaceDetailPage() {
               </div>
             </SettingsSection>
 
+            {/* 1-B: 팀 진행 방식 (1인 기록 / 팀 채팅) */}
+            <SettingsSection title="진행 방식" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>}>
+              <p style={{ ...hintStyle, marginBottom: 12, marginTop: 0 }}>팀이 채팅에 참여하는 방식을 선택하세요. AI가 질문하는 방식이 달라집니다.</p>
+              <ParticipationModePicker value={participationMode} onChange={setParticipationMode} disabled={settingsSaving} />
+            </SettingsSection>
+
             {/* 1-C: AI 역할 프리셋 설정 */}
             <SettingsSection title="AI 역할 프리셋" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>}>
               <p style={{ ...hintStyle, marginBottom: 12, marginTop: 0 }}>AI의 개입 수준을 선택하세요</p>
@@ -1228,6 +1238,8 @@ export default function WorkspaceDetailPage() {
                 workflow_config: {
                   enabledAI: config.enabledAI || enabledAI,
                   aiRole: config.aiRole || 'facilitator',
+                  // 설정 전체를 덮어쓰므로 팀 만들 때 고른 진행 방식을 함께 보존한다
+                  participationMode: resolveParticipationMode(currentWorkspace?.workflow_config),
                 },
               }).catch(() => {})
             }

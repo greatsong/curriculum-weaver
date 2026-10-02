@@ -14,7 +14,7 @@ import { getAnthropic } from '../lib/anthropicClient.js'
 import PQueue from 'p-queue'
 import {
   PROCEDURES, PHASES, ACTION_TYPES, ACTOR_COLUMNS, BOARD_TYPES, BOARD_TYPE_LABELS,
-  PROMPT_TONE_INSTRUCTIONS, AI_ROLE_PRESETS, DEFAULT_AI_ROLE,
+  PROMPT_TONE_INSTRUCTIONS, AI_ROLE_PRESETS, DEFAULT_AI_ROLE, PARTICIPATION_MODES,
   MATERIAL_INTENTS, MATERIAL_INTENT_LABELS,
   getProcedureDisplayCode, getProcedureLabel, replaceInternalProcedureCodes, getNextActiveProcedure,
 } from 'curriculum-weaver-shared/constants.js'
@@ -900,6 +900,7 @@ function formatMaterialBlock(m, { rich, index }) {
  * @param {string} params.procedure - 현재 절차 코드
  * @param {number|null} params.currentStep - 현재 스텝 번호
  * @param {string} [params.aiRole] - AI 역할 프리셋 ID (recorder/advisor/facilitator/codesigner)
+ * @param {'recorder'|'team_chat'} [params.participationMode] - 팀 진행 방식 (recorder면 1인 기록 지시 주입)
  */
 /**
  * 시연 모드(임용 실연 준비) 전용 보드 코드 → 유사 procInfo 폴백.
@@ -927,7 +928,7 @@ const DEMO_PROC_INFO = {
   },
 }
 
-export function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes, standardLinks, mode, tone, examinerLens }) {
+export function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, participationMode, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes, standardLinks, mode, tone, examinerLens }) {
   // 시연 모드: mode==='demo' 단일 게이트. 협력 모드(기본)는 isDemo=false로 완전 불변.
   const isDemo = mode === 'demo'
   const procInfo = PROCEDURES[procedure] || (isDemo ? DEMO_PROC_INFO[procedure] : null)
@@ -1014,6 +1015,17 @@ TADDs-DIE 모형(팀 준비 → 분석 → 설계 → 개발·실행 → 성찰�
   const toneInstruction = toneKey ? PROMPT_TONE_INSTRUCTIONS[toneKey] : null
   if (toneInstruction) {
     parts.push(toneInstruction)
+  }
+
+  // ─── 1-B-2. 팀 진행 방식: 1인 기록 ───
+  // 대면 논의 후 기록자 한 명이 입력하는 팀(교사 연수용). 위 [대화 스타일]의 '질문 먼저'와
+  // 역할 톤보다 우선하도록 톤 뒤에 둔다. 팀 채팅(기본·종전)과 시연 모드에는 넣지 않는다.
+  if (!isDemo && participationMode === PARTICIPATION_MODES.RECORDER) {
+    parts.push(`[진행 방식 — 1인 기록 팀 · 위 대화 스타일과 역할 톤보다 우선]
+이 팀은 대면으로 논의하고, 기록자 한 명이 논의 결과를 요약해 입력합니다.
+- 선생님별 의견을 따로 묻지 말고, 입력된 내용을 팀 합의로 보고 진행하세요.
+- 질문은 꼭 필요한 것만 한 번에 하나씩 하세요.
+- 개인별 내용이 필요한 칸(예: 개인 비전, 교과별 목표)은 교과별로 정리해 한 번에 알려 달라고 요청하세요.`)
   }
 
   // ─── 1-C. 채점관 렌즈 (examinerLens) ───
