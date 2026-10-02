@@ -23,7 +23,7 @@ import { Standards, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
 import { persistLinks } from '../lib/linkService.js'
 import { getEmbedding } from './embeddingStore.js'
 
-const MODEL = 'claude-sonnet-5'
+const MODEL = 'claude-sonnet-5-5'
 const LINK_TYPES = new Set(['cross_subject', 'same_concept', 'application', 'prerequisite', 'extension'])
 const SCHOOL_LEVEL_ORDER = { '초등학교': 0, '중학교': 1, '고등학교': 2 }
 
