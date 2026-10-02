@@ -29,7 +29,7 @@ vi.mock('../../lib/supabaseAdmin.js', () => ({
 
 import { initStore, Standards } from '../../lib/store.js'
 import {
-  resolveFutureRequest, buildFuturePrompt, parseFuture, generateFuture, FutureError,
+  resolveFutureRequest, buildFuturePrompt, parseFuture, generateFuture, FutureError, clampPitch,
   FUTURE_LENSES, FUTURE_MODELS, futuresQueue, buildBridgePrompt, parseBridges, generateBridges, BRIDGE_MODEL, _clearFuturesMemCache,
 } from '../futuresGenerator.js'
 
@@ -43,17 +43,11 @@ for (const s of Standards.list()) {
 }
 const keys = picks.map((s) => s.key)
 
-const goodJson = (ids = ['S1', 'S2', 'S3']) => JSON.stringify({
-  title: '우리 동네 데이터로 문제 찾기',
-  lens: '지역 문제 해결',
-  situation: '학생들이 동네 문제를 조사한다.',
-  driving_question: '우리 동네의 문제는 무엇이고 어떻게 바꿀 수 있을까?',
-  roles: ids.map((id) => ({ id, role: `${id}의 역할` })),
-  activity_steps: ['조사', '분석', '제안', '발표'],
-  data_sources: ['공공데이터포털'],
-  student_output: '제안서',
-  assessment_idea: '과정 관찰',
+const goodJson = (extra = {}) => JSON.stringify({
+  title: '우리 동네 침수 위험 지도 만들기',
+  pitch: '학생들이 동네 하천을 걸으며 침수 흔적을 지도에 표시한다. 기상 자료로 위험한 곳을 골라 구청에 제안한다.',
   honesty_note: '',
+  ...extra,
 })
 const textResponse = (text, stop = 'end_turn') => ({ stop_reason: stop, content: [{ type: 'text', text }] })
 
@@ -94,6 +88,13 @@ describe('프롬프트', () => {
     expect(FUTURE_LENSES).toHaveLength(8)
     expect(buildFuturePrompt(picks, FUTURE_LENSES.length, [])).toContain('2회차')
   })
+  it('긴 수업 계획 대신 2문장 100자 이내의 짧은 카드를 요구한다', () => {
+    const p = buildFuturePrompt(picks, 0, [])
+    expect(p).toContain('100자 이내')
+    expect(p).toContain('차시 계획·단계·평가 방법·자료 목록은 쓰지 마세요')
+    expect(p).not.toContain('activity_steps')
+    expect(p).not.toContain('"axis"') // 연결 지도가 없으면 축도 묻지 않는다
+  })
   it('검증된 연결의 근거를 넣는다', () => {
     const p = buildFuturePrompt(picks, 0, [{ source_code: keys[0], target_code: keys[1], rationale: '근거A', integration_theme: '주제A' }])
     expect(p).toContain('S1–S2')
@@ -103,23 +104,27 @@ describe('프롬프트', () => {
 })
 
 describe('응답 파싱', () => {
-  it('역할을 성취기준 key로 바꾸고 빠진 역할을 표시한다', () => {
-    const f = parseFuture(goodJson(['S1', 'S2']), picks)
-    expect(f.roles.map((r) => r.key)).toEqual([keys[0], keys[1]])
-    expect(f.missing_roles).toEqual([keys[2]])
+  it('제목·설명·축을 읽는다 (짧은 카드)', () => {
+    const f = parseFuture(goodJson({ axis: ['기상 빅데이터', ' ', 3] }), picks)
+    expect(f.title).toBe('우리 동네 침수 위험 지도 만들기')
+    expect(f.pitch).toMatch(/^학생들이/)
+    expect(f.axis).toEqual(['기상 빅데이터'])
+    expect(Object.keys(f).sort()).toEqual(['axis', 'honesty_note', 'pitch', 'title'])
   })
-  it('본문에 남은 S1·S2 번호를 교과와 코드로 바꾼다', () => {
-    const json = JSON.parse(goodJson())
-    json.honesty_note = 'S1-S2 사이에 검증된 연결이 없고 S3는 보조 역할이다.'
-    json.roles[0].role = 'S2의 결과를 받아 분석한다'
-    const f = parseFuture(JSON.stringify(json), picks)
-    expect(f.honesty_note).toBe(`${picks[0].subject} ${picks[0].code}-${picks[1].subject} ${picks[1].code} 사이에 검증된 연결이 없고 ${picks[2].subject} ${picks[2].code}는 보조 역할이다.`)
-    expect(f.roles[0].role).toContain(picks[1].code)
-    expect(f.honesty_note).not.toMatch(/\bS\d\b/)
+  it('남은 S1·S2 번호를 교과와 코드로 바꾼다', () => {
+    const f = parseFuture(goodJson({ honesty_note: 'S1과 S3의 연결은 약하다.' }), picks)
+    expect(f.honesty_note).toBe(`${picks[0].subject} ${picks[0].code}과 ${picks[2].subject} ${picks[2].code}의 연결은 약하다.`)
   })
-  it('JSON이 없거나 필수 항목이 없으면 null', () => {
+  it('JSON이 없거나 제목·설명이 없으면 null', () => {
     expect(parseFuture('미래를 그릴 수 없습니다', picks)).toBeNull()
-    expect(parseFuture('{"title": 1}', picks)).toBeNull()
+    expect(parseFuture('{"title": "제목만"}', picks)).toBeNull()
+    expect(parseFuture('{"title": "", "pitch": "설명"}', picks)).toBeNull()
+  })
+  it('설명이 길면 끝난 문장까지만 남긴다', () => {
+    const long = '학생들이 하천을 조사한다. ' + '가'.repeat(150) + '를 만든다.'
+    expect(clampPitch(long, 60)).toBe('학생들이 하천을 조사한다.')
+    expect(clampPitch('짧은 설명이다.', 60)).toBe('짧은 설명이다.')
+    expect(clampPitch('끝나지 않는 아주 긴 문장 '.repeat(10), 40)).toMatch(/…$/)
   })
 })
 
@@ -141,10 +146,10 @@ describe('생성', () => {
     sdk.create.mockResolvedValue(textResponse(goodJson()))
     const first = await generateFuture(req())
     expect(first.cached).toBe(false)
-    expect(first.future.roles).toHaveLength(3)
+    expect(first.future.pitch).toBeTruthy()
     expect(sdk.create.mock.calls[0][0].model).toBe(FUTURE_MODELS.fast.id)
     expect(sdk.create.mock.calls[0][0].output_config).toEqual({ effort: 'medium' })
-    expect(db.upserts[0].key).toMatch(/^future:v4:fast:/)
+    expect(db.upserts[0].key).toMatch(/^future:v5:fast:/)
     const second = await generateFuture(req())
     expect(second.cached).toBe(true)
     expect(sdk.create).toHaveBeenCalledTimes(1)
@@ -157,7 +162,7 @@ describe('생성', () => {
     expect(params.model).toBe('claude-opus-5-5')
     expect(params.output_config).toEqual({ effort: 'medium' })
     expect(params.tool_choice).toBeUndefined()
-    expect(db.upserts[0].key).toMatch(/^future:v4:precise:/)
+    expect(db.upserts[0].key).toMatch(/^future:v5:precise:/)
   })
 
   it('JSON이 깨지면 한 번 다시 시도한다', async () => {
@@ -279,7 +284,7 @@ describe('연결 마법진 (키워드 연결)', () => {
 
   it('미래 프롬프트에 연결 지도(양 끝 키워드)와 축 규칙이 들어가고, 응답의 axis를 읽는다', async () => {
     db.cache.set(bridgeKey(), seededBridges())
-    sdk.create.mockResolvedValue(textResponse(JSON.stringify({ ...JSON.parse(goodJson()), axis: ['공통 자료'] })))
+    sdk.create.mockResolvedValue(textResponse(goodJson({ axis: ['공통 자료'] })))
     const r = await generateFuture(resolveFutureRequest({ codes: keys, model: 'fast', index: 2 }))
     const prompt = sdk.create.mock.calls[0][0].messages[0].content
     expect(prompt).toContain('## 연결 지도')

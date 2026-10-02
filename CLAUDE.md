@@ -50,14 +50,15 @@ curriculum-weaver/
 
 ## 미래 보기 — 타임스톤 (2026-10-02)
 
-`/futures` (워크스페이스 첫 화면 "미래 보기" 버튼). 성취기준 2~6개 → 연결 별자리 → 시간의 고리 → 여덟 꼭지 별, 꼭지마다 수업의 미래 1개.
+`/futures` (워크스페이스 첫 화면 "미래 보기" 버튼). 성취기준 2~6개 → "타임스톤으로 수업의 미래 보기" → ① 키워드 성운 ② 미래 마방진(3×3).
 
-- **흐름(시간 벌기)**: 넣는 순간(0.7초 뒤) 서버가 연결을 찾고(`POST /api/futures/bridges`, ~6초) 첫 꼭지를 미리 생성. "타임스톤으로 수업의 미래 보기"를 누르면 8개 생성이 시작되고, 그동안 화면은 연결 별자리가 이어지며 초록으로 켜짐 → 시간의 고리 소환 → 별(약 8~10초)
-- **연결 별자리** (`futuresGenerator.js` `buildBridgePrompt`/`parseBridges`): 성취기준별 원문 키워드 3~5개 + 서로 다른 성취기준 키워드 사이 연결 0~7개. **키워드는 원문 부분 문자열만**(공백·가운뎃점 무시 대조, 지어낸 말은 버림), 연결 끝은 검증된 키워드만, 엮이지 않은 성취기준은 서버가 계산. 조합당 1회 생성·캐시(`bridge:v2:`, 모델 무관), 실패해도 미래는 지도 없이 생성
-- **미래** (`generateFuture`): 꼭지 8개 = 관점 8개(`FUTURE_LENSES` — 관점마다 장면·결과물 유형을 따로 정해 수렴 방지). 연결 지도에서 관점에 맞는 연결 1~2개를 축으로 삼고 `axis`로 반환(카드에 "연결 축"). 캐시 `future:v4:{model}:{keys}#{index}`. 빠른=Sonnet 5.5·정밀=Opus 5.5, 둘 다 effort medium
-- **부하 보호**: 서버 전체 동시 생성 상한 `futuresQueue`(기본 80 = 10명×8, env `FUTURES_QUEUE_CONCURRENCY`) — 채팅과 같은 API 키라 분당 출력 토큰 한도(200만)를 미래 보기가 다 쓰지 못하게. 채팅 큐(aiQueue)와 분리. 생성 요청 사용자당 분당 40회(`futuresLimiter`, GET 제외). 캐시는 Supabase `scenario_cache` + 메모리(600개) 폴백
-- **화면**: `client/src/lib/futuresScene.js`가 의식 구간 DOM을 직접 그림(React는 넣기·URL·모델만). 모든 rAF·타이머·리스너는 `destroy()`에서 정리, CSS는 `.futures-root` 아래로만(`futures.css`, 키프레임 `fu-` 접두). 색: 전체 초록(타임스톤), **별 꼭지만 엔드게임 스톤 6색**. 직선 레이저 금지 — 휘어지는 빛 알갱이·문양·잔상
-- 실측(고등 일반 과목 6조합): 8/8 생성, 꼭지당 10~22초, 미래 1개 ≈ 입력 1,750·출력 1,250토큰(빠른 모드 약 3센트)
+- **흐름**: 성취기준을 넣는 순간(0.7초 뒤) 서버가 연결을 찾는다(`POST /api/futures/bridges`, ~6초). 누르면 8개를 한꺼번에 생성(`POST /api/futures`, 연결 찾기 포함 ~9초), 카드는 준비되는 대로 채워진다
+- **① 키워드 성운** (`components/futures/KeywordNebula.jsx`, 배치는 `lib/futures.js` `nebulaLayout` — 순수 함수·테스트): 성취기준 = 교과 색 성운, 둘레 별 = 원문 키워드, 만나는 키워드는 굵은 흰 글씨 + 초록 선 + 연결 이름. 이름표는 키워드를 가리지 않는 자리를 고른다. 좁은 화면은 글씨 크기를 지키고 가로 스크롤
+- **연결 찾기** (`futuresGenerator.js` `buildBridgePrompt`/`parseBridges`): 성취기준별 원문 키워드 3~5개 + 서로 다른 성취기준 키워드 사이 연결 0~7개. **키워드는 원문 부분 문자열만**(공백·가운뎃점 무시 대조), 연결 끝은 검증된 키워드만, 엮이지 않은 성취기준은 서버가 계산. 캐시 `bridge:v2:`(모델 무관), 실패해도 미래는 생성
+- **② 미래 마방진** (`components/futures/FuturesSquare.jsx`): 가운데 타임스톤 별, 둘레 8칸 = 관점 8개(`FUTURE_LENSES`, 왼쪽 위부터 시계 방향). 꼭지 k가 자기 칸을 가리키고 준비되면 켜짐. **카드 = 제목 + 2문장(100자 이내, '~한다')** — 차시·단계·평가는 쓰지 않는다. 연결 축(만나는 키워드)은 한 줄, 솔직한 메모는 ⓘ 툴팁. 담기·"이 수업으로 시작"은 기존 `cw_design_basket` → `/workspaces?createProject=1`
+- **미래 생성** (`generateFuture`): 캐시 `future:v5:{model}:{keys}#{index}`, 빠른=Sonnet 5.5·정밀=Opus 5.5(effort medium). 설명이 길면 문장 경계에서 자름(`clampPitch`, 140자)
+- **부하 보호**: 서버 전체 동시 생성 상한 `futuresQueue`(기본 80 = 10명×8, env `FUTURES_QUEUE_CONCURRENCY`) — 채팅과 같은 API 키의 분당 출력 한도를 다 쓰지 못하게. 생성 요청 사용자당 분당 40회(`futuresLimiter`, GET 제외). 캐시는 Supabase `scenario_cache` + 메모리(600개)
+- **디자인 원칙(사용자 확정)**: 닥터 스트레인지 느낌은 살리되 깔끔하게 — 과한 입자·폭발·잔상 금지. 전체 타임스톤 초록, **별 꼭지만 엔드게임 스톤 6색**, 키워드 가독성 우선. CSS는 `.futures-root` 아래로만(`pages/futures.css`, 키프레임 `fu-` 접두)
 
 ## 자료 업로드 분석 파이프라인 (2026-07-12 성능 개선)
 
