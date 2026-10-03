@@ -111,7 +111,8 @@ function sanitizeFileName(original) {
 /** 응답 직전 파일명 인코딩/NFC 보정 — 레거시(latin1 mojibake / NFD) 행도 안전하게 노출 */
 function normalizeMaterialFileName(row) {
   if (!row) return row
-  let next = row
+  const { extracted_text, ...publicRow } = row
+  let next = publicRow
   if (typeof row.file_name === 'string') {
     const fixed = fixHangulFileName(row.file_name)
     if (fixed !== row.file_name) next = { ...next, file_name: fixed }
@@ -190,7 +191,7 @@ const EXT_TO_MIME = {
  */
 async function verifyMagicBytes(buffer, ext) {
   // 텍스트 계열은 매직바이트가 없으므로 스킵
-  if (['txt', 'csv'].includes(ext)) return { ok: true }
+  if (['txt', 'md', 'csv'].includes(ext)) return { ok: true }
 
   try {
     const mod = await import('file-type')
@@ -347,27 +348,25 @@ materialsRouter.post(
     const storagePath = `materials/${projectId}/${materialId}.${ext}`
     const mimeType = magic.detectedMime || file.mimetype || EXT_TO_MIME[ext]?.[0] || 'application/octet-stream'
 
-    // ── Supabase Storage 업로드 (백그라운드 시작 — DB insert·응답과 병렬) ──
-    // 실패 시에도 파싱·AI 분석은 계속 진행한다(메모리 버퍼로). Storage 장애 및 dev 환경 안전망.
-    // 순차 실행이던 시절 업로드 응답이 Storage 재전송(2MB 기준 ~0.8s)만큼 늦었다.
-    const storagePromise = (async () => {
-      try {
-        const { error: upErr } = await supabaseAdmin
-          .storage
-          .from('materials')
-          .upload(`${projectId}/${materialId}.${ext}`, file.buffer, {
-            contentType: mimeType,
-            upsert: false,
-          })
-        if (upErr) throw upErr
-        return true
-      } catch (err) {
-        console.warn('[materials] Storage 업로드 실패, 메모리 분석으로 진행', err?.message || err)
-        return false
-      }
-    })()
+    // ── Supabase Storage 업로드 ──
+    // 운영에서는 원본 저장이 성공해야 업로드를 완료한다.
+    let storageOk = false
+    try {
+      const { error: upErr } = await supabaseAdmin
+        .storage
+        .from('materials')
+        .upload(`${projectId}/${materialId}.${ext}`, file.buffer, {
+          contentType: mimeType,
+          upsert: false,
+        })
+      if (upErr) throw upErr
+      storageOk = true
+    } catch (err) {
+      console.warn('[materials] Storage 업로드 실패:', err?.message || err)
+      if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) return errorResponse(res, 503, E.UPLOAD_FAILED, '파일을 저장하지 못했습니다. 잠시 후 업로드를 다시 시도해주세요.')
+    }
 
-    // ── DB insert (Supabase 우선, 실패시 인메모리) — Storage 결과를 낙관적으로 가정 ──
+    // ── DB insert (운영 저장 실패는 재시도 안내) ──
     const nowIso = new Date().toISOString()
     const baseRow = {
       id: materialId,
@@ -381,7 +380,7 @@ materialsRouter.post(
       file_size: file.size,
       file_hash: fileHash,
       category: (req.body?.category || 'reference').toString().slice(0, 50),
-      storage_path: storagePath,
+      storage_path: storageOk ? storagePath : null,
       processing_status: 'pending',
       processing_error: null,
       ai_summary: null,
@@ -396,7 +395,13 @@ materialsRouter.post(
       material = await insertMaterialRow(baseRow)
     } catch (err) {
       // 인메모리 fallback — storage 미연결/스키마 불일치 등
-      console.warn('[materials/upload] DB insert 실패, 인메모리 저장:', err?.message || err)
+      console.warn('[materials/upload] DB insert 실패:', err?.message || err)
+      if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        if (storageOk) {
+          try { await supabaseAdmin.storage.from('materials').remove([`${projectId}/${materialId}.${ext}`]) } catch { /* 원본 정리 실패는 로그로 추적 */ }
+        }
+        return errorResponse(res, 503, E.UPLOAD_FAILED, '자료 정보를 저장하지 못했습니다. 잠시 후 업로드를 다시 시도해주세요.')
+      }
       material = Materials.add(projectId, baseRow)
     }
 
@@ -462,24 +467,12 @@ materialsRouter.post(
       }
     }
 
-    // ── fire-and-forget 분석 — Storage 완료를 기다리지 않고 즉시 시작 ──
+    globalThis.__cwIo?.to(projectId).emit('material_updated', normalizeMaterialFileName(material))
+
+    // ── 원본과 DB 저장 완료 후 비동기 분석 ──
     // 첨부 시스템 메시지 생성 이후여야 한다 (빠른 실패 시 메시지가 parsing으로 남는 레이스 방지).
     analyzeMaterial(materialId, bufferForAnalysis, ext, { intent, intentNote, projectId })
       .catch((err) => console.error('[materials] analyzeMaterial 오류:', err?.message || err))
-
-    // Storage 결과 확정 — 드문 실패 케이스에만 행 보정 (낙관적 insert의 후처리)
-    const storageOk = await storagePromise
-    if (!storageOk) {
-      material = { ...material, storage_path: null }
-      const failPatch = {
-        storage_path: null,
-        processing_error: `${E.STORAGE_UPLOAD_WARNING}: Storage 업로드 실패, 메모리 분석으로 진행`,
-      }
-      try {
-        await supabaseAdmin.from('materials').update(failPatch).eq('id', materialId)
-      } catch { /* ignore */ }
-      try { Materials.update(materialId, failPatch) } catch { /* ignore */ }
-    }
 
     const responseBody = { material: normalizeMaterialFileName(material) }
     if (systemMessage) responseBody.systemMessage = systemMessage
@@ -545,10 +538,12 @@ materialsRouter.post('/url', async (req, res) => {
   try {
     material = await insertMaterialRow(baseRow)
   } catch (err) {
-    console.warn('[materials/url] DB insert 실패, 인메모리 저장:', err?.message || err)
+    console.warn('[materials/url] DB insert 실패:', err?.message || err)
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) return errorResponse(res, 503, E.UPLOAD_FAILED, '자료 정보를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.')
     material = Materials.add(projectId, baseRow)
   }
 
+  globalThis.__cwIo?.to(projectId).emit('material_updated', normalizeMaterialFileName(material))
   // ── fire-and-forget 분석 ── (파일 업로드와 동일한 패턴)
   analyzeUrlMaterial(materialId, normalizedUrl, { intent: safeIntent, intentNote, projectId })
     .catch((err) => console.error('[materials/url] analyzeUrlMaterial 오류:', err?.message || err))
@@ -659,6 +654,21 @@ materialsRouter.get('/:id/analysis', async (req, res) => {
   })
 })
 
+/** 재분석 예약 전 이전 결과를 지우고 저장 성공을 확인한다. */
+async function prepareReanalysis(id, projectId, res) {
+  const patch = { processing_status: 'parsing', processing_error: null, ai_summary: null, ai_analysis: null }
+  try {
+    const { error } = await supabaseAdmin.from('materials').update(patch).eq('id', id)
+    if (error) throw error
+    try { Materials.update(id, patch) } catch { /* 캐시가 없으면 DB만 사용 */ }
+    globalThis.__cwIo?.to(projectId).emit('material_updated', { id, project_id: projectId, ...patch, reanalysis_started: true })
+    return true
+  } catch {
+    errorResponse(res, 503, E.UPLOAD_FAILED, '재분석을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.')
+    return false
+  }
+}
+
 // ============================================================
 // POST /api/materials/:id/reanalyze
 // ============================================================
@@ -689,14 +699,7 @@ materialsRouter.post('/:id/reanalyze', async (req, res) => {
     const accessUrl = await assertProjectAccess(row.project_id, req.user.id)
     if (!accessUrl.ok) return errorResponse(res, accessUrl.status, accessUrl.code, accessUrl.message)
 
-    try {
-      await supabaseAdmin.from('materials').update({
-        processing_status: 'parsing',
-        processing_error: null,
-      }).eq('id', id)
-    } catch {
-      try { Materials.update(id, { processing_status: 'parsing', processing_error: null }) } catch { /* ignore */ }
-    }
+    if (!await prepareReanalysis(id, row.project_id, res)) return
 
     analyzeUrlMaterial(id, row.storage_path, {
       intent: row.intent || DEFAULT_MATERIAL_INTENT,
@@ -735,17 +738,7 @@ materialsRouter.post('/:id/reanalyze', async (req, res) => {
     return errorResponse(res, 500, E.UPLOAD_FAILED, `Storage 다운로드 실패: ${err?.message || err}`)
   }
 
-  // 상태를 parsing으로 직접 전환 (M2 — 프론트 낙관적 상태 PARSING과 정합성 유지).
-  // analyzeMaterial 내부에서도 parsing으로 UPDATE하지만, 여기서 먼저 전환해 응답과 일치시킨다.
-  try {
-    await supabaseAdmin.from('materials').update({
-      processing_status: 'parsing',
-      processing_error: null,
-    }).eq('id', id)
-  } catch {
-    // 인메모리 폴백
-    try { Materials.update(id, { processing_status: 'parsing', processing_error: null }) } catch { /* ignore */ }
-  }
+  if (!await prepareReanalysis(id, row.project_id, res)) return
 
   analyzeMaterial(id, buffer, row.file_type, {
     intent: row.intent || DEFAULT_MATERIAL_INTENT,
@@ -801,5 +794,6 @@ materialsRouter.delete('/:id', async (req, res) => {
   } catch (err) {
     return errorResponse(res, 500, E.INTERNAL, `DB 삭제 실패: ${err?.message || err}`)
   }
+  globalThis.__cwIo?.to(row.project_id).emit('material_updated', { id, project_id: row.project_id, deleted: true })
   return res.json({ success: true })
 })

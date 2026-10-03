@@ -11,7 +11,8 @@ import {
   DEFAULT_MATERIAL_INTENT,
 } from 'curriculum-weaver-shared/constants.js'
 import { useProcedureStore } from '../stores/procedureStore'
-import { materialErrorMessage, materialFailureMessage, validateMaterialFile } from '../lib/materialErrors'
+import { materialCoverageMessage } from 'curriculum-weaver-shared/materialText.js'
+import { materialProcessingMessage, materialErrorMessage, validateMaterialFile } from '../lib/materialErrors'
 import {
   Upload,
   Link as LinkIcon,
@@ -55,6 +56,7 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId,
     setMaterialContextIncluded,
     selectAllMaterials,
     deselectAllMaterials,
+    startMaterialPolling,
   } = useProcedureStore()
 
   const [internalExpanded, setInternalExpanded] = useState(false)
@@ -85,7 +87,8 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId,
   const pushBanner = useCallback((kind, message) => {
     const id = `b-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
     setBanners((prev) => [...prev, { id, kind, message }])
-    // 6초 후 자동 소멸
+    // 오류는 사용자가 닫을 때까지 남겨 재시도할 수 있게 한다.
+    if (kind === 'error') return
     setTimeout(() => {
       setBanners((prev) => prev.filter((b) => b.id !== id))
     }, 6_000)
@@ -219,7 +222,9 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId,
           pushBanner('error', `${r.file?.name || '파일'}: ${msg}`)
         }
       }
-      setPendingUploads([])
+      const attempted = new Set(pendingUploads.map(p => p.tempId))
+      const failed = new Set(results.flatMap((r, i) => r.status === 'rejected' ? [pendingUploads[i].tempId] : []))
+      setPendingUploads(prev => prev.filter(p => !attempted.has(p.tempId) || failed.has(p.tempId)))
     } catch (err) {
       pushBanner('error', materialErrorMessage(err))
     } finally {
@@ -512,6 +517,7 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId,
             </form>
           )}
 
+          <p className="text-[11px] text-gray-500">선택한 자료의 요약과 질문에 관련된 원문 일부를 활용합니다. @파일명으로 지정하면 해당 자료를 우선 확인합니다. 스캔 이미지·도표는 텍스트 추출에서 빠질 수 있어요.</p>
           {/* 업로드된 자료 목록 */}
           {filteredMaterials.length > 0 && (
             <>
@@ -520,7 +526,7 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId,
                 <span>
                   AI 입력 컨텍스트에 포함된 자료
                   <span className="ml-1 font-medium text-gray-800">
-                    {filteredMaterials.filter((m) => !excludedMaterialIds.has(m.id)).length}
+                    {filteredMaterials.filter((m) => m.processing_status === COMPLETED && !excludedMaterialIds.has(m.id)).length}
                   </span>
                   <span className="text-gray-400"> / {filteredMaterials.length}</span>
                 </span>
@@ -556,6 +562,7 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId,
                     onReanalyze={handleReanalyze}
                     onDelete={handleDelete}
                     onOpenDetail={setDetailMaterialId}
+                    onCheckStatus={startMaterialPolling}
                   />
                 ))}
               </ul>
@@ -756,12 +763,13 @@ function PendingUploadRow({ item: p, disabled, onChangeIntent, onChangeNote, onR
 // ────────────────────────────────────────
 // Subcomponent: 자료 1행
 // ────────────────────────────────────────
-function MaterialRow({ material: m, included = true, onToggleIncluded, onReanalyze, onDelete, onOpenDetail }) {
+function MaterialRow({ material: m, included = true, onToggleIncluded, onReanalyze, onDelete, onOpenDetail, onCheckStatus }) {
   const isUrl = m.file_type === 'url'
   const isUploading = m._uploading
   const status = m.processing_status
   // 분석 완료 자료만 컨텍스트에 의미가 있다 → 그 외는 체크박스 비활성
   const canToggle = status === COMPLETED && !isUploading
+  const failureMessage = materialProcessingMessage(m)
 
   return (
     <li
@@ -811,9 +819,11 @@ function MaterialRow({ material: m, included = true, onToggleIncluded, onReanaly
             {(m.file_size / 1024).toFixed(0)}KB
           </span>
         )}
-        <StatusBadge status={isUploading ? 'uploading' : status} />
+        <StatusBadge status={isUploading ? 'uploading' : m._statusUnavailable ? 'unavailable' : status} />
+        {/* 상태 확인은 기존 분석을 다시 실행하지 않는다. */}
+        {m._statusUnavailable && <button type="button" onClick={() => onCheckStatus(m.id)} className="text-orange-700 underline">상태 확인</button>}
         {/* 액션 버튼들 */}
-        {status === FAILED && !isUploading && (
+        {(status === FAILED || status === COMPLETED) && !isUploading && (
           <button
             type="button"
             onClick={() => onReanalyze(m.id)}
@@ -867,12 +877,11 @@ function MaterialRow({ material: m, included = true, onToggleIncluded, onReanaly
         </div>
       )}
 
-      {/* 실패 사유 — 재분석 로컬 오류(_error) 우선, 없으면 서버 processing_error 기반 안내 */}
-      {status === FAILED && (
-        <div className="text-[11px] text-red-600 pl-4">
-          {m._error || materialFailureMessage(m)}
-        </div>
+      {/* 실패 사유 */}
+      {(status === FAILED || m._statusUnavailable) && failureMessage && (
+        <div className="text-[11px] text-red-600 pl-4" role="status">{failureMessage}</div>
       )}
+      {status === COMPLETED && <p className="text-[11px] text-gray-500 pl-4">{materialCoverageMessage(m)}</p>}
     </li>
   )
 }
@@ -883,6 +892,7 @@ function MaterialRow({ material: m, included = true, onToggleIncluded, onReanaly
 function StatusBadge({ status }) {
   if (!status) return null
   const map = {
+    unavailable: { label: '상태 확인 필요', className: 'bg-orange-50 text-orange-700', icon: <AlertCircle size={10} /> },
     uploading: {
       label: '업로드 중',
       className: 'bg-blue-50 text-blue-700',
@@ -975,6 +985,7 @@ function MaterialDetailModal({ material, onClose }) {
         </div>
 
         <div className="p-5 space-y-4 text-sm">
+          <p className="text-xs text-gray-600" role="note">{materialCoverageMessage(material)}</p>
           {analysis.summary && (
             <section>
               <h4 className="text-xs font-semibold text-gray-500 mb-1">요약</h4>

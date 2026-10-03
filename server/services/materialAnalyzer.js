@@ -14,6 +14,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk'
 import PQueue from 'p-queue'
+import { MAX_MATERIAL_TEXT_CHARS, MATERIAL_ANALYSIS_CHARS, selectMaterialExcerpts } from '../../shared/materialText.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { validateCode } from '../lib/standardsValidator.js'
 import { Materials, Messages } from '../lib/store.js'
@@ -35,7 +36,7 @@ function getClient() {
 }
 
 /** 추출 본문 최대 길이 (약 20k 토큰) */
-const TEXT_TRUNCATE = 20000
+const TEXT_TRUNCATE = MATERIAL_ANALYSIS_CHARS
 /** AI 분석 타임아웃 (ms) — 실측 p90 51s(감량 전) 대비 여유 확보 */
 const AI_TIMEOUT_MS = 90_000
 /** Vision(문서/이미지 직접 분석) 타임아웃 — 이미지 토큰 처리로 텍스트보다 오래 걸림 */
@@ -479,6 +480,7 @@ async function fetchUrlContent(rawUrl) {
     // HTML/XML (content-type 미상이면 HTML로 간주)
     if (contentType.includes('html') || contentType.includes('xml') || contentType === '') {
       const { title, text } = htmlToText(buffer.toString('utf-8'))
+      if (!text.trim()) return { error: '페이지 본문이 비어 있습니다. 본문을 파일로 저장해 올려주세요.' }
       const header = title
         ? `[페이지 제목] ${title}\n[URL] ${rawUrl}\n\n`
         : `[URL] ${rawUrl}\n\n`
@@ -486,7 +488,9 @@ async function fetchUrlContent(rawUrl) {
     }
     // 일반 텍스트/JSON
     if (contentType.includes('text/') || contentType.includes('json')) {
-      return { text: `[URL] ${rawUrl}\n\n${buffer.toString('utf-8')}` }
+      const text = buffer.toString('utf-8')
+      if (!text.trim()) return { error: '페이지 본문이 비어 있습니다.' }
+      return { text: `[URL] ${rawUrl}\n\n${text}` }
     }
     return { unsupported: true, error: `지원하지 않는 콘텐츠 유형입니다: ${contentType || '알 수 없음'}` }
   } finally {
@@ -567,9 +571,7 @@ async function extractText(buffer, ext) {
     }
     if (lower === 'csv') {
       const raw = buffer.toString('utf-8')
-      // 첫 50행만 사용 (분석 비용 절약)
-      const head = raw.split(/\r?\n/).slice(0, 50).join('\n')
-      return { text: head }
+      return { text: raw }
     }
     if (lower === 'xlsx' || lower === 'xls') {
       // xlsx (SheetJS)는 프로젝트 루트에 이미 있음
@@ -579,8 +581,7 @@ async function extractText(buffer, ext) {
         const parts = []
         for (const sheetName of wb.SheetNames) {
           const csv = xlsx.utils.sheet_to_csv(wb.Sheets[sheetName])
-          const head = csv.split(/\r?\n/).slice(0, 50).join('\n')
-          parts.push(`### ${sheetName}\n${head}`)
+          parts.push(`### ${sheetName}\n${csv}`)
         }
         return { text: parts.join('\n\n') }
       } catch (e) {
@@ -755,7 +756,8 @@ function broadcastMaterialUpdate(projectId, patch) {
   const io = globalThis.__cwIo
   if (!io) return
   try {
-    io.to(projectId).emit('material_updated', { project_id: projectId, ...patch })
+    const { extracted_text, ...publicPatch } = patch
+    io.to(projectId).emit('material_updated', { project_id: projectId, ...publicPatch })
   } catch (err) {
     console.warn('[materialAnalyzer] material_updated emit 실패(무시):', err?.message || err)
   }
@@ -923,8 +925,10 @@ async function analyzeSource(materialId, source, { intent, intentNote, projectId
   const isVision = !!(source.pdfBuffer || source.imageBuffer)
   const analysisMode = source.pdfBuffer ? 'vision_pdf' : source.imageBuffer ? 'vision_image' : 'text'
   try {
-    const truncated = (source.text || '').slice(0, TEXT_TRUNCATE)
-    if (!isVision && truncated.trim().length === 0) {
+    const fullText = String(source.text || '')
+    const storedText = fullText.slice(0, MAX_MATERIAL_TEXT_CHARS)
+    const excerpt = selectMaterialExcerpts(storedText, TEXT_TRUNCATE)
+    if (!isVision && storedText.trim().length === 0) {
       await transitionMaterial(materialId, {
         processing_status: 'failed',
         processing_error: `${E.PARSE_FAILED}: 추출된 텍스트가 비어 있습니다. 스캔·이미지 기반 문서라면 PDF 또는 이미지 파일로 올려주세요.`,
@@ -936,12 +940,13 @@ async function analyzeSource(materialId, source, { intent, intentNote, projectId
     // ── 2. analyzing 단계 ──
     await transitionMaterial(materialId, {
       processing_status: 'analyzing',
-      extracted_text: isVision ? '' : truncated,
+      extracted_text: isVision ? '' : storedText,
     // messages.processing_status CHECK 제약상 analyzing은 없으므로 parsing로 유지
     }, 'analyzing', projectId)
 
+    const scope = excerpt.complete ? '' : `[분석 범위: 추출된 전체 ${fullText.length}자 중 ${excerpt.includedChars}자를 여러 구간에서 발췌했습니다. 보이지 않는 내용은 추측하지 마세요.]\n`
     const aiRaw = await callClaudeAnalysis(
-      isVision ? source : { text: truncated },
+      isVision ? source : { text: scope + excerpt.text },
       { intent, intentNote }
     )
 
@@ -964,6 +969,8 @@ async function analyzeSource(materialId, source, { intent, intentNote, projectId
       meta: {
         model: ANALYZER_MODEL,
         analysis_mode: analysisMode,
+        ...(isVision ? {} : { coverage: { source_chars: fullText.length, stored_chars: storedText.length, analyzed_chars: excerpt.includedChars,
+          storage_truncated: fullText.length > storedText.length, analysis_truncated: !excerpt.complete, strategy: 'distributed_excerpts' } }),
         rejected_ratio: rejected.length
           ? rejected.length / ((rejected.length + validated.length) || 1)
           : 0,
