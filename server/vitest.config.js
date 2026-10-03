@@ -8,5 +8,7 @@ export default defineConfig({
     globals: false,
     include: ['**/__tests__/**/*.test.js'],
     testTimeout: 15_000,
+    // 병렬 실행 부하에서 beforeAll의 지연 import가 기본 10초를 넘겨 materials.test.js가 간헐 실패했다
+    hookTimeout: 30_000,
   },
 })
