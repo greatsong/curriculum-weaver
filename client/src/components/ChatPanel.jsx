@@ -28,6 +28,7 @@ import {
 import { getDefaultIntent } from '../lib/defaultIntentForStep'
 import { validateMaterialFile } from '../lib/materialErrors'
 import { fixEmphasisFlanking } from '../lib/markdownFix'
+import SuggestionEditForm, { canEditSuggestion } from './SuggestionEditForm'
 import ReadableValue from './ReadableValue'
 
 // 스트리밍 텍스트에서 XML 마커 제거 + 내부 절차 코드(T-1-2 등) → 표시 코드(T-2 등) 치환
@@ -1445,9 +1446,7 @@ function MaterialDetailMini({ material, onClose }) {
 // ── 인라인 AI 제안 카드 ──
 function InlineSuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
   const [showEdit, setShowEdit] = useState(false)
-  const [editedValue, setEditedValue] = useState(
-    typeof suggestion.value === 'string' ? suggestion.value : JSON.stringify(suggestion.value, null, 2)
-  )
+  const editable = canEditSuggestion(suggestion)
 
   return (
     <div style={{ maxWidth: '90%', margin: '0 auto' }}>
@@ -1496,34 +1495,20 @@ function InlineSuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) 
         </div>
 
         {showEdit && (
-          <textarea
-            value={editedValue}
-            onChange={(e) => setEditedValue(e.target.value)}
-            rows={3}
-            style={{
-              width: '100%',
-              padding: '8px 10px',
-              border: '1px solid #DDD6FE',
-              borderRadius: 'var(--radius-md)',
-              fontSize: 12,
-              marginBottom: 8,
-              resize: 'vertical',
-              boxSizing: 'border-box',
-            }}
-          />
+          // 편집: JSON 원문이 아니라 보드와 같은 입력 폼으로 고친 뒤 수락한다
+          <div style={{ background: 'var(--color-bg-primary)', borderRadius: 'var(--radius-md)', padding: 10, marginBottom: 8 }}>
+            <SuggestionEditForm
+              suggestion={suggestion}
+              onSubmit={(edited) => onEditAccept(edited)}
+              onCancel={() => setShowEdit(false)}
+            />
+          </div>
         )}
 
+        {!showEdit && (
         <div style={{ display: 'flex', gap: 6 }}>
           <button
-            onClick={() => {
-              if (showEdit) {
-                let val = editedValue
-                try { val = JSON.parse(editedValue) } catch { /* string */ }
-                onEditAccept(val)
-              } else {
-                onAccept()
-              }
-            }}
+            onClick={() => onAccept()}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -1543,10 +1528,11 @@ function InlineSuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) 
             onMouseLeave={(e) => e.currentTarget.style.background = '#7C3AED'}
           >
             <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 8 6.5 11.5 13 4.5"/></svg>
-            {showEdit ? '편집 수락' : '수락'}
+            수락
           </button>
+          {editable && (
           <button
-            onClick={() => setShowEdit(!showEdit)}
+            onClick={() => setShowEdit(true)}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -1564,8 +1550,9 @@ function InlineSuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) 
             }}
           >
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            {showEdit ? '취소' : '편집'}
+            편집
           </button>
+          )}
           <button
             onClick={onReject}
             style={{
@@ -1589,6 +1576,7 @@ function InlineSuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) 
             거부
           </button>
         </div>
+        )}
       </div>
     </div>
   )
