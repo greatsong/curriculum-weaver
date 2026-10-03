@@ -179,6 +179,19 @@ export function parseFuture(text, standards) {
   }
 }
 
+/**
+ * 화면(futuresLabScene.validFuture)과 같은 완성 기준 — 고른 성취기준마다 역할이 정확히 하나씩 있다.
+ * 예전에는 서버가 역할이 빠진 결과도 성공으로 캐시해, 화면은 '역할을 모두 담지 못했습니다'로 실패하고
+ * 다시 시도해도 같은 캐시를 읽어 계속 실패할 수 있었다(2026-10-03 검토).
+ * @param {object} future
+ * @param {string[]} keys - 고른 성취기준 key
+ */
+export function isCompleteFuture(future, keys) {
+  if (!future?.title || !Array.isArray(future.roles)) return false
+  const roleKeys = future.roles.map((r) => r?.key)
+  return roleKeys.length === keys.length && new Set(roleKeys).size === keys.length && keys.every((k) => roleKeys.includes(k))
+}
+
 // 메모리 캐시 — DB가 없거나 잠시 장애여도 같은 조합의 연결 지도·미래가 다시 생성되지 않게(같은 지도 위에서 8개가 그려지도록)
 const MEM_CACHE_MAX = 600
 const memCache = new Map()
@@ -198,10 +211,11 @@ async function readCache(key) {
   } catch { return null } // DB 미설정·장애 — 캐시 없이 생성
 }
 
-async function writeCache(key, keys, future, modelId) {
+async function writeCache(key, keys, future, modelId, { overwrite = false } = {}) {
   memSet(key, future)
   try {
-    await supabaseAdmin.from('scenario_cache').upsert({ key, codes: keys, scenario: future, model: modelId }, { onConflict: 'key', ignoreDuplicates: true })
+    // 평소에는 먼저 저장된 것을 지킨다(ignoreDuplicates). 불완전한 캐시를 바로잡을 때만 덮어쓴다.
+    await supabaseAdmin.from('scenario_cache').upsert({ key, codes: keys, scenario: future, model: modelId }, { onConflict: 'key', ignoreDuplicates: !overwrite })
   } catch (err) {
     console.warn('[futures2] 캐시 저장 실패(무시):', err?.message || err)
   }
@@ -219,7 +233,13 @@ export async function generateFuture({ standards, modelKey, index }) {
   const keys = standards.map((s) => s.key)
   const key = cacheKeyOf(modelKey, keys, index)
   const hit = await readCache(key)
-  if (hit) return { future: hit, cached: true }
+  if (hit && isCompleteFuture(hit, keys)) return { future: hit, cached: true }
+  // 역할이 빠진 옛 캐시는 쓰지 않고 새로 만들어 덮어쓴다(같은 캐시를 다시 읽어 계속 실패하지 않게)
+  const replaceBad = !!hit
+  if (replaceBad) {
+    memCache.delete(key)
+    console.warn(`[futures2] 불완전한 캐시를 무시하고 다시 생성: ${key}`)
+  }
 
   if (!inflight.has(key)) {
     const model = FUTURE_MODELS[modelKey]
@@ -227,6 +247,7 @@ export async function generateFuture({ standards, modelKey, index }) {
       const links = StandardLinks.getLinksAmongCodes(keys, { status: 'published', minQuality: 0, limit: 15 })
       const bridges = await bridgesForFuture(standards)
       const prompt = buildFuturePrompt(standards, index, links, bridges)
+      let incomplete = false
       for (let attempt = 0; attempt < 2; attempt++) {
         const response = await futures2Queue.add(() => getAnthropic().messages.create({
           model: model.id,
@@ -237,14 +258,22 @@ export async function generateFuture({ standards, modelKey, index }) {
         if (response.stop_reason === 'refusal') throw new FutureError(422, 'AI가 이 조합의 미래를 그리지 않았습니다. 다른 성취기준으로 시도해 주세요.')
         const text = (response.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('')
         const future = parseFuture(text, standards)
-        if (future) {
+        if (future && isCompleteFuture(future, keys)) {
           const full = { ...future, index, lens_label: lensOf(index).label, model: model.id, keys }
-          await writeCache(key, keys, full, model.id)
+          await writeCache(key, keys, full, model.id, { overwrite: replaceBad })
           return full
+        }
+        if (future) {
+          // 역할이 빠지거나 겹친 결과는 캐시하지 않고 한 번 더 생성한다
+          incomplete = true
+          console.error(`[futures2] 역할 불완전 (시도 ${attempt + 1}, index=${index}, model=${modelKey}): 빠짐=${future.missing_roles.length}, 역할=${future.roles.length}/${keys.length}`)
+          continue
         }
         console.error(`[futures2] JSON 추출 실패 (시도 ${attempt + 1}, stop=${response.stop_reason}): ${text.slice(0, 160)}`)
       }
-      throw new FutureError(502, '미래를 그리지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      throw new FutureError(502, incomplete
+        ? '선택한 성취기준의 역할을 모두 담지 못했습니다. 다시 시도해 주세요.'
+        : '미래를 그리지 못했습니다. 잠시 후 다시 시도해 주세요.')
     })()
     inflight.set(key, run)
     run.then(() => inflight.delete(key), () => inflight.delete(key))

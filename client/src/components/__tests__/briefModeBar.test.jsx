@@ -79,3 +79,12 @@ it('시연 모드 프로젝트에는 보이지 않는다', async () => {
   await render()
   expect(host.querySelector('[data-testid="brief-mode-bar"]')).toBeNull()
 })
+
+it('다른 작업 공간의 설정이 남아 있으면(옮긴 직후) 약식 막대를 보이지 않는다', async () => {
+  useWorkspaceStore.setState({ currentWorkspace: { id: 'A', workflow_config: { briefMode: true } } })
+  useProjectStore.setState({ currentProject: { id: 'p2', workspace_id: 'B', learner_context: {} } })
+  await render()
+  expect(host.querySelector('[data-testid="brief-mode-bar"]')).toBeNull()
+  await act(async () => useWorkspaceStore.setState({ currentWorkspace: { id: 'B', workflow_config: { briefMode: true } } }))
+  expect(host.querySelector('[data-testid="brief-mode-bar"]')).not.toBeNull()
+})

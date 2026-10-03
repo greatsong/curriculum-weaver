@@ -28,8 +28,12 @@ export function consumeQuietCursor(projectId, cursor) {
   return !!q && q.projectId === projectId && q.cursor === cursor
 }
 
+// 목록 조회 요청 번호 — 늦게 도착한 이전 작업 공간의 목록이 지금 목록을 덮지 않게 한다.
+let projectsRequestSeq = 0
+
 export const useProjectStore = create((set, get) => ({
   projects: [],
+  projectsWorkspaceId: null, // 지금 projects가 어느 작업 공간의 목록인지(조회 성공 시에만 설정)
   currentProject: null,
   loading: false,
   error: null,
@@ -38,11 +42,19 @@ export const useProjectStore = create((set, get) => ({
    * 워크스페이스 내 프로젝트 목록 조회
    */
   fetchProjects: async (workspaceId) => {
-    set({ loading: true, error: null })
+    const seq = ++projectsRequestSeq
+    // 다른 작업 공간의 목록이 남아 있으면 비운다(B 화면에 A의 프로젝트가 보이지 않게).
+    set((state) => ({
+      loading: true,
+      error: null,
+      ...(state.projectsWorkspaceId !== workspaceId ? { projects: [], projectsWorkspaceId: null } : {}),
+    }))
     try {
       const data = await apiGet(`/api/workspaces/${workspaceId}/projects`)
-      set({ projects: data?.projects ?? data ?? [], loading: false })
+      if (seq !== projectsRequestSeq) return
+      set({ projects: data?.projects ?? data ?? [], projectsWorkspaceId: workspaceId, loading: false })
     } catch (err) {
+      if (seq !== projectsRequestSeq) return
       set({ error: err.message, loading: false })
     }
   },

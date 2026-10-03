@@ -35,7 +35,7 @@ import { getAnthropic } from '../lib/anthropicClient.js'
 import { Standards, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
 import { validateCode, getStandardsForSubjects } from '../lib/standardsValidator.js'
 import { computeEmbedding3D, invalidateEmbeddingCache } from '../services/embeddings.js'
-import { semanticSearch, isSemanticSearchAvailable } from '../services/semanticSearch.js'
+import { semanticSearch, isSemanticSearchAvailable, semanticUnavailableReason } from '../services/semanticSearch.js'
 import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { persistLinks, persistLinkStatus } from '../lib/linkService.js'
@@ -85,6 +85,15 @@ standardsRouter.get('/search', async (req, res) => {
   }
 })
 
+// 같은 이유의 503 로그는 분당 한 번만 남긴다(검색마다 쌓이지 않게)
+const semanticUnavailableLoggedAt = new Map()
+function logSemanticUnavailable(code) {
+  const now = Date.now()
+  if (now - (semanticUnavailableLoggedAt.get(code) || 0) < 60_000) return
+  semanticUnavailableLoggedAt.set(code, now)
+  console.warn(`[standards] 시맨틱 검색 사용 불가: ${code}`)
+}
+
 /**
  * GET /api/standards/semantic-search
  * 시맨틱 검색 — OpenAI 임베딩 기반 의미적 유사도 검색
@@ -98,12 +107,19 @@ standardsRouter.get('/semantic-search', async (req, res) => {
     // 가용성 판정은 호출 결과로 한다 — 부팅 직후 로드 창에서 오탐 503 방지.
     const results = await semanticSearch(q.trim(), Standards.list(), 50)
     if (results === null) {
-      return res.status(503).json({ error: '시맨틱 검색을 사용할 수 없습니다 (임베딩 없음)' })
+      // 화면은 503이면 일반 검색으로 이어 간다. 원인은 code로 구분해 남긴다.
+      const code = semanticUnavailableReason()
+      logSemanticUnavailable(code)
+      return res.status(503).json({
+        error: code === 'no_api_key' ? '시맨틱 검색을 사용할 수 없습니다 (API 키 미설정)' : '시맨틱 검색을 사용할 수 없습니다 (임베딩 색인 준비 안 됨)',
+        code,
+      })
     }
     res.json(results)
   } catch (err) {
-    console.error('[standards] 시맨틱 검색 오류:', err.message)
-    res.status(500).json({ error: '시맨틱 검색에 실패했습니다.' })
+    // 공급자 오류 메시지에는 키 일부가 섞일 수 있어 상태 코드와 오류 종류만 남긴다
+    console.error(`[standards] 시맨틱 검색 공급자 오류: status=${err?.status ?? '-'} code=${err?.code ?? err?.type ?? '-'}`)
+    res.status(500).json({ error: '시맨틱 검색에 실패했습니다.', code: 'provider_error' })
   }
 })
 
@@ -822,20 +838,39 @@ standardsRouter.post('/project/:projectId/bulk', requireAuth, async (req, res) =
       return res.status(403).json({ error: '성취기준 추가 권한이 없습니다.' })
     }
 
+    // 항목마다 결과를 돌려준다. 예전에는 조회·저장 실패를 조용히 건너뛰고 늘 ok:true를 돌려줘,
+    // 화면이 일부만 저장된 것을 알 수 없었다(2026-10-03 검토). 이미 담긴 기준은 upsert라 'saved'다.
+    // - saved: 프로젝트에 연결됨 / unresolved: 코드를 찾지 못함(다시 시도해도 같음) / failed: 조회·저장 오류(다시 시도 가능)
     let added = 0
+    const results = []
     for (const ref of refs) {
+      const key = ref.code ?? ref.id
+      let resolvedId = null
       try {
-        const resolvedId = await resolveStandardId(ref)
-        if (!resolvedId) continue
+        resolvedId = await resolveStandardId(ref)
+      } catch (e) {
+        console.error(`[standards] 일괄 추가 — 코드 조회 실패 ${key}: ${e.message}`)
+        results.push({ key, status: 'failed' })
+        continue
+      }
+      if (!resolvedId) {
+        results.push({ key, status: 'unresolved' })
+        continue
+      }
+      try {
         await addStandardToProject(projectId, resolvedId, req.user.id, false)
         added++
+        results.push({ key, status: 'saved' })
       } catch (e) {
-        // 중복 등 무시
+        console.error(`[standards] 일괄 추가 — 연결 저장 실패 ${key}: ${e.message}`)
+        results.push({ key, status: 'failed' })
       }
     }
 
-    console.log(`[standards] 일괄 추가: ${added}/${refs.length}개 → 프로젝트 ${projectId}`)
-    res.status(201).json({ ok: true, added, total: refs.length })
+    const failed = results.filter((r) => r.status === 'failed').length
+    const unresolved = results.filter((r) => r.status === 'unresolved').length
+    console.log(`[standards] 일괄 추가: ${added}/${refs.length}개 (실패 ${failed}, 코드 없음 ${unresolved}) → 프로젝트 ${projectId}`)
+    res.status(201).json({ ok: failed === 0 && unresolved === 0, added, total: refs.length, failed, unresolved, results })
   } catch (err) {
     console.error('[standards] 일괄 추가 오류:', err.message)
     res.status(500).json({ error: '성취기준 일괄 추가에 실패했습니다.' })

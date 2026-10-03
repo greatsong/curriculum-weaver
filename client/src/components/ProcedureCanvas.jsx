@@ -18,6 +18,8 @@ import SuggestionEditForm, { canEditSuggestion } from './SuggestionEditForm'
 import { normalizeListItem } from '../lib/boardContent'
 import BriefBoardForm from './BriefBoardForm'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import { useProjectStore } from '../stores/projectStore'
+import { workflowConfigForProject } from '../lib/projectWorkspace'
 import { resolveBriefMode } from 'curriculum-weaver-shared/briefMode.js'
 
 export default function ProcedureCanvas({ projectId, procedureCode, readOnly = false, loading = false, memberRole = null }) {
@@ -26,7 +28,9 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
   const [editing, setEditing] = useState(false)
   const [skipBusy, setSkipBusy] = useState(false)
   const [showStepsInBrief, setShowStepsInBrief] = useState(false)
-  const briefTeam = useWorkspaceStore((s) => resolveBriefMode(s.currentWorkspace?.workflow_config))
+  const currentProject = useProjectStore((s) => s.currentProject)
+  const currentWorkspace = useWorkspaceStore((s) => s.currentWorkspace)
+  const briefTeam = resolveBriefMode(workflowConfigForProject(currentProject, currentWorkspace))
 
   // 절차를 전환하면 편집 모드를 닫는다 — 이전 절차의 편집 초안(BoardEditor 내부 상태)이
   // 새 절차의 보드에 그대로 저장되는 교차 유출을 차단한다.

@@ -16,6 +16,7 @@ import {
 import { useProcedureStore } from '../stores/procedureStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useProjectStore } from '../stores/projectStore'
+import { workflowConfigForProject } from '../lib/projectWorkspace'
 
 function StatusChip({ item, optional = false }) {
   const filled = item.filled
@@ -64,8 +65,10 @@ const chipButton = {
  * @param {boolean} props.hasPendingSuggestions - 아직 처리하지 않은 제안 카드가 있는지
  */
 export default function BriefModeBar({ procedureCode, busy, onHelp, onAdvance, hasPendingSuggestions }) {
-  const workflowConfig = useWorkspaceStore((s) => s.currentWorkspace?.workflow_config)
-  const isDemo = useProjectStore((s) => s.currentProject?.learner_context?.demo === true)
+  const project = useProjectStore((s) => s.currentProject)
+  const workspace = useWorkspaceStore((s) => s.currentWorkspace)
+  const workflowConfig = workflowConfigForProject(project, workspace)
+  const isDemo = project?.learner_context?.demo === true
   const boards = useProcedureStore((s) => s.boards)
   const skippedProcedures = useProcedureStore((s) => s.skippedProcedures)
 

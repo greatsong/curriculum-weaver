@@ -31,6 +31,7 @@ import { initStore, Standards } from '../../lib/store.js'
 import {
   resolveFutureRequest, buildFuturePrompt, parseFuture, generateFuture, FutureError,
   FUTURE_LENSES, FUTURE_MODELS, futures2Queue, buildBridgePrompt, parseBridges, generateBridges, BRIDGE_MODEL, _clearFutures2MemCache,
+  isCompleteFuture,
 } from '../futures2Generator.js'
 
 initStore()
@@ -314,5 +315,52 @@ describe('연결 마법진 (키워드 연결)', () => {
     const futurePrompt = sdk.create.mock.calls.map((c) => c[0].messages[0].content).find((p) => p.includes('수업의 미래'))
     expect(futurePrompt).not.toContain('## 연결 지도')
     expect(futurePrompt).not.toContain('"axis"')
+  })
+})
+
+describe('역할 완성 기준(2026-10-03 검토)', () => {
+  const req = () => resolveFutureRequest({ codes: keys, model: 'fast', index: 0 })
+  beforeEach(() => { db.cache.set(bridgeKey(), seededBridges()) })
+
+  it('역할이 빠진 결과는 캐시하지 않고 한 번 더 생성한다', async () => {
+    sdk.create
+      .mockResolvedValueOnce(textResponse(goodJson(['S1', 'S2'])))
+      .mockResolvedValueOnce(textResponse(goodJson()))
+    const r = await generateFuture(req())
+    expect(sdk.create).toHaveBeenCalledTimes(2)
+    expect(isCompleteFuture(r.future, keys)).toBe(true)
+    expect(db.upserts.filter((u) => u.key.startsWith('future2:'))).toHaveLength(1)
+  })
+
+  it('두 번 다 역할이 빠지면 캐시 없이 502와 역할 안내', async () => {
+    sdk.create.mockResolvedValue(textResponse(goodJson(['S1', 'S1'])))
+    const err = await generateFuture(req()).catch((e) => e)
+    expect(err.status).toBe(502)
+    expect(err.message).toContain('역할을 모두 담지 못했습니다')
+    expect(db.upserts.filter((u) => u.key.startsWith('future2:'))).toHaveLength(0)
+  })
+
+  it('불완전한 옛 캐시는 무시하고 새로 만들어 덮어쓴다', async () => {
+    sdk.create.mockResolvedValueOnce(textResponse(goodJson()))
+    const first = await generateFuture(req())
+    const key = db.upserts.find((u) => u.key.startsWith('future2:')).key
+    // 옛 버전이 남긴 불완전 캐시를 흉내 낸다(메모리 캐시도 비워 DB에서 읽게)
+    db.cache.set(key, { ...first.future, roles: first.future.roles.slice(0, 1) })
+    _clearFutures2MemCache()
+    db.upserts = []
+    sdk.create.mockResolvedValueOnce(textResponse(goodJson()))
+    const again = await generateFuture(req())
+    expect(again.cached).toBe(false)
+    expect(isCompleteFuture(again.future, keys)).toBe(true)
+    const write = db.upserts.find((u) => u.key === key)
+    expect(write).toBeTruthy()
+  })
+
+  it('완성 기준은 화면과 같다 — 개수·중복·빠짐', () => {
+    const role = (k) => ({ key: k })
+    expect(isCompleteFuture({ title: 't', roles: keys.map(role) }, keys)).toBe(true)
+    expect(isCompleteFuture({ title: 't', roles: keys.slice(0, 2).map(role) }, keys)).toBe(false)
+    expect(isCompleteFuture({ title: 't', roles: [role(keys[0]), role(keys[0]), role(keys[1])] }, keys)).toBe(false)
+    expect(isCompleteFuture({ roles: keys.map(role) }, keys)).toBe(false)
   })
 })

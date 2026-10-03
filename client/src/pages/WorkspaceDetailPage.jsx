@@ -11,6 +11,7 @@ import { EXPLORE_COPY } from '../lib/explorationCopy'
 import { PROCEDURES, PHASES, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE, resolveParticipationMode, PROJECT_GRADE_OPTIONS } from 'curriculum-weaver-shared/constants.js'
 import ParticipationModePicker from '../components/ParticipationModePicker'
 import BriefModeToggle from '../components/BriefModeToggle'
+import { saveProjectStandards, standardsSaveNotice } from '../lib/projectStandards'
 import { resolveBriefMode } from 'curriculum-weaver-shared/briefMode.js'
 import Logo from '../components/Logo'
 import HostSetupWizard from '../components/HostSetupWizard'
@@ -35,9 +36,11 @@ export default function WorkspaceDetailPage() {
   const { workspaceId } = useParams()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { user } = useAuthStore()
-  const { currentWorkspace, fetchWorkspace, updateWorkspace, deleteWorkspace, inviteMember } = useWorkspaceStore()
-  const { projects, loading: projectsLoading, fetchProjects, createProject, deleteProject } = useProjectStore()
+  const { user, logout } = useAuthStore()
+  const { currentWorkspace: storedWorkspace, detailError, fetchWorkspace, updateWorkspace, deleteWorkspace, inviteMember } = useWorkspaceStore()
+  // 주소의 작업 공간과 같은 것만 쓴다. 다른 작업 공간의 데이터가 잠깐이라도 보이거나 저장되지 않게 한다.
+  const currentWorkspace = storedWorkspace?.id === workspaceId ? storedWorkspace : null
+  const { projects, projectsWorkspaceId, loading: projectsLoading, fetchProjects, createProject, deleteProject } = useProjectStore()
 
   const [activeTab, setActiveTab] = useState('projects')
   const [showSimulations, setShowSimulations] = useState(false)
@@ -73,9 +76,15 @@ export default function WorkspaceDetailPage() {
   const [showSetupWizard, setShowSetupWizard] = useState(false)
 
   useEffect(() => {
-    fetchWorkspace(workspaceId)
+    // 실패는 스토어의 detailError로 화면에 보여 준다(여기서 삼키지 않으면 처리되지 않은 거부가 된다).
+    fetchWorkspace(workspaceId).catch(() => {})
     fetchProjects(workspaceId)
   }, [workspaceId, fetchWorkspace, fetchProjects])
+
+  const retryLoad = () => {
+    fetchWorkspace(workspaceId).catch(() => {})
+    fetchProjects(workspaceId)
+  }
 
   // 워크스페이스 설정값 로드
   useEffect(() => {
@@ -102,14 +111,15 @@ export default function WorkspaceDetailPage() {
   // Feature 3: 셋업 위자드 표시 판단
   // 그래프에서 담아온 생성 흐름(showCreateProject)이 진행 중이면 위자드가 모달을 덮지 않게 보류
   useEffect(() => {
-    if (!currentWorkspace || projectsLoading || showCreateProject) return
+    // 이 작업 공간의 목록을 실제로 받은 뒤에만 판단한다(조회 실패로 빈 목록이 된 경우 위자드를 띄우지 않는다)
+    if (!currentWorkspace || projectsLoading || showCreateProject || projectsWorkspaceId !== workspaceId) return
     const isSetup = searchParams.get('setup') === 'true'
     const noProjects = projects.length === 0
     const isOwnerOrHost = currentWorkspace.owner_id === user?.id || currentWorkspace.my_role === 'host'
     if ((isSetup || noProjects) && isOwnerOrHost && !localStorage.getItem(`cw_wizard_done_${workspaceId}`)) {
       setShowSetupWizard(true)
     }
-  }, [currentWorkspace, projects, projectsLoading, searchParams, workspaceId, user, showCreateProject])
+  }, [currentWorkspace, projects, projectsLoading, projectsWorkspaceId, searchParams, workspaceId, user, showCreateProject])
 
   // 시뮬레이션(데모·이어보기) 프로젝트는 별도 접이식 섹션으로 분리.
   // 이어보기 시뮬레이션은 생성자에게만 노출 (created_by 없는 과거 데모는 기존대로 전원 노출)
@@ -123,6 +133,8 @@ export default function WorkspaceDetailPage() {
 
   // Feature 1: 설정 저장
   const handleSaveSettings = useCallback(async () => {
+    // 화면에 불러온 작업 공간이 주소와 다르면 저장하지 않는다(다른 작업 공간 설정을 덮어쓰지 않게)
+    if (!currentWorkspace) return
     setSettingsSaving(true)
     try {
       await updateWorkspace(workspaceId, {
@@ -139,7 +151,7 @@ export default function WorkspaceDetailPage() {
     } finally {
       setSettingsSaving(false)
     }
-  }, [workspaceId, aiConfig, enabledAI, aiRole, participationMode, briefMode, updateWorkspace])
+  }, [workspaceId, currentWorkspace, aiConfig, enabledAI, aiRole, participationMode, briefMode, updateWorkspace])
 
   const toggleProcedure = (code) => {
     setHiddenProcedures((prev) =>
@@ -258,18 +270,17 @@ export default function WorkspaceDetailPage() {
       })
 
       // 선택된 성취기준 + 설계 모드에서 담아온 성취기준 일괄 저장 (값은 전부 key — 서버가 해석)
+      // 실패한 항목은 한 번 더 보내고, 그래도 남으면 교사에게 어떤 기준이 빠졌는지 알린다.
       const allKeys = [...new Set([...selectedStandardIds, ...designBasket])]
+      let standardsNotice = null
       if (allKeys.length > 0) {
-        try {
-          await apiPost(`/api/standards/project/${project.id}/bulk`, {
-            standard_codes: allKeys,
-          })
-          // 담아온 성취기준은 프로젝트에 반영됐으므로 장바구니 비움 (새 키·기존 키 모두)
-          clearBasket(safeSessionStorage(), NEW_DESTINATION)
-          setDesignBasket([])
-        } catch (e) {
-          console.warn('성취기준 일괄 저장 실패:', e.message)
-        }
+        const outcome = await saveProjectStandards(apiPost, project.id, allKeys)
+        if (outcome.error) console.warn('성취기준 일괄 저장 실패:', outcome.error.message)
+        standardsNotice = standardsSaveNotice(outcome)
+        // 이번에 보낸 기준은 저장 여부와 관계없이 장바구니에서 뺀다. 남겨 두면 다음에 만드는
+        // 다른 프로젝트에 붙는다(2026-10-03 검토). 빠진 기준은 아래 안내로 알린다.
+        clearBasket(safeSessionStorage(), NEW_DESTINATION)
+        setDesignBasket([])
       }
 
       setShowCreateProject(false)
@@ -281,6 +292,7 @@ export default function WorkspaceDetailPage() {
       setProjectGrade('')
       setRecommendedStandards([])
       setSelectedStandardIds(new Set())
+      if (standardsNotice) alert(standardsNotice)
       navigate(`/workspaces/${workspaceId}/projects/${project.id}`)
     } catch (err) {
       alert(`프로젝트 생성 실패: ${err.message}`)
@@ -341,6 +353,34 @@ export default function WorkspaceDetailPage() {
     } catch (err) {
       alert(`삭제 실패: ${err.message}`)
     }
+  }
+
+  if (!currentWorkspace && detailError?.id === workspaceId) {
+    const status = detailError.status
+    const title = status === 401 ? '로그인이 만료되었습니다'
+      : status === 403 ? '이 워크스페이스에 접근할 수 없습니다'
+        : status === 404 ? '워크스페이스를 찾을 수 없습니다'
+          : '워크스페이스를 불러오지 못했습니다'
+    const desc = status === 401 ? '다시 로그인하면 이어서 사용할 수 있습니다.'
+      : status === 403 ? '초대받은 워크스페이스인지 확인해 주세요.'
+        : status === 404 ? '삭제되었거나 주소가 바뀌었을 수 있습니다.'
+          : '연결 상태를 확인하고 다시 시도해 주세요.'
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)', padding: 16 }}>
+        <div data-testid="workspace-load-error" style={{ textAlign: 'center', padding: '48px 24px', maxWidth: 420, background: 'var(--color-bg-secondary)', borderRadius: 'var(--radius-xl)', border: '1px solid #FCA5A5' }}>
+          <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 4px' }}>{title}</p>
+          <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', margin: '0 0 16px' }}>{desc}</p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {status === 401 ? (
+              <button onClick={async () => { await logout(); navigate('/login', { replace: true }) }} className="btn btn-primary" style={{ fontSize: 13, padding: '8px 16px' }}>다시 로그인</button>
+            ) : (status !== 403 && status !== 404) && (
+              <button onClick={retryLoad} className="btn btn-primary" style={{ fontSize: 13, padding: '8px 16px' }}>다시 시도</button>
+            )}
+            <button onClick={() => navigate('/workspaces')} className="btn btn-secondary" style={{ fontSize: 13, padding: '8px 16px' }}>워크스페이스 목록으로</button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (!currentWorkspace) {

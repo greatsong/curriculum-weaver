@@ -137,3 +137,12 @@ export async function semanticSearch(query, standards, limit = 50) {
 export function isSemanticSearchAvailable() {
   return !!(getStoreIfReady() && openai)
 }
+
+/**
+ * semanticSearch가 null을 돌려준 이유. 503 응답과 로그에서 '키 없음'과 '색인 준비 안 됨'을 나눈다
+ * (예전에는 둘 다 "임베딩 없음"으로만 보였다 — 2026-10-03 검토).
+ * @returns {'no_api_key'|'index_not_ready'}
+ */
+export function semanticUnavailableReason() {
+  return openai ? 'index_not_ready' : 'no_api_key'
+}

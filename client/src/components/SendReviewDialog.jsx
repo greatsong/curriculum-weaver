@@ -130,26 +130,33 @@ function ProjectBody({ project, design, boardCheck, onRecheckBoard, standards, b
   )
 }
 
-function useWorkspaceProjects(get, enabled) {
+function useWorkspaceProjects(get, enabled, reloadKey = 0) {
   const [workspaces, setWorkspaces] = useState({ status: 'loading', items: [] })
   useEffect(() => {
     if (!enabled) return undefined
     let alive = true
+    setWorkspaces({ status: 'loading', items: [] })
     get('/api/workspaces')
       .then((d) => { if (alive) setWorkspaces({ status: 'ready', items: (d?.workspaces ?? d ?? []).filter((ws) => !ws?.workflow_config?.personal) }) })
       .catch(() => { if (alive) setWorkspaces({ status: 'error', items: [] }) })
     return () => { alive = false }
-  }, [get, enabled])
+  }, [get, enabled, reloadKey])
   return workspaces
 }
 
-function NewBody({ get, standards, workspaceId, setWorkspaceId, workspaces, title, setTitle, desc, setDesc, duplicate, duplicateFailed, onSwitchToProject }) {
+function NewBody({ get, standards, workspaceId, setWorkspaceId, workspaces, onRetryWorkspaces, title, setTitle, desc, setDesc, duplicate, duplicateFailed, onSwitchToProject }) {
   return (
     <>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="send-new-ws" className="text-[13px] font-semibold text-text-body">{S.workspaceLabel}</label>
         {workspaces.status === 'loading' && <span className="text-[13px] text-text-secondary">{S.workspaceLoading}</span>}
-        {workspaces.status === 'error' && <span role="status" className="text-[13px] text-[var(--ui-tone-warning-fg)]">{S.workspaceFailed}</span>}
+        {workspaces.status === 'error' && (
+          // 다시 시도해도 대화상자를 닫지 않으므로 고쳐 쓴 제목·설명이 그대로 남는다
+          <span role="status" className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--ui-tone-warning-fg)]">
+            {S.workspaceFailed}
+            <Button variant="secondary" onClick={onRetryWorkspaces}>{UI_COPY.actions.retry}</Button>
+          </span>
+        )}
         {workspaces.status === 'ready' && workspaces.items.length === 0 && <span className="text-[13px] text-text-secondary">{S.workspaceEmpty}</span>}
         {workspaces.status === 'ready' && workspaces.items.length > 0 && (
           <select id="send-new-ws" value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)} className="min-h-[44px] bg-bg-secondary text-text-primary">
@@ -205,7 +212,9 @@ export default function SendReviewDialog({
   const tooLong = text.length > CHAT_MESSAGE_MAX
 
   // 새 프로젝트
-  const workspaces = useWorkspaceProjects(get, mode === 'new')
+  const [workspacesReload, setWorkspacesReload] = useState(0)
+  const workspaces = useWorkspaceProjects(get, mode === 'new', workspacesReload)
+  const [newError, setNewError] = useState('')
   const [workspaceId, setWorkspaceId] = useState('')
   const [title, setTitle] = useState(future?.title || '')
   const [desc, setDesc] = useState([future?.driving_question, future?.situation].find(Boolean) || '')
@@ -263,11 +272,15 @@ export default function SendReviewDialog({
     </>
   ) : (
     <>
-      <span className="text-xs text-text-body">{S.newFooterNote}</span>
+      <span className="text-xs text-text-body">{newError || S.newFooterNote}</span>
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={onClose}>{UI_COPY.actions.cancel}</Button>
         <Button variant="primary" icon={Plus} disabled={!workspaceId || !title.trim()}
-          onClick={() => onSubmitNew?.({ workspaceId, title: title.trim(), desc: desc.trim() })}>{S.newSubmit}</Button>
+          onClick={() => {
+            setNewError('')
+            const ok = onSubmitNew?.({ workspaceId, title: title.trim(), desc: desc.trim() })
+            if (ok === false) setNewError(S.newSaveFailed)
+          }}>{S.newSubmit}</Button>
       </div>
     </>
   )
@@ -279,6 +292,7 @@ export default function SendReviewDialog({
             standards={standards} bridges={bridges} future={future} registeredKeys={registeredKeys} existingDraft={existingDraft}
             text={text} include={include} setInclude={setInclude} copyNote={copyNote} />
         : <NewBody get={get} standards={standards} workspaceId={workspaceId} setWorkspaceId={setWorkspaceId} workspaces={workspaces}
+            onRetryWorkspaces={() => setWorkspacesReload((n) => n + 1)}
             title={title} setTitle={setTitle} desc={desc} setDesc={setDesc} duplicate={duplicate} duplicateFailed={duplicateFailed}
             onSwitchToProject={onSwitchToProject} />}
     </Modal>
