@@ -171,8 +171,8 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
         </div>
       )}
 
-      {/* 활동 설명 배너 */}
-      {!isSkipped && activity && (
+      {/* 활동 설명 배너 — 약식 기록은 제목 설명과 겹쳐 양식을 아래로 밀어내므로 생략 */}
+      {!isSkipped && activity && !briefForm && (
         <div style={{
           background: '#FFFBEB',
           border: '1px solid #FDE68A',

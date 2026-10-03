@@ -69,7 +69,7 @@ export default function BriefBoardForm({ projectId, procedureCode, schema, board
       pushToast({ kind: 'success', message: '보드에 저장했어요.', duration: 2_500 })
       if (adviceOn) {
         // 다른 AI 응답이 진행 중이면 sendMessage가 거절한다(false). 저장은 이미 끝났으니 조언만 건너뛴다.
-        const sent = await Promise.resolve(sendMessage(projectId, buildBoardSavedText(), procedureCode)).catch(() => false)
+        const sent = await Promise.resolve(sendMessage(projectId, buildBoardSavedText(procedureCode), procedureCode)).catch(() => false)
         if (sent === false) pushToast({ kind: 'info', message: 'AI가 답하는 중이라 이번 조언은 건너뛰었어요.', duration: 3_000 })
       }
     } catch (err) {

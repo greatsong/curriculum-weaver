@@ -242,9 +242,15 @@ export function stripEmptyBoardFields(value) {
 /** 보드 양식 저장 알림의 머리말. 서버 지시문이 이 형식을 알아보고 짧은 조언만 한다. */
 export const BRIEF_SAVED_MARK = '[보드 저장]'
 
-/** 양식 저장 뒤 AI에게 짧은 조언을 청하는 메시지 */
-export function buildBoardSavedText() {
-  return `${BRIEF_SAVED_MARK} 양식에 적은 내용을 보드에 저장했어요.`
+/**
+ * 양식 저장 뒤 AI에게 짧은 조언을 청하는 메시지. 절차 이름을 함께 적는다 — 예전에는 이름이 없어
+ * 앞 절차의 저장 알림과 헷갈린 AI가 "앞서 말씀드린 것은 정정합니다"라고 답했다(시뮬레이션에서 발견).
+ */
+export function buildBoardSavedText(procedureCode) {
+  const label = procedureCode ? procLabel(procedureCode) : ''
+  return label
+    ? `${BRIEF_SAVED_MARK} ${label} 양식에 적은 내용을 보드에 저장했어요.`
+    : `${BRIEF_SAVED_MARK} 양식에 적은 내용을 보드에 저장했어요.`
 }
 
 /**

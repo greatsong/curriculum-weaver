@@ -183,6 +183,8 @@ describe('약식 절차 안내·입력 틀', () => {
 
   it('양식 저장 알림 형식', () => {
     expect(buildBoardSavedText().startsWith(BRIEF_SAVED_MARK)).toBe(true)
+    // 절차 이름을 함께 적어 앞 절차의 저장 알림과 헷갈리지 않게 한다(내부 코드는 쓰지 않는다)
+    expect(buildBoardSavedText('A-1-1')).toBe('[보드 저장] A-1 주제 선정 기준 논의 및 조정 양식에 적은 내용을 보드에 저장했어요.')
     const block = buildBriefModeBlock({ procedure: 'T-2-1', boards: [] })
     expect(block).toContain(`"${BRIEF_SAVED_MARK}"로 시작하는 메시지`)
   })
