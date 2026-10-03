@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { apiGet, apiPost } from '../lib/api'
 import {
-  FUTURE_MAX, FUTURE_MODEL_OPTIONS, buildFuturesSearch, catalogFromBody, codesIn, mergeStandardCodes, parseFuturesSearch, searchStandards,
+  FUTURE_MAX, FUTURE_MODEL_OPTIONS, catalogFromBody, codesIn, mergeStandardCodes, parseFuturesSearch, searchStandards,
 } from '../lib/futures2'
 import { colorOfStandard, colorOfStone } from '../lib/futures2Scene'
 import { createFuturesLabScene as createFuturesScene } from '../lib/futuresLabScene'
@@ -18,6 +18,7 @@ import { groupFutureStandards } from '../lib/futures2GraphLayout'
 import KeywordGraph, { colorOf } from '../components/futures/KeywordGraph'
 import { subjectOfStandard } from '../lib/futures2GraphLayout'
 import './futures.css'
+import { A3_PROCEDURE, buildA3Handoff, explorationSearch, handoffPolicy, resolveProjectStandards } from '../lib/futuresProjectHandoff'
 
 const LEVELS = [
   { id: '고등학교', label: '고등' }, { id: '중학교', label: '중학' }, { id: '초등학교', label: '초등' }, { id: '', label: '전체' },
@@ -37,6 +38,14 @@ function Highlight({ text, query }) {
 export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const navigate = useNavigate()
   const location = useLocation()
+  const projectId = new URLSearchParams(location.search).get('project') || ''
+  const [projectContext, setProjectContext] = useState(null)
+  const [projectError, setProjectError] = useState('')
+  const [projectTry, setProjectTry] = useState(0)
+  const [handoffText, setHandoffText] = useState('')
+  const [copyNote, setCopyNote] = useState('')
+  const handoffRef = useRef(null)
+  const importedProject = useRef(null)
   const { keys, model } = useMemo(() => parseFuturesSearch(location.search), [location.search])
   const [catalog, setCatalog] = useState(null)
   const [catalogError, setCatalogError] = useState('')
@@ -55,8 +64,19 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const sceneRef = useRef(null)
 
   const setUrl = useCallback((nextKeys, nextModel = model) => {
-    navigate({ pathname: '/futures-lab', search: buildFuturesSearch(nextKeys, nextModel) }, { replace: true })
-  }, [navigate, model])
+    navigate({ pathname: '/futures-lab', search: explorationSearch(nextKeys, nextModel, projectId) }, { replace: true })
+  }, [navigate, model, projectId])
+
+  useEffect(() => {
+    let alive = true
+    setProjectContext(null); setProjectError(''); setHandoffText(''); importedProject.current = null
+    if (!projectId) return undefined
+    const id = encodeURIComponent(projectId)
+    Promise.all([get(`/api/projects/${id}`), get(`/api/standards/project/${id}`), get(`/api/projects/${id}/designs/${A3_PROCEDURE}`)])
+      .then(([project, standards, design]) => { if (alive) setProjectContext({ project, standards, design }) })
+      .catch(() => { if (alive) setProjectError('프로젝트의 성취기준과 A-3 상태를 불러오지 못했습니다. 접근 권한을 확인하거나 다시 시도해 주세요.') })
+    return () => { alive = false }
+  }, [projectId, get, projectTry])
 
   // 성취기준 목록 (검색용, 한 번)
   useEffect(() => {
@@ -71,6 +91,27 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const picked = useMemo(() => keys.map((k) => byKey.get(k)).filter(Boolean), [keys, byKey])
   const pickedKeys = useMemo(() => picked.map((s) => s.key), [picked])
   const pickedSig = JSON.stringify(pickedKeys)
+  useEffect(() => { setHandoffText(''); setCopyNote('') }, [pickedSig])
+  const projectStandards = useMemo(() => catalog && projectContext ? resolveProjectStandards(catalog, projectContext.standards, projectContext.design) : null, [catalog, projectContext])
+  const projectPolicy = handoffPolicy(projectContext?.project, projectContext?.design)
+  const canExplore = !projectId || (!!projectContext && !projectPolicy.blocked)
+  const returnPath = projectContext ? `/workspaces/${encodeURIComponent(projectContext.project.workspace_id)}/projects/${encodeURIComponent(projectContext.project.id)}` : null
+  useEffect(() => {
+    if (!projectId || !projectStandards || importedProject.current === projectId) return
+    importedProject.current = projectId
+    // 복귀·공유 URL의 선택은 보존한다. 7개를 넘으면 교사가 직접 고른다.
+    if (!new URLSearchParams(location.search).has('codes') && keys.length === 0 && !projectStandards.needsChoice && canExplore) {
+      setUrl(projectStandards.standards.map(s => s.key))
+    }
+  }, [projectId, projectStandards, canExplore, location.search, keys.length, setUrl])
+  const prepareHandoff = (future = null) => {
+    if (!projectContext || !canExplore) throw new Error('프로젝트 정보를 확인한 뒤 다시 시도해 주세요.')
+    setHandoffText(buildA3Handoff({ project: projectContext.project, standards: picked, bridges: bridges.data, future }))
+    setCopyNote('')
+  }
+  const handoffActionRef = useRef(prepareHandoff)
+  handoffActionRef.current = prepareHandoff
+  useEffect(() => { if (handoffText) handoffRef.current?.scrollIntoView?.({ block: 'center', behavior: 'auto' }) }, [handoffText])
   const activeSample = useMemo(() => FUTURES_LAB_SAMPLES.find(preset => {
     const resolved = resolvePracticeSet(catalog, preset)
     return !resolved.missing.length && pickedKeys.length === resolved.standards.length && resolved.standards.every(s => pickedKeys.includes(s.key))
@@ -98,7 +139,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   modelRef.current = model
   useEffect(() => {
     const root = sceneRootRef.current
-    if (!root || !catalog) return undefined
+    if (!root || !catalog || !canExplore) return undefined
     let alive = true
     setScenePhase('graph'); setActiveLink(null)
     setBridges({ status: picked.length >= 2 ? 'loading' : 'idle', data: null, startedAt: Date.now() })
@@ -120,12 +161,15 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
       onPhaseChange: setScenePhase,
       onGraphState: setGraphState,
       colorForStandard: colorOf,
+      projectActionLabel: projectId ? 'A-3에 가져가기' : undefined,
+      hideBasket: !!projectId,
       requestFuture: async (index, m) => {
         const body = await post('/api/futures2', { codes: pickedKeys, model: m, index }, { timeoutMs: 200_000 })
         if (!body?.future) throw new Error(body?.error || '미래를 그리지 못했습니다.')
         return body.future
       },
       onStartProject: (future) => {
+        if (projectId) { handoffActionRef.current(future); return }
         addToBasket(pickedKeys)
         try {
           if (future?.title) sessionStorage.setItem('cw_project_title_suggestion', future.title)
@@ -143,7 +187,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
       timer = setTimeout(loadBridges, BRIDGE_DELAY_MS)
     }
     return () => { alive = false; clearTimeout(timer); scene.destroy(); sceneRef.current = null }
-  }, [pickedSig, catalog, post]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pickedSig, catalog, post, projectId, canExplore]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { sceneRef.current?.setModel(model) }, [model])
   const previousPhase = useRef('graph')
   useEffect(() => {
@@ -196,7 +240,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
       <main className="fu-main">
         <header className="fu-header">
           <div>
-            <button type="button" className="fu-back" onClick={() => navigate('/workspaces')}>‹ 워크스페이스</button>
+            <button type="button" className="fu-back" onClick={() => navigate(returnPath || '/workspaces')}>{returnPath ? '‹ 프로젝트로 돌아가기' : '‹ 워크스페이스'}</button>
             <h1>미래보기 실험실</h1>
             <div className="fu-sub">교과의 연결에서 새로운 수업을 발견하세요. 성취기준 2~7개를 고르면, 같은 과목의 기준이 하나의 빛의 원에 모입니다.</div>
           </div>
@@ -208,6 +252,23 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
             ))}
           </div>
         </header>
+
+        {projectId && <section className="lab-project-context" aria-label="A-3 프로젝트 연결">
+          <h2>{projectContext ? `${projectContext.project.title} · A-3 연결 탐색` : '프로젝트 성취기준 불러오기'}</h2>
+          {projectError ? <p role="alert">{projectError} <button type="button" onClick={() => setProjectTry(n => n + 1)}>다시 시도</button></p> : !projectContext ? <p role="status">프로젝트와 A-3 분석표를 확인하고 있습니다.</p> : <>
+            <p>{projectPolicy.note}</p>
+            <p>기존 주제와 분석 내용은 아이디어 생성에 자동 반영되지 않습니다. 결과를 기존 설계와 비교해 주세요. 프로젝트의 내용·진행 단계·건너뛰기 상태는 바뀌지 않습니다.</p>
+            <p>이 아이디어로 이어서 시뮬레이션하려면, 먼저 원래 프로젝트에서 검토하고 A-3 보드에 저장해 주세요. 복사만 한 내용은 보드에 반영되지 않습니다.</p>
+            {!!projectContext.project.skipped_procedures?.length && <p>생략한 단계가 있는 프로젝트는 현재 ‘이어서 시뮬레이션’을 지원하지 않습니다. 연결 아이디어 탐색과 복사는 가능합니다.</p>}
+            {projectStandards && <details open={projectStandards.needsChoice}>
+              <summary>프로젝트의 성취기준 {projectStandards.standards.length}개 확인</summary>
+              {projectStandards.needsChoice && <p>한 번에 최대 7개를 탐색합니다. 아래에서 이번에 비교할 성취기준을 골라 주세요.</p>}
+              {!projectStandards.standards.length && <p>등록된 성취기준이 없습니다. 아래 검색이나 코드 입력으로 선택해 주세요.</p>}
+              <div className="lab-project-standards">{projectStandards.standards.map(s => <button type="button" key={s.key} disabled={!canExplore || (!pickedKeys.includes(s.key) && full)} aria-pressed={pickedKeys.includes(s.key)} onClick={() => pickedKeys.includes(s.key) ? remove(s.key) : add(s)}>{s.subject} {s.code}</button>)}</div>
+            </details>}
+            {!!projectStandards?.missing.length && <p role="status">자동으로 확인하지 못한 기준: {projectStandards.missing.join(', ')}. 아래에서 과목과 코드를 확인해 직접 선택해 주세요.</p>}
+          </>}
+        </section>}
 
         <section className="fu-top">
           <div className="fu-panel">
@@ -301,13 +362,25 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
         </section>
 
         <div ref={graphRef} hidden={scenePhase !== 'graph'} className="futures-root lab-keyword-map">
-          {picked.length >= 2 && <KeywordGraph standards={graphStandards} bridges={bridges} activeLabel={activeLink} onActive={setActiveLink} onRetry={() => sceneRef.current?.retryBridges()} multiEndpoint navigable />}
+          {canExplore && picked.length >= 2 && <KeywordGraph standards={graphStandards} bridges={bridges} activeLabel={activeLink} onActive={setActiveLink} onRetry={() => sceneRef.current?.retryBridges()} multiEndpoint navigable />}
+          {projectId && canExplore && bridges.status === 'ready' && <button type="button" className="lab-quiet" onClick={() => prepareHandoff()}>이 연결을 A-3에 가져가기</button>}
           <div className="lab-map-actions">
             <p>{picked.length < 2 ? '성취기준 2~7개를 선택해 주세요.' : ['error', 'slow'].includes(graphState.status) ? '연결 분석을 기다리거나 선택한 성취기준으로 미래를 볼 수 있습니다.' : '연결을 확인했다면, 여덟 갈래의 수업을 열어 보세요.'}</p>
-            <button type="button" className="lab-map-open" disabled={!graphState.canOpen} onClick={() => sceneRef.current?.open()}>미래 보기 ↗</button>
+            <button type="button" className="lab-map-open" disabled={!canExplore || !graphState.canOpen} onClick={() => sceneRef.current?.open()}>미래 보기 ↗</button>
           </div>
         </div>
         <div ref={sceneRootRef} />
+        {projectId && handoffText && <section ref={handoffRef} className="lab-project-context lab-handoff" aria-label="A-3에 가져갈 탐색 결과">
+          <h2>A-3에서 이어서 검토하기</h2>
+          <p>{projectPolicy.note}</p>
+          <ol><li>아래 탐색 결과를 복사합니다.</li><li>열어 둔 원래 프로젝트 탭으로 돌아갑니다.</li><li>편집 가능한 프로젝트의 A-3 대화창에 붙여넣고, 기존 분석과 비교해 ‘핵심 요소 통합·조정’ 초안을 요청합니다.</li></ol>
+          <label>복사할 탐색 결과<textarea readOnly value={handoffText} onFocus={e => e.target.select()} /></label>
+          <div className="lab-handoff-actions"><button type="button" className="lab-primary" onClick={async () => {
+            try { await navigator.clipboard.writeText(handoffText); setCopyNote('복사했습니다. 위 안내에 따라 원래 프로젝트에서 검토해 주세요.') }
+            catch { setCopyNote('자동 복사가 지원되지 않습니다. 위 텍스트를 선택해 직접 복사해 주세요.'); handoffRef.current?.querySelector('textarea')?.focus() }
+          }}>탐색 결과 복사</button><button type="button" className="lab-quiet" onClick={() => navigate(returnPath)}>프로젝트로 돌아가기 ↗</button></div>
+          {copyNote && <p role="status">{copyNote}</p>}
+        </section>}
         <p className="fu-note">연결과 미래는 AI가 성취기준 원문을 바탕으로 그린 수업 아이디어입니다. 키워드는 원문에 있는 말만 쓰고, 이어지지 않는 성취기준은 억지로 엮지 않습니다. 한 번 본 미래는 저장되어 다시 열면 바로 보입니다.</p>
       </main>
     </div>

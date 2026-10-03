@@ -22,6 +22,7 @@ import ReportDownload from '../components/ReportDownload'
 import MaterialUploadBar from '../components/MaterialUploadBar'
 import InteractiveTour from '../components/InteractiveTour'
 import ContinueSimulationButton from '../components/ContinueSimulationButton'
+import A3ExplorationEntry from '../components/A3ExplorationEntry'
 
 // 시연 모드 자립 보드 코드 (BOARD_TYPES['demo_lesson_plan']='lesson_plan', ['demo_script']='demo_script')
 const DEMO_LESSON_PLAN = 'demo_lesson_plan'
@@ -670,7 +671,7 @@ export default function ProjectPage() {
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
           <MemberList />
           {!isReadOnlyProject && !isDemo && (
-            <ContinueSimulationButton projectId={projectId} workspaceId={workspaceId} />
+            <ContinueSimulationButton projectId={projectId} workspaceId={workspaceId} skippedCount={skippedCodes.size} />
           )}
           {[
             { onClick: () => setShowReport(true), color: '#7C3AED', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>, label: '보고서', title: '결과 보고서' },
@@ -812,6 +813,9 @@ export default function ProjectPage() {
           />
         </div>
       )}
+
+      <A3ExplorationEntry project={currentProject} procedure={currentProcedure} />
+      {!isDemo && !isReadOnlyProject && skippedCodes.size > 0 && <div role="note" style={{ padding: '8px 16px', background: '#fff8e9', color: '#795619', fontSize: 12, flexShrink: 0 }}>생략한 단계가 있는 프로젝트는 현재 ‘이어서 시뮬레이션’을 지원하지 않습니다. A-3 연결 아이디어 탐색은 사용할 수 있습니다.</div>}
 
       {/* 후행 절차 재검토 안내 — 앞 절차가 이 절차보다 나중에 수정된 경우 */}
       {currentIsStale && !isReadOnlyProject && (

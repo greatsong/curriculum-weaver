@@ -6,12 +6,12 @@
  * 원본 프로젝트는 읽기만 하며 절대 변경되지 않는다.
  * 스펙: _workspace/design/demo-continue-considerations.md
  */
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { API_BASE, getHeaders } from '../lib/api'
 import { pushToast } from '../stores/toastStore'
 
-export default function ContinueSimulationButton({ projectId, workspaceId }) {
+export default function ContinueSimulationButton({ projectId, workspaceId, skippedCount = 0 }) {
   const navigate = useNavigate()
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState(null) // { phase, saved, total }
@@ -25,7 +25,7 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
   const safeSet = (fn) => { if (mountedRef.current) fn() }
 
   const start = async () => {
-    if (runningRef.current) return
+    if (runningRef.current || skippedCount > 0) return
     const ok = confirm(
       '지금까지 작성된 내용을 복제한 뒤, 남은 절차를 AI가 이어서 설계한 참고용 시뮬레이션을 만듭니다.\n' +
       '원본 프로젝트는 변경되지 않습니다. (일일 데모 한도 1회 차감)\n\n시작할까요?'
@@ -92,6 +92,13 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
       runningRef.current = false
       safeSet(() => { setRunning(false); setProgress(null) })
     }
+  }
+
+  if (skippedCount > 0 && !running) {
+    return <button type="button" disabled aria-label="이어서 시뮬레이션 사용 불가" title="생략한 단계가 있어 현재 지원되지 않습니다. A-3 아이디어 탐색은 가능합니다." style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 44, minHeight: 44, justifyContent: 'center', padding: '6px 8px', border: 0, background: 'none', color: '#8B5CF6', opacity: .5, fontSize: 12 }}>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+      <span className="hidden xl:inline">이어서 시뮬레이션</span>
+    </button>
   }
 
   if (running) {
