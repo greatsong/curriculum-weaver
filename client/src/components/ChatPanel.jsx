@@ -26,6 +26,7 @@ import {
   replaceInternalProcedureCodes,
 } from 'curriculum-weaver-shared/constants.js'
 import { getDefaultIntent } from '../lib/defaultIntentForStep'
+import { advanceButtonLabel } from '../lib/advanceLabel'
 import { validateMaterialFile } from '../lib/materialErrors'
 import { fixEmphasisFlanking } from '../lib/markdownFix'
 import SuggestionEditForm, { canEditSuggestion } from './SuggestionEditForm'
@@ -732,8 +733,8 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
                     onMouseEnter={(e) => e.currentTarget.style.background = '#6D28D9'}
                     onMouseLeave={(e) => e.currentTarget.style.background = '#7C3AED'}
                   >
-                    {advanceCode}{' '}
-                    {advanceName}(으)로 이동
+                    {/* 표시 코드로만 보인다(내부 코드 Ds-2-1 노출 수정, 2026-10-03) */}
+                    {advanceButtonLabel(advanceCode, advanceName)}
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                   </button>
                   <button
