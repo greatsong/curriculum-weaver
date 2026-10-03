@@ -27,6 +27,8 @@ import {
 } from 'curriculum-weaver-shared/constants.js'
 import { getDefaultIntent } from '../lib/defaultIntentForStep'
 import { advanceButtonLabel } from '../lib/advanceLabel'
+import BriefModeBar from './BriefModeBar'
+import { buildHelpRequestText } from 'curriculum-weaver-shared/briefMode.js'
 import { validateMaterialFile } from '../lib/materialErrors'
 import { fixEmphasisFlanking } from '../lib/markdownFix'
 import SuggestionEditForm, { canEditSuggestion } from './SuggestionEditForm'
@@ -175,7 +177,16 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
 
   const handleSend = async (e) => {
     e.preventDefault()
-    const text = input.trim()
+    await submitText(input)
+  }
+
+  /**
+   * 입력한 글을 보낸다. 약식 기록의 [AI 도움] 버튼도 이 경로를 쓴다.
+   * @param {string} rawText 보낼 글
+   * @param {string} [restoreText] 전송이 거절되면 입력창에 되살릴 글(기본은 보낸 글)
+   */
+  const submitText = async (rawText, restoreText) => {
+    const text = String(rawText || '').trim()
     // 화면의 streaming 값은 한 박자 늦을 수 있어 스토어의 최신 값도 본다(수락 후 자동 안내와 겹침 방지)
     if (!text || streaming || useChatStore.getState().streaming) return
 
@@ -214,7 +225,16 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
       sent = false
     }
     // 다른 전송이 진행 중이라 거절됐거나 저장에 실패하면 입력한 글을 되살린다
-    if (sent === false) setInput((cur) => (cur ? cur : text))
+    const restore = restoreText === undefined ? text : restoreText
+    if (sent === false && restore) setInput((cur) => (cur ? cur : restore))
+  }
+
+  // ── 약식 기록(연수 모드) 막대 동작 ──
+  // AI 도움: 적던 글이 있으면 함께 보내 그 내용을 바탕으로 돕게 한다. 거절되면 적던 글만 되살린다.
+  const requestBriefHelp = (label) => {
+    const typed = input
+    setInput('')
+    submitText(buildHelpRequestText(label, typed), typed)
   }
 
   // ──────────────────────────────
@@ -777,6 +797,14 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
           <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>시뮬레이션 프로젝트는 읽기 전용입니다</span>
         </div>
       ) : (
+        <>
+        <BriefModeBar
+          procedureCode={stage}
+          busy={streaming}
+          onHelp={requestBriefHelp}
+          onAdvance={(code) => onStageChange?.(code)}
+          hasPendingSuggestions={pendingSuggestions.some((s) => s.status === 'pending' && s.procedureCode === stage)}
+        />
         <form
           onSubmit={handleSend}
           style={{
@@ -926,6 +954,7 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
             </svg>
           </button>
         </form>
+        </>
       )}
 
       {/* 인트로 모달 */}
