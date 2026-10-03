@@ -1,3 +1,4 @@
+import { materialCoverageMessage } from 'curriculum-weaver-shared/materialText.js'
 import { useState, useRef, useEffect, useMemo, useCallback, memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import {
@@ -128,6 +129,8 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
 
   // IntentPopover 상태 — 파일 선택/드롭 직후 표시
   const [pendingIntent, setPendingIntent] = useState(null)
+  const [isAttaching, setIsAttaching] = useState(false)
+  const attachingRef = useRef(false)
   // { files: File[], intent: string, intentNote: string }
 
   // @멘션 상태
@@ -242,6 +245,10 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
   // ──────────────────────────────
   const queueFilesForUpload = useCallback(
     (files) => {
+      if (attachingRef.current) {
+        setUploadBanner({ kind: 'error', message: '현재 파일을 올리고 있어요. 완료 후 추가해주세요.' })
+        return
+      }
       if (!projectId) {
         setUploadBanner({ kind: 'error', message: '프로젝트 정보가 아직 준비되지 않았어요.' })
         return
@@ -279,13 +286,16 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
   }
 
   const confirmIntentAndUpload = async () => {
-    if (!pendingIntent) return
+    if (!pendingIntent || attachingRef.current) return
     const { files, intent, intentNote } = pendingIntent
     if (intent === MATERIAL_INTENTS.CUSTOM && !intentNote.trim()) {
       setUploadBanner({ kind: 'error', message: '기타(메모 입력) 선택 시 메모가 필요해요.' })
       return
     }
-    setPendingIntent(null)
+    attachingRef.current = true
+    setIsAttaching(true)
+    setUploadBanner(null)
+    const failedFiles = []
     for (const file of files) {
       try {
         await uploadMaterial(projectId, file, {
@@ -294,12 +304,16 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
           source: 'chat',
         })
       } catch (err) {
+        failedFiles.push(file)
         setUploadBanner({
           kind: 'error',
           message: `${file.name} 첨부 실패 — ${err?.message || '알 수 없는 오류'}`,
         })
       }
     }
+    setPendingIntent(failedFiles.length ? { files: failedFiles, intent, intentNote } : null)
+    attachingRef.current = false
+    setIsAttaching(false)
   }
 
   // ──────────────────────────────
@@ -486,6 +500,8 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
           }
           onCancel={() => setPendingIntent(null)}
           onConfirm={confirmIntentAndUpload}
+          isUploading={isAttaching}
+          errorMessage={uploadBanner?.message}
         />
       )}
 
@@ -1253,7 +1269,7 @@ function MentionDropdown({ items, cursor, onHover, onPick }) {
 }
 
 // ── Intent Popover ──
-function IntentPopover({ files, intent, intentNote, onChangeIntent, onChangeNote, onCancel, onConfirm }) {
+function IntentPopover({ files, intent, intentNote, onChangeIntent, onChangeNote, onCancel, onConfirm, isUploading = false, errorMessage }) {
   const isCustom = intent === MATERIAL_INTENTS.CUSTOM
   const noteInvalid = isCustom && !intentNote.trim()
   return (
@@ -1298,6 +1314,7 @@ function IntentPopover({ files, intent, intentNote, onChangeIntent, onChangeNote
         <span>AI가 이 자료를 어떻게 읽어야 할까요?</span>
         <select
           value={intent}
+          disabled={isUploading}
           onChange={(e) => onChangeIntent(e.target.value)}
           style={{
             padding: '6px 8px',
@@ -1318,6 +1335,7 @@ function IntentPopover({ files, intent, intentNote, onChangeIntent, onChangeNote
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <textarea
             value={intentNote}
+            disabled={isUploading}
             onChange={(e) => onChangeNote(e.target.value)}
             placeholder="이 자료에서 AI가 무엇을 읽어내야 하는지 적어주세요. (최대 120자)"
             rows={2}
@@ -1341,10 +1359,12 @@ function IntentPopover({ files, intent, intentNote, onChangeIntent, onChangeNote
           </div>
         </div>
       )}
+      {errorMessage && <p role="alert" style={{ color: '#DC2626', fontSize: 12 }}>{errorMessage}</p>}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
         <button
           type="button"
           onClick={onCancel}
+          disabled={isUploading}
           style={{
             padding: '6px 12px',
             fontSize: 12,
@@ -1360,7 +1380,7 @@ function IntentPopover({ files, intent, intentNote, onChangeIntent, onChangeNote
         <button
           type="button"
           onClick={onConfirm}
-          disabled={noteInvalid}
+          disabled={noteInvalid || isUploading}
           style={{
             padding: '6px 12px',
             fontSize: 12,
@@ -1372,7 +1392,7 @@ function IntentPopover({ files, intent, intentNote, onChangeIntent, onChangeNote
             cursor: noteInvalid ? 'not-allowed' : 'pointer',
           }}
         >
-          첨부 및 분석
+          {isUploading ? '업로드 중…' : '첨부 및 분석'}
         </button>
       </div>
     </div>
@@ -1446,7 +1466,8 @@ function MaterialDetailMini({ material, onClose }) {
           </button>
         </div>
         <div style={{ padding: 16, overflow: 'auto', fontSize: 13, color: 'var(--color-text-primary)', lineHeight: 1.6 }}>
-          {analysis.summary ? (
+          {material.processing_status === 'completed' && <p style={{ fontSize: 12, marginBottom: 8 }}>{materialCoverageMessage(material)}</p>}
+          {material.processing_status === 'completed' && analysis.summary ? (
             <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{analysis.summary}</p>
           ) : (
             <p style={{ margin: 0, color: 'var(--color-text-tertiary)' }}>

@@ -104,3 +104,11 @@ export function materialFailureMessage(material) {
   if (code && MATERIAL_ERROR_MESSAGES[code]) return MATERIAL_ERROR_MESSAGES[code]
   return MATERIAL_ERROR_MESSAGES[MATERIAL_ERROR_CODES.INTERNAL]
 }
+
+/** 폴링과 재분석 요청에서 내려오는 오류를 자료 목록의 동일한 안내로 변환한다. */
+export function materialProcessingMessage(material) {
+  if (material?._error) return material._error
+  const code = material?.error_code || String(material?.processing_error || '').match(/^([A-Z_]+):/)?.[1]
+  if (code === MATERIAL_ERROR_CODES.PARSE_FAILED) return '파일에서 텍스트를 읽지 못했어요. 스캔 PDF라면 문자 인식(OCR) 후 올리거나 본문을 TXT·DOCX로 올려주세요.'
+  return materialFailureMessage(material)
+}

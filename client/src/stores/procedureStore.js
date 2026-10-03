@@ -29,7 +29,9 @@ import { useProjectStore } from './projectStore'
 // 동일 materialId에 대한 중복 폴링을 막기 위한 Set + 타이머 맵.
 const _pollingMaterialIds = new Set()
 const _pollingTimers = new Map() // materialId → intervalId
-const _pollingStartedAt = new Map() // materialId → epoch ms (무한 폴링 방지용)
+const _pollingTokens = new Map()
+const _pollingDeadlines = new Map()
+let _materialsLoadVersion = 0
 const MATERIAL_POLL_INTERVAL_MS = 3_000
 // 서버 분석 타임아웃(60초) + 파싱·재시도 여유를 넉넉히 잡은 상한.
 // 폴러가 컴포넌트가 아닌 스토어 수명으로 돌기 때문에 반드시 자체 종료 조건이 필요하다.
@@ -38,11 +40,13 @@ const MATERIAL_POLL_MAX_AGE_MS = 10 * 60 * 1_000
 function _stopMaterialPolling(materialId) {
   const timer = _pollingTimers.get(materialId)
   if (timer) {
-    clearInterval(timer)
+    clearTimeout(timer)
     _pollingTimers.delete(materialId)
   }
   _pollingMaterialIds.delete(materialId)
-  _pollingStartedAt.delete(materialId)
+  _pollingTokens.delete(materialId)
+  clearTimeout(_pollingDeadlines.get(materialId))
+  _pollingDeadlines.delete(materialId)
 }
 
 
@@ -61,6 +65,7 @@ export const useProcedureStore = create((set, get) => ({
   boards: {},         // boardType → board data
   standards: [],
   materials: [],
+  _materialsProjectId: null,
   // 컨텍스트에서 제외할 자료 ID 집합. 기본은 빈 Set(모두 포함).
   // 체크박스를 끈 자료만 여기에 들어간다 → 새 자료가 업로드되어도 자동으로 포함됨.
   excludedMaterialIds: new Set(),
@@ -270,8 +275,8 @@ export const useProcedureStore = create((set, get) => ({
     // material_updated를 쏜다. 폴링(3초 주기)의 감지 지연 없이 즉시 반영하고,
     // 종결 상태면 폴링을 조기 종료한다 (폴링은 소켓 유실 대비 안전망으로 유지).
     const materialHandler = (patch) => {
-      if (!patch?.id) return
-      get().applyMaterialUpdate(patch)
+      const material = patch?.material || patch
+      get().applyMaterialUpdate(material)
     }
     socket.on('board_changed', boardHandler)
     socket.on('design_changed', designHandler)
@@ -432,6 +437,9 @@ export const useProcedureStore = create((set, get) => ({
    */
   loadMaterials: async (projectId) => {
     if (!projectId) return
+    const version = ++_materialsLoadVersion
+    if (get()._materialsProjectId !== projectId) set({ materials: [], excludedMaterialIds: new Set(), _materialsProjectId: projectId })
+    const snapshot = new Map(get().materials.map(m => [m.id, m]))
     try {
       // 신규 규약: GET /api/materials?project_id=... 응답은 { materials: [] }
       // 레거시: GET /api/materials/:sessionId 가 배열이나 { materials } 를 반환
@@ -442,10 +450,18 @@ export const useProcedureStore = create((set, get) => ({
       } catch {
         data = await apiGet(`/api/materials/${projectId}`)
       }
+      if (version !== _materialsLoadVersion || get()._materialsProjectId !== projectId) return
       const list = Array.isArray(data) ? data : (data?.materials ?? [])
-      if (!sameJson(list, get().materials)) set({ materials: list })
+      set((state) => {
+        const latest = new Map(state.materials.map(m => [m.id, m]))
+        const received = new Set(list.map(m => m.id))
+        const added = state.materials.filter(m => !received.has(m.id) && (m._uploading || !snapshot.has(m.id)))
+        const merged = list.filter(m => !snapshot.has(m.id) || latest.has(m.id)).map(m =>
+          latest.has(m.id) && latest.get(m.id) !== snapshot.get(m.id) ? latest.get(m.id) : m)
+        return { materials: [...added, ...merged] }
+      })
       // 미완료 상태 자료는 자동으로 폴링 재개
-      for (const m of list) {
+      for (const m of get().materials.filter(m => !m._uploading)) {
         if (
           m?.id &&
           m.processing_status &&
@@ -479,6 +495,7 @@ export const useProcedureStore = create((set, get) => ({
     const intentNote = opts.intentNote || null
     // source: 'chat' 이면 서버가 첨부 시스템 메시지를 자동 생성. 기본은 'bar'.
     const source = opts.source || 'bar'
+    if (!get()._materialsProjectId) set({ _materialsProjectId: projectId })
 
     const tempId = `temp-${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)}`
     const optimistic = {
@@ -526,13 +543,15 @@ export const useProcedureStore = create((set, get) => ({
       )
 
       // 백엔드 응답 포맷: { material, systemMessage? } 또는 레거시 (객체 자체)
-      const material = data?.material ?? data
+      let material = data?.material ?? data
       if (!material || !material.id) {
         throw new Error('서버 응답이 올바르지 않습니다.')
       }
+      const observed = get().materials.find(m => m.id === material.id)
+      if (observed) material = { ...material, ...observed }
 
       set((state) => ({
-        materials: state.materials.map((m) => (m.id === tempId ? material : m)),
+        materials: state.materials.filter(m => m.id !== material.id).map((m) => (m.id === tempId ? material : m)),
       }))
 
       // 채팅 업로드 — 서버가 반환한 시스템 메시지를 chatStore에 삽입 (Realtime 누락 대비)
@@ -607,6 +626,7 @@ export const useProcedureStore = create((set, get) => ({
   },
 
   addUrlMaterial: async (projectId, url, category, title) => {
+    if (!get()._materialsProjectId) set({ _materialsProjectId: projectId })
     const data = await apiPost('/api/materials/url', {
       project_id: projectId,
       session_id: projectId, // 레거시 호환
@@ -614,8 +634,10 @@ export const useProcedureStore = create((set, get) => ({
       category: category || 'website',
       title: title || '',
     })
-    const material = data?.material ?? data
-    set((state) => ({ materials: [material, ...state.materials] }))
+    let material = data?.material ?? data
+    const observed = get().materials.find(m => m.id === material.id)
+    if (observed) material = { ...material, ...observed }
+    if (get()._materialsProjectId === projectId) set((state) => ({ materials: [material, ...state.materials.filter(m => m.id !== material.id)] }))
     // URL도 파일과 동일하게 fetch→AI 분석을 거치므로 완료/실패가 아니면 폴링 시작
     if (
       material?.id &&
@@ -632,10 +654,11 @@ export const useProcedureStore = create((set, get) => ({
    */
   reanalyzeMaterial: async (materialId) => {
     if (!materialId) return
+    _stopMaterialPolling(materialId)
     set((state) => ({
       materials: state.materials.map((m) =>
         m.id === materialId
-          ? { ...m, processing_status: MATERIAL_PROCESSING_STATUSES.PARSING, _error: null }
+          ? { ...m, processing_status: MATERIAL_PROCESSING_STATUSES.PARSING, ai_analysis: null, ai_summary: null, processing_error: null, _error: null, _statusUnavailable: false }
           : m,
       ),
     }))
@@ -665,8 +688,9 @@ export const useProcedureStore = create((set, get) => ({
    */
   deleteMaterial: async (materialId) => {
     if (!materialId) return
-    const prev = get().materials
-    const prevExcluded = get().excludedMaterialIds
+    const previous = get().materials.find(m => m.id === materialId)
+    const wasExcluded = get().excludedMaterialIds.has(materialId)
+    const projectId = get()._materialsProjectId
     set((state) => {
       const nextExcluded = new Set(state.excludedMaterialIds)
       nextExcluded.delete(materialId)
@@ -680,7 +704,11 @@ export const useProcedureStore = create((set, get) => ({
       await apiDeleteMaterial(materialId)
     } catch (err) {
       // 롤백
-      set({ materials: prev, excludedMaterialIds: prevExcluded })
+      if (get()._materialsProjectId === projectId && previous) {
+        set(state => ({ materials: state.materials.some(m => m.id === materialId) ? state.materials : [previous, ...state.materials],
+          excludedMaterialIds: wasExcluded ? new Set([...state.excludedMaterialIds, materialId]) : state.excludedMaterialIds }))
+        if (!['completed', 'failed'].includes(previous.processing_status)) get().startMaterialPolling(materialId)
+      }
       throw err
     }
   },
@@ -721,102 +749,80 @@ export const useProcedureStore = create((set, get) => ({
   getSelectedMaterialIds: () => {
     const { materials, excludedMaterialIds } = get()
     return materials
-      .filter((m) => !excludedMaterialIds.has(m.id))
+      .filter((m) => !excludedMaterialIds.has(m.id) && m.processing_status === 'completed')
       .map((m) => m.id)
   },
 
-  /**
-   * 소켓(material_updated)으로 받은 자료 상태 패치를 반영.
-   * 폴링 tick과 동일한 종결 처리(폴링 중단 + 전이 시에만 토스트)를 공유한다.
-   */
   applyMaterialUpdate: (patch) => {
-    const prev = get().materials.find((m) => m.id === patch.id)
-    // 목록에 없는 자료(협업자가 아직 목록을 안 연 경우 등)는 로딩/폴링 경로가 처리
-    if (!prev) return
-    set((state) => ({
-      materials: state.materials.map((m) => (m.id === patch.id ? { ...m, ...patch } : m)),
-    }))
-    const status = patch.processing_status
-    if (
-      status === MATERIAL_PROCESSING_STATUSES.COMPLETED ||
-      status === MATERIAL_PROCESSING_STATUSES.FAILED
-    ) {
+    if (!patch?.id) return
+    const projectId = get()._materialsProjectId
+    const existing = get().materials.find(m => m.id === patch.id)
+    if (patch.project_id && patch.project_id !== projectId) return
+    if (!existing && (!projectId || !patch.project_id)) return
+    if (patch.deleted) {
       _stopMaterialPolling(patch.id)
-      if (prev.processing_status !== status) {
-        const name = patch.file_name || prev.file_name || prev.title || '자료'
-        if (status === MATERIAL_PROCESSING_STATUSES.COMPLETED) {
-          pushToast({ kind: 'success', message: `'${name}' 분석이 완료됐어요. 자료 목록에서 요약을 확인할 수 있어요.` })
-        } else {
-          pushToast({ kind: 'error', message: `'${name}' 분석 실패 — ${materialFailureMessage(patch)}`, duration: 8_000 })
-        }
-      }
+      set(state => ({ materials: state.materials.filter(m => m.id !== patch.id) }))
+      return
     }
+    const terminal = ['completed', 'failed'].includes(patch.processing_status)
+    // 완료 뒤 도착한 이전 조회는 무시하고, 명시적인 재분석 시작만 반영한다.
+    if (['completed', 'failed'].includes(existing?.processing_status) && !terminal && !patch.reanalysis_started) return
+    set(state => ({ materials: existing
+      ? state.materials.map(m => m.id === patch.id ? { ...m, ...patch, _statusUnavailable: false, _error: null } : m)
+      : [patch, ...state.materials] }))
+    if (terminal) {
+      _stopMaterialPolling(patch.id)
+      if (existing && existing.processing_status !== patch.processing_status) {
+        const name = patch.file_name || existing.file_name || '자료'
+        pushToast({ kind: patch.processing_status === 'completed' ? 'success' : 'error',
+          message: patch.processing_status === 'completed' ? `'${name}' 분석이 완료됐어요.` : `'${name}' 분석 실패 — ${materialFailureMessage(patch)}` })
+      }
+    } else get().startMaterialPolling(patch.id)
   },
 
-  /**
-   * 자료 분석 상태 폴링 시작. 3초 간격으로 completed/failed까지 폴링.
-   * 동일 materialId에 대해 이미 폴링 중이면 무시.
-   * 폴러는 컴포넌트가 아닌 스토어 수명으로 동작 — 다른 화면으로 이동해도
-   * 완료/실패 시점에 전역 토스트로 알려준다.
-   */
   startMaterialPolling: (materialId) => {
-    if (!materialId) return
-    if (_pollingMaterialIds.has(materialId)) return
+    if (!materialId || _pollingMaterialIds.has(materialId)) return
+    const token = Symbol(materialId)
     _pollingMaterialIds.add(materialId)
-    _pollingStartedAt.set(materialId, Date.now())
-
+    _pollingTokens.set(materialId, token)
+    let failures = 0
+    let unchanged = 0
+    const current = () => _pollingTokens.get(materialId) === token
+    const unavailable = () => {
+      if (!current()) return
+      _stopMaterialPolling(materialId)
+      const message = '분석 상태를 확인하지 못했어요. 연결을 확인한 뒤 상태 확인을 눌러주세요.'
+      set(state => ({ materials: state.materials.map(m => m.id === materialId ? { ...m, _statusUnavailable: true, _error: message } : m) }))
+      pushToast({ kind: 'error', message, duration: 8_000 })
+    }
+    _pollingDeadlines.set(materialId, setTimeout(unavailable, MATERIAL_POLL_MAX_AGE_MS))
+    set(state => ({ materials: state.materials.map(m => m.id === materialId ? { ...m, _statusUnavailable: false, _error: null } : m) }))
     const tick = async () => {
-      // 안전장치: 상한 초과 시 폴링 중단 (서버 행 등으로 종료 상태가 안 오는 경우)
-      const startedAt = _pollingStartedAt.get(materialId)
-      if (startedAt && Date.now() - startedAt > MATERIAL_POLL_MAX_AGE_MS) {
-        _stopMaterialPolling(materialId)
-        return
-      }
       try {
         const res = await apiGetMaterialAnalysis(materialId)
+        if (!current()) return // 소켓 완료·삭제·재분석 뒤 도착한 응답은 버린다.
         const material = res?.material
-        const analysis = res?.analysis ?? null
-        if (!material) {
+        if (!material) { unavailable(); return }
+        failures = 0
+        const prevStatus = get().materials.find(m => m.id === materialId)?.processing_status
+        unchanged = prevStatus === material.processing_status ? unchanged + 1 : 0
+        get().applyMaterialUpdate({ ...material, ai_analysis: res.analysis ?? null })
+        if (['completed', 'failed'].includes(material.processing_status)) {
           _stopMaterialPolling(materialId)
           return
         }
-        const prevStatus = get().materials.find((m) => m.id === materialId)?.processing_status
-        set((state) => ({
-          materials: state.materials.map((m) =>
-            m.id === materialId
-              ? {
-                  ...m,
-                  ...material,
-                  ai_analysis: analysis ?? m.ai_analysis ?? null,
-                }
-              : m,
-          ),
-        }))
-        const status = material.processing_status
-        if (
-          status === MATERIAL_PROCESSING_STATUSES.COMPLETED ||
-          status === MATERIAL_PROCESSING_STATUSES.FAILED
-        ) {
-          _stopMaterialPolling(materialId)
-          // 상태가 실제로 '전이'된 경우에만 전역 토스트 (이미 완료였던 자료 재폴링 시 중복 방지)
-          if (prevStatus !== status) {
-            const name = material.file_name || material.title || '자료'
-            if (status === MATERIAL_PROCESSING_STATUSES.COMPLETED) {
-              pushToast({ kind: 'success', message: `'${name}' 분석이 완료됐어요. 자료 목록에서 요약을 확인할 수 있어요.` })
-            } else {
-              pushToast({ kind: 'error', message: `'${name}' 분석 실패 — ${materialFailureMessage(material)}`, duration: 8_000 })
-            }
-          }
-        }
-      } catch {
-        // 간헐적 실패는 무시하고 다음 주기까지 대기
+      } catch (err) {
+        if (!current()) return
+        failures++
+        if ([401, 403, 404].includes(err?.status)) { unavailable(); return }
       }
+      // 응답이 끝난 뒤 다음 요청을 예약하여 중첩과 역순 반영을 막는다.
+      const delay = failures
+        ? Math.min(30_000, MATERIAL_POLL_INTERVAL_MS * 2 ** Math.min(failures, 3))
+        : MATERIAL_POLL_INTERVAL_MS * Math.min(5, 1 + unchanged)
+      if (current()) _pollingTimers.set(materialId, setTimeout(tick, delay))
     }
-
-    // 즉시 1회 + 이후 인터벌
-    tick()
-    const timer = setInterval(tick, MATERIAL_POLL_INTERVAL_MS)
-    _pollingTimers.set(materialId, timer)
+    void tick()
   },
 
   /**
@@ -875,6 +881,7 @@ export const useProcedureStore = create((set, get) => ({
   // ── 정리 ────
 
   reset: () => {
+    ++_materialsLoadVersion
     const handler = get()._boardHandler
     if (handler) socket.off('board_changed', handler)
     // 자료 분석 폴링은 여기서 정리하지 않는다 — 프로젝트 화면을 벗어나도(ProjectPage
@@ -890,6 +897,7 @@ export const useProcedureStore = create((set, get) => ({
       boards: {},
       standards: [],
       materials: [],
+      _materialsProjectId: null,
       excludedMaterialIds: new Set(),
       principles: [],
       generalPrinciples: [],

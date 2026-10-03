@@ -170,13 +170,13 @@ describe('extractText — 확장자별 텍스트 추출', () => {
     expect(result.unsupported).toBeFalsy()
   })
 
-  it('csv는 첫 50행만 포함', async () => {
+  it('csv는 전체 행을 보존', async () => {
     const rows = Array.from({ length: 100 }, (_, i) => `row${i}`).join('\n')
     const result = await extractText(Buffer.from(rows, 'utf-8'), 'csv')
     const lines = result.text.split('\n')
-    expect(lines).toHaveLength(50)
+    expect(lines).toHaveLength(100)
     expect(lines[0]).toBe('row0')
-    expect(lines[49]).toBe('row49')
+    expect(lines[99]).toBe('row99')
   })
 
   it('hwp(바이너리)는 unsupported=true + hwpx 안내', async () => {

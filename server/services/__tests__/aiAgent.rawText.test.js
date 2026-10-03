@@ -144,11 +144,11 @@ describe('buildMaterialsContext — 멘션 자료 원문 동봉', () => {
     expect(out).toContain('의도 기반 요약입니다.')
   })
 
-  it('멘션 안 한 자료의 extracted_text는 일반 섹션에서도 무시 (요약만 사용)', () => {
-    const m = completed({ id: 'm1', extracted_text: '원문 내용은 무시되어야 함' })
+  it('선택된 일반 자료에도 원문을 예산 안에서 포함', () => {
+    const m = completed({ id: 'm1', extracted_text: '선택 자료의 원문' })
     const out = buildMaterialsContext([m], {}) // 멘션 없음
-    expect(out).not.toContain('[원문 —')
-    expect(out).not.toContain('원문 내용은 무시되어야 함')
+    expect(out).toContain('[원문 —')
+    expect(out).toContain('선택 자료의 원문')
   })
 
   it('멘션 자료가 분석 미완료(요약 없음) + extracted_text 있음 → 원문 섹션 추가하지 않음 (⏳ 안내 유지)', () => {
