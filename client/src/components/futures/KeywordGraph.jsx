@@ -2,7 +2,7 @@
  * (2) 성취기준을 잇는 키워드 — 행성(과목)·위성(키워드) 그래프 + 범례 + 연결 근거 목록.
  * 과목↔키워드는 얇은 선, 키워드↔키워드 연결은 두 교과색 그라데이션(가산 혼합), 연결 강도는 선 밝기.
  * 상태: 찾는 중(처음 = 행성만 / 조합 변경 = 이전 그래프 흐리게 + "이전 조합") · 결과 · 연결 0 · 오류.
- * 패널 폭 1,080px 미만이거나 배치 품질을 못 채우면 목록 모드(명세서 2부 §3-8).
+ * 기본 경로는 좁거나 복잡하면 목록 모드. 실험실(navigable)은 확대·이동 가능한 지도를 유지한다.
  */
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { SUBJECT_COLORS_DARK, FALLBACK_NODE_COLOR } from '../../lib/nebulaTheme'
@@ -10,6 +10,7 @@ import { nebulaLayout, LAYOUT } from '../../lib/futures/nebulaLayout'
 import { measureText, fontsReady } from '../../lib/futures/measureText'
 import { COPY, strengthStyle } from '../../lib/futures/copy'
 import ConnectionList from './ConnectionList'
+import GraphViewport from './GraphViewport'
 
 const GRAPH_MIN_WIDTH = 1080
 export const colorOf = (s) => SUBJECT_COLORS_DARK[s?.subject_group] || FALLBACK_NODE_COLOR
@@ -136,7 +137,7 @@ function GraphSvg({ layout, standards, activeLabel, onActive, dim }) {
  * @param {object[]} standards 고른 성취기준(2개 이상)
  * @param {{status: 'loading'|'ready'|'error', data: object|null, startedAt: number}} bridges
  */
-export default function KeywordGraph({ standards, bridges, activeLabel, onActive, onRetry, multiEndpoint = false }) {
+export default function KeywordGraph({ standards, bridges, activeLabel, onActive, onRetry, multiEndpoint = false, navigable = false }) {
   const panelRef = useRef(null)
   const [width, setWidth] = useState(0)
   const [fontsTick, setFontsTick] = useState(0)
@@ -146,7 +147,7 @@ export default function KeywordGraph({ standards, bridges, activeLabel, onActive
   useLayoutEffect(() => {
     const el = panelRef.current
     if (!el) return undefined
-    const measure = () => setWidth(Math.max(320, Math.round(el.clientWidth / 8) * 8))
+    const measure = () => setWidth(Math.max(0, Math.floor(el.clientWidth / 8) * 8))
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
@@ -156,14 +157,28 @@ export default function KeywordGraph({ standards, bridges, activeLabel, onActive
 
   const status = bridges.status
   const data = status === 'ready' ? bridges.data : null
-  const layout = useMemo(() => (width && !(multiEndpoint && width < GRAPH_MIN_WIDTH) ? nebulaLayout(standards, data, width, measureText, { multiEndpoint }) : null), [sig, data, width, fontsTick, multiEndpoint]) // eslint-disable-line react-hooks/exhaustive-deps
+  const layout = useMemo(() => {
+    if (!width || (!navigable && multiEndpoint && width < GRAPH_MIN_WIDTH)) return null
+    if (!navigable) return nebulaLayout(standards, data, width, measureText, { multiEndpoint })
+    // 실험실은 배치가 복잡해도 지도를 유지한다. 캔버스를 넓혀 가장 덜 겹치는 배치를 고른다.
+    const base = Math.max(1440, width)
+    const score = ({ quality: q }) => q.clusterOv * 10000 + q.forced * 1000 + q.capHit * 100 + q.lineHit
+    let best = null
+    for (const canvasWidth of [base, base + 240, base + 480]) {
+      const candidate = nebulaLayout(standards, data, canvasWidth, measureText, { multiEndpoint, minHeight: 800 })
+      if (!best || score(candidate) < score(best)) best = candidate
+      if (best.ok) break
+    }
+    return best
+  }, [sig, data, width, fontsTick, multiEndpoint, navigable]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (status === 'ready' && layout) lastReady.current = { sig, layout, standards, data } }, [status, layout, sig]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const elapsed = useElapsed(bridges.startedAt, status === 'loading')
   const prev = status === 'loading' && lastReady.current && lastReady.current.sig !== sig ? lastReady.current : null
   const concepts = data?.concepts || []
   const isolated = data?.isolated?.length || 0
-  const listMode = width > 0 && (width < GRAPH_MIN_WIDTH || (layout && !layout.ok && status === 'ready'))
+  const listMode = !navigable && width > 0 && (width < GRAPH_MIN_WIDTH || (layout && !layout.ok && status === 'ready'))
+  const shown = prev || (layout ? { layout, standards } : null)
 
   let right = null
   if (status === 'ready') right = concepts.length ? COPY.graph.result(concepts.length, isolated) : COPY.graph.zeroRight
@@ -182,7 +197,12 @@ export default function KeywordGraph({ standards, bridges, activeLabel, onActive
         {status === 'error' && (
           <div className="fu-panel-line">{COPY.graph.errorLine} <button type="button" className="fu-ghost" onClick={onRetry}>{COPY.graph.retry}</button></div>
         )}
-        {listMode && status === 'ready' ? (
+        {navigable && shown ? (
+          <GraphViewport key={`${sig}:${shown.layout.W}:${shown.layout.H}`} layout={shown.layout} width={width}>
+            {prev && <span className="fu-prev-tag">{COPY.graph.previousTag}</span>}
+            <GraphSvg layout={shown.layout} standards={shown.standards} activeLabel={activeLabel} onActive={onActive} dim={!!prev} />
+          </GraphViewport>
+        ) : listMode && status === 'ready' ? (
           <ConnectionList standards={standards} layout={layout} bridges={data} activeLabel={activeLabel} onActive={onActive} listMode showClassification={!multiEndpoint} />
         ) : prev ? (
           <div className="fu-graph-prev">
@@ -193,7 +213,10 @@ export default function KeywordGraph({ standards, bridges, activeLabel, onActive
           <GraphSvg layout={layout} standards={standards} activeLabel={activeLabel} onActive={onActive} />
         ) : null}
         {status === 'ready' && concepts.length > 0 && !listMode && layout && (
-          <ConnectionList standards={standards} layout={layout} bridges={data} activeLabel={activeLabel} onActive={onActive} showClassification={!multiEndpoint} />
+          navigable ? <details className="fu-map-evidence" onToggle={event => { if (!event.currentTarget.open) onActive?.(null) }}>
+            <summary>연결 근거 보기 <span>{concepts.length}개 연결 · 성취기준과 키워드</span></summary>
+            <ConnectionList standards={standards} layout={layout} bridges={data} activeLabel={activeLabel} onActive={onActive} listMode showClassification={!multiEndpoint} />
+          </details> : <ConnectionList standards={standards} layout={layout} bridges={data} activeLabel={activeLabel} onActive={onActive} showClassification={!multiEndpoint} />
         )}
       </div>
     </section>
