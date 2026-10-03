@@ -314,13 +314,14 @@ function buildCoherenceContext(procedureCode, allBoards, skippedCodes = [], mode
     const boardData = boardMap[targetBoardType]
 
     const targetDisplay = getProcedureDisplayCode(targetCode) || targetCode
-    if (boardData) {
+    if (skippedCodes.includes(targetCode)) {
+      // 팀이 생략한 절차 — 작성하다 만 내용이 남아 있어도 점검 기준으로 쓰지 않는다(2026-10-03).
+      // 예전에는 내용이 있으면 이 분기보다 먼저 데이터를 넣어, 미완성 내용이 점검 기준이 됐다.
+      sections.push(`  [${targetDisplay} ${targetProc?.name || ''}] ${targetLabel}: (팀 결정으로 생략됨 — 이 절차의 데이터 없이 진행하며, 작성을 권유하지 마세요)`)
+    } else if (boardData) {
       // 보드 데이터를 2000자로 제한 (토큰 예산 관리)
       const dataStr = JSON.stringify(boardData).slice(0, 2000)
       sections.push(`  [${targetDisplay} ${targetProc?.name || ''}] ${targetLabel}:\n  ${dataStr}`)
-    } else if (skippedCodes.includes(targetCode)) {
-      // 팀이 생략한 절차 — "아직 안 함"과 구분해 AI가 작성을 독촉하지 않게 한다
-      sections.push(`  [${targetDisplay} ${targetProc?.name || ''}] ${targetLabel}: (팀 결정으로 생략됨 — 이 절차의 데이터 없이 진행하며, 작성을 권유하지 마세요)`)
     } else {
       sections.push(`  [${targetDisplay} ${targetProc?.name || ''}] ${targetLabel}: (아직 확정되지 않음)`)
     }
@@ -1097,7 +1098,8 @@ ${procInfo.description}`)
       parts.push(`[생략된 절차]
 팀이 아래 절차를 건너뛰기로 결정했습니다: ${skippedLabels.join(', ')}
 - 이 절차들은 "다음에 다룰 절차"로 언급하거나 작성을 권유하지 마세요.
-- 교사가 해당 절차를 물으면 "팀 결정으로 생략된 절차"임을 안내하고, 필요 시 호스트가 건너뛰기를 해제할 수 있다고 알려주세요.`)
+- 생략된 절차에 작성하다 만 내용이 남아 있더라도 팀이 확정한 내용이 아닙니다. 설계 근거로 삼거나 확정된 결정처럼 인용하지 마세요.
+- 교사가 해당 절차를 물으면 "팀 결정으로 생략된 절차"임을 안내하고, 필요 시 호스트가 건너뛰기를 해제할 수 있다고 알려주세요. 해제하면 써 두었던 내용 그대로 이어서 작성할 수 있습니다.`)
     }
   }
 
@@ -1317,8 +1319,12 @@ ${schemaText}
   //  후반 절차에서 "앞 절차에서 무엇을 했는지 모른다"고 답하는 버그가 생긴다.)
   {
     const currentOrder = PROCEDURES[procedure]?.order ?? 999
+    // 생략된 절차는 "교사와 함께 확정한 이전 절차 내용"이 아니다 — 작성하다 만 내용이 남아 있어도
+    // 넣지 않는다. 예전에는 미완성 내용이 확정 사항으로 전달됐다(보고서는 생략 표기만 하는데 AI만 달랐다).
+    const skippedForSummary = new Set(skippedCodes || [])
     const priorBoards = boards
       .filter(b => b.content && Object.keys(b.content).length > 0 && b.procedure_code)
+      .filter(b => !skippedForSummary.has(b.procedure_code))
       .filter(b => b.board_type !== 'learner_context' && b.board_type !== 'team_vision')
       .map(b => ({ b, order: PROCEDURES[b.procedure_code]?.order ?? 999 }))
       .filter(x => x.order < currentOrder)
