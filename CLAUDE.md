@@ -85,8 +85,9 @@ curriculum-weaver/
 
 팀이 불필요한 절차를 생략 표시하는 기능. **보드 내용은 절대 건드리지 않는다** — 스킵은 표시일 뿐, 해제하면 원상복구.
 
+- ⚠️ **연수 한정 임시 변경, 되돌릴 것 (2026-10-03, 사용자 결정)**: 교사 연수 동안 코어에서 T-2-1(T-3 역할 배분)을 빼고 T-1-2(T-2 수업설계 방향 설정)를 넣었다. 원래 코어 5는 T-1-1·T-2-1·A-1-2·A-2-1·A-2-2. 연수 뒤 `git log --no-merges --grep='연수 한정 핵심 절차'` 커밋을 `git revert`하면 상수·테스트·이 표시가 함께 돌아간다. 보고서 참여자 추출과 AI 역할 안내의 T-2-1 생략 인식 코드(별도 커밋)는 연수 중 생략 기록이 남으므로 **되돌리지 않고 유지**. 절차·파일 목록: `docs/임시설정-건너뛰기-핵심절차-20261003.md`
 - **저장**: `project_procedure_skips` 테이블(00023) — 스킵=INSERT, 해제=DELETE (행 단위 원자성, 감사 이력 내장)
-- **관문 함수** (`shared/constants.js`): `UNSKIPPABLE_PROCEDURES`(코어 5: T-1-1·T-2-1·A-1-2·A-2-1·A-2-2 — 보고서·AI가 하드코딩 참조), `isProcedureSkippable`, `getActiveProcedures`, `getNextActiveProcedure`. **스킵 인식이 필요한 곳은 `PROCEDURE_LIST` 직접 순회 금지, 반드시 관문 함수 경유** (직접 순회 grep으로 감사 가능)
+- **관문 함수** (`shared/constants.js`): `UNSKIPPABLE_PROCEDURES`(코어 5: T-1-1·**T-1-2**·A-1-2·A-2-1·A-2-2 — 보고서·AI가 하드코딩 참조 + 연수 결정), `isProcedureSkippable`, `getActiveProcedures`, `getNextActiveProcedure`. **스킵 인식이 필요한 곳은 `PROCEDURE_LIST` 직접 순회 금지, 반드시 관문 함수 경유** (직접 순회 grep으로 감사 가능)
 - **API**: `POST/DELETE /api/projects/:id/procedures/:code/skip` (host/owner 전용, 코어 403, 멱등). 스킵 대상이 팀 커서면 다음 활성 절차로 자동 보정. `GET /projects/:id` 응답에 `skipped_procedures` 포함
 - **실시간**: `procedure_skips_changed` 소켓 이벤트 (서버 브로드캐스트, designs.js) → procedureStore가 구독
 - **AI**: `buildSystemPrompt({ skippedCodes })` — procedure_advance가 생략 절차를 건너뜀, [생략된 절차] 섹션 주입, 정합성 점검은 "(팀 결정으로 생략됨)" 표기, 이전 절차 요약에서 생략 절차 제외. T-2-1 생략 시 역할을 짐작하거나 '미정'으로 단정하지 말라는 안내 추가. procedure-intro는 스킵 절차 400

@@ -77,3 +77,43 @@ describe('핵심 절차 건너뛰기 차단과 남아 있는 생략 기록 해�
     expect(updateProject).not.toHaveBeenCalled()
   })
 })
+
+// ⚠️ 교사 연수 한정 임시 설정 (2026-10-03): T-2 수업설계 방향(T-1-2)은 핵심, T-3 역할 배분(T-2-1)은 생략 가능.
+// 되돌릴 때 이 describe를 지운다(커밋 되돌리기로 함께 빠진다). 원래 목록은 위 describe가 그대로 검사한다.
+// (docs/임시설정-건너뛰기-핵심절차-20261003.md)
+describe('연수 한정 핵심 절차 (2026-10-03): T-2 방향은 핵심, T-3 역할은 생략 가능', () => {
+  it('T-1-2(T-2 수업설계 방향 설정) 건너뛰기는 403이고 기록하지 않는다', async () => {
+    const res = await request(app).post(skipUrl('T-1-2')).send({ reason: '방향은 이미 정함' })
+    expect(res.status).toBe(403)
+    expect(res.body.error).toContain('핵심 절차')
+    // 사용자에게 보이는 문구는 표시 코드(T-2)만 쓴다. 내부 코드(T-1-2)는 노출하지 않는다.
+    expect(res.body.error).toContain('T-2 수업설계 방향 설정')
+    expect(res.body.error).not.toContain('T-1-2')
+    expect(addProjectSkip).not.toHaveBeenCalled()
+  })
+
+  it('T-2-1(T-3 역할 배분) 건너뛰기는 허용되고 사유와 함께 기록된다', async () => {
+    const res = await request(app).post(skipUrl('T-2-1')).send({ reason: '역할은 교무 분장으로 정해짐' })
+    expect(res.status).toBe(200)
+    expect(addProjectSkip).toHaveBeenCalledWith('p1', 'T-2-1', 'teacher', '역할은 교무 분장으로 정해짐')
+    expect(res.body.skips.map((s) => s.procedure_code)).toEqual(['T-2-1'])
+    // 팀 커서가 다른 절차에 있으면 건드리지 않는다
+    expect(res.body.current_procedure).toBe('A-1-1')
+    expect(updateProject).not.toHaveBeenCalled()
+  })
+
+  it('팀 커서가 T-2-1 위에 있으면 다음 활성 절차(T-4 팀 규칙)로 옮긴다', async () => {
+    state.project.current_procedure = 'T-2-1'
+    const res = await request(app).post(skipUrl('T-2-1')).send({})
+    expect(res.status).toBe(200)
+    expect(res.body.current_procedure).toBe('T-2-2')
+    expect(updateProject).toHaveBeenCalledWith('p1', { current_procedure: 'T-2-2' })
+  })
+
+  it('T-2-1 건너뛰기도 편집자(editor)에게는 막혀 있다 (host/owner 전용)', async () => {
+    state.role = 'editor'
+    const res = await request(app).post(skipUrl('T-2-1')).send({})
+    expect(res.status).toBe(403)
+    expect(addProjectSkip).not.toHaveBeenCalled()
+  })
+})

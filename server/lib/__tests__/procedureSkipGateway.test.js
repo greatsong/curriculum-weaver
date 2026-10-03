@@ -15,8 +15,11 @@ import {
 } from 'curriculum-weaver-shared/constants.js'
 
 describe('UNSKIPPABLE_PROCEDURES', () => {
-  it('코어 5개가 정확히 고정되어 있다 (보고서·AI 하드코딩 참조)', () => {
-    expect(UNSKIPPABLE_PROCEDURES).toEqual(['T-1-1', 'T-2-1', 'A-1-2', 'A-2-1', 'A-2-2'])
+  // 교사 연수 한정 임시 설정(2026-10-03): T-2-1(T-3 역할)을 빼고 T-1-2(T-2 방향)를 넣었다.
+  // 되돌릴 때 원래 값 ['T-1-1', 'T-2-1', 'A-1-2', 'A-2-1', 'A-2-2']로 돌린다.
+  // (docs/임시설정-건너뛰기-핵심절차-20261003.md)
+  it('코어 5개가 정확히 고정되어 있다 (보고서·AI 하드코딩 참조 + 연수 결정)', () => {
+    expect(UNSKIPPABLE_PROCEDURES).toEqual(['T-1-1', 'T-1-2', 'A-1-2', 'A-2-1', 'A-2-2'])
   })
 
   it('코어는 전부 실존하는 절차 코드다', () => {
@@ -36,6 +39,12 @@ describe('isProcedureSkippable', () => {
 
   it('prep은 스킵 불가', () => {
     expect(isProcedureSkippable('prep')).toBe(false)
+  })
+
+  // 연수 한정(2026-10-03): T-2 수업설계 방향은 핵심, T-3 역할 배분은 생략 가능. 되돌릴 때 두 기대값을 뒤집는다.
+  it('연수 한정: T-1-2(T-2 방향)는 스킵 불가, T-2-1(T-3 역할)은 스킵 가능', () => {
+    expect(isProcedureSkippable('T-1-2')).toBe(false)
+    expect(isProcedureSkippable('T-2-1')).toBe(true)
   })
 
   it('존재하지 않는 코드는 스킵 불가', () => {
