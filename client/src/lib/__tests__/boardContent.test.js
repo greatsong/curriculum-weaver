@@ -26,6 +26,21 @@ describe('객체 항목 하위 칸', () => {
     expect(fields[0]).toMatchObject({ label: '교사명', type: 'text' })
     expect(fields[1]).toMatchObject({ label: '개인 비전', type: 'textarea' })
   })
+  it('AI가 쓴 같은 뜻의 키(teacherName)는 스키마 칸(교사명)으로 보여 준다 — 운영 데이터 모양', () => {
+    const item = { vision: '행복, 창조성, 자주성, 좋은 인간', teacherName: '교사A' }
+    const fields = listItemFields(item, visionItemSchema)
+    expect(fields.map((f) => [f.key, f.label])).toEqual([
+      ['teacherName', '교사명'],
+      ['vision', '개인 비전'],
+      ['refinedVision', 'AI 정교화 비전'],
+    ])
+  })
+
+  it('스키마 키와 별칭 키가 둘 다 있으면 스키마 키를 쓰고 별칭은 별도 칸으로 남긴다', () => {
+    const fields = listItemFields({ name: '김', teacherName: '김교사', vision: 'v' }, visionItemSchema)
+    expect(fields.map((f) => f.key)).toEqual(['name', 'vision', 'refinedVision', 'teacherName'])
+  })
+
   it('새 항목은 itemSchema가 있으면 빈 칸 객체, 없으면 빈 글자', () => {
     expect(emptyListItem(visionItemSchema)).toEqual({ name: '', vision: '', refinedVision: '' })
     expect(emptyListItem(undefined)).toBe('')

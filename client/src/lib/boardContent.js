@@ -49,6 +49,20 @@ export function normalizeListItem(item) {
 }
 
 /**
+ * AI가 스키마 키 대신 쓰는 같은 뜻의 키. 실제 운영 데이터에서 개인 비전 항목이
+ * name 대신 teacherName으로 저장돼, 편집기에 빈 "교사명" 칸과 영어 "teacherName" 칸이
+ * 따로 생겼다(2026-10-03). 항목에 스키마 키가 없고 별칭 키가 있으면 별칭 키를 그 칸으로 쓴다.
+ * 저장 키는 바꾸지 않는다(항목이 원래 가진 키에 그대로 쓴다).
+ */
+export const ITEM_KEY_ALIASES = {
+  name: ['teacherName', 'teacher', 'teacher_name', '교사명', '이름', '교사'],
+  vision: ['personalVision', 'individualVision', '비전', '개인 비전'],
+  refinedVision: ['refined', 'aiRefinedVision', 'refined_vision'],
+  subject: ['subjectName', '교과'],
+  rationale: ['reason', '근거'],
+}
+
+/**
  * 객체 항목에서 편집할 하위 칸. itemSchema 순서가 먼저이고,
  * 그다음 항목에만 있는 글자·숫자 키를 덧붙인다(그 밖의 값은 편집하지 않고 보존).
  * @returns {{ key: string, label: string|null, type: 'text'|'textarea' }[]}
@@ -56,7 +70,13 @@ export function normalizeListItem(item) {
 export function listItemFields(item, itemSchema) {
   const fields = []
   const seen = new Set()
-  for (const [key, def] of Object.entries(itemSchema || {})) {
+  const has = (k) => isPlainObject(item) && Object.prototype.hasOwnProperty.call(item, k)
+  for (const [schemaKey, def] of Object.entries(itemSchema || {})) {
+    let key = schemaKey
+    if (!has(schemaKey)) {
+      const alias = (ITEM_KEY_ALIASES[schemaKey] || []).find((a) => has(a) && !seen.has(a))
+      if (alias) key = alias
+    }
     fields.push({ key, label: def?.label || null, type: def?.type === 'textarea' ? 'textarea' : 'text' })
     seen.add(key)
   }
