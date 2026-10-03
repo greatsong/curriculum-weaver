@@ -90,7 +90,7 @@ function PreBlock({ node, children, ...props }) {
 
 const markdownComponents = { pre: PreBlock }
 
-export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, onStageChange, readOnly = false, loading = false }) {
+export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, onStageChange, readOnly = false, loading = false, onOpenReport }) {
   const projectId = projectIdProp || sessionId
   // ── 성능: 슬라이스별 셀렉터 구독 ──
   // 과거엔 useChatStore()로 스토어 전체를 구독해, streamingText가 토큰마다 갱신될 때마다
@@ -803,6 +803,7 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
           busy={streaming}
           onHelp={requestBriefHelp}
           onAdvance={(code) => onStageChange?.(code)}
+          onOpenReport={onOpenReport}
           hasPendingSuggestions={pendingSuggestions.some((s) => s.status === 'pending' && s.procedureCode === stage)}
         />
         <form

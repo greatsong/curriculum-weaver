@@ -946,6 +946,7 @@ export default function ProjectPage() {
               onStageChange={handleProcedureChange}
               readOnly={isReadOnlyProject}
               loading={isReadOnlyLoading}
+              onOpenReport={() => setShowReport(true)}
             />
           </ErrorBoundary>
         </div>
