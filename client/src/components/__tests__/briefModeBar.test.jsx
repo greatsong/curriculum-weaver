@@ -88,3 +88,23 @@ it('다른 작업 공간의 설정이 남아 있으면(옮긴 직후) 약식 막
   await act(async () => useWorkspaceStore.setState({ currentWorkspace: { id: 'B', workflow_config: { briefMode: true } } }))
   expect(host.querySelector('[data-testid="brief-mode-bar"]')).not.toBeNull()
 })
+
+it('마지막 절차(E-2)에서는 다음 절차 대신 [보고서 작성하기]로 보고서 창을 연다', async () => {
+  useWorkspaceStore.setState({ currentWorkspace: { workflow_config: { briefMode: true } } })
+  const onOpenReport = vi.fn()
+  await render({ procedureCode: 'E-2-1', onOpenReport })
+  const bar = host.querySelector('[data-testid="brief-mode-bar"]')
+  expect(bar.textContent).not.toContain('다음 절차')
+  const btn = [...bar.querySelectorAll('button')].find((b) => b.textContent.startsWith('보고서 작성하기'))
+  expect(btn).toBeTruthy()
+  await act(async () => btn.click())
+  expect(onOpenReport).toHaveBeenCalledTimes(1)
+})
+
+it('뒤 절차가 모두 생략되면 그 앞 절차에서도 [보고서 작성하기]가 나온다', async () => {
+  useWorkspaceStore.setState({ currentWorkspace: { workflow_config: { briefMode: true } } })
+  useProcedureStore.setState({ boards: {}, skippedProcedures: [{ procedure_code: 'E-2-1' }] })
+  await render({ procedureCode: 'E-1-1', onOpenReport: vi.fn() })
+  const bar = host.querySelector('[data-testid="brief-mode-bar"]')
+  expect(bar.textContent).toContain('보고서 작성하기')
+})

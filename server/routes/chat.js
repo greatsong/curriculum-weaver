@@ -40,6 +40,19 @@ const SSE_HEARTBEAT_MS = 15_000
  * 정적 인트로 마크다운 생성 (AI 호출 없음)
  * — 모든 사용자에게 동일한 내용이므로 AI 대신 PROCEDURE_GUIDE + PROCEDURE_STEPS로 구성
  */
+/**
+ * 프로젝트에 맞는 절차 안내. 약식 기록 팀이면 짧은 안내, 아니면(설정 조회 실패 포함) 종전 정적 안내.
+ * 화면은 /stage-intro, 예전 경로는 /procedure-intro를 쓰므로 두 경로가 이 함수를 함께 쓴다
+ * (2026-10-03: 약식 안내를 /procedure-intro에만 연결해 실제 화면에는 긴 안내가 나왔다).
+ */
+async function buildIntroForProject(procedure, project) {
+  const workflowConfig = await getWorkspaceWorkflowConfig(project?.workspace_id).catch(() => null)
+  const brief = resolveBriefMode(workflowConfig)
+    ? buildBriefIntro(procedure, PROCEDURE_GUIDE[procedure]?.coreQuestion || '')
+    : null
+  return brief || buildStaticIntro(procedure)
+}
+
 export function buildStaticIntro(procedureCode) {
   const procInfo = PROCEDURES[procedureCode]
   const guide = PROCEDURE_GUIDE[procedureCode]
@@ -453,12 +466,8 @@ chatRouter.post('/procedure-intro', async (req, res) => {
       }
     }
 
-    // 정적 인트로 (AI 호출 없음 — 모든 사용자에게 동일한 내용)
-    // 약식 기록 팀은 핵심 질문과 필수·선택 입력만 담은 짧은 안내를 쓴다. 설정 조회에 실패하면 종전 안내.
-    const introWorkflowConfig = await getWorkspaceWorkflowConfig(project?.workspace_id).catch(() => null)
-    const introText = (resolveBriefMode(introWorkflowConfig)
-      ? buildBriefIntro(procedure, PROCEDURE_GUIDE[procedure]?.coreQuestion || '')
-      : null) || buildStaticIntro(procedure)
+    // 정적 인트로 (AI 호출 없음). 약식 기록 팀은 짧은 안내.
+    const introText = await buildIntroForProject(procedure, project)
     if (introText) {
       res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: introText })}\n\n`)
 
@@ -568,8 +577,8 @@ chatRouter.post('/stage-intro', async (req, res) => {
   res.flushHeaders()
 
   try {
-    // 정적 인트로 (AI 호출 없음)
-    const introText = buildStaticIntro(procedure)
+    // 정적 인트로 (AI 호출 없음). 약식 기록 팀은 짧은 안내.
+    const introText = await buildIntroForProject(procedure, project)
     if (introText) {
       res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: introText })}\n\n`)
 

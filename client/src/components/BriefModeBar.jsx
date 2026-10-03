@@ -63,8 +63,9 @@ const chipButton = {
  * @param {(label: string) => void} props.onHelp - [AI 도움] 버튼 클릭
  * @param {(code: string) => void} props.onAdvance - 다음 절차로 이동
  * @param {boolean} props.hasPendingSuggestions - 아직 처리하지 않은 제안 카드가 있는지
+ * @param {() => void} [props.onOpenReport] - 마지막 절차에서 [보고서 작성하기] 클릭(결과 보고서 창 열기)
  */
-export default function BriefModeBar({ procedureCode, busy, onHelp, onAdvance, hasPendingSuggestions }) {
+export default function BriefModeBar({ procedureCode, busy, onHelp, onAdvance, hasPendingSuggestions, onOpenReport }) {
   const project = useProjectStore((s) => s.currentProject)
   const workspace = useWorkspaceStore((s) => s.currentWorkspace)
   const workflowConfig = workflowConfigForProject(project, workspace)
@@ -125,6 +126,24 @@ export default function BriefModeBar({ procedureCode, busy, onHelp, onAdvance, h
             }}
           >
             다음 절차 · {nextDisplay} →
+          </button>
+        )}
+        {/* 마지막 절차(E-2, 또는 뒤가 모두 생략)에는 다음 절차 대신 보고서로 이어 간다 */}
+        {!next && onOpenReport && (
+          <button
+            type="button"
+            onClick={onOpenReport}
+            disabled={busy}
+            title="지금까지 적은 보드로 결과 보고서를 만듭니다"
+            style={{
+              ...chipButton,
+              border: '1px solid #7C3AED',
+              background: status.allAFilled ? '#7C3AED' : 'var(--color-bg-secondary)',
+              color: status.allAFilled ? '#FFFFFF' : '#6D28D9',
+              cursor: busy ? 'not-allowed' : 'pointer',
+            }}
+          >
+            보고서 작성하기 →
           </button>
         )}
       </div>
