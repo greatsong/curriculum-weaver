@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, Plus, Check, X, BookMarked, Link2, ChevronDown, ChevronUp, FileText, AlertTriangle, Sparkles } from 'lucide-react'
 import { apiGet, apiPost, apiDelete } from '../lib/api'
@@ -6,6 +6,7 @@ import { standardKey, projectStandardKey, codeFromKey } from '../lib/standardKey
 import MathText from './MathText'
 import { useProjectStore } from '../stores/projectStore'
 import { buildRecommendBoardContext, resolveRecommendScope, recommendBasisText } from '../lib/recommendContext'
+import ExplorationStatus from './ExplorationStatus'
 
 // 교과군(subject_group) 기준 색상 매핑
 const SUBJECT_GROUP_COLORS = {
@@ -59,6 +60,12 @@ export default function StandardSearch({ sessionId, onClose }) {
   const [aiBasis, setAiBasis] = useState('')              // AI 추천 근거 안내 문구
   const currentProject = useProjectStore((st) => st.currentProject)
   const [companions, setCompanions] = useState([])         // 융합 궁합 성취기준 (검증된 링크 기반)
+  const [syncStatus, setSyncStatus] = useState('loading')
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const writePending = useRef(false)
+  const readVersion = useRef(0)
+  const readOnly = currentProject?.id === sessionId && (currentProject.my_role === 'viewer' || ['simulation', 'generating', 'failed'].includes(currentProject.status) || currentProject.title?.startsWith('[시뮬레이션]'))
 
   // 에러 메시지 자동 사라짐 (4초)
   useEffect(() => {
@@ -76,8 +83,19 @@ export default function StandardSearch({ sessionId, onClose }) {
   }, [sessionId])
 
   const loadSessionStandards = async () => {
-    const data = await apiGet(`/api/standards/project/${sessionId}`)
-    setSessionStandards(Array.isArray(data) ? data : (data?.standards ?? []))
+    const version = ++readVersion.current
+    setSyncStatus('loading')
+    try {
+      const data = await apiGet(`/api/standards/project/${sessionId}`)
+      const rows = Array.isArray(data) ? data : data?.standards
+      if (!Array.isArray(rows)) throw new Error('성취기준 목록 형식 오류')
+      if (version !== readVersion.current) return
+      setSessionStandards(rows)
+      setSyncStatus('ready')
+      setSaveError('')
+    } catch {
+      if (version === readVersion.current) setSyncStatus('error')
+    }
   }
 
   // 융합 궁합 성취기준 로드 — 프로젝트 성취기준과 검증된 링크로 연결된 상대들.
@@ -178,29 +196,42 @@ export default function StandardSearch({ sessionId, onClose }) {
   const keyOf = projectStandardKey
   const addStandard = async (std) => {
     const key = standardKey(std)
-    if (!key || sessionStandards.some((s) => keyOf(s) === key)) return
+    if (readOnly || writePending.current || !key || sessionStandards.some((s) => keyOf(s) === key)) return
+    writePending.current = true
+    readVersion.current += 1
+    setSaving(true); setSaveError('')
     // 낙관적: 검색 결과 객체로 즉시 칩 추가
     const optimistic = { id: `temp-${key}`, standard_id: std.id, curriculum_standards: std, _optimistic: true }
     setSessionStandards((prev) => [...prev, optimistic])
     try {
       await apiPost(`/api/standards/project/${sessionId}`, { standard_code: key })
-      loadSessionStandards() // 백그라운드 동기화(실제 id 등)
+      await loadSessionStandards() // 서버에서 확인한 목록만 저장 완료로 표시한다.
     } catch (err) {
       setSessionStandards((prev) => prev.filter((s) => keyOf(s) !== key)) // 롤백
       setErrorMsg(err?.message || '성취기준 추가에 실패했습니다.')
+      setSaveError('추가 결과 확인 필요 · 서버 저장 상태를 다시 확인해 주세요.')
+    } finally {
+      writePending.current = false; setSaving(false)
     }
   }
 
   const removeStandard = async (stdOrKey) => {
+    if (readOnly || writePending.current) return
+    writePending.current = true
+    readVersion.current += 1
+    setSaving(true); setSaveError('')
     const key = typeof stdOrKey === 'string' ? stdOrKey : standardKey(stdOrKey)
     const backup = sessionStandards
     setSessionStandards((prev) => prev.filter((s) => keyOf(s) !== key)) // 낙관적 제거
     try {
       await apiDelete(`/api/standards/project/${sessionId}/${encodeURIComponent(key)}`)
-      loadSessionStandards()
+      await loadSessionStandards()
     } catch (err) {
       setSessionStandards(backup) // 롤백
       setErrorMsg(err?.message || '성취기준 제거에 실패했습니다.')
+      setSaveError('제거 결과 확인 필요 · 서버 저장 상태를 다시 확인해 주세요.')
+    } finally {
+      writePending.current = false; setSaving(false)
     }
   }
 
@@ -245,6 +276,13 @@ export default function StandardSearch({ sessionId, onClose }) {
           </h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 min-w-[44px] min-h-[44px] flex items-center justify-center -mr-2"><X size={20} /></button>
         </div>
+
+        <ExplorationStatus target={`${currentProject?.id === sessionId ? currentProject.title : `프로젝트 ${sessionId}`} · 성취기준 탐색`}
+          status={saving ? '변경 저장 중 · 완료 전' : saveError || (syncStatus === 'loading' ? '저장된 성취기준 확인 중' : syncStatus === 'error' ? '저장 상태 확인 실패 · 재확인 필요' : `프로젝트에 저장된 성취기준 ${sessionStandards.filter(s => !s._optimistic).length}개`)}>
+          검색·AI 추천 결과는 검토용입니다. 추가한 성취기준만 이 프로젝트에 저장되며, A-3 분석 보드는 별도로 검토·저장합니다.
+          {readOnly && <div>읽기 전용 · 검색과 비교만 가능하며 성취기준을 추가하거나 제거할 수 없습니다.</div>}
+          {(syncStatus === 'error' || saveError) && !saving && <button type="button" className="ml-2 underline" onClick={loadSessionStandards}>저장 상태 다시 확인</button>}
+        </ExplorationStatus>
 
         {/* 에러 배너 */}
         {errorMsg && (
@@ -355,10 +393,12 @@ export default function StandardSearch({ sessionId, onClose }) {
                       className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${colorClass}`}
                     >
                       {std.code}
+                      {entry._optimistic && <span> · 저장 확인 중</span>}
                       {duplicateCodes.has(std.code) && std.subject && (
                         <span className="font-normal opacity-70">{std.subject}</span>
                       )}
                       <button
+                        disabled={saving || readOnly}
                         onClick={() => removeStandard(standardKey(std))}
                         className="ml-0.5 hover:opacity-70"
                       >
@@ -407,6 +447,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                             )}
                           </div>
                           <button
+                            disabled={saving || readOnly}
                             onClick={() => addStandard(companion)}
                             className="shrink-0 p-2.5 sm:p-1.5 rounded-lg bg-gray-100 text-gray-400 hover:bg-blue-100 hover:text-blue-600 transition min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
                             title="프로젝트에 추가"
@@ -502,6 +543,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                         </div>
                       </div>
                       <button
+                        disabled={saving || readOnly}
                         onClick={(e) => {
                           e.stopPropagation()
                           added ? removeStandard(std) : addStandard(std)
@@ -573,7 +615,7 @@ export default function StandardSearch({ sessionId, onClose }) {
                       <span className="text-gray-500 flex-1 min-w-0 truncate">{link.rationale}</span>
                       <button
                         onClick={() => addStandardByKey(otherKey)}
-                        disabled={otherAdded}
+                        disabled={otherAdded || saving || readOnly}
                         className={`shrink-0 p-1 rounded transition flex items-center justify-center ${
                           otherAdded
                             ? 'text-green-500 cursor-default'

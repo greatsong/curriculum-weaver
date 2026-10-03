@@ -136,7 +136,7 @@ export function ScenarioButton({ onClick, isOpen, className = '' }) {
       onClick={onClick}
       className={`flex items-center gap-1 text-[11px] font-semibold transition ${
         isOpen ? 'text-violet-700' : 'text-violet-500 hover:text-violet-700'} ${className}`}>
-      <Sparkles size={11} /> {isOpen ? '시나리오 열림' : '실생활 문제 시나리오'}
+      <Sparkles size={11} /> {isOpen ? '수업 예시 열림' : '이 연결로 수업 예시 보기'}
     </button>
   )
 }

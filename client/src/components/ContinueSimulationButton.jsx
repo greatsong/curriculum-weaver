@@ -178,7 +178,7 @@ export default function ContinueSimulationButton({ projectId, workspaceId, skipp
   return (
     <button
       onClick={start}
-      title="여기부터 시뮬레이션 — 지금까지의 내용을 복제한 뒤 남은 절차를 AI가 이어서 설계 (원본은 변경되지 않음)"
+      title="현재 설계로 시뮬레이션 — 지금까지의 내용을 복제한 뒤 남은 절차를 AI가 이어서 설계 (원본은 변경되지 않음)"
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -205,7 +205,7 @@ export default function ContinueSimulationButton({ projectId, workspaceId, skipp
         <polygon points="5 3 19 12 5 21 5 3" />
       </svg>
       {/* 프로젝트 헤더의 다른 버튼과 같은 기준 — 확대된 작업 화면에서 줄바꿈되지 않도록 xl부터 글자 표시 */}
-      <span className="hidden xl:inline">여기부터 시뮬레이션</span>
+      <span className="hidden xl:inline">현재 설계로 시뮬레이션</span>
     </button>
   )
 }

@@ -13,10 +13,10 @@ import NeighborLens from './lenses/NeighborLens'
 import SeriesLens from './lenses/SeriesLens'
 
 const LENSES = [
-  { id: 'neighbor', label: '이웃', hint: '이 성취기준과 연결된 것' },
-  { id: 'theme', label: '주제', hint: '이 주제로 어떤 교과가 연결되는지' },
-  { id: 'series', label: '계열', hint: '앞뒤 학습 계열은 무엇인지' },
-  { id: 'pair', label: '과목쌍', hint: '두 교과의 성취기준이 어떻게 붙는지' },
+  { id: 'neighbor', label: '성취기준에서 찾기', hint: '이 성취기준과 연결된 것' },
+  { id: 'theme', label: '주제로 찾기', hint: '이 주제로 어떤 교과가 연결되는지' },
+  { id: 'series', label: '학년 간 연결 보기', hint: '앞뒤 학습 계열은 무엇인지' },
+  { id: 'pair', label: '두 과목으로 찾기', hint: '두 교과의 성취기준이 어떻게 붙는지' },
 ]
 
 // 담기 저장값은 성취기준 key(standardKey — 충돌 코드는 "code|과목"). 예전 저장값(code)은
@@ -201,7 +201,7 @@ export default function DesignMode() {
           <span className="hidden sm:inline text-sm font-bold text-gray-800">커리큘럼 위버</span>
         </a>
         <span className="text-gray-300">|</span>
-        <h1 className="text-sm font-medium text-gray-600">교과 연결</h1>
+        <h1 className="text-sm font-medium text-gray-600 whitespace-nowrap"><span className="hidden sm:inline">성취기준 </span>연결 찾기</h1>
         <div className="ml-auto flex items-center gap-3">
           <button onClick={() => setShowCoach(true)} title="사용법 보기"
             className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-blue-600 transition">
@@ -222,10 +222,10 @@ export default function DesignMode() {
             </button>
           )}
           <div className="flex bg-gray-100 rounded-xl p-0.5">
-            <span className="px-4 py-1.5 rounded-[10px] text-xs font-bold bg-blue-600 text-white shadow-sm">🧭 설계</span>
+            <span className="px-2 sm:px-4 py-1.5 rounded-[10px] text-xs font-bold bg-blue-600 text-white shadow-sm whitespace-nowrap">🧭 연결 찾기</span>
             <button onClick={toExplore}
-              className="px-4 py-1.5 rounded-[10px] text-xs font-bold text-gray-500 hover:text-gray-700 transition">
-              ✨ 탐험 3D
+              className="px-2 sm:px-4 py-1.5 rounded-[10px] text-xs font-bold text-gray-500 hover:text-gray-700 transition whitespace-nowrap">
+              전체 지도 · 3D
             </button>
           </div>
         </div>
