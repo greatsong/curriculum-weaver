@@ -12,8 +12,17 @@ import { normalizeListItem, listItemFields, emptyListItem, isPlainObject } from 
  * @param {() => void} props.onCancel
  * @param {string[]|null} [props.fieldNames] - 이 필드들만 보여 준다(나머지는 draft에 그대로 보존)
  * @param {string} [props.saveLabel]
+ * 아래는 약식 기록(연수 모드) 양식용 선택 속성 — 넘기지 않으면 종전 동작과 같다.
+ * @param {string[]|null} [props.requiredNames] - 필수 표시(*)를 붙일 칸. 없으면 스키마의 required
+ * @param {string[]} [props.optionalNames] - "선택" 표시를 붙일 칸
+ * @param {boolean} [props.autoSyncWhenPristine] - 고치지 않은 상태에서 보드가 바뀌면 경고 대신 새 내용으로 바꾼다
+ * @param {React.ReactNode} [props.footerExtra] - 저장 버튼 줄에 덧붙일 요소
+ * @param {boolean} [props.hideCancel] - 취소 버튼 숨김
  */
-export default function BoardEditor({ schema, content, onSave, onCancel, fieldNames = null, saveLabel = '저장' }) {
+export default function BoardEditor({
+  schema, content, onSave, onCancel, fieldNames = null, saveLabel = '저장',
+  requiredNames = null, optionalNames = [], autoSyncWhenPristine = false, footerExtra = null, hideCancel = false,
+}) {
   const [draft, setDraft] = useState(JSON.parse(JSON.stringify(content || schema.empty)))
   const visibleFields = fieldNames
     ? schema.fields.filter((f) => fieldNames.includes(f.name))
@@ -23,11 +32,19 @@ export default function BoardEditor({ schema, content, onSave, onCancel, fieldNa
   // 비차단 경고만 띄운다. 저장 동작은 그대로 두되 교사가 모르고 덮어쓰는 일을 막는다.
   const initialSnapshotRef = useRef(JSON.stringify(content || schema.empty))
   const [externalChanged, setExternalChanged] = useState(false)
+  const draftRef = useRef(draft)
+  draftRef.current = draft
   useEffect(() => {
-    if (JSON.stringify(content || schema.empty) !== initialSnapshotRef.current) {
-      setExternalChanged(true)
+    const incoming = JSON.stringify(content || schema.empty)
+    if (incoming === initialSnapshotRef.current) return
+    // 약식 양식: 아직 고치지 않았으면(AI 제안 수락 등으로 보드가 바뀐 경우) 새 내용을 그대로 보여 준다
+    if (autoSyncWhenPristine && JSON.stringify(draftRef.current) === initialSnapshotRef.current) {
+      setDraft(JSON.parse(incoming))
+      initialSnapshotRef.current = incoming
+      return
     }
-  }, [content, schema.empty])
+    setExternalChanged(true)
+  }, [content, schema.empty, autoSyncWhenPristine])
 
   const updateField = (name, value) => setDraft((prev) => ({ ...prev, [name]: value }))
 
@@ -80,7 +97,10 @@ export default function BoardEditor({ schema, content, onSave, onCancel, fieldNa
         <div key={field.name}>
           <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
             {field.label}
-            {field.required && <span style={{ color: '#EF4444', marginLeft: 2 }}>*</span>}
+            {(requiredNames ? requiredNames.includes(field.name) : field.required) && <span style={{ color: '#EF4444', marginLeft: 2 }}>*</span>}
+            {optionalNames.includes(field.name) && (
+              <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 500, color: 'var(--color-text-tertiary)', textTransform: 'none', letterSpacing: 0 }}>선택</span>
+            )}
           </label>
           {field.description && (
             <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', margin: '0 0 6px' }}>{field.description}</p>
@@ -214,12 +234,13 @@ export default function BoardEditor({ schema, content, onSave, onCancel, fieldNa
         </div>
       ))}
 
-      <div style={{ display: 'flex', gap: 8, paddingTop: 12, borderTop: '1px solid var(--color-border-subtle)' }}>
+      <div style={{ display: 'flex', gap: 8, paddingTop: 12, borderTop: '1px solid var(--color-border-subtle)', alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={() => onSave(draft)} className="btn btn-primary" style={{ fontSize: 13 }}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 8 6.5 11.5 13 4.5"/></svg>
           {saveLabel}
         </button>
-        <button onClick={onCancel} className="btn btn-ghost" style={{ fontSize: 13 }}>취소</button>
+        {!hideCancel && <button onClick={onCancel} className="btn btn-ghost" style={{ fontSize: 13 }}>취소</button>}
+        {footerExtra}
       </div>
     </div>
   )

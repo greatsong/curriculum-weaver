@@ -17,8 +17,11 @@ import {
   getBriefFieldClasses,
   getBriefStatus,
   getBriefHelpActions,
-  buildBriefTemplate,
   buildBriefIntro,
+  seedBriefForm,
+  dropEmptyRows,
+  buildBoardSavedText,
+  BRIEF_SAVED_MARK,
   buildHelpRequestText,
   stripEmptyBoardFields,
   BRIEF_ASK_ONCE,
@@ -109,7 +112,8 @@ describe('AI 지시문 주입 범위', () => {
     const normal = buildSystemPrompt({ ...baseContext })
     const brief = buildSystemPrompt({ ...baseContext, briefMode: true })
     expect(brief).toContain('[진행 방식 — 약식 기록(연수)')
-    expect(brief).toContain('필수: 역할 배분(roles)')
+    expect(brief).toContain('필수: 역할 배분')
+    expect(brief).toContain('JSON 키: 역할 배분=roles')
     expect(brief).toContain('역할 예시:')
     // 스텝별 프로토콜(질문으로 이끌기)은 약식에서 넣지 않는다
     expect(normal).toContain('[대화 프로토콜')
@@ -126,12 +130,12 @@ describe('AI 지시문 주입 범위', () => {
 
   it('보드 상태를 반영해 채워진 필수 칸과 빈 칸을 알려 준다', () => {
     const empty = buildBriefModeBlock({ procedure: 'T-2-1', boards: [] })
-    expect(empty).toContain('비어 있는 필수 역할 배분(roles)')
+    expect(empty).toContain('비어 있는 필수 역할 배분')
     const filled = buildBriefModeBlock({
       procedure: 'T-2-1',
       boards: [{ procedure_code: 'T-2-1', content: { roles: [{ name: '김', subject: '영어' }] } }],
     })
-    expect(filled).toContain('채워진 필수 역할 배분(roles)')
+    expect(filled).toContain('채워진 필수 역할 배분')
     expect(filled).toContain('비어 있는 필수 없음')
   })
 
@@ -166,12 +170,21 @@ describe('약식 절차 안내·입력 틀', () => {
     }
   })
 
-  it('입력 틀은 필수·선택 칸 이름을 담는다', () => {
-    const template = buildBriefTemplate('A-2-2')
-    expect(template).toContain('[핵심 아이디어] 필수')
-    expect(template).toContain('[교과별 수업목표] 필수 · 교과 / 학습목표')
-    expect(template).toContain('[탐구 질문] 선택')
-    expect(buildBriefTemplate('T-1-1')).not.toContain('AI 정교화')
+  it('양식은 비어 있는 필수·선택 목록·표에 빈 행 하나를 펼치고, 저장 전 빈 행은 뺀다', () => {
+    const seeded = seedBriefForm({}, 'T-2-1')
+    expect(Array.isArray(seeded.roles)).toBe(true)
+    expect(seeded.roles).toHaveLength(1)
+    const kept = seedBriefForm({ roles: [{ memberName: '김' }] }, 'T-2-1')
+    expect(kept.roles).toEqual([{ memberName: '김' }])
+    const schema = BOARD_SCHEMAS[BOARD_TYPES['T-2-1']]
+    expect(dropEmptyRows({ roles: [{ memberName: '' }, { memberName: '김' }], coverageCheck: '' }, schema))
+      .toEqual({ roles: [{ memberName: '김' }], coverageCheck: '' })
+  })
+
+  it('양식 저장 알림 형식', () => {
+    expect(buildBoardSavedText().startsWith(BRIEF_SAVED_MARK)).toBe(true)
+    const block = buildBriefModeBlock({ procedure: 'T-2-1', boards: [] })
+    expect(block).toContain(`"${BRIEF_SAVED_MARK}"로 시작하는 메시지`)
   })
 
   it('도움 요청 머리말 형식', () => {

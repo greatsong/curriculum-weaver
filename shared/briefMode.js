@@ -152,7 +152,7 @@ export function getBriefStatus(procedureCode, content) {
   return { a, b, allAFilled: a.every((x) => x.filled) }
 }
 
-/** 칸 하나의 입력 안내 — 표·목록은 열 이름을 함께 보여 준다. */
+/** 칸 하나의 입력 안내 — 표·목록은 열 이름을 함께 보여 준다(절차 안내에서 사용). */
 function fieldHint(field) {
   if (Array.isArray(field.columns) && field.columns.length) {
     return field.columns.map((col) => col.label).join(' / ')
@@ -166,27 +166,6 @@ function fieldHint(field) {
   return ''
 }
 
-function isListLike(field) {
-  return field.type === 'list' || field.type === 'table' || field.type === 'tags'
-}
-
-/**
- * 입력창에 넣을 틀. 필수 칸과 한 번 묻기 칸만 넣고, 표·목록은 한 줄에 하나씩 적게 한다.
- * @returns {string} 절차가 스키마에 없으면 빈 문자열
- */
-export function buildBriefTemplate(procedureCode) {
-  const classes = getBriefFieldClasses(procedureCode)
-  if (!classes) return ''
-  const lines = []
-  const push = (field, tag) => {
-    const hint = fieldHint(field)
-    lines.push(`[${field.label}] ${tag}${hint ? ` · ${hint}` : ''}`)
-    lines.push(isListLike(field) ? '- ' : '')
-  }
-  for (const field of classes.a) push(field, '필수')
-  for (const field of classes.b) push(field, '선택')
-  return lines.join('\n')
-}
 
 /** 도움 버튼 목록 — 스텝 설명을 함께 돌려준다(서버 지시문에서 사용). */
 export function getBriefHelpActions(procedureCode) {
@@ -235,7 +214,7 @@ export function buildBriefIntro(procedureCode, coreQuestion = '') {
   const ask = BRIEF_ASK_ONCE[procedureCode]
   lines.push(`- **선택 입력**: ${classes.b.length ? `${describe(classes.b)}. ${ask?.why || ''}`.trim() : '없음'}`)
   lines.push('')
-  lines.push('오프라인 활동 결과를 입력창 위의 [입력 틀]로 옮겨 적어 보내 주세요. AI가 적은 문장 그대로 보드에 옮깁니다.')
+  lines.push('오프라인 활동 결과를 보드 양식의 빈 칸에 적고 [저장]을 누르세요. 적은 문장이 그대로 보드에 저장됩니다. 표가 길면 채팅에 붙여 넣어도 AI가 칸에 나눠 드립니다.')
   const help = getBriefHelpActions(procedureCode)
   if (help.length) {
     lines.push(`도움이 필요하면 [AI 도움] 버튼(${help.map((h) => h.label).join(', ')})을 누르세요.`)
@@ -258,4 +237,53 @@ export function stripEmptyBoardFields(value) {
     if (isBriefValueFilled(v)) out[key] = v
   }
   return out
+}
+
+/** 보드 양식 저장 알림의 머리말. 서버 지시문이 이 형식을 알아보고 짧은 조언만 한다. */
+export const BRIEF_SAVED_MARK = '[보드 저장]'
+
+/** 양식 저장 뒤 AI에게 짧은 조언을 청하는 메시지 */
+export function buildBoardSavedText() {
+  return `${BRIEF_SAVED_MARK} 양식에 적은 내용을 보드에 저장했어요.`
+}
+
+/**
+ * 양식을 저장하기 전에 목록·표 칸의 완전히 빈 항목(행)을 뺀다. 빈 행을 하나 펼쳐 둔 채
+ * 저장해도 보드에 빈 줄이 남지 않게 한다. 글자 칸은 손대지 않는다.
+ * @param {object} content
+ * @param {object} schema - BOARD_SCHEMAS 항목
+ */
+export function dropEmptyRows(content, schema) {
+  if (!content || typeof content !== 'object') return content
+  const out = { ...content }
+  for (const field of schema?.fields || []) {
+    const v = out[field.name]
+    if ((field.type === 'list' || field.type === 'table' || field.type === 'tags') && Array.isArray(v)) {
+      out[field.name] = v.filter(isBriefValueFilled)
+    }
+  }
+  return out
+}
+
+/**
+ * 양식을 처음 열 때 비어 있는 필수 목록·표 칸에 빈 행 하나를 펼쳐 둔다(설문지처럼 바로 적을 수 있게).
+ * @param {object} content - 현재 보드 내용
+ * @param {string} procedureCode
+ */
+export function seedBriefForm(content, procedureCode) {
+  const classes = getBriefFieldClasses(procedureCode)
+  const base = { ...(content || {}) }
+  if (!classes) return base
+  for (const field of [...classes.a, ...classes.b]) {
+    if (isBriefValueFilled(readField(base, field))) continue
+    if (field.type === 'table' && Array.isArray(field.columns)) {
+      base[field.name] = [Object.fromEntries(field.columns.map((c) => [c.name, '']))]
+    } else if (field.type === 'list') {
+      const item = field.itemSchema && Object.keys(field.itemSchema).length
+        ? Object.fromEntries(Object.keys(field.itemSchema).map((k) => [k, '']))
+        : ''
+      base[field.name] = [item]
+    }
+  }
+  return base
 }

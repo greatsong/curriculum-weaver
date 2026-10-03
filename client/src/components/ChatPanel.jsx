@@ -28,7 +28,7 @@ import {
 import { getDefaultIntent } from '../lib/defaultIntentForStep'
 import { advanceButtonLabel } from '../lib/advanceLabel'
 import BriefModeBar from './BriefModeBar'
-import { buildBriefTemplate, buildHelpRequestText } from 'curriculum-weaver-shared/briefMode.js'
+import { buildHelpRequestText } from 'curriculum-weaver-shared/briefMode.js'
 import { validateMaterialFile } from '../lib/materialErrors'
 import { fixEmphasisFlanking } from '../lib/markdownFix'
 import SuggestionEditForm, { canEditSuggestion } from './SuggestionEditForm'
@@ -230,22 +230,6 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
   }
 
   // ── 약식 기록(연수 모드) 막대 동작 ──
-  // 입력 틀: 비어 있으면 틀을 넣고, 적던 글이 있으면 그 아래에 붙인다. 커서는 첫 칸 입력 줄로.
-  const insertBriefTemplate = () => {
-    const template = buildBriefTemplate(stage)
-    if (!template) return
-    const base = input.trim() ? `${input.replace(/\s+$/, '')}\n\n` : ''
-    const next = `${base}${template}`
-    setInput(next)
-    requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (!el) return
-      el.focus()
-      const firstLineEnd = next.indexOf('\n', base.length)
-      const caret = firstLineEnd >= 0 ? firstLineEnd + 1 + (next.slice(firstLineEnd + 1).startsWith('- ') ? 2 : 0) : next.length
-      el.setSelectionRange(caret, caret)
-    })
-  }
   // AI 도움: 적던 글이 있으면 함께 보내 그 내용을 바탕으로 돕게 한다. 거절되면 적던 글만 되살린다.
   const requestBriefHelp = (label) => {
     const typed = input
@@ -817,7 +801,6 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
         <BriefModeBar
           procedureCode={stage}
           busy={streaming}
-          onInsertTemplate={insertBriefTemplate}
           onHelp={requestBriefHelp}
           onAdvance={(code) => onStageChange?.(code)}
           hasPendingSuggestions={pendingSuggestions.some((s) => s.status === 'pending' && s.procedureCode === stage)}

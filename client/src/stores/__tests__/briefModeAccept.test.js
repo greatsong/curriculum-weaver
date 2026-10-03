@@ -57,7 +57,8 @@ describe('약식 기록 팀의 제안 수락', () => {
     setTeam(true)
     seed()
     await useChatStore.getState().acceptSuggestion('s1', 'p1')
-    await new Promise((r) => setTimeout(r, 30))
+    // 기존 팀 경로는 이 시간 안에 AI를 부른다(아래 테스트). 약식 팀은 끝까지 부르지 않아야 한다.
+    await new Promise((r) => setTimeout(r, 300))
     expect(vi.mocked(apiStreamPost).mock.calls.some(([url]) => url === '/api/chat/message')).toBe(false)
   })
 
@@ -76,9 +77,11 @@ describe('기존 팀은 종전 동작', () => {
     setTeam(false)
     seed()
     await useChatStore.getState().acceptSuggestion('s1', 'p1')
-    await new Promise((r) => setTimeout(r, 30))
+    // 전체 테스트를 함께 돌리면 느려지므로 고정 대기 대신 호출이 올 때까지 기다린다
+    await vi.waitFor(() => {
+      expect(vi.mocked(apiStreamPost).mock.calls.some(([url]) => url === '/api/chat/message')).toBe(true)
+    }, { timeout: 2000 })
     const aiCall = vi.mocked(apiStreamPost).mock.calls.find(([url]) => url === '/api/chat/message')
-    expect(aiCall).toBeTruthy()
     expect(aiCall[1].content).toContain('보드에 반영했어요')
     expect(useProcedureStore.getState().boards.team_vision.content.commonVisionCandidates).toEqual([])
   })

@@ -16,12 +16,17 @@ import ReadableValue, { labelize } from './ReadableValue'
 import BoardEditor from './BoardEditor'
 import SuggestionEditForm, { canEditSuggestion } from './SuggestionEditForm'
 import { normalizeListItem } from '../lib/boardContent'
+import BriefBoardForm from './BriefBoardForm'
+import { useWorkspaceStore } from '../stores/workspaceStore'
+import { resolveBriefMode } from 'curriculum-weaver-shared/briefMode.js'
 
 export default function ProcedureCanvas({ projectId, procedureCode, readOnly = false, loading = false, memberRole = null }) {
   const { boards, currentStep, setStep, updateBoard, skippedProcedures, skipProcedure, unskipProcedure } = useProcedureStore()
   const { pendingSuggestions, coherenceCheckResult, acceptSuggestion, editAcceptSuggestion, rejectSuggestion, sendMessage, examinerLens, setExaminerLens, requestProcedureIntro } = useChatStore()
   const [editing, setEditing] = useState(false)
   const [skipBusy, setSkipBusy] = useState(false)
+  const [showStepsInBrief, setShowStepsInBrief] = useState(false)
+  const briefTeam = useWorkspaceStore((s) => resolveBriefMode(s.currentWorkspace?.workflow_config))
 
   // 절차를 전환하면 편집 모드를 닫는다 — 이전 절차의 편집 초안(BoardEditor 내부 상태)이
   // 새 절차의 보드에 그대로 저장되는 교차 유출을 차단한다.
@@ -49,6 +54,8 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
   // 절차 스킵 상태 — 스킵되면 열람만 가능 (편집·저장·AI 제안 비활성)
   const skipEntry = (skippedProcedures || []).find((s) => s.procedure_code === procedureCode)
   const isSkipped = !!skipEntry
+  // 약식 기록(연수 모드): 보드 자리에 빈 칸 양식을 연다. 시연·읽기 전용·생략 절차는 종전 화면.
+  const briefForm = briefTeam && !isDemo && !readOnly && !isSkipped && !!schema && !!PROCEDURES[procedureCode]
   const canManageSkip = ['owner', 'host'].includes(memberRole) && !readOnly
   const showSkipButton = canManageSkip && (isSkipped || isProcedureSkippable(procedureCode))
 
@@ -185,8 +192,28 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
         </div>
       )}
 
+      {/* 약식 기록 보드 양식 — 스텝 타임라인보다 먼저 */}
+      {briefForm && (
+        <BriefBoardForm
+          projectId={projectId}
+          procedureCode={procedureCode}
+          schema={schema}
+          board={board}
+          updateBoard={updateBoard}
+        />
+      )}
+      {briefForm && steps.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowStepsInBrief((v) => !v)}
+          style={{ alignSelf: 'flex-start', fontSize: 12, color: 'var(--color-text-secondary)', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}
+        >
+          {showStepsInBrief ? '정식 진행 스텝 접기 ▴' : `정식 진행 스텝 보기 (${steps.length}개) ▾`}
+        </button>
+      )}
+
       {/* 스텝 타임라인 */}
-      {steps.length > 0 && (
+      {steps.length > 0 && (!briefForm || showStepsInBrief) && (
         <div className="card" style={{ padding: 24 }}>
           <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)', margin: '0 0 14px' }}>
             진행 스텝
@@ -357,8 +384,8 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
         </>
       )}
 
-      {/* 보드 카드 */}
-      {boardType && schema && (
+      {/* 보드 카드 — 약식 기록은 위 양식이 보드를 보여 주므로 생략 */}
+      {boardType && schema && !briefForm && (
         <BoardCard
           boardType={boardType}
           schema={schema}

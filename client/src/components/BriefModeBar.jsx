@@ -1,8 +1,8 @@
 /**
  * 약식 기록(연수 모드) 막대 — 채팅 입력창 바로 위.
  *
- * 연수에서는 활동을 오프라인으로 마치고 결과만 옮겨 적는다. 이 막대는 AI를 부르지 않고 보드 내용만으로
- * 필수(A)·선택(B) 칸의 상태를 보여 주고, 입력 틀·AI 도움 요청·다음 절차 이동을 한곳에 모은다.
+ * 연수에서는 활동을 오프라인으로 마치고 결과만 보드 양식(BriefBoardForm)에 적는다. 이 막대는 AI를 부르지 않고
+ * 보드 내용만으로 필수(A)·선택(B) 칸의 상태를 보여 주고, AI 도움 요청·다음 절차 이동을 한곳에 모은다.
  * 약식 기록을 켠 팀에만 보이며, 분류는 shared/briefMode.js 단일 소스를 따른다.
  */
 import { useMemo } from 'react'
@@ -59,12 +59,11 @@ const chipButton = {
  * @param {object} props
  * @param {string} props.procedureCode - 현재 절차(내부 코드)
  * @param {boolean} props.busy - AI 응답 중이면 true
- * @param {() => void} props.onInsertTemplate - [입력 틀] 클릭
  * @param {(label: string) => void} props.onHelp - [AI 도움] 버튼 클릭
  * @param {(code: string) => void} props.onAdvance - 다음 절차로 이동
  * @param {boolean} props.hasPendingSuggestions - 아직 처리하지 않은 제안 카드가 있는지
  */
-export default function BriefModeBar({ procedureCode, busy, onInsertTemplate, onHelp, onAdvance, hasPendingSuggestions }) {
+export default function BriefModeBar({ procedureCode, busy, onHelp, onAdvance, hasPendingSuggestions }) {
   const workflowConfig = useWorkspaceStore((s) => s.currentWorkspace?.workflow_config)
   const isDemo = useProjectStore((s) => s.currentProject?.learner_context?.demo === true)
   const boards = useProcedureStore((s) => s.boards)
@@ -108,9 +107,6 @@ export default function BriefModeBar({ procedureCode, busy, onInsertTemplate, on
         {status.b.length > 0 && <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginLeft: 4 }}>선택</span>}
         {status.b.map((item) => <StatusChip key={item.name} item={item} optional />)}
         <span style={{ flex: 1 }} />
-        <button type="button" onClick={onInsertTemplate} disabled={busy} style={{ ...chipButton, cursor: busy ? 'not-allowed' : 'pointer' }}>
-          입력 틀
-        </button>
         {next && (
           <button
             type="button"
