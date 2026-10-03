@@ -50,6 +50,9 @@ function _stopMaterialPolling(materialId) {
 }
 
 
+// 보드 불러오기 요청 번호 — 늦게 도착한 이전 요청의 응답이 지금 절차의 보드를 덮지 않게 한다.
+let boardsRequestSeq = 0
+
 export const useProcedureStore = create((set, get) => ({
   currentProcedure: 'T-1-1',
   currentStep: 1,
@@ -77,6 +80,8 @@ export const useProcedureStore = create((set, get) => ({
   // 어느 절차의 보드를 서버에서 다 불러왔는지('*'는 전체). 약식 기록 양식이 불러오기 전에 빈 양식을
   // 저장해 기존 보드를 덮어쓰지 않도록, 이 값이 현재 절차와 같을 때만 양식을 연다.
   boardsLoadedFor: null,
+  // 마지막 보드 불러오기가 실패한 절차 코드(성공하면 null). 약식 양식이 무한 대기 대신 [다시 시도]를 보이게 한다.
+  boardsLoadError: null,
 
   // ── 절차/스텝 네비게이션 ────
 
@@ -177,9 +182,11 @@ export const useProcedureStore = create((set, get) => ({
    * 모든 절차의 보드를 한번에 로드 (시뮬레이션 프로젝트용)
    */
   loadAllBoards: async (projectId) => {
+    const seq = ++boardsRequestSeq
     set({ loading: true })
     try {
       const data = await apiGet(`/api/projects/${projectId}/designs`)
+      if (seq !== boardsRequestSeq) return true
       const designs = Array.isArray(data) ? data : (data?.designs ?? [])
       const boards = {}
       for (const design of designs) {
@@ -188,15 +195,21 @@ export const useProcedureStore = create((set, get) => ({
           boards[boardType] = { ...design, board_type: boardType, content: design.content }
         }
       }
-      set({ boards, loading: false, boardsLoadedFor: '*' })
+      set({ boards, loading: false, boardsLoadedFor: '*', boardsLoadError: null })
       return true
     } catch {
+      if (seq !== boardsRequestSeq) return false
       set((state) => ({ boards: state.boards, loading: false }))
       return false
     }
   },
 
   loadBoards: async (projectId, procedureCode) => {
+    // 가장 나중에 보낸 요청의 응답만 반영한다. 프로젝트를 열면 기본 절차(T-1)와 팀 진행 위치(예: E-2)의
+    // 요청이 겹치는데, 먼저 보낸 T-1 응답이 늦게 오면 E-2 화면에 T-1 보드가 들어가고 약식 양식은
+    // '불러오는 중'에 멈췄다(탭에 다녀와야 풀림, 2026-10-03 제보).
+    const seq = ++boardsRequestSeq
+    const isLatest = () => seq === boardsRequestSeq
     set({ loading: true })
     const code = procedureCode || get().currentProcedure
     try {
@@ -207,14 +220,16 @@ export const useProcedureStore = create((set, get) => ({
       } catch {
         // 레거시 폴백
         const data = await apiGet(`/api/boards/${projectId}/${code}`)
+        if (!isLatest()) return true
         const boardList = Array.isArray(data) ? data : (data?.boards ?? [])
         const boards = {}
         for (const board of boardList) {
           boards[board.board_type || board.procedure_code] = board
         }
-        set({ boards, loading: false, boardsLoadedFor: code })
+        set({ boards, loading: false, boardsLoadedFor: code, boardsLoadError: null })
         return true
       }
+      if (!isLatest()) return true
       // 새 API: 단일 design 객체 → boards에 BOARD_TYPES 키로 저장 (ProcedureCanvas 호환)
       const boards = {}
       const boardType = BOARD_TYPES[code] || code
@@ -223,13 +238,14 @@ export const useProcedureStore = create((set, get) => ({
       }
       // 같은 내용이면 기존 boards를 유지(탭 복귀 재로딩이 보드를 다시 그리지 않게)
       if (sameJson(boards, get().boards)) {
-        set({ loading: false, boardsLoadedFor: code })
+        set({ loading: false, boardsLoadedFor: code, boardsLoadError: null })
         return true
       }
-      set({ boards, loading: false, boardsLoadedFor: code })
+      set({ boards, loading: false, boardsLoadedFor: code, boardsLoadError: null })
       return true
     } catch {
-      set((state) => ({ boards: state.boards, loading: false }))
+      if (!isLatest()) return false
+      set((state) => ({ boards: state.boards, loading: false, boardsLoadError: code }))
       return false
     }
   },
