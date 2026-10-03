@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, Plus, Check, X, BookMarked, Link2, ChevronDown, ChevronUp, FileText, AlertTriangle, Sparkles } from 'lucide-react'
 import { apiGet, apiPost, apiDelete } from '../lib/api'
 import { standardKey, projectStandardKey, codeFromKey } from '../lib/standardKey'
+import { courseLabel, findSameTextAdded } from '../lib/standardCourse'
 import MathText from './MathText'
 import { useProjectStore } from '../stores/projectStore'
 import { buildRecommendBoardContext, resolveRecommendScope, recommendBasisText } from '../lib/recommendContext'
@@ -55,6 +56,43 @@ export default function StandardSearch({ sessionId, onClose }) {
   const [links, setLinks] = useState([])
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  // 같은 문장의 다른 과목 성취기준을 담았을 때 안내(레이아웃을 밀지 않게 창 아래에 띄운다)
+  const [notice, setNotice] = useState('')
+  useEffect(() => {
+    if (!notice) return
+    const t = setTimeout(() => setNotice(''), 7000)
+    return () => clearTimeout(t)
+  }, [notice])
+  // 담거나 뺀 뒤 위쪽 내용(추천 칸 등)이 바뀌어도, 방금 누른 카드가 화면에서 같은 위치에 남도록
+  // 스크롤을 맞춘다. 예전에는 담는 순간 결과가 78px 밀려 연속 클릭이 다른 카드에 들어갔다(2026-10-03 제보).
+  const scrollRef = useRef(null)
+  const anchorRef = useRef(null) // { keys: [누른 카드 키, 다음 카드 키], top, until }
+  const findStdEl = (box, key) => {
+    if (!box || !key) return null
+    const esc = typeof window !== 'undefined' && window.CSS?.escape ? window.CSS.escape(key) : String(key).replace(/["\\]/g, '\\$&')
+    return box.querySelector(`[data-std-key="${esc}"]`)
+  }
+  const rememberAnchor = (key) => {
+    const box = scrollRef.current
+    const el = findStdEl(box, key)
+    if (!box || !el) return
+    const all = [...box.querySelectorAll('[data-std-key]')]
+    const next = all[all.indexOf(el) + 1]?.getAttribute('data-std-key') || null
+    anchorRef.current = { keys: [key, next].filter(Boolean), tops: [el.getBoundingClientRect().top, next ? findStdEl(box, next)?.getBoundingClientRect().top : null], until: Date.now() + 3000 }
+  }
+  useLayoutEffect(() => {
+    const a = anchorRef.current
+    const box = scrollRef.current
+    if (!a || !box) return
+    if (Date.now() > a.until) { anchorRef.current = null; return }
+    for (let i = 0; i < a.keys.length; i++) {
+      const el = findStdEl(box, a.keys[i])
+      if (!el || a.tops[i] == null) continue
+      const delta = el.getBoundingClientRect().top - a.tops[i]
+      if (Math.abs(delta) >= 1) box.scrollTop += delta
+      break
+    }
+  })
   const [searchMode, setSearchMode] = useState('keyword') // 'keyword' | 'semantic'
   const [aiActive, setAiActive] = useState(false)          // AI 융합 추천 결과 표시 중
   const [aiLoading, setAiLoading] = useState(false)
@@ -198,6 +236,8 @@ export default function StandardSearch({ sessionId, onClose }) {
   const addStandard = async (std) => {
     const key = standardKey(std)
     if (readOnly || writePending.current || !key || sessionStandards.some((s) => keyOf(s) === key)) return
+    rememberAnchor(key)
+    const sameText = findSameTextAdded(std, sessionStandards, keyOf, key)
     writePending.current = true
     readVersion.current += 1
     setSaving(true); setSaveError('')
@@ -207,6 +247,9 @@ export default function StandardSearch({ sessionId, onClose }) {
     try {
       await apiPost(`/api/standards/project/${sessionId}`, { standard_code: key })
       await loadSessionStandards() // 서버에서 확인한 목록만 저장 완료로 표시한다.
+      if (sameText) {
+        setNotice(`문장이 같은 성취기준을 이미 담았습니다: ${sameText.code} ${courseLabel(sameText)}. 한 과목만 쓰려면 둘 중 하나를 뺍니다.`)
+      }
     } catch (err) {
       setSessionStandards((prev) => prev.filter((s) => keyOf(s) !== key)) // 롤백
       setErrorMsg(err?.message || '성취기준 추가에 실패했습니다.')
@@ -222,6 +265,7 @@ export default function StandardSearch({ sessionId, onClose }) {
     readVersion.current += 1
     setSaving(true); setSaveError('')
     const key = typeof stdOrKey === 'string' ? stdOrKey : standardKey(stdOrKey)
+    rememberAnchor(key)
     const backup = sessionStandards
     setSessionStandards((prev) => prev.filter((s) => keyOf(s) !== key)) // 낙관적 제거
     try {
@@ -268,7 +312,7 @@ export default function StandardSearch({ sessionId, onClose }) {
   // 포탈해서 zoom 영향을 받지 않는 좌표계에서 렌더링한다.
   return createPortal(
     <div className="fixed inset-0 bg-black/40 sm:flex sm:items-center sm:justify-center z-50" onClick={onClose}>
-      <div className="bg-white h-full sm:h-auto sm:rounded-xl sm:shadow-2xl w-full sm:max-w-3xl sm:max-h-[90vh] sm:mx-4 flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white h-full sm:h-auto sm:rounded-xl sm:shadow-2xl w-full sm:max-w-3xl sm:max-h-[90vh] sm:mx-4 flex flex-col relative" onClick={(e) => e.stopPropagation()}>
         {/* 헤더 */}
         <div className="flex items-center justify-between px-3 sm:px-5 py-3 sm:py-4 border-b border-gray-200">
           <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -381,45 +425,57 @@ export default function StandardSearch({ sessionId, onClose }) {
           </div>
         </div>
 
-        {/* 결과 */}
-        <div className="flex-1 overflow-auto p-3 sm:p-5">
-          {/* 프로젝트에 추가된 성취기준 */}
-          {sessionStandards.length > 0 && (
-            <div className="mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">이 프로젝트에 연결된 성취기준 ({sessionStandards.length})</h3>
-              <div className="flex flex-wrap gap-2">
-                {sessionStandards.map((entry) => {
-                  const std = entry.curriculum_standards
-                  if (!std) return null
-                  const colorClass = getSubjectColor(std)
-                  return (
-                    <span
-                      key={entry.id}
-                      title={[std.subject, std.content].filter(Boolean).join(' · ')}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${colorClass}`}
-                    >
-                      {std.code}
-                      {entry._optimistic && <span> · 저장 확인 중</span>}
-                      {duplicateCodes.has(std.code) && std.subject && (
-                        <span className="font-normal opacity-70">{std.subject}</span>
-                      )}
-                      <button
-                        disabled={saving || readOnly}
-                        onClick={() => removeStandard(standardKey(std))}
-                        className="ml-0.5 hover:opacity-70"
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+        {/* 담은 성취기준 — 스크롤 영역 밖의 고정 높이 줄. 담거나 빼도 아래 검색 결과가 움직이지 않는다 */}
+        <div className="px-3 sm:px-5 py-2 border-b border-gray-100 bg-gray-50/60 h-[52px] shrink-0 flex items-center gap-2">
+          <span className="shrink-0 text-xs font-semibold text-gray-600">담은 성취기준 {sessionStandards.length}</span>
+          <div className="flex-1 min-w-0 overflow-x-auto flex items-center gap-2 whitespace-nowrap">
+            {sessionStandards.length === 0 ? (
+              <span className="text-xs text-gray-400">아직 없습니다. 검색 결과의 + 버튼으로 담습니다.</span>
+            ) : sessionStandards.map((entry) => {
+              const std = entry.curriculum_standards
+              if (!std) return null
+              const colorClass = getSubjectColor(std)
+              const course = courseLabel(std)
+              return (
+                <span
+                  key={entry.id}
+                  title={[course, std.content].filter(Boolean).join(' · ')}
+                  className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${colorClass}`}
+                >
+                  {std.code}
+                  {entry._optimistic && <span> · 저장 확인 중</span>}
+                  {(duplicateCodes.has(std.code) || course !== std.subject) && course && (
+                    <span className="font-normal opacity-70">{course}</span>
+                  )}
+                  <button
+                    disabled={saving || readOnly}
+                    onClick={() => removeStandard(standardKey(std))}
+                    className="ml-0.5 hover:opacity-70"
+                    aria-label={`${std.code} 빼기`}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+        </div>
 
+        {/* 같은 문장 안내 — 레이아웃을 밀지 않도록 창 아래에 떠 있게 둔다 */}
+        {notice && (
+          <div role="status" className="absolute left-1/2 -translate-x-1/2 bottom-20 z-10 w-[min(92%,560px)] flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs shadow-lg">
+            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+            <span className="flex-1">{notice}</span>
+            <button onClick={() => setNotice('')} className="hover:opacity-70" aria-label="안내 닫기"><X size={13} /></button>
+          </div>
+        )}
+
+        {/* 결과 */}
+        <div ref={scrollRef} className="flex-1 overflow-auto p-3 sm:p-5">
           {/* 융합 궁합이 좋은 성취기준 — 검색어가 없을 때, 검증된 링크 기반 추천 */}
           {!query.trim() && !aiActive && (() => {
-            const visible = companions.filter((c) => c?.companion?.code && !isAdded(standardKey(c.companion)))
+            // 담은 카드는 지우지 않고 '담김'으로 표시한다. 지우면 아래 카드가 올라와 연속 클릭이 다른 카드에 들어간다.
+            const visible = companions.filter((c) => c?.companion?.code)
             if (visible.length === 0) return null
             return (
               <div className="mb-6">
@@ -428,14 +484,20 @@ export default function StandardSearch({ sessionId, onClose }) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {visible.map(({ companion, anchorCode, link }) => {
                     const colorClass = getSubjectColor(companion)
+                    const companionKey = standardKey(companion)
+                    const companionAdded = isAdded(companionKey)
+                    const companionSame = !companionAdded && findSameTextAdded(companion, sessionStandards, keyOf, companionKey)
                     return (
-                      <div key={`${anchorCode}-${standardKey(companion)}`}
+                      <div key={`${anchorCode}-${companionKey}`} data-std-key={companionKey}
                         className="p-3 rounded-lg border border-pink-100 bg-pink-50/30 hover:border-pink-200 transition">
                         <div className="flex items-start gap-2">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                               <span className={`px-2 py-0.5 rounded text-xs font-bold ${colorClass}`}>{companion.code}</span>
-                              <span className="text-xs text-gray-400">{companion.subject}{companion.grade_group ? ` · ${companion.grade_group}` : ''}</span>
+                              <span className="text-xs text-gray-400">{courseLabel(companion)}{companion.grade_group ? ` · ${companion.grade_group}` : ''}</span>
+                              {companionSame && (
+                                <span className="px-1.5 py-0.5 rounded text-xs bg-amber-50 border border-amber-200 text-amber-700">같은 문장 담음: {companionSame.code}</span>
+                              )}
                             </div>
                             <p className="text-sm text-gray-800 leading-relaxed line-clamp-2"><MathText text={companion.content} /></p>
                             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
@@ -453,12 +515,12 @@ export default function StandardSearch({ sessionId, onClose }) {
                             )}
                           </div>
                           <button
-                            disabled={saving || readOnly}
+                            disabled={saving || readOnly || companionAdded}
                             onClick={() => addStandard(companion)}
-                            className="shrink-0 p-2.5 sm:p-1.5 rounded-lg bg-gray-100 text-gray-400 hover:bg-blue-100 hover:text-blue-600 transition min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
-                            title="프로젝트에 추가"
+                            className={`shrink-0 p-2.5 sm:p-1.5 rounded-lg transition min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center ${companionAdded ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400 hover:bg-blue-100 hover:text-blue-600'}`}
+                            title={companionAdded ? '담김' : '프로젝트에 추가'}
                           >
-                            <Plus size={16} />
+                            {companionAdded ? <Check size={16} /> : <Plus size={16} />}
                           </button>
                         </div>
                       </div>
@@ -493,9 +555,11 @@ export default function StandardSearch({ sessionId, onClose }) {
                 const isExpanded = expandedStandard === std.id
                 const hasDetail = std.explanation || std.application_notes
                 const isSecondary = std._matchField === 'secondary'
+                const sameAdded = !added && findSameTextAdded(std, sessionStandards, keyOf, standardKey(std))
                 return (
                   <div
                     key={std.id}
+                    data-std-key={standardKey(std)}
                     className={`p-3 rounded-lg border transition ${
                       selectedStandard?.id === std.id ? 'border-blue-300 bg-blue-50/50'
                         : isSecondary ? 'border-gray-100 bg-gray-50/50 hover:border-gray-200'
@@ -508,7 +572,10 @@ export default function StandardSearch({ sessionId, onClose }) {
                           <span className={`px-2 py-0.5 rounded text-xs font-bold ${colorClass}`}>
                             {std.code}
                           </span>
-                          <span className="text-xs text-gray-400">{std.subject} · {std.grade_group}</span>
+                          <span className="text-xs text-gray-400">{courseLabel(std)} · {std.grade_group}</span>
+                          {sameAdded && (
+                            <span className="px-1.5 py-0.5 rounded text-xs bg-amber-50 border border-amber-200 text-amber-700">같은 문장 담음: {sameAdded.code}</span>
+                          )}
                           {std.domain && <span className="text-xs text-gray-400">· {std.domain}</span>}
                           <span className="text-xs text-gray-400">· {std.area}</span>
                           {std.curriculum_category && std.curriculum_category !== '공통' && (
