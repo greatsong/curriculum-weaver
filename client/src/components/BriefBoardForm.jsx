@@ -54,6 +54,8 @@ export default function BriefBoardForm({ projectId, procedureCode, schema, board
   // 이 절차의 보드를 서버에서 다 불러온 뒤에만 양식을 연다. 그 전에 빈 양식을 저장하면
   // 이미 적어 둔 보드를 빈 내용으로 덮어쓴다(운영 DB 점검에서 확인한 위험).
   const loadedFor = useProcedureStore((s) => s.boardsLoadedFor)
+  const loadError = useProcedureStore((s) => s.boardsLoadError)
+  const loadBoards = useProcedureStore((s) => s.loadBoards)
   const ready = loadedFor === procedureCode || loadedFor === '*'
 
   const content = board?.content
@@ -92,7 +94,13 @@ export default function BriefBoardForm({ projectId, procedureCode, schema, board
           오프라인 활동 결과를 칸에 적고 저장하세요. <span style={{ color: '#EF4444' }}>*</span> 표시는 필수입니다.
         </span>
       </div>
-      {!ready ? (
+      {!ready && loadError === procedureCode ? (
+        <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', padding: '12px 0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          보드를 불러오지 못했습니다.
+          <button type="button" className="btn btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }}
+            onClick={() => loadBoards(projectId, procedureCode)}>다시 시도</button>
+        </div>
+      ) : !ready ? (
         <div style={{ fontSize: 13, color: 'var(--color-text-tertiary)', padding: '12px 0' }}>보드를 불러오는 중입니다…</div>
       ) : (
       <BoardEditor
