@@ -128,28 +128,6 @@ export default function WorkspacesPage() {
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', background: '#111e2b', border: '1px solid #536c7c', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, color: '#c9e4ed', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--font-sans)' }}>
               미래보기 실험실
             </button>
-            <button
-              type="button"
-              onClick={() => navigate('/futures2')}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '7px 12px',
-                background: '#052E21',
-                border: '1px solid #1B7652',
-                borderRadius: 'var(--radius-md)',
-                fontSize: 13,
-                fontWeight: 600,
-                color: '#8AF5BE',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                fontFamily: 'var(--font-sans)',
-              }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M3 3l2 2m14 14 2 2"/></svg>
-              미래보기(타임스톤)
-            </button>
             <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }} className="hidden sm:inline">
               {user?.email}
             </span>
@@ -275,42 +253,6 @@ export default function WorkspacesPage() {
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               데모 체험
-            </button>
-            <button
-              onClick={() => navigate('/futures')}
-              className="btn"
-              title="성취기준 2~6개로 만들 수 있는 수업 아이디어를 미리 봅니다"
-              style={{
-                padding: '8px 16px',
-                fontSize: 13,
-                fontWeight: 700,
-                background: '#0B1230',
-                color: '#7DD3FC', // 3D 교육과정 성운의 하늘색
-                boxShadow: 'inset 0 0 0 1px rgba(125,211,252,.35)',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(125,211,252,.7)'}
-              onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(125,211,252,.35)'}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9.5"/><path d="M12 3.5l2.2 6.3 6.3 2.2-6.3 2.2-2.2 6.3-2.2-6.3-6.3-2.2 6.3-2.2z"/></svg>
-              미래 보기
-            </button>
-            <button
-              onClick={() => navigate('/future-map')}
-              className="btn"
-              title="성취기준 2~6개로 과목이 만나는 키워드 지도를 보고 수업 아이디어를 만듭니다"
-              style={{
-                padding: '8px 16px',
-                fontSize: 13,
-                fontWeight: 700,
-                background: '#0B1230',
-                color: '#93C5FD',
-                boxShadow: 'inset 0 0 0 1px rgba(147,197,253,.4)',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(147,197,253,.75)'}
-              onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(147,197,253,.4)'}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="7" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><path d="M8.6 8.4l6.6-1.2M7.4 9.6l3.3 5.8M16.6 8.4l-3.3 7"/></svg>
-              미래 지도
             </button>
             <button
               onClick={() => navigate('/graph?mode=explore')}
