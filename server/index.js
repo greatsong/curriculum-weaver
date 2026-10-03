@@ -17,6 +17,7 @@ import compression from 'compression'
 import { initStore, Standards } from './lib/store.js'
 import { precomputeEmbeddings } from './services/embeddings.js'
 import { loadSemanticIndex, ensureEmbeddingsCache } from './services/semanticSearch.js'
+import { startSimulationRecovery } from './lib/simulationRuns.js'
 import { supabaseAdmin } from './lib/supabaseAdmin.js'
 import { verifyTokenCached } from './middleware/auth.js'
 import { hydrateLinksFromDB } from './lib/linkService.js'
@@ -440,6 +441,7 @@ app.use((err, req, res, next) => {
 
 // ── 서버 시작 ──
 server.listen(PORT, () => {
+  startSimulationRecovery()
   console.log(`커리큘럼 위버 서버: http://localhost:${PORT}`)
   console.log(`  Socket.IO 실시간 협업 활성화`)
   console.log(`  라우트: auth, workspaces, invites, projects, designs, versions, logs, chat, standards, materials, principles, report, comments`)

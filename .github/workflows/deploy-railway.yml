@@ -14,7 +14,10 @@ on:
         default: 'DB 변경 반영을 위한 재하이드레이션'
 
 jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
   deploy:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

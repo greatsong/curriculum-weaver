@@ -9,6 +9,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { API_BASE, getHeaders } from '../lib/api'
+import { recoverSimulation } from '../lib/simulationRecovery'
 import { pushToast } from '../stores/toastStore'
 
 export default function ContinueSimulationButton({ projectId, workspaceId, skippedCount = 0 }) {
@@ -17,9 +18,11 @@ export default function ContinueSimulationButton({ projectId, workspaceId, skipp
   const [progress, setProgress] = useState(null) // { phase, saved, total }
   const runningRef = useRef(false)
   const mountedRef = useRef(true)
+  const requestRef = useRef(null)
+  const abortRef = useRef(null)
   useEffect(() => {
     mountedRef.current = true
-    return () => { mountedRef.current = false }
+    return () => { mountedRef.current = false; abortRef.current?.abort() }
   }, [])
 
   const safeSet = (fn) => { if (mountedRef.current) fn() }
@@ -36,15 +39,29 @@ export default function ContinueSimulationButton({ projectId, workspaceId, skipp
     setRunning(true)
     setProgress({ phase: '준비', saved: 0, total: 0 })
 
+    const controller = new AbortController()
+    abortRef.current = controller
+    if (requestRef.current?.source !== projectId) requestRef.current = { source: projectId, id: crypto.randomUUID() }
+    let created = null
+    const showComplete = (project) => {
+      requestRef.current = null
+      if (!mountedRef.current) return
+      pushToast({ kind: 'success', message: '시뮬레이션이 완성됐어요. 새 시뮬레이션으로 이동합니다.' })
+      navigate(`/workspaces/${project.workspaceId || workspaceId}/projects/${project.projectId}`)
+    }
+
     try {
       const headers = await getHeaders()
       const res = await fetch(`${API_BASE}/api/demo/continue`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId }),
+        body: JSON.stringify({ projectId, requestId: requestRef.current.id }),
+        signal: controller.signal,
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
+        if (res.status === 409 && data.projectId) created = data
+        if ([400, 403, 404, 429].includes(res.status) || data.status === 'failed') requestRef.current = null
         throw new Error(data.error || `HTTP ${res.status}`)
       }
 
@@ -66,6 +83,7 @@ export default function ContinueSimulationButton({ projectId, workspaceId, skipp
           try { parsed = JSON.parse(line.slice(6)) } catch { continue }
 
           if (parsed.type === 'started') {
+            created = { projectId: parsed.projectId, workspaceId: parsed.workspaceId || workspaceId }
             safeSet(() => setProgress({ phase: '복제', saved: 0, total: parsed.remaining?.length || 0 }))
           } else if (parsed.type === 'clone_complete') {
             safeSet(() => setProgress((p) => ({ ...(p || {}), phase: 'AI 시뮬레이션' })))
@@ -76,18 +94,32 @@ export default function ContinueSimulationButton({ projectId, workspaceId, skipp
             safeSet(() => setProgress((p) => ({ ...(p || {}), saved: parsed.saved, total: parsed.total })))
           } else if (parsed.type === 'complete') {
             terminal = true
-            pushToast({ kind: 'success', message: '시뮬레이션이 완성됐어요. 새 시뮬레이션으로 이동합니다.' })
-            navigate(`/workspaces/${parsed.workspaceId || workspaceId}/projects/${parsed.projectId}`)
+            showComplete(parsed)
           } else if (parsed.type === 'partial_failure') {
             terminal = true
-            pushToast({ kind: 'error', message: parsed.message || '이어서 생성에 실패했습니다. 실패본을 삭제하고 다시 시도해주세요.' })
+            requestRef.current = null
+            pushToast({ kind: 'error', message: parsed.message || '이어서 생성에 실패했습니다. 저장된 결과는 보존됩니다. 원본에서 다시 시도해주세요.' })
           } else if (parsed.type === 'error') {
             throw new Error(parsed.message)
           }
         }
       }
+      if (!terminal) throw new Error('연결이 중단되었습니다. 다시 누르면 기존 요청 상태를 확인합니다.')
     } catch (err) {
-      pushToast({ kind: 'error', message: err.message || '시뮬레이션 생성 중 오류가 발생했습니다.' })
+      if (!mountedRef.current || controller.signal.aborted) return
+      if (created?.projectId) {
+        safeSet(() => setProgress(p => ({ ...p, phase: '서버 상태 확인' })))
+        pushToast({ kind: 'info', message: '서버에 저장된 생성 결과를 다시 확인합니다.' })
+        try {
+          const result = await recoverSimulation(created, { signal: controller.signal })
+          if (!result) return
+          requestRef.current = null
+          if (result.status === 'simulation') showComplete(created)
+          else pushToast({ kind: 'error', message: '생성이 완료되지 못했습니다. 저장된 결과는 보존됩니다. 원본에서 다시 시도해주세요.' })
+        } catch (recoveryError) {
+          if (mountedRef.current) pushToast({ kind: 'error', message: recoveryError.message })
+        }
+      } else pushToast({ kind: 'error', message: err.message || '시뮬레이션 생성 중 오류가 발생했습니다.' })
     } finally {
       runningRef.current = false
       safeSet(() => { setRunning(false); setProgress(null) })

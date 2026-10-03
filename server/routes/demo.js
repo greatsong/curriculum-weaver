@@ -10,6 +10,8 @@
  */
 
 import { Router } from 'express'
+import crypto from 'node:crypto'
+import { claimSimulationRun, expireSimulationRuns, finishSimulationRun, monitorSimulationRun } from '../lib/simulationRuns.js'
 import { getAnthropic } from '../lib/anthropicClient.js'
 import { requireAuth } from '../middleware/auth.js'
 import {
@@ -74,22 +76,26 @@ const ALL_CODES = [...PHASE1_CODES, ...PHASE2_CODES]
 const procedureNameMap = Object.fromEntries(PROCEDURE_LIST.map((p) => [p.code, p.name]))
 const MAX_DEMO_DESCRIPTION_LENGTH = 1500
 
-// 사용자별 일일 데모 생성 쿼터 (인메모리 — 서버 재시작 시 리셋)
-// 신규 데모 생성(/generate)과 이어서 시뮬레이션(/continue)이 합산되는 통합 쿼터.
-const DEMO_DAILY_LIMIT = 10
-const demoUsage = new Map() // userId -> { date: 'YYYY-MM-DD', count }
-
-function hasDemoQuota(userId) {
-  const today = new Date().toISOString().slice(0, 10)
-  const usage = demoUsage.get(userId)
-  if (!usage || usage.date !== today) {
-    demoUsage.set(userId, { date: today, count: 0 })
+// 예약과 일일 한도는 DB 트랜잭션에서 함께 처리한다. 인증·입력 검증 이후에만 호출.
+async function admitSimulation(req, res, scope) {
+  const requestId = req.body.requestId || crypto.randomUUID()
+  if (typeof requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+    res.status(400).json({ error: '요청 식별자가 올바르지 않습니다.' }); return null
   }
-  return demoUsage.get(userId).count < DEMO_DAILY_LIMIT
-}
-
-function consumeDemoQuota(userId) {
-  demoUsage.get(userId).count += 1
+  try {
+    const run = await claimSimulationRun(req.user.id, requestId, scope)
+    if (run.kind === 'claimed') return run
+    if (run.kind === 'conflict') res.status(400).json({ error: '다른 입력에 사용한 요청 식별자입니다. 새 요청으로 시작해주세요.' })
+    else if (run.kind === 'quota') res.status(429).json({ error: '오늘 데모 생성 한도(하루 10회)를 초과했습니다. 내일 다시 시도해주세요.' })
+    else if (run.kind === 'existing' || (run.kind === 'busy' && run.projectId)) {
+      const project = run.projectId ? await getProject(run.projectId) : null
+      res.status(409).json({ error: '이 요청은 이미 처리 중이거나 처리되었습니다.', projectId: run.projectId, workspaceId: project?.workspace_id, status: run.status })
+    } else res.status(409).json({ error: '같은 시뮬레이션이 이미 생성 중입니다. 완료 후 다시 시도해주세요.' })
+  } catch (e) {
+    console.error('[simulation admission]', e.message)
+    res.status(503).json({ error: '시뮬레이션 작업 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.' })
+  }
+  return null
 }
 
 // JSON 응답의 키(board/conversation 매핑용)는 내부 코드(Ds-1-1 등)를 그대로 써야 하지만,
@@ -229,7 +235,7 @@ function buildSchemaText(codes) {
 /**
  * AI 스트리밍 호출 + 절차 감지 + SSE 전송
  */
-async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, label, sendEvent }) {
+async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, label, sendEvent, signal }) {
   // 3장 개정(PR #102)으로 보드 필드가 늘어 한 페이즈(9~10개 보드+대화)의 자유 텍스트 JSON이
   // 절단·문법오류로 파싱 0건이 재현됨 → 강제 tool 호출로 전환. tool 입력은 API 계약상
   // 항상 유효한 JSON이라 파싱 실패가 원천 차단되고, 절차 코드별 스키마로 최상위 형태를 고정한다.
@@ -239,7 +245,8 @@ async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, lab
   let best = {}
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const result = await streamAttempt({ systemPrompt, userPrompt, codes, startIndex, label: `${label}${attempt > 1 ? `-재시도` : ''}`, sendEvent })
+    signal?.throwIfAborted()
+    const result = validGeneratedBoards(await streamAttempt({ systemPrompt, userPrompt, codes, startIndex, label: `${label}${attempt > 1 ? `-재시도` : ''}`, sendEvent, signal }), codes)
     const matched = Object.keys(result).filter((k) => codes.includes(k)).length
     if (matched > Object.keys(best).filter((k) => codes.includes(k)).length) best = result
     if (matched >= minKeys) { best = result; break }
@@ -250,13 +257,14 @@ async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, lab
   // 프롬프트 앞부분(cache_control)이 공유되어 반복 호출 비용은 캐시 읽기 수준.
   const missing = codes.filter((c) => !best[c])
   for (const code of missing) {
+    signal?.throwIfAborted()
     try {
       const single = await streamAttempt({
         systemPrompt, userPrompt, codes: [code],
-        startIndex: startIndex + codes.indexOf(code), label: `${label}-보충:${code}`, sendEvent,
+        startIndex: startIndex + codes.indexOf(code), label: `${label}-보충:${code}`, sendEvent, signal,
         focusInstruction: `\n\n[보충 지시] 위 요구 전체 중, 지금은 절차 "${code}"(${procedureNameMap[code] || code}) 하나만 생성해 save_boards로 저장하라. 다른 절차는 포함하지 말 것.`,
       })
-      if (single[code]) best = { ...best, [code]: single[code] }
+      if (isValidSimulationBoard(code, single[code]?.board)) best = { ...best, [code]: single[code] }
     } catch (fillErr) {
       console.warn(`[demo][${label}] 보충 생성 실패 (${code}):`, fillErr?.message)
     }
@@ -266,7 +274,7 @@ async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, lab
   return best
 }
 
-async function streamAttempt({ systemPrompt, userPrompt, codes, startIndex, label, sendEvent, focusInstruction = null }) {
+async function streamAttempt({ systemPrompt, userPrompt, codes, startIndex, label, sendEvent, focusInstruction = null, signal }) {
   let fullText = ''
   let tokenCount = 0
   let lastTokenEvent = 0
@@ -306,7 +314,7 @@ async function streamAttempt({ systemPrompt, userPrompt, codes, startIndex, labe
       input_schema: inputSchema,
     }],
     tool_choice: { type: 'auto' },
-  })
+  }, { signal, timeout: 240000 })
 
   try {
     for await (const event of stream) {
@@ -368,7 +376,8 @@ async function streamAttempt({ systemPrompt, userPrompt, codes, startIndex, labe
     return {}
   }
 
-  const result = parseAIResponse(fullText, label)
+  const parsed = parseAIResponse(fullText, label)
+  const result = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
   console.log(`[demo][${label}] 파싱 결과: ${Object.keys(result).length}개 키 — [${Object.keys(result).join(', ')}]`)
   return result
 }
@@ -398,7 +407,7 @@ function buildGeneratedSummary(data, codes) {
     if (!entry) continue
     const boardSummary = entry.board ? JSON.stringify(entry.board).slice(0, 300) : ''
     // 대화에서 핵심 발언 1~2개 추출
-    const convoHighlights = (entry.conversation || [])
+    const convoHighlights = (Array.isArray(entry.conversation) ? entry.conversation.filter(t => t && typeof t.message === 'string') : [])
       .filter((t) => t.message?.length > 30)
       .slice(0, 2)
       .map((t) => `  "${t.speaker}: ${t.message.slice(0, 100)}..."`)
@@ -415,22 +424,48 @@ function buildPhase1Summary(phase1Data) {
   return buildGeneratedSummary(phase1Data, ['prep', 'T-1-1', 'T-1-2', 'T-2-1', 'A-1-1', 'A-1-2', 'A-2-1', 'A-2-2'])
 }
 
+export function isValidSimulationBoard(code, board) {
+  const schema = BOARD_SCHEMAS[BOARD_TYPES[code]]
+  if (!schema || !board || typeof board !== 'object' || Array.isArray(board)) return false
+  const hasValue = v => !isBoardContentEmpty({ value: v })
+  const validField = f => {
+    const v = board[f.name]
+    if (!hasValue(v)) return !f.required
+    if (['list', 'tags', 'table'].includes(f.type)) {
+      if (!Array.isArray(v)) return false
+      if (f.columns || f.itemSchema) {
+        const keys = f.columns?.map(c => c.name) || Object.keys(f.itemSchema)
+        return v.every(row => row && typeof row === 'object' && !Array.isArray(row) && keys.some(k => hasValue(row[k])))
+      }
+      return v.every(item => typeof item === 'string')
+    }
+    if (f.type === 'number') return typeof v === 'number' && Number.isFinite(v)
+    if (['text', 'textarea', 'select'].includes(f.type)) return typeof v === 'string'
+    return true
+  }
+  return schema.fields.every(validField) && schema.fields.some(f => hasValue(board[f.name]))
+}
+function validGeneratedBoards(data, codes) {
+  return Object.fromEntries(codes.filter(code => isValidSimulationBoard(code, data?.[code]?.board)).map(code => [code, data[code]]))
+}
+
 /**
  * 생성 결과(절차별 board+conversation)를 프로젝트에 저장.
  * 성취기준 검증은 upsertDesign 게이트키퍼가 처리한다.
  * @returns {Promise<number>} 저장된 보드 수
  */
-async function saveGeneratedProcedures(projectId, data, userId, label) {
+async function saveGeneratedProcedures(projectId, data, userId, label, codes, assertActive) {
   let saved = 0
-  for (const [code, entry] of Object.entries(data)) {
-    if (!BOARD_TYPES[code] || !entry) continue
+  for (const [code, entry] of Object.entries(validGeneratedBoards(data, codes))) {
     // LLM 출력에 내부 절차 코드(T-1-1 등)가 섞여도 사용자 노출 데이터에는 표시 코드만 저장
     // (보드는 클라이언트 렌더에 재정화 단계가 없어 이 지점이 최종 방어선)
     const rawBoard = entry.board || entry
     const boardContent = JSON.parse(replaceInternalProcedureCodes(JSON.stringify(rawBoard)))
-    const conversation = entry.conversation || []
+    const conversation = Array.isArray(entry.conversation) ? entry.conversation.filter(t => t && typeof t.message === 'string' && typeof t.speaker === 'string') : []
     try {
-      await upsertDesign(projectId, code, boardContent, userId)
+      await assertActive()
+      const stored = await upsertDesign(projectId, code, boardContent, userId)
+      if (stored?.content && !isValidSimulationBoard(code, stored.content)) throw new Error('저장 후 보드 검증 실패')
       saved++
       // 채팅 기록 저장
       for (const turn of conversation) {
@@ -471,17 +506,13 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
   const { workspaceId, grade, subjects, topic, description } = req.body
   const userId = req.user.id
 
-  // 인메모리 일일 쿼터 — 재시작 시 리셋. 초과면 즉시 429 (카운트 증가는 검증 통과 후)
-  if (!hasDemoQuota(userId)) {
-    return res.status(429).json({ error: '오늘 데모 생성 한도(하루 10회)를 초과했습니다. 내일 다시 시도해주세요.' })
-  }
-
+  if (description != null && typeof description !== 'string') return res.status(400).json({ error: '설계 의도는 문자열이어야 합니다.' })
   const normalizedDescription = typeof description === 'string' ? description.trim() : ''
 
-  if (!workspaceId) {
+  if (typeof workspaceId !== 'string' || !workspaceId.trim()) {
     return res.status(400).json({ error: '워크스페이스 ID가 필요합니다.' })
   }
-  if (!grade || !subjects?.length || subjects.length < 2 || !topic?.trim()) {
+  if (typeof grade !== 'string' || !grade.trim() || grade.length > 100 || !Array.isArray(subjects) || subjects.length < 2 || subjects.length > 20 || subjects.some(s => typeof s !== 'string' || !s.trim() || s.length > 80) || new Set(subjects.map(s => s.trim())).size < 2 || typeof topic !== 'string' || !topic.trim()) {
     return res.status(400).json({
       error: '학년, 교과(2개 이상), 주제 키워드는 필수입니다.',
     })
@@ -489,8 +520,8 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
 
   // P0 #1: 워크스페이스 멤버십 검증
   const memberRole = await getMemberRole(workspaceId, userId)
-  if (!memberRole) {
-    return res.status(403).json({ error: '해당 워크스페이스의 멤버가 아닙니다.' })
+  if (!['owner', 'editor'].includes(memberRole)) {
+    return res.status(403).json({ error: '시뮬레이션 생성에는 편집 권한이 필요합니다.' })
   }
 
   // P2 #10: 입력 길이 제한
@@ -501,8 +532,10 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
     return res.status(400).json({ error: `설계 의도/참고사항은 ${MAX_DEMO_DESCRIPTION_LENGTH.toLocaleString()}자 이내로 입력하세요.` })
   }
 
-  // 모든 검증 통과 — 실제 생성 진행이 확정된 시점에만 일일 쿼터 1 소모
-  consumeDemoQuota(userId)
+  const fingerprint = crypto.createHash('sha256').update(JSON.stringify([grade.trim(), [...new Set(subjects.map(s => s.trim()))].sort(), topic.trim(), normalizedDescription])).digest('hex')
+  const run = await admitSimulation(req, res, `generate:${userId}:${workspaceId}:${fingerprint}`)
+  if (!run) return
+  const monitor = monitorSimulationRun(run.id)
 
   // SSE 헤더
   res.setHeader('Content-Type', 'text/event-stream')
@@ -540,9 +573,11 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
       title: projectTitle,
       description: normalizedDescription || `AI 시뮬레이션으로 자동 생성된 ${grade} ${subjects.join('+')} 융합수업 설계`,
       current_procedure: 'prep',
+      grade, subjects, created_by: userId,
       status: 'generating',
     })
     projectId = project.id
+    await monitor.assertActive(projectId)
     console.log(`[demo] 프로젝트 생성 완료 — id: ${projectId}`)
 
     sendEvent({ type: 'started', projectId, workspaceId })
@@ -563,6 +598,7 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
           if (s.area) line += ` (영역: ${s.area})`
           return line
         }).join('\n')
+        await monitor.assertActive()
         const selectionResponse = await getAnthropic().messages.create({
           model: 'claude-sonnet-5-5',
           max_tokens: 2048,
@@ -600,7 +636,7 @@ ${candidateList}
 새로운 코드를 절대 만들지 마세요.
 
 선택 코드:` }],
-        })
+        }, { signal: monitor.signal, timeout: 60000 })
 
         // Sonnet 5는 thinking 블록이 content[0]에 올 수 있어 text 블록만 결합 (종전 content[0]?.text → 빈 문자열 → 항상 키워드 폴백)
         const aiText = selectionResponse.content.filter((b) => b.type === 'text').map((b) => b.text).join('')
@@ -641,11 +677,12 @@ ${candidateList}
     let linkedCount = 0
     for (const std of selectedStandards) {
       try {
-        const realId = await resolveStandardId({ code: std.code, id: std.id })
-        if (!realId) continue
+        await monitor.assertActive()
+        const realId = await resolveStandardId({ code: std.key || std.code, id: std.id })
+        if (!realId) throw new Error('성취기준 식별자 확인 실패')
         await addStandardToProject(projectId, realId, userId, false)
         linkedCount++
-      } catch { /* 중복 무시 */ }
+      } catch (e) { throw new Error(`성취기준 연결 실패: ${e.message}`) }
     }
     console.log(`[demo] 성취기준 ${linkedCount}/${selectedStandards.length}개를 프로젝트에 연결`)
 
@@ -787,6 +824,7 @@ JSON 형식:
 반드시 유효한 JSON만 응답하세요. 설명 텍스트나 마크다운 코드블록 없이 순수 JSON만 반환하세요.`
 
     const phase1Data = await streamAndParse({
+      signal: monitor.signal,
       systemPrompt: phase1System,
       userPrompt: phase1User,
       codes: PHASE1_CODES,
@@ -796,7 +834,7 @@ JSON 형식:
     })
 
     // 1차 결과 저장 (보드 + 채팅)
-    const phase1Saved = await saveGeneratedProcedures(projectId, phase1Data, userId, '1차')
+    const phase1Saved = await saveGeneratedProcedures(projectId, phase1Data, userId, '1차', PHASE1_CODES, monitor.assertActive)
     console.log(`[demo] 1차 저장 완료: ${phase1Saved}/${PHASE1_CODES.length}개`)
     sendEvent({ type: 'phase_complete', phase: 1, saved: phase1Saved, total: PHASE1_CODES.length })
 
@@ -847,6 +885,7 @@ JSON 형식:
 반드시 유효한 JSON만 응답하세요. 설명 텍스트나 마크다운 코드블록 없이 순수 JSON만 반환하세요.`
 
     const phase2Data = await streamAndParse({
+      signal: monitor.signal,
       systemPrompt: phase2System,
       userPrompt: phase2User,
       codes: PHASE2_CODES,
@@ -856,16 +895,15 @@ JSON 형식:
     })
 
     // 2차 결과 저장
-    const phase2Saved = await saveGeneratedProcedures(projectId, phase2Data, userId, '2차')
+    const phase2Saved = await saveGeneratedProcedures(projectId, phase2Data, userId, '2차', PHASE2_CODES, monitor.assertActive)
     console.log(`[demo] 2차 저장 완료: ${phase2Saved}/${PHASE2_CODES.length}개`)
 
     const totalSaved = phase1Saved + phase2Saved
     console.log(`[demo] === 전체 완료: ${totalSaved}/${ALL_CODES.length}개 보드 저장 ===`)
 
-    // P0 #3: 최소 저장 검증 — 5개 미만이면 부분 실패 처리
-    const MIN_BOARDS = 5
-    if (totalSaved < MIN_BOARDS) {
-      await updateProject(projectId, { status: 'failed' })
+    // 전체 절차의 유효한 보드가 저장된 경우에만 완료한다.
+    if (totalSaved !== ALL_CODES.length) {
+      await finishSimulationRun(run.id, false)
       sendEvent({
         type: 'partial_failure',
         projectId,
@@ -875,8 +913,7 @@ JSON 형식:
         message: `${totalSaved}개만 저장되어 생성에 실패했습니다. 다시 시도해 주세요.`,
       })
     } else {
-      // P0 #2: generating → simulation 전환
-      await updateProject(projectId, { status: 'simulation' })
+      if (!await finishSimulationRun(run.id, true)) throw new Error('시뮬레이션 작업이 만료되었습니다.')
       sendEvent({
         type: 'complete',
         projectId,
@@ -888,13 +925,13 @@ JSON 형식:
     safeEnd()
   } catch (error) {
     console.error('[demo] 생성 오류:', error?.message || error)
-    // disconnect로 인한 에러는 failed로 마킹하지 않음 (서버 작업은 이미 완료됐을 수 있음)
-    if (projectId && !aborted) {
+    await finishSimulationRun(run.id, false).catch(() => {})
+    if (projectId) {
       await updateProject(projectId, { status: 'failed' }).catch(() => {})
     }
     sendEvent({ type: 'error', message: '데모 생성 중 오류가 발생했습니다.', projectId })
     safeEnd()
-  }
+  } finally { monitor.stop() }
 })
 
 // ============================================================
@@ -1078,7 +1115,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
   const { projectId: sourceProjectId } = req.body
   const userId = req.user.id
 
-  if (!sourceProjectId) {
+  if (typeof sourceProjectId !== 'string' || !sourceProjectId.trim()) {
     return res.status(400).json({ error: '원본 프로젝트 ID(projectId)가 필요합니다.' })
   }
 
@@ -1092,14 +1129,19 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
 
   // 멤버십 검증 (IDOR 방지)
   const memberRole = await getMemberRole(original.workspace_id, userId)
-  if (!memberRole) {
-    return res.status(403).json({ error: '해당 프로젝트의 워크스페이스 멤버가 아닙니다.' })
+  if (!['owner', 'editor'].includes(memberRole)) {
+    return res.status(403).json({ error: '시뮬레이션 생성에는 편집 권한이 필요합니다.' })
   }
 
-  // 동시 생성 가드: 원본당 generating 1개
+  try { await expireSimulationRuns() } catch {
+    return res.status(503).json({ error: '시뮬레이션 작업 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.' })
+  }
+
+  // 오래된 작업 복구 후 DB 예약과 함께 동시 생성을 차단한다.
   const siblings = await getSimulationsBySource(sourceProjectId)
-  if (siblings.some((s) => s.status === 'generating')) {
-    return res.status(409).json({ error: '이 프로젝트의 시뮬레이션이 이미 생성 중입니다. 완료 후 다시 시도해주세요.' })
+  const runningSibling = siblings.find(s => s.status === 'generating')
+  if (runningSibling) {
+    return res.status(409).json({ error: '이 프로젝트의 시뮬레이션이 이미 생성 중입니다. 완료 후 다시 시도해주세요.', projectId: runningSibling.id, workspaceId: original.workspace_id, status: 'running' })
   }
 
   // 스킵 프로젝트 차단 가드 — 쿼터 소모 전에 확인.
@@ -1117,11 +1159,9 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
     return res.status(400).json({ error: '현재 절차 이후에 생성할 빈 절차가 없습니다. 이미 모든 절차가 작성되어 있어요.' })
   }
 
-  // 통합 일일 쿼터 (신규 데모와 합산, 1회=1카운트)
-  if (!hasDemoQuota(userId)) {
-    return res.status(429).json({ error: '오늘 데모 생성 한도(하루 10회)를 초과했습니다. 내일 다시 시도해주세요.' })
-  }
-  consumeDemoQuota(userId)
+  const run = await admitSimulation(req, res, `continue:${sourceProjectId}`)
+  if (!run) return
+  const monitor = monitorSimulationRun(run.id)
 
   // SSE 헤더
   res.setHeader('Content-Type', 'text/event-stream')
@@ -1193,6 +1233,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
       }
     }
     cloneId = clone.id
+    await monitor.assertActive(cloneId)
     console.log(`[demo/continue] 복제본 생성 — id: ${cloneId} (#${seq}), 잔여 절차 ${remaining.length}개`)
     sendEvent({ type: 'started', projectId: cloneId, workspaceId: original.workspace_id, sourceProjectId, seq, remaining })
 
@@ -1202,6 +1243,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
     for (const d of designs) {
       if (isBoardContentEmpty(d.content)) continue
       try {
+        await monitor.assertActive()
         await upsertDesign(cloneId, d.procedure_code, d.content, userId)
         copiedBoards++
       } catch (e) {
@@ -1214,6 +1256,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
     if (materialRows.length > 0) {
       try {
         const cloneRows = materialRows.map(({ id, ...rest }) => ({ ...rest, project_id: cloneId }))
+        await monitor.assertActive()
         const inserted = await createMaterialRowsBulk(cloneRows)
         inserted.forEach((row, i) => materialIdMap.set(materialRows[i].id, row.id))
       } catch (e) {
@@ -1225,6 +1268,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
     let copiedMessages = 0
     if (allMessages.length > 0) {
       try {
+        await monitor.assertActive()
         copiedMessages = await createMessagesBulk(remapClonedMessageRows(allMessages, cloneId, materialIdMap))
       } catch (e) {
         throw new Error(`채팅 복제 실패: ${e.message}`)
@@ -1236,6 +1280,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
     for (const entry of linkedStandards || []) {
       try {
         if (!entry.standard_id) throw new Error('성취기준 ID 누락')
+        await monitor.assertActive()
         await addStandardToProject(cloneId, entry.standard_id, userId, entry.is_primary || false)
         copiedStandards++
       } catch (e) { throw new Error(`성취기준 복제 실패: ${e.message}`) }
@@ -1374,6 +1419,7 @@ JSON 형식:
 반드시 유효한 JSON만 응답하세요. 설명 텍스트나 마크다운 코드블록 없이 순수 JSON만 반환하세요.`
 
       const chunkData = await streamAndParse({
+        signal: monitor.signal,
         systemPrompt: chunkSystem,
         userPrompt: chunkUser,
         codes: chunk,
@@ -1387,7 +1433,7 @@ JSON 형식:
       const requestedData = Object.fromEntries(chunk
         .filter(code => !isBoardContentEmpty(chunkData[code]?.board))
         .map(code => [code, chunkData[code]]))
-      generatedSaved += await saveGeneratedProcedures(cloneId, requestedData, userId, label)
+      generatedSaved += await saveGeneratedProcedures(cloneId, requestedData, userId, label, chunk, monitor.assertActive)
       priorSummaries.push(buildGeneratedSummary(requestedData, chunk))
       sendEvent({ type: 'phase_complete', phase: chunkNo, saved: generatedSaved, total: remaining.length })
     }
@@ -1395,7 +1441,7 @@ JSON 형식:
     // ── 9. 마무리 ──
     console.log(`[demo/continue] === 완료: 복제 ${copiedBoards} + 생성 ${generatedSaved}/${remaining.length} ===`)
     if (generatedSaved !== remaining.length) {
-      await updateProject(cloneId, { status: 'failed' })
+      await finishSimulationRun(run.id, false)
       sendEvent({
         type: 'partial_failure',
         projectId: cloneId,
@@ -1406,7 +1452,7 @@ JSON 형식:
         message: `남은 ${remaining.length}개 절차 중 ${generatedSaved}개만 저장되어 시뮬레이션을 완료하지 못했습니다. 원본 프로젝트에서 다시 시도해주세요.`,
       })
     } else {
-      await updateProject(cloneId, { status: 'simulation', current_procedure: remaining[remaining.length - 1] })
+      if (!await finishSimulationRun(run.id, true, remaining.at(-1))) throw new Error('시뮬레이션 작업이 만료되었습니다.')
       sendEvent({
         type: 'complete',
         projectId: cloneId,
@@ -1419,10 +1465,11 @@ JSON 형식:
     safeEnd()
   } catch (error) {
     console.error('[demo/continue] 오류:', error?.message || error)
+    await finishSimulationRun(run.id, false).catch(() => {})
     if (cloneId) {
       await updateProject(cloneId, { status: 'failed' }).catch(() => {})
     }
     sendEvent({ type: 'error', message: '이어서 시뮬레이션 생성 중 오류가 발생했습니다.', projectId: cloneId })
     safeEnd()
-  }
+  } finally { monitor.stop() }
 })
