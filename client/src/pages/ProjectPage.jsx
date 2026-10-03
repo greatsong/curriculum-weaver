@@ -23,7 +23,7 @@ import MaterialUploadBar from '../components/MaterialUploadBar'
 import InteractiveTour from '../components/InteractiveTour'
 import ContinueSimulationButton from '../components/ContinueSimulationButton'
 import A3ExplorationEntry from '../components/A3ExplorationEntry'
-import { computeWorkZoom } from '../lib/workZoom'
+import { computeWorkZoom, MAX_WORK_ZOOM } from '../lib/workZoom'
 
 // 시연 모드 자립 보드 코드 (BOARD_TYPES['demo_lesson_plan']='lesson_plan', ['demo_script']='demo_script')
 const DEMO_LESSON_PLAN = 'demo_lesson_plan'
@@ -240,12 +240,15 @@ export default function ProjectPage() {
     return saved >= 20 && saved <= 80 ? saved : 50
   })
   const [showPrinciples, setShowPrinciples] = useState(false)
+  // 자료 관리 패널 — 헤더 '자료' 버튼으로 연다(접힌 요약 줄은 없앴다, 2026-10-03)
+  const [materialsOpen, setMaterialsOpen] = useState(false)
+  const materialsCount = useProcedureStore((s) => s.materials?.length || 0)
   const [isDesktop, setIsDesktop] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
   )
-  // 데스크톱 작업 화면 확대 배율 — 큰 화면 1.5배, 작은 노트북은 작업 영역을 지키는 만큼만(lib/workZoom.js)
+  // 데스크톱 작업 화면 확대 배율 — 큰 화면 최대 1.35배, 작은 노트북은 작업 영역을 지키는 만큼만(lib/workZoom.js)
   const [workZoom, setWorkZoom] = useState(
-    () => (typeof window === 'undefined' ? 1.5 : computeWorkZoom(window.innerWidth, window.innerHeight))
+    () => (typeof window === 'undefined' ? MAX_WORK_ZOOM : computeWorkZoom(window.innerWidth, window.innerHeight))
   )
   useEffect(() => {
     const onResize = () => setWorkZoom(computeWorkZoom(window.innerWidth, window.innerHeight))
@@ -688,21 +691,25 @@ export default function ProjectPage() {
             <ContinueSimulationButton projectId={projectId} workspaceId={workspaceId} skippedCount={skippedCodes.size} />
           )}
           {[
+            { onClick: () => setMaterialsOpen((v) => !v), color: '#4B5563', active: materialsOpen, icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>, label: materialsCount > 0 ? `자료 ${materialsCount}` : '자료', title: '자료 관리' },
+            ...(isDesktop ? [{ onClick: () => setShowPrinciples((v) => !v), color: '#2563EB', active: showPrinciples, tour: 'principle-panel', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>, label: '원칙', title: '원칙 보기' }] : []),
             { onClick: () => setShowReport(true), color: '#7C3AED', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>, label: '보고서', title: '결과 보고서' },
             { onClick: () => setShowStandardSearch(true), color: '#16A34A', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>, label: '성취기준', title: '성취기준 탐색' },
             // 공유는 협력(팀 워크스페이스) 전용 — 개인 시연 준비에서는 은닉.
             ...(isDemo ? [] : [{ onClick: handleCopyInvite, color: '#3B82F6', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>, label: '공유', title: '프로젝트 링크 복사' }]),
-          ].map(({ onClick, color, icon, label, title }) => (
+          ].map(({ onClick, color, icon, label, title, active, tour }) => (
             <button
-              key={label}
+              key={title}
               onClick={onClick}
               title={title}
+              data-tour={tour}
+              aria-pressed={active === undefined ? undefined : active}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 4,
                 padding: '6px 8px',
-                background: 'none',
+                background: active ? `${color}14` : 'none',
                 border: 'none',
                 borderRadius: 'var(--radius-md)',
                 fontSize: 12,
@@ -716,11 +723,11 @@ export default function ProjectPage() {
                 minWidth: 44,
                 justifyContent: 'center',
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = `${color}08`}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+              onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = `${color}08` }}
+              onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'none' }}
             >
               {icon}
-              {/* 작업 화면은 데스크톱에서 화면 크기에 따라 최대 1.5배 확대된다(.work-shell, lib/workZoom.js). 확대 후에도 글자가 한 줄로
+              {/* 작업 화면은 데스크톱에서 화면 크기에 따라 최대 1.35배 확대된다(.work-shell, lib/workZoom.js). 확대 후에도 글자가 한 줄로
                   들어가는 넓은 화면(xl)에서만 글자를 보이고, 그보다 좁으면 아이콘만 둔다(title이 툴팁). */}
               <span className="hidden xl:inline">{label}</span>
             </button>
@@ -807,7 +814,7 @@ export default function ProjectPage() {
       )}
 
       {/* 자료 관리 바 */}
-      <MaterialUploadBar projectId={projectId} />
+      <MaterialUploadBar projectId={projectId} open={materialsOpen} onOpenChange={setMaterialsOpen} hideToggle />
 
       {/* 절차 네비게이션 — 시연 모드에서는 19절차 트랙 대신 얕은 스텝 네비를 노출(단일 차시 준비) */}
       {isDemo ? (
@@ -988,44 +995,7 @@ export default function ProjectPage() {
         )}
       </div>
 
-      {/* 데스크톱 하단 바 — '원칙' 버튼으로 설계 원리 드로어 토글 */}
-      {isDesktop && (
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderTop: '1px solid var(--color-border)',
-          background: 'var(--color-bg-secondary)',
-          flexShrink: 0,
-        }}>
-          <button
-            data-tour="principle-panel"
-            onClick={() => setShowPrinciples((v) => !v)}
-            title="원칙 보기"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '7px 16px',
-              background: showPrinciples ? '#EFF6FF' : 'transparent',
-              border: 'none',
-              borderRadius: 'var(--radius-md)',
-              margin: 4,
-              color: showPrinciples ? '#3B82F6' : 'var(--color-text-secondary)',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all var(--transition-fast)',
-              fontFamily: 'var(--font-sans)',
-            }}
-            onMouseEnter={(e) => { if (!showPrinciples) e.currentTarget.style.background = 'var(--color-bg-tertiary)' }}
-            onMouseLeave={(e) => { if (!showPrinciples) e.currentTarget.style.background = 'transparent' }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
-            원칙
-          </button>
-        </div>
-      )}
+      {/* 데스크톱 '원칙' 버튼은 헤더로 옮겼다(작업 화면 세로 공간 확보, 2026-10-03). 모바일은 아래 탭 바의 '원칙' 탭. */}
 
       {/* 모바일 하단 탭 바 (데스크톱 아닐 때만) */}
       <div className="safe-bottom" style={{

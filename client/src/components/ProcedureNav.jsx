@@ -1,6 +1,6 @@
 import { PHASES, PHASE_LIST, PROCEDURES, PROCEDURE_LIST, getProceduresByPhase } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 /**
  * 준비(prep) + 5개 과정(T·A·Ds·DI·E)의 18개 세부활동을 그룹으로 보여주는 네비게이션
@@ -17,6 +17,18 @@ export default function ProcedureNav({
     const proc = PROCEDURES[currentProcedure]
     return proc?.phase || 'T'
   })
+  // 현재 절차가 바뀌면(서버에서 복원·팀원 이동·건너뛰기 보정) 그 단계를 펼친다.
+  // 예전에는 처음 그릴 때 한 번만 정해, 프로젝트를 불러오기 전 기본값(팀준비)이 남아
+  // "분석 A가 선택됐는데 아래에 T-1~T-5가 보이는" 일이 생겼다(2026-10-03 제보).
+  useEffect(() => {
+    const phase = PROCEDURES[currentProcedure]?.phase
+    if (phase) setExpandedPhase(phase)
+  }, [currentProcedure])
+  // 한 줄 안에서 현재 절차 칩이 가려지지 않게 가로 스크롤을 맞춘다
+  const activeChipRef = useRef(null)
+  useEffect(() => {
+    activeChipRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [currentProcedure, expandedPhase])
 
   return (
     <nav style={{
@@ -24,12 +36,12 @@ export default function ProcedureNav({
       borderBottom: '1px solid var(--color-border)',
       flexShrink: 0,
     }}>
-      {/* Phase 탭 */}
+      {/* 단계 탭과 펼친 단계의 절차 칩을 한 줄에 둔다(작업 화면 세로 공간 확보, 2026-10-03) */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         gap: 2,
-        padding: '6px 12px',
+        padding: '4px 12px',
         overflowX: 'auto',
       }}>
         {PHASE_LIST.map((phase) => {
@@ -43,14 +55,15 @@ export default function ProcedureNav({
           const allDone = completedCount > 0 && completedCount === activeProcs.length
 
           return (
+            <div key={phase.id} style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
             <button
-              key={phase.id}
               onClick={() => setExpandedPhase(isExpanded ? null : phase.id)}
+              aria-expanded={isExpanded}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
-                padding: '8px 12px',
+                padding: '7px 10px',
                 borderRadius: 'var(--radius-md)',
                 fontSize: 12,
                 fontWeight: 600,
@@ -114,39 +127,47 @@ export default function ProcedureNav({
                 <polyline points="4 6 8 10 12 6"/>
               </svg>
             </button>
+            {isExpanded && renderChips(phase.id)}
+            </div>
           )
         })}
       </div>
+    </nav>
+  )
 
-      {/* 확장된 Phase의 절차 목록 */}
-      {expandedPhase && (
+  // 펼친 단계의 절차 칩 묶음 — 단계 탭 바로 오른쪽에 붙는다
+  function renderChips(phaseId) {
+    return (
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 4,
-          padding: '6px 12px',
-          overflowX: 'auto',
-          borderTop: '1px solid var(--color-border-subtle)',
+          gap: 2,
+          padding: '2px 4px',
+          margin: '0 8px 0 2px',
+          borderRadius: 'var(--radius-md)',
           background: 'var(--color-bg-primary)',
+          border: '1px solid var(--color-border-subtle)',
         }}>
-          {getProceduresByPhase(expandedPhase).map((proc) => {
+          {getProceduresByPhase(phaseId).map((proc) => {
             const isActive = proc.code === currentProcedure
             const isCompleted = completedProcedures.includes(proc.code)
             const isSkippedProc = skippedCodes.has(proc.code)
             const steps = PROCEDURE_STEPS[proc.code]
             const totalSteps = steps?.length || 0
             const status = boardStatuses[proc.code]
-            const phase = PHASE_LIST.find((p) => p.id === expandedPhase)
+            const phase = PHASE_LIST.find((p) => p.id === phaseId)
 
             return (
               <button
                 key={proc.code}
+                ref={isActive ? activeChipRef : undefined}
                 onClick={() => onProcedureChange(proc.code)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
+                  flexShrink: 0,
                   gap: 6,
-                  padding: '6px 10px',
+                  padding: '5px 8px',
                   borderRadius: 'var(--radius-md)',
                   fontSize: 12,
                   whiteSpace: 'nowrap',
@@ -161,7 +182,7 @@ export default function ProcedureNav({
                   // 생략된 절차: 취소선 + 반투명 (열람은 가능하므로 클릭은 막지 않음)
                   ...(isSkippedProc ? { textDecoration: 'line-through', opacity: 0.45 } : {}),
                 }}
-                title={isSkippedProc ? '팀 결정으로 생략된 절차 (열람만 가능)' : undefined}
+                title={isSkippedProc ? '팀 결정으로 생략된 절차 (열람만 가능)' : (totalSteps > 0 ? `${proc.name} · 세부 스텝 ${totalSteps}개` : undefined)}
                 onMouseEnter={(e) => {
                   if (!isActive) {
                     e.currentTarget.style.background = 'var(--color-bg-secondary)'
@@ -221,15 +242,7 @@ export default function ProcedureNav({
                   </span>
                 )}
                 <span>{proc.name}</span>
-                {totalSteps > 0 && (
-                  /* 'Ns'는 초 단위로 오해받아 '스텝'을 그대로 적는다 */
-                  <span
-                    style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}
-                    title={`세부 스텝 ${totalSteps}개`}
-                  >
-                    {totalSteps}스텝
-                  </span>
-                )}
+                {/* 세부 스텝 수는 한 줄 배치를 위해 칩 툴팁(title)으로 옮겼다 */}
                 {status === 'confirmed' && (
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#22C55E' }} />
                 )}
@@ -243,7 +256,6 @@ export default function ProcedureNav({
             )
           })}
         </div>
-      )}
-    </nav>
-  )
+    )
+  }
 }
