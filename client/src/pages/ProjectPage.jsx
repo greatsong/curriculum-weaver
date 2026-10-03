@@ -23,6 +23,7 @@ import MaterialUploadBar from '../components/MaterialUploadBar'
 import InteractiveTour from '../components/InteractiveTour'
 import ContinueSimulationButton from '../components/ContinueSimulationButton'
 import A3ExplorationEntry from '../components/A3ExplorationEntry'
+import { computeWorkZoom } from '../lib/workZoom'
 
 // 시연 모드 자립 보드 코드 (BOARD_TYPES['demo_lesson_plan']='lesson_plan', ['demo_script']='demo_script')
 const DEMO_LESSON_PLAN = 'demo_lesson_plan'
@@ -242,6 +243,15 @@ export default function ProjectPage() {
   const [isDesktop, setIsDesktop] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches
   )
+  // 데스크톱 작업 화면 확대 배율 — 큰 화면 1.5배, 작은 노트북은 작업 영역을 지키는 만큼만(lib/workZoom.js)
+  const [workZoom, setWorkZoom] = useState(
+    () => (typeof window === 'undefined' ? 1.5 : computeWorkZoom(window.innerWidth, window.innerHeight))
+  )
+  useEffect(() => {
+    const onResize = () => setWorkZoom(computeWorkZoom(window.innerWidth, window.innerHeight))
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const mainContentRef = useRef(null)
   const resizingRef = useRef(false)
   const boardRatioRef = useRef(boardRatio)
@@ -609,7 +619,7 @@ export default function ProjectPage() {
   ]
 
   return (
-    <div className="work-shell flex flex-col overflow-hidden" style={{ background: 'var(--color-bg-primary)', '--app-zoom': isDesktop ? 1.5 : 1 }}>
+    <div className="work-shell flex flex-col overflow-hidden" style={{ background: 'var(--color-bg-primary)', '--app-zoom': isDesktop ? workZoom : 1 }}>
       {/* 상단 헤더 */}
       <header style={{
         background: 'var(--color-bg-secondary)',
@@ -710,7 +720,7 @@ export default function ProjectPage() {
               onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
             >
               {icon}
-              {/* 작업 화면은 데스크톱에서 1.5배 확대된다(.work-shell). 확대 후에도 글자가 한 줄로
+              {/* 작업 화면은 데스크톱에서 화면 크기에 따라 최대 1.5배 확대된다(.work-shell, lib/workZoom.js). 확대 후에도 글자가 한 줄로
                   들어가는 넓은 화면(xl)에서만 글자를 보이고, 그보다 좁으면 아이콘만 둔다(title이 툴팁). */}
               <span className="hidden xl:inline">{label}</span>
             </button>
