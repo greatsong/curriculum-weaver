@@ -241,13 +241,14 @@ io.on('connection', (socket) => {
     if (isInRoom(projectId)) socket.to(projectId).emit('procedure_updated', procedureCode)
   })
 
-  // 하위 호환성: 기존 stage 이벤트
-  socket.on('stage_changed', ({ sessionId, stage }) => {
-    socket.to(sessionId).emit('stage_updated', stage)
+  // 절차 이동 중계 — 클라이언트(ProjectPage)는 지금 이 이벤트명을 쓴다.
+  // 다른 이벤트처럼 참여 중인 방에만 보낼 수 있게 막는다(남의 프로젝트 화면을 넘기지 못하게).
+  socket.on('stage_changed', ({ sessionId, stage } = {}) => {
+    if (isInRoom(sessionId)) socket.to(sessionId).emit('stage_updated', stage)
   })
 
-  socket.on('board_updated', ({ sessionId, board }) => {
-    socket.to(sessionId).emit('board_changed', board)
+  socket.on('board_updated', ({ sessionId, board } = {}) => {
+    if (isInRoom(sessionId)) socket.to(sessionId).emit('board_changed', board)
   })
 
   // 연결 해제

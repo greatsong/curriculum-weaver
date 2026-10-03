@@ -376,13 +376,19 @@ export default function ProjectPage() {
     // 시연 모드: 커서를 얕은 스텝(demoStep)에 맞는 자립 보드 코드로 맞춘다(19절차 트랙 미사용).
     // ②교수학습과정안=demo_lesson_plan, ③실연 대본=demo_script. 채팅·보드가 이 커서를 대상으로
     // 동작하며, 좌측 패널은 demoStep으로 전환한다.
-    if (isDemo) {
-      const target = DEMO_STEP_PROCEDURE[demoStep] || DEMO_LESSON_PLAN
-      if (currentProcedure !== target) setProcedure(target)
-      return
-    }
+    if (!isDemo) return
+    const target = DEMO_STEP_PROCEDURE[demoStep] || DEMO_LESSON_PLAN
+    if (currentProcedure !== target) setProcedure(target)
+  }, [isDemo, demoStep, currentProcedure, setProcedure])
+
+  useEffect(() => {
+    // 협력 모드: 서버에 저장된 팀 커서(current_procedure)가 바뀔 때만 따라간다.
+    // currentProcedure를 의존성에 넣으면 안 된다 — 다른 팀원이 절차를 넘겨 소켓으로 새 절차를
+    // 받는 순간 이 effect가 다시 돌아, 아직 옛 값인 current_procedure로 화면을 즉시 되돌렸다
+    // (기록자만 넘어가고 팀원 화면은 그대로이던 버그, 2026-10-03).
+    if (isDemo) return
     if (currentProject?.current_procedure) setProcedure(currentProject.current_procedure)
-  }, [currentProject?.current_procedure, isDemo, demoStep, currentProcedure, setProcedure])
+  }, [currentProject?.current_procedure, isDemo, setProcedure])
 
   const connectSocket = useCallback(({ name: nickname, subject: subjectName }) => {
     if (joinedRef.current) return
@@ -394,7 +400,17 @@ export default function ProjectPage() {
     const handleMembersUpdated = (members) => {
       setMembers(members)
     }
-    const handleStageUpdated = (stage) => setProcedure(stage)
+    // 다른 팀원이 절차를 넘겼다 — 화면 절차와 함께 로컬 프로젝트의 팀 커서도 맞춘다.
+    // 커서를 옛 값으로 두면 이후 프로젝트 상태가 갱신될 때 옛 절차로 되돌아갈 수 있다.
+    const handleStageUpdated = (stage) => {
+      if (typeof stage !== 'string' || !stage) return
+      useProjectStore.setState((state) => (
+        state.currentProject?.id === projectId && state.currentProject.current_procedure !== stage
+          ? { currentProject: { ...state.currentProject, current_procedure: stage } }
+          : {}
+      ))
+      setProcedure(stage)
+    }
     socket.on('members_updated', handleMembersUpdated)
     socket.on('stage_updated', handleStageUpdated)
 
