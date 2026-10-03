@@ -11,6 +11,15 @@ import { nodeSchoolLevel } from './lenses/lensCommon'
 import ThemeLens from './lenses/ThemeLens'
 import NeighborLens from './lenses/NeighborLens'
 import SeriesLens from './lenses/SeriesLens'
+import ExplorationContextBar from './ExplorationContextBar'
+import { useDestinationProject } from './useDestinationProject'
+import { destinationBarModel } from '../lib/exploreBar'
+import {
+  projectDestination, readBasket, writeBasket, clearBasket as clearStoredBasket, mergeBasketMeta,
+  compareAvailability, futuresUrl,
+} from '../lib/exploreDestination'
+import { safeSessionStorage } from '../lib/explorationDraft'
+import { EXPLORE_COPY } from '../lib/explorationCopy'
 
 const LENSES = [
   { id: 'neighbor', label: '성취기준에서 찾기', hint: '이 성취기준과 연결된 것' },
@@ -21,8 +30,7 @@ const LENSES = [
 
 // 담기 저장값은 성취기준 key(standardKey — 충돌 코드는 "code|과목"). 예전 저장값(code)은
 // 충돌이 없으면 key와 같아 그대로 읽힌다 (마이그레이션 불필요).
-const BASKET_KEY = 'cw_design_basket'
-const BASKET_META_KEY = 'cw_design_basket_meta' // { key: subject_group } — 프로젝트 모달 교과 자동선택용
+// 담기는 보낼 곳(?project=)별로 나뉜다 — lib/exploreDestination.js 참고.
 const SCHOOL_LEVELS = ['초등학교', '중학교', '고등학교']
 
 /**
@@ -55,10 +63,15 @@ export default function DesignMode() {
     }, { replace: true })
   }, [setSearchParams])
 
-  // ── 담기 트레이 (세션 유지) ──
-  const [basket, setBasket] = useState(() => {
-    try { return new Set(JSON.parse(sessionStorage.getItem(BASKET_KEY) || '[]')) } catch { return new Set() }
-  })
+  // ── 보낼 곳 (?project=) ──
+  const projectParam = searchParams.get('project') || ''
+  const destination = useMemo(() => projectDestination(projectParam), [projectParam])
+  const projectState = useDestinationProject(destination.projectId)
+  const bar = destinationBarModel(destination, projectState)
+
+  // ── 담기 트레이 (세션 유지, 보낼 곳별로 따로) ──
+  const [basket, setBasket] = useState(() => new Set(readBasket(safeSessionStorage(), destination)))
+  useEffect(() => { setBasket(new Set(readBasket(safeSessionStorage(), destination))) }, [destination])
   // key→교과(subject_group) 해석용 — 담기 시 교과 메타를 함께 적재(모달 자동선택)
   const keyToGroupRef = useRef(new Map())
   useEffect(() => {
@@ -69,26 +82,21 @@ export default function DesignMode() {
       const next = new Set(prev)
       const allIn = keys.every(k => next.has(k))
       keys.forEach(k => allIn ? next.delete(k) : next.add(k))
-      sessionStorage.setItem(BASKET_KEY, JSON.stringify([...next]))
-      // 교과 메타 누적 — 담긴 key의 subject_group을 저장(제거된 key는 정리)
-      try {
-        const meta = JSON.parse(sessionStorage.getItem(BASKET_META_KEY) || '{}')
-        for (const k of next) { const g = keyToGroupRef.current.get(k); if (g) meta[k] = g }
-        for (const k of Object.keys(meta)) if (!next.has(k)) delete meta[k]
-        sessionStorage.setItem(BASKET_META_KEY, JSON.stringify(meta))
-      } catch { /* noop */ }
+      const storage = safeSessionStorage()
+      writeBasket(storage, destination, [...next])
+      // 교과 메타 누적 — 담긴 key의 subject_group (프로젝트 만들기 모달의 교과 자동 선택용)
+      mergeBasketMeta(storage, [...next].map(k => [k, keyToGroupRef.current.get(k)]))
       return next
     })
-  }, [])
+  }, [destination])
 
   // 담기 전체 비우기 (인라인 2단계 확인)
   const [clearConfirm, setClearConfirm] = useState(false)
   const clearBasket = useCallback(() => {
     setBasket(new Set())
-    sessionStorage.removeItem(BASKET_KEY)
-    sessionStorage.removeItem(BASKET_META_KEY)
+    clearStoredBasket(safeSessionStorage(), destination)
     setClearConfirm(false)
-  }, [])
+  }, [destination])
 
   // ── 그래프 데이터 ──
   // 항상 status=all로 한 번만 받고 렌즈별로 클라이언트 필터링:
@@ -188,6 +196,12 @@ export default function DesignMode() {
   }
 
   const basketList = [...basket]
+  // 미래보기 비교 — 2~7개만. 넘치면 임의로 자르지 않고 버튼을 막고 이유를 보인다.
+  const compare = compareAvailability(basketList.length)
+  const openCompare = () => {
+    if (!compare.ok) return
+    navigate(futuresUrl({ keys: basketList, destination }))
+  }
   const [showCoach, setShowCoach] = useState(false)
 
   return (
@@ -230,6 +244,11 @@ export default function DesignMode() {
           </div>
         </div>
       </div>
+
+      {/* 보낼 곳·반영 상태 머리 줄 */}
+      <ExplorationContextBar theme="light" variant="row" icon={bar.icon} target={bar.target}
+        changeHref={bar.changeHref} status={bar.status}
+        actions={basket.size > 0 ? <span className="text-xs text-gray-600 whitespace-nowrap">{EXPLORE_COPY.graph.basketCount(basket.size)}</span> : null} />
 
       {/* 렌즈 바 */}
       <div className="flex items-center gap-2 px-4 py-2.5 bg-white border-b border-gray-200 shrink-0 overflow-x-auto">
@@ -321,10 +340,24 @@ export default function DesignMode() {
             ))}
             {basketList.length > 6 && <span className="text-[11px] text-gray-400 self-center whitespace-nowrap">외 {basketList.length - 6}</span>}
           </div>
-          <button onClick={startProject}
-            className="ml-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition whitespace-nowrap">
-            이 조합으로 프로젝트 시작 →
-          </button>
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            {!compare.ok && (
+              <span className="hidden md:inline text-[11px] text-gray-600 whitespace-nowrap">
+                {compare.reason === 'tooMany' ? EXPLORE_COPY.graph.tooMany : EXPLORE_COPY.graph.tooFew}
+              </span>
+            )}
+            {destination.type === 'new' && (
+              <button onClick={startProject}
+                className="min-h-[36px] px-3.5 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-semibold transition whitespace-nowrap">
+                {EXPLORE_COPY.graph.startProject}
+              </button>
+            )}
+            <button onClick={openCompare} disabled={!compare.ok}
+              title={compare.ok ? undefined : (compare.reason === 'tooMany' ? EXPLORE_COPY.graph.tooMany : EXPLORE_COPY.graph.tooFew)}
+              className="min-h-[36px] px-4 py-2 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold transition whitespace-nowrap">
+              {EXPLORE_COPY.graph.compare}
+            </button>
+          </div>
         </div>
       )}
     </div>

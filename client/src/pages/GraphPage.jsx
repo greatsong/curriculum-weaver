@@ -1,4 +1,3 @@
-import ExplorationStatus from '../components/ExplorationStatus'
 import { lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
@@ -24,9 +23,9 @@ const DesignMode = lazy(() =>
 
 /**
  * 교과 연결 페이지 — 모드 라우터
- * - 설계 모드(기본): 교사의 질문별 렌즈 (과목쌍·주제·계열·이웃)
- * - 탐험 모드: 기존 3D 성운 (감상·발표용)
- * URL이 상태를 기록: ?mode=design|explore + 렌즈/필터 파라미터
+ * - 성취기준 연결 찾기(기본, mode=design): 질문별 보기 (두 과목·주제·학년 간 연결·성취기준)
+ * - 교육과정 전체 지도(mode=explore): 3D 성운 (감상·발표용)
+ * URL이 상태를 기록: ?mode=design|explore + 보기/필터 파라미터 + project(보낼 곳)
  */
 export default function GraphPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -35,7 +34,7 @@ export default function GraphPage() {
   const toDesign = () => {
     const next = new URLSearchParams(searchParams)
     next.set('mode', 'design')
-    next.delete('subjects')
+    next.delete('subjects') // project(보낼 곳)는 그대로 둔다
     setSearchParams(next)
   }
 
@@ -43,9 +42,8 @@ export default function GraphPage() {
   const initialSubjects = (searchParams.get('subjects') || '').split(',').filter(Boolean)
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex flex-col">
-      <ExplorationStatus dark={mode !== 'design'}>담기는 이 브라우저 탭의 후보 목록입니다. 기존 프로젝트에 자동 반영되지 않으며, 프로젝트 만들기를 완료해야 저장됩니다.</ExplorationStatus>
-      <div className="flex-1 min-h-0">
+    // 보낼 곳·저장 상태 안내는 각 화면(연결 찾기·전체 지도) 안의 머리 줄이 맡는다(ExplorationContextBar).
+    <div className="h-screen w-screen overflow-hidden">
       <Suspense fallback={
         <div className="flex items-center justify-center h-full bg-gray-50">
           <div className="text-center text-gray-400">
@@ -69,7 +67,6 @@ export default function GraphPage() {
           <DesignMode />
         )}
       </Suspense>
-      </div>
     </div>
   )
 }

@@ -20,12 +20,17 @@ import {
   NEBULA_BG, SUBJECT_COLORS_DARK, FALLBACK_NODE_COLOR,
   LINK_TYPE_COLORS_DARK, LINK_TYPE_LABELS, SIZE, TIMING, AUTOROTATE,
 } from '../lib/nebulaTheme'
+import ExplorationContextBar from './ExplorationContextBar'
+import { useDestinationProject } from './useDestinationProject'
+import { destinationBarModel } from '../lib/exploreBar'
+import { projectDestination, withDestination, readBasket, writeBasket, compareAvailability, futuresUrl } from '../lib/exploreDestination'
+import { safeSessionStorage } from '../lib/explorationDraft'
+import { EXPLORE_COPY } from '../lib/explorationCopy'
 
 const groupColor = (g) => SUBJECT_COLORS_DARK[g] || FALLBACK_NODE_COLOR
 
-// 담기 트레이 — 설계 모드(DesignMode)와 같은 sessionStorage 키를 공유해
-// 탐험에서 담은 성취기준이 프로젝트 생성 모달에 그대로 이어진다
-const BASKET_KEY = 'cw_design_basket'
+// 담기 — 성취기준 연결 찾기(DesignMode)와 같은 목적지별 저장소를 쓴다(lib/exploreDestination.js).
+// 새 프로젝트 담기는 프로젝트 만들기 모달에, 프로젝트 담기는 미래보기 비교에 이어진다.
 
 // 연결수 로그 스케일 노드 크기 (스펙 §6-1)
 function nodeSize(degree, maxDegree) {
@@ -101,18 +106,24 @@ export default function Graph3DShowcase() {
   const [browseSubject, setBrowseSubject] = useState('')
   const [helpOpen, setHelpOpen] = useState(false)
   const [themeQuery, setThemeQuery] = useState('') // 주제 스포트라이트 검색어
-  // 담기 트레이 — DesignMode와 sessionStorage 공유 (저장값은 성취기준 key)
-  const [basket, setBasket] = useState(() => {
-    try { return new Set(JSON.parse(sessionStorage.getItem(BASKET_KEY) || '[]')) } catch { return new Set() }
-  })
+  // 보낼 곳 (?project=) — 연결 찾기와 오갈 때도 유지한다
+  const projectParam = searchParams.get('project') || ''
+  const destination = useMemo(() => projectDestination(projectParam), [projectParam])
+  const projectState = useDestinationProject(destination.projectId)
+  const bar = destinationBarModel(destination, projectState)
+  // 담기 트레이 — DesignMode와 같은 목적지별 저장소 (저장값은 성취기준 key)
+  const [basket, setBasket] = useState(() => new Set(readBasket(safeSessionStorage(), destination)))
+  useEffect(() => { setBasket(new Set(readBasket(safeSessionStorage(), destination))) }, [destination])
   const toggleBasket = useCallback((key) => {
     setBasket(prev => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key); else next.add(key)
-      sessionStorage.setItem(BASKET_KEY, JSON.stringify([...next]))
+      writeBasket(safeSessionStorage(), destination, [...next])
       return next
     })
-  }, [])
+  }, [destination])
+  const compare = compareAvailability(basket.size)
+  const openCompare = () => { if (compare.ok) navigate(futuresUrl({ keys: [...basket], destination })) }
   // 링크 신고 상태 (pairId(a, b) → 요청됨/완료)
   const [reportedLinks, setReportedLinks] = useState(() => new Set())
   const [reportingKey, setReportingKey] = useState(null)
@@ -533,14 +544,14 @@ export default function Graph3DShowcase() {
   }
   const resetAll = () => { setActiveGroups(null); setActiveLevels(null); setThemeQuery('') }
   const toDesign = () => {
-    const next = new URLSearchParams()
+    const next = withDestination(new URLSearchParams(), destination)
     next.set('mode', 'design')
     setSearchParams(next)
   }
   // 탐험→설계 컨텍스트 이월: 보고 있던 별을 이웃 렌즈 포커스로 열기
   const openInDesign = () => {
     if (!selected) return
-    const next = new URLSearchParams()
+    const next = withDestination(new URLSearchParams(), destination)
     next.set('mode', 'design')
     next.set('lens', 'neighbor')
     next.set('focus', selected)
@@ -723,13 +734,6 @@ export default function Graph3DShowcase() {
             </div>
           </div>
           <div className="pointer-events-auto flex items-center gap-2 animate-ui-in" style={{ animationDelay: '80ms' }}>
-            {!tour.active && basket.size > 0 && (
-              <button onClick={() => navigate('/workspaces?createProject=1')}
-                title="담은 성취기준으로 프로젝트 시작"
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 transition-colors duration-150">
-                🧺 <b className="tabular-nums">{basket.size}</b> <span className="hidden sm:inline font-medium">프로젝트 시작</span>
-              </button>
-            )}
             {!tour.active && (
               <button onClick={() => setBrowseOpen(v => !v)}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium border transition-colors duration-150 ${
@@ -756,6 +760,34 @@ export default function Graph3DShowcase() {
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {/* 보낼 곳·반영 상태 머리 줄 — 상단 바 아래 한 줄. 데스크톱에서는 오른쪽 상세 카드(330px)와
+          겹치지 않게 너비를 제한하고, 별 목록 패널은 이 줄 아래(top-[124px])에서 시작한다. */}
+      {uiReady && !tour.active && (
+        <div className={`absolute z-20 top-[60px] inset-x-3 sm:top-[68px] sm:left-4 sm:right-auto ${
+          selectedNode && !isMobile ? 'sm:max-w-[calc(100%-378px)]' : 'sm:max-w-[min(760px,calc(100%-32px))]'} animate-ui-in`}
+          style={{ animationDelay: '120ms' }}>
+          <ExplorationContextBar theme="nebula" variant="floating" compact icon={bar.icon} target={bar.target}
+            changeHref={bar.changeHref} status={bar.status}
+            chipClassName={basket.size > 0 ? 'hidden sm:inline-flex' : ''}
+            actions={basket.size > 0 ? (
+              <>
+                <span className="hidden md:inline text-xs text-slate-300 whitespace-nowrap tabular-nums">{EXPLORE_COPY.graph.basketCount(basket.size)}</span>
+                {destination.type === 'new' && (
+                  <button onClick={() => navigate('/workspaces?createProject=1')}
+                    className="hidden lg:inline-flex items-center min-h-[32px] px-3 rounded-lg text-xs font-semibold bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-slate-200 whitespace-nowrap transition-colors">
+                    {EXPLORE_COPY.graph.startProject}
+                  </button>
+                )}
+                <button onClick={openCompare} disabled={!compare.ok}
+                  title={compare.ok ? undefined : (compare.reason === 'tooMany' ? EXPLORE_COPY.graph.tooMany : EXPLORE_COPY.graph.tooFew)}
+                  className="inline-flex items-center min-h-[32px] px-3 rounded-lg text-xs font-semibold bg-sky-500/90 hover:bg-sky-400 disabled:bg-white/[0.06] disabled:text-slate-400 disabled:cursor-not-allowed text-white whitespace-nowrap transition-colors">
+                  {EXPLORE_COPY.graph.compare}
+                </button>
+              </>
+            ) : null} />
         </div>
       )}
 
@@ -820,7 +852,7 @@ export default function Graph3DShowcase() {
       {uiReady && !tour.active && derived && browseOpen && (
         <div className={isMobile
           ? 'fixed inset-x-3 top-16 bottom-3 z-30 flex flex-col bg-[#0B1228]/90 backdrop-blur-2xl border border-white/[0.1] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)]'
-          : 'absolute left-4 top-[72px] bottom-4 z-20 w-[290px] flex flex-col bg-[#0B1228]/75 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] animate-ui-in'}>
+          : 'absolute left-4 top-[124px] bottom-4 z-20 w-[290px] flex flex-col bg-[#0B1228]/75 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] animate-ui-in'}>
           <div className="flex items-center gap-2 p-3 pb-2">
             <select
               value={browseSubject}

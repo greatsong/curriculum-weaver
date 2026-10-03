@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Sparkles, X, Check, ArrowRight } from 'lucide-react'
 import { apiPost } from '../../lib/api'
 import { codeFromKey, pairId } from '../../lib/standardKey'
@@ -153,6 +153,10 @@ export function ScenarioButton({ onClick, isOpen, className = '' }) {
  */
 export function ScenarioPanel({ scenario, onClose, subjectOf, standardOf, basket, onToggleBasket, onMore, onNav }) {
   const navigate = useNavigate()
+  // 보낼 곳이 진행 중인 프로젝트(?project=)면 새 프로젝트 시작을 권하지 않는다(중복 프로젝트 방지).
+  // 담기는 그대로 되고, 담은 성취기준은 미래보기 비교를 거쳐 그 프로젝트의 A-3로 보낸다.
+  const [searchParams] = useSearchParams()
+  const toExistingProject = !!searchParams.get('project')
   if (!scenario) return null
   const items = scenario.items || []
   const cur = items[scenario.activeIndex]
@@ -254,11 +258,13 @@ export function ScenarioPanel({ scenario, onClose, subjectOf, standardOf, basket
                   : 'bg-white border border-gray-300 text-gray-700 hover:border-violet-400'}`}>
               {allInBasket ? <><Check size={12} /> 성취기준 {pairKeys.length}개 담김</> : <>🧺 성취기준 {pairKeys.length}개 담기</>}
             </button>
-            <button
-              onClick={startProject}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 transition">
-              이 시나리오로 프로젝트 시작 <ArrowRight size={12} />
-            </button>
+            {!toExistingProject && (
+              <button
+                onClick={startProject}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 transition">
+                이 시나리오로 프로젝트 시작 <ArrowRight size={12} />
+              </button>
+            )}
             {onMore && total <= 5 && (
               <button
                 onClick={onMore}
