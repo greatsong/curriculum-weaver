@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { EXPLORE_COPY } from '../../lib/explorationCopy'
 import { Search, Plus, Check } from 'lucide-react'
 import { apiGet } from '../../lib/api'
@@ -27,32 +27,53 @@ export default function ThemeLens({ graph, query, onQuery, level, basket, onTogg
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const timerRef = useRef(null)
+  const [notice, setNotice] = useState('') // 일반 검색으로 이어 갔을 때의 안내
+  const [retryTick, setRetryTick] = useState(0)
 
   // 외부에서 query가 바뀌면(예시 칩 클릭, 다른 렌즈에서 이동 등) 입력값 동기화
   useEffect(() => { setText(query) }, [query])
 
+  // 2026-10-03 검토 반영
+  // - 검색어가 바뀌거나 지워지면 이전 요청의 응답을 버린다(늦게 온 A 결과가 B 결과를 덮지 않게).
+  // - 검색어를 지우면 로딩 표시도 끈다(타이머만 지우면 "검색 중"이 남았다).
+  // - 의미 검색을 쓸 수 없으면(503·500·연결 실패) 일반 검색으로 이어 가고, 그 사실을 표시한다.
+  //   일반 검색 결과에는 유사도가 없으므로 유사도 배지도 붙지 않는다.
   useEffect(() => {
-    if (!text.trim()) { setResults([]); setError(''); if (query) onQuery(''); return }
-    clearTimeout(timerRef.current)
+    if (!text.trim()) {
+      setResults([]); setError(''); setNotice(''); setLoading(false)
+      if (query) onQuery('')
+      return undefined
+    }
+    let cancelled = false
     setLoading(true)
-    timerRef.current = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       onQuery(text)
+      const q = text.trim()
       try {
-        const data = await apiGet('/api/standards/semantic-search', { q: text.trim() })
+        const data = await apiGet('/api/standards/semantic-search', { q })
+        if (cancelled) return
         if (!Array.isArray(data)) throw new Error('invalid')
-        setResults(data)
-        setError('')
+        setResults(data); setError(''); setNotice('')
       } catch {
-        setResults([])
-        setError('의미 검색을 사용할 수 없습니다 — 잠시 후 다시 시도해 주세요.')
+        if (cancelled) return
+        try {
+          const data = await apiGet('/api/standards/search', { q })
+          if (cancelled) return
+          if (!Array.isArray(data)) throw new Error('invalid')
+          setResults(data.slice(0, 50)); setError('')
+          setNotice('의미 검색을 사용할 수 없어 검색어가 들어간 성취기준을 보여 줍니다(일반 검색 결과).')
+        } catch {
+          if (cancelled) return
+          setResults([]); setNotice('')
+          setError('검색하지 못했습니다. 연결 상태를 확인하고 다시 시도해 주세요.')
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }, 500)
-    return () => clearTimeout(timerRef.current)
+    return () => { cancelled = true; clearTimeout(timer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text])
+  }, [text, retryTick])
 
   // 학교급 필터 — 셸(DesignMode) 상단 토글 값을 그대로 사용 (자체 토글은 셸로 일원화)
   const filtered = useMemo(() => (
@@ -103,8 +124,15 @@ export default function ThemeLens({ graph, query, onQuery, level, basket, onTogg
           className="w-full pl-9 pr-3 py-2.5 border-2 border-blue-500/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
       </div>
 
-      {loading && <p className="text-sm text-gray-400 animate-pulse">의미 검색 중…</p>}
-      {error && <p className="text-sm text-amber-600">{error}</p>}
+      {loading && <p className="text-sm text-gray-400 animate-pulse">검색 중…</p>}
+      {error && (
+        <p className="text-sm text-amber-600 flex items-center gap-2 flex-wrap">
+          {error}
+          <button onClick={() => setRetryTick((n) => n + 1)}
+            className="px-2 py-0.5 rounded border border-amber-300 text-xs text-amber-700 hover:bg-amber-50">다시 시도</button>
+        </p>
+      )}
+      {!loading && !error && notice && <p className="text-xs text-gray-500">{notice}</p>}
 
       {!loading && !error && text.trim() && columns.length === 0 && (
         <p className="text-sm text-gray-400 py-8 text-center">검색 결과가 없습니다</p>
