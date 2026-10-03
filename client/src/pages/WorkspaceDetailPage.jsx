@@ -11,6 +11,7 @@ import { EXPLORE_COPY } from '../lib/explorationCopy'
 import { PROCEDURES, PHASES, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE, resolveParticipationMode, PROJECT_GRADE_OPTIONS } from 'curriculum-weaver-shared/constants.js'
 import ParticipationModePicker from '../components/ParticipationModePicker'
 import BriefModeToggle from '../components/BriefModeToggle'
+import { saveProjectStandards, standardsSaveNotice } from '../lib/projectStandards'
 import { resolveBriefMode } from 'curriculum-weaver-shared/briefMode.js'
 import Logo from '../components/Logo'
 import HostSetupWizard from '../components/HostSetupWizard'
@@ -269,18 +270,17 @@ export default function WorkspaceDetailPage() {
       })
 
       // 선택된 성취기준 + 설계 모드에서 담아온 성취기준 일괄 저장 (값은 전부 key — 서버가 해석)
+      // 실패한 항목은 한 번 더 보내고, 그래도 남으면 교사에게 어떤 기준이 빠졌는지 알린다.
       const allKeys = [...new Set([...selectedStandardIds, ...designBasket])]
+      let standardsNotice = null
       if (allKeys.length > 0) {
-        try {
-          await apiPost(`/api/standards/project/${project.id}/bulk`, {
-            standard_codes: allKeys,
-          })
-          // 담아온 성취기준은 프로젝트에 반영됐으므로 장바구니 비움 (새 키·기존 키 모두)
-          clearBasket(safeSessionStorage(), NEW_DESTINATION)
-          setDesignBasket([])
-        } catch (e) {
-          console.warn('성취기준 일괄 저장 실패:', e.message)
-        }
+        const outcome = await saveProjectStandards(apiPost, project.id, allKeys)
+        if (outcome.error) console.warn('성취기준 일괄 저장 실패:', outcome.error.message)
+        standardsNotice = standardsSaveNotice(outcome)
+        // 이번에 보낸 기준은 저장 여부와 관계없이 장바구니에서 뺀다. 남겨 두면 다음에 만드는
+        // 다른 프로젝트에 붙는다(2026-10-03 검토). 빠진 기준은 아래 안내로 알린다.
+        clearBasket(safeSessionStorage(), NEW_DESTINATION)
+        setDesignBasket([])
       }
 
       setShowCreateProject(false)
@@ -292,6 +292,7 @@ export default function WorkspaceDetailPage() {
       setProjectGrade('')
       setRecommendedStandards([])
       setSelectedStandardIds(new Set())
+      if (standardsNotice) alert(standardsNotice)
       navigate(`/workspaces/${workspaceId}/projects/${project.id}`)
     } catch (err) {
       alert(`프로젝트 생성 실패: ${err.message}`)

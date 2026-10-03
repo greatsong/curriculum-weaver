@@ -822,20 +822,39 @@ standardsRouter.post('/project/:projectId/bulk', requireAuth, async (req, res) =
       return res.status(403).json({ error: '성취기준 추가 권한이 없습니다.' })
     }
 
+    // 항목마다 결과를 돌려준다. 예전에는 조회·저장 실패를 조용히 건너뛰고 늘 ok:true를 돌려줘,
+    // 화면이 일부만 저장된 것을 알 수 없었다(2026-10-03 검토). 이미 담긴 기준은 upsert라 'saved'다.
+    // - saved: 프로젝트에 연결됨 / unresolved: 코드를 찾지 못함(다시 시도해도 같음) / failed: 조회·저장 오류(다시 시도 가능)
     let added = 0
+    const results = []
     for (const ref of refs) {
+      const key = ref.code ?? ref.id
+      let resolvedId = null
       try {
-        const resolvedId = await resolveStandardId(ref)
-        if (!resolvedId) continue
+        resolvedId = await resolveStandardId(ref)
+      } catch (e) {
+        console.error(`[standards] 일괄 추가 — 코드 조회 실패 ${key}: ${e.message}`)
+        results.push({ key, status: 'failed' })
+        continue
+      }
+      if (!resolvedId) {
+        results.push({ key, status: 'unresolved' })
+        continue
+      }
+      try {
         await addStandardToProject(projectId, resolvedId, req.user.id, false)
         added++
+        results.push({ key, status: 'saved' })
       } catch (e) {
-        // 중복 등 무시
+        console.error(`[standards] 일괄 추가 — 연결 저장 실패 ${key}: ${e.message}`)
+        results.push({ key, status: 'failed' })
       }
     }
 
-    console.log(`[standards] 일괄 추가: ${added}/${refs.length}개 → 프로젝트 ${projectId}`)
-    res.status(201).json({ ok: true, added, total: refs.length })
+    const failed = results.filter((r) => r.status === 'failed').length
+    const unresolved = results.filter((r) => r.status === 'unresolved').length
+    console.log(`[standards] 일괄 추가: ${added}/${refs.length}개 (실패 ${failed}, 코드 없음 ${unresolved}) → 프로젝트 ${projectId}`)
+    res.status(201).json({ ok: failed === 0 && unresolved === 0, added, total: refs.length, failed, unresolved, results })
   } catch (err) {
     console.error('[standards] 일괄 추가 오류:', err.message)
     res.status(500).json({ error: '성취기준 일괄 추가에 실패했습니다.' })
