@@ -10,10 +10,16 @@ import { HANDOFF_HEADER } from '../lib/futuresProjectHandoff'
 import { applyDraftEvent, safeLocalStorage } from '../lib/explorationDraft'
 import { sameJson } from '../lib/sameJson'
 import { resolveBriefMode, stripEmptyBoardFields } from 'curriculum-weaver-shared/briefMode.js'
+import { workflowConfigForProject } from '../lib/projectWorkspace'
 
 /** 약식 기록(연수 모드) 팀인지 — 지금 연 프로젝트의 워크스페이스 설정 기준. 기존 팀은 false */
 export function isBriefTeam() {
-  return resolveBriefMode(useWorkspaceStore.getState().currentWorkspace?.workflow_config)
+  return resolveBriefMode(currentWorkflowConfig())
+}
+
+/** 지금 연 프로젝트의 작업 공간 설정(다른 작업 공간의 설정이 남아 있으면 null) */
+function currentWorkflowConfig() {
+  return workflowConfigForProject(useProjectStore.getState().currentProject, useWorkspaceStore.getState().currentWorkspace)
 }
 
 /** 제안이 반영되는 보드의 화면 이름 (예: '팀 일정') */
@@ -399,7 +405,8 @@ export const useChatStore = create((set, get) => ({
     })
 
     // AI 역할 프리셋을 워크스페이스 설정에서 가져옴
-    const wsAiRole = useWorkspaceStore.getState().currentWorkspace?.workflow_config?.aiRole
+    // 다른 작업 공간의 설정이 남아 있으면 쓰지 않는다(서버가 기본 역할로 처리)
+    const wsAiRole = currentWorkflowConfig()?.aiRole
 
     const aiModel = localStorage.getItem('cw_ai_model') || 'fast'
 

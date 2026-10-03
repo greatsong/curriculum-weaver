@@ -1,6 +1,9 @@
 import { create } from 'zustand'
 import { apiGet, apiPost, apiPut, apiDelete } from '../lib/api'
 
+// 상세 조회 요청 번호 — 늦게 도착한 이전 요청의 응답이 지금 화면을 덮지 않게 한다.
+let detailRequestSeq = 0
+
 export const useWorkspaceStore = create((set, get) => ({
   workspaces: [],
   currentWorkspace: null,
@@ -8,6 +11,9 @@ export const useWorkspaceStore = create((set, get) => ({
   error: null,
   errorStatus: 0,   // 마지막 목록 조회 실패의 HTTP 상태 (401 구분용)
   loaded: false,    // 목록 조회를 1회 이상 성공했는지
+  // 상세 조회 실패 { id, message, status } — 목록의 loading·error와 분리한다.
+  // (예전에는 상세 조회가 목록의 error를 같이 써서, 초대 수락 중 상세 실패만으로 정상 목록이 오류 카드로 바뀌었다)
+  detailError: null,
 
   /**
    * 사용자의 워크스페이스 목록 조회
@@ -27,13 +33,21 @@ export const useWorkspaceStore = create((set, get) => ({
    * 특정 워크스페이스 상세 조회 (멤버, 프로젝트 포함)
    */
   fetchWorkspace: async (id) => {
-    set({ loading: true, error: null })
+    const seq = ++detailRequestSeq
+    // 다른 작업 공간을 보던 중이면 이전 데이터를 바로 비운다. 그대로 두면 B 화면에 A의 이름·설정이
+    // 보이고, 그 상태로 설정을 저장하면 A의 설정이 B에 기록될 수 있었다(2026-10-03 검토).
+    set((state) => ({
+      detailError: null,
+      ...(state.currentWorkspace && state.currentWorkspace.id !== id ? { currentWorkspace: null } : {}),
+    }))
     try {
       const data = await apiGet(`/api/workspaces/${id}`)
-      set({ currentWorkspace: data, loading: false })
+      if (seq === detailRequestSeq) set({ currentWorkspace: data })
       return data
     } catch (err) {
-      set({ error: err.message, loading: false, currentWorkspace: null })
+      if (seq === detailRequestSeq) {
+        set({ detailError: { id, message: err.message, status: err.status ?? 0 } })
+      }
       throw err
     }
   },
