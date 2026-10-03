@@ -991,3 +991,49 @@ export function standardKey(s) {
   if (!s) return null
   return s.key || s.code || null
 }
+
+
+// ─────────────────────────────────────────────
+// 프로젝트 생성 시 고르는 대상 학년 (2026-10-03)
+// ─────────────────────────────────────────────
+/**
+ * 프로젝트 만들기 폼의 학년 선택지. value는 projects.grade에 저장되고
+ * 성취기준 추천(standardsValidator.resolveGradeGroups)의 학년군 매칭에도 쓰인다.
+ * 고등학교는 공통·선택을 나누지 않는다 — 추천은 원래 두 범주를 모두 포함했고,
+ * 교사에게는 구분이 혼란만 줬다.
+ */
+export const PROJECT_GRADE_OPTIONS = [
+  { value: '초등학교 3-4학년', label: '초등학교 3-4학년' },
+  { value: '초등학교 5-6학년', label: '초등학교 5-6학년' },
+  { value: '중학교', label: '중학교' },
+  { value: '고등학교', label: '고등학교' },
+]
+
+/**
+ * 예전 폼이 저장한 대표값 → 실제로 교사가 고른 범위.
+ * 예전 폼은 "중학교"를 골라도 "중학교 1학년"을 저장했다. 이 값을 그대로 AI에 넘기면
+ * 고르지도 않은 학년을 확정된 사실로 받아들이므로 학교급·학년군으로 되돌린다.
+ */
+const LEGACY_PROJECT_GRADE_VALUES = {
+  '초등학교 3학년': '초등학교 3-4학년',
+  '초등학교 5학년': '초등학교 5-6학년',
+  '중학교 1학년': '중학교',
+  '고등학교 1학년': '고등학교',
+  '고등학교 2학년': '고등학교',
+}
+
+/**
+ * projects.grade 값을 AI·화면에 보일 표현으로 바꾼다.
+ * - 폼 선택지(현재·예전)는 학교급·학년군 단위라 구체 학년이 아직 정해지지 않았다(isRange=true).
+ * - 그 밖의 값(설정 마법사의 "중2, 중3" 등)은 교사가 고른 학년 그대로다(isRange=false).
+ * @param {string|null|undefined} grade
+ * @returns {{ text: string, isRange: boolean } | null}
+ */
+export function describeProjectGrade(grade) {
+  const raw = typeof grade === 'string' ? grade.trim() : ''
+  if (!raw) return null
+  const legacy = LEGACY_PROJECT_GRADE_VALUES[raw]
+  if (legacy) return { text: legacy, isRange: true }
+  if (PROJECT_GRADE_OPTIONS.some((o) => o.value === raw)) return { text: raw, isRange: true }
+  return { text: raw, isRange: false }
+}

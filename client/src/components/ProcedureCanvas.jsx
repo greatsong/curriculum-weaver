@@ -10,6 +10,9 @@ import { BOARD_SCHEMAS, getBoardSchemaForProcedure, createEmptyBoard } from 'cur
 import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
 import ReadableValue, { labelize } from './ReadableValue'
+import BoardEditor from './BoardEditor'
+import SuggestionEditForm, { canEditSuggestion } from './SuggestionEditForm'
+import { normalizeListItem } from '../lib/boardContent'
 
 export default function ProcedureCanvas({ projectId, procedureCode, readOnly = false, loading = false, memberRole = null }) {
   const { boards, currentStep, setStep, updateBoard, skippedProcedures, skipProcedure, unskipProcedure } = useProcedureStore()
@@ -575,9 +578,7 @@ function DemoScriptTimingSummary({ board }) {
 // ── AI 제안 카드 ──
 function SuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
   const [showEdit, setShowEdit] = useState(false)
-  const [editedValue, setEditedValue] = useState(
-    typeof suggestion.value === 'string' ? suggestion.value : JSON.stringify(suggestion.value, null, 2)
-  )
+  const editable = canEditSuggestion(suggestion)
 
   return (
     <div data-tour="ai-suggestion" className="glass-card" style={{
@@ -600,6 +601,17 @@ function SuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
         </p>
       )}
 
+      {showEdit ? (
+        // 편집: JSON 원문이 아니라 보드와 같은 입력 폼으로 고친 뒤 수락한다
+        <div style={{ background: 'var(--color-bg-primary)', borderRadius: 'var(--radius-md)', padding: 12 }}>
+          <SuggestionEditForm
+            suggestion={suggestion}
+            onSubmit={(edited) => onEditAccept(edited)}
+            onCancel={() => setShowEdit(false)}
+          />
+        </div>
+      ) : (
+      <>
       <div style={{
         fontSize: 13,
         color: 'var(--color-text-primary)',
@@ -618,51 +630,27 @@ function SuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
         )}
       </div>
 
-      {showEdit && (
-        <textarea
-          value={editedValue}
-          onChange={(e) => setEditedValue(e.target.value)}
-          rows={4}
-          style={{
-            width: '100%',
-            padding: '8px 12px',
-            border: '1px solid #DDD6FE',
-            borderRadius: 'var(--radius-md)',
-            fontSize: 13,
-            marginBottom: 12,
-            resize: 'vertical',
-            boxSizing: 'border-box',
-          }}
-        />
-      )}
-
       <div style={{ display: 'flex', gap: 8 }}>
         <button
-          onClick={() => {
-            if (showEdit) {
-              let finalVal = editedValue
-              try { finalVal = JSON.parse(editedValue) } catch { /* string */ }
-              onEditAccept(finalVal)
-            } else {
-              onAccept()
-            }
-          }}
+          onClick={() => onAccept()}
           className="btn"
           style={{ fontSize: 12, padding: '6px 14px', background: '#7C3AED', color: '#fff', borderRadius: 9999 }}
           onMouseEnter={(e) => e.currentTarget.style.background = '#6D28D9'}
           onMouseLeave={(e) => e.currentTarget.style.background = '#7C3AED'}
         >
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 8 6.5 11.5 13 4.5"/></svg>
-          {showEdit ? '편집 후 수락' : '수락'}
+          수락
         </button>
+        {editable && (
         <button
-          onClick={() => setShowEdit(!showEdit)}
+          onClick={() => setShowEdit(true)}
           className="btn btn-secondary"
           style={{ fontSize: 12, padding: '6px 14px', borderRadius: 9999 }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          {showEdit ? '편집 취소' : '편집'}
+          편집
         </button>
+        )}
         <button
           onClick={onReject}
           className="btn btn-ghost"
@@ -674,6 +662,8 @@ function SuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
           거부
         </button>
       </div>
+      </>
+      )}
     </div>
   )
 }
@@ -1120,7 +1110,9 @@ function TableRenderer({ columns, data }) {
 
 function ListRenderer({ items, itemSchema }) {
   if (!Array.isArray(items) || items.length === 0) return null
-  const toText = (item) => {
+  const toText = (raw) => {
+    // 예전 편집기가 객체 항목을 JSON 문자열로 바꿔 저장한 보드도 읽을 수 있게 되살린다
+    const item = normalizeListItem(raw)
     if (typeof item === 'string') return item
     if (item && typeof item === 'object') {
       const values = Object.values(item).filter((v) => typeof v === 'string' && v.trim())
@@ -1156,242 +1148,6 @@ function TagsRenderer({ tags }) {
           {tag}
         </span>
       ))}
-    </div>
-  )
-}
-
-// ── 보드 편집기 ──
-function BoardEditor({ schema, content, onSave, onCancel }) {
-  const [draft, setDraft] = useState(JSON.parse(JSON.stringify(content || schema.empty)))
-
-  // 편집 중 다른 참여자가 같은 보드를 바꾸면(외부 design 변경으로 content prop이 바뀜)
-  // 비차단 경고만 띄운다. 저장 동작은 그대로 두되 교사가 모르고 덮어쓰는 일을 막는다.
-  const initialSnapshotRef = useRef(JSON.stringify(content || schema.empty))
-  const [externalChanged, setExternalChanged] = useState(false)
-  useEffect(() => {
-    if (JSON.stringify(content || schema.empty) !== initialSnapshotRef.current) {
-      setExternalChanged(true)
-    }
-  }, [content, schema.empty])
-
-  const updateField = (name, value) => setDraft((prev) => ({ ...prev, [name]: value }))
-
-  const updateTableRow = (fieldName, rowIdx, colName, value) => {
-    setDraft((prev) => {
-      const rows = [...(prev[fieldName] || [])]
-      rows[rowIdx] = { ...rows[rowIdx], [colName]: value }
-      return { ...prev, [fieldName]: rows }
-    })
-  }
-
-  const addTableRow = (field) => {
-    const emptyRow = {}
-    for (const col of field.columns) emptyRow[col.name] = ''
-    setDraft((prev) => ({ ...prev, [field.name]: [...(prev[field.name] || []), emptyRow] }))
-  }
-
-  const removeTableRow = (fieldName, rowIdx) => {
-    setDraft((prev) => ({ ...prev, [fieldName]: (prev[fieldName] || []).filter((_, i) => i !== rowIdx) }))
-  }
-
-  const addListItem = (fieldName) => {
-    setDraft((prev) => ({ ...prev, [fieldName]: [...(prev[fieldName] || []), ''] }))
-  }
-
-  const updateListItem = (fieldName, idx, value) => {
-    setDraft((prev) => {
-      const items = [...(prev[fieldName] || [])]
-      items[idx] = value
-      return { ...prev, [fieldName]: items }
-    })
-  }
-
-  const removeListItem = (fieldName, idx) => {
-    setDraft((prev) => ({ ...prev, [fieldName]: (prev[fieldName] || []).filter((_, i) => i !== idx) }))
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {externalChanged && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-          background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8,
-          padding: '8px 12px', fontSize: 12.5, color: '#92400E',
-        }}>
-          <span style={{ flex: 1, minWidth: 180 }}>다른 참여자가 이 보드를 수정했어요. 지금 저장하면 그 내용을 덮어쓸 수 있습니다.</span>
-          <button
-            onClick={() => { setDraft(JSON.parse(JSON.stringify(content || schema.empty))); initialSnapshotRef.current = JSON.stringify(content || schema.empty); setExternalChanged(false) }}
-            style={{ padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, border: '1px solid #F59E0B', background: '#fff', color: '#92400E', cursor: 'pointer' }}
-          >
-            최신 내용으로 교체
-          </button>
-          <button
-            onClick={() => setExternalChanged(false)}
-            style={{ padding: '4px 10px', fontSize: 12, borderRadius: 6, border: 'none', background: 'transparent', color: '#92400E', cursor: 'pointer', textDecoration: 'underline' }}
-          >
-            내 편집 유지
-          </button>
-        </div>
-      )}
-      {schema.fields.map((field) => (
-        <div key={field.name}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
-            {field.label}
-            {field.required && <span style={{ color: '#EF4444', marginLeft: 2 }}>*</span>}
-          </label>
-          {field.description && (
-            <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', margin: '0 0 6px' }}>{field.description}</p>
-          )}
-
-          {field.type === 'text' && (
-            <input
-              value={draft[field.name] || ''}
-              onChange={(e) => updateField(field.name, e.target.value)}
-              style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: 'var(--color-bg-primary)', boxSizing: 'border-box' }}
-            />
-          )}
-          {field.type === 'textarea' && (
-            <textarea
-              value={draft[field.name] || ''}
-              onChange={(e) => updateField(field.name, e.target.value)}
-              rows={3}
-              style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: 'var(--color-bg-primary)', resize: 'vertical', boxSizing: 'border-box' }}
-            />
-          )}
-          {field.type === 'number' && (
-            <input
-              type="number"
-              value={draft[field.name] ?? ''}
-              onChange={(e) => updateField(field.name, e.target.value ? parseInt(e.target.value) : null)}
-              style={{ width: 96, padding: '8px 12px', fontSize: 13, background: 'var(--color-bg-primary)', boxSizing: 'border-box' }}
-            />
-          )}
-          {field.type === 'select' && (
-            <select
-              value={draft[field.name] || ''}
-              onChange={(e) => updateField(field.name, e.target.value || null)}
-              style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: 'var(--color-bg-primary)', boxSizing: 'border-box' }}
-            >
-              <option value="">선택...</option>
-              {field.options?.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-            </select>
-          )}
-          {field.type === 'tags' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {(draft[field.name] || []).map((tag, i) => (
-                  <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', background: '#EFF6FF', color: '#2563EB', fontSize: 12, borderRadius: 9999 }}>
-                    {tag}
-                    <button
-                      onClick={() => removeListItem(field.name, i)}
-                      style={{ background: 'none', border: 'none', color: '#2563EB', cursor: 'pointer', padding: 0, display: 'flex' }}
-                    >
-                      <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <input
-                placeholder="입력 후 Enter"
-                style={{ padding: '6px 10px', fontSize: 12, background: 'var(--color-bg-primary)', boxSizing: 'border-box', width: 200 }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && e.target.value.trim()) {
-                    updateField(field.name, [...(draft[field.name] || []), e.target.value.trim()])
-                    e.target.value = ''
-                  }
-                }}
-              />
-            </div>
-          )}
-          {field.type === 'list' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {(draft[field.name] || []).map((item, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', width: 16, textAlign: 'right' }}>{i + 1}.</span>
-                  <input
-                    value={typeof item === 'string' ? item : JSON.stringify(item)}
-                    onChange={(e) => updateListItem(field.name, i, e.target.value)}
-                    style={{ flex: 1, padding: '6px 10px', fontSize: 13, background: 'var(--color-bg-primary)', boxSizing: 'border-box' }}
-                  />
-                  <button
-                    onClick={() => removeListItem(field.name, i)}
-                    style={{ background: 'none', border: 'none', color: 'var(--color-text-tertiary)', cursor: 'pointer', padding: 4, display: 'flex', transition: 'color var(--transition-fast)' }}
-                    onMouseEnter={(e) => e.currentTarget.style.color = '#DC2626'}
-                    onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-text-tertiary)'}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                  </button>
-                </div>
-              ))}
-              <button
-                onClick={() => addListItem(field.name)}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#3B82F6', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)', padding: '4px 0' }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                항목 추가
-              </button>
-            </div>
-          )}
-          {field.type === 'table' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
-                <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--color-bg-primary)' }}>
-                      {field.columns.map((col) => (
-                        <th key={col.name} style={{ textAlign: 'left', padding: '6px 8px', fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)', whiteSpace: 'nowrap' }}>
-                          {col.label}
-                        </th>
-                      ))}
-                      <th style={{ width: 32 }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(draft[field.name] || []).map((row, rowIdx) => (
-                      <tr key={rowIdx} style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
-                        {field.columns.map((col) => (
-                          <td key={col.name} style={{ padding: '4px 4px' }}>
-                            <input
-                              value={row[col.name] || row[col.label] || ''}
-                              onChange={(e) => updateTableRow(field.name, rowIdx, col.name, e.target.value)}
-                              style={{ width: '100%', padding: '4px 8px', fontSize: 12, border: '1px solid var(--color-border-subtle)', borderRadius: 'var(--radius-sm)', boxSizing: 'border-box' }}
-                            />
-                          </td>
-                        ))}
-                        <td style={{ padding: '4px' }}>
-                          <button
-                            onClick={() => removeTableRow(field.name, rowIdx)}
-                            style={{ background: 'none', border: 'none', color: 'var(--color-text-tertiary)', cursor: 'pointer', padding: 2, display: 'flex' }}
-                            onMouseEnter={(e) => e.currentTarget.style.color = '#DC2626'}
-                            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--color-text-tertiary)'}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <button
-                onClick={() => addTableRow(field)}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#3B82F6', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)', padding: '4px 0' }}
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                행 추가
-              </button>
-            </div>
-          )}
-        </div>
-      ))}
-
-      <div style={{ display: 'flex', gap: 8, paddingTop: 12, borderTop: '1px solid var(--color-border-subtle)' }}>
-        <button onClick={() => onSave(draft)} className="btn btn-primary" style={{ fontSize: 13 }}>
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 8 6.5 11.5 13 4.5"/></svg>
-          저장
-        </button>
-        <button onClick={onCancel} className="btn btn-ghost" style={{ fontSize: 13 }}>취소</button>
-      </div>
     </div>
   )
 }

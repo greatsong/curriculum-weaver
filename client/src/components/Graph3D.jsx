@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import ForceGraph3D from 'react-force-graph-3d'
 import * as THREE from 'three'
 import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { REMARK_PLUGINS } from '../lib/markdownPlugins'
 import { useNavigate } from 'react-router-dom'
 import { Search, X, RotateCcw, ChevronLeft, ChevronRight, Link2, Send, MessageCircle, List, Plus, Check, Crosshair, HelpCircle, Sparkles } from 'lucide-react'
 import { apiGet, apiPost, API_BASE, getHeaders } from '../lib/api'
@@ -1601,7 +1601,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
                       : 'bg-gray-700 text-gray-200 rounded-bl-sm'
                   }`}>
                     {msg.role === 'assistant' ? (
-                      <div className="prose prose-sm prose-invert max-w-none text-xs"><ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      <div className="prose prose-sm prose-invert max-w-none text-xs"><ReactMarkdown remarkPlugins={REMARK_PLUGINS}>
                         {fixEmphasisFlanking(msg.content || '')}
                       </ReactMarkdown></div>
                     ) : (msg.content || '')}
@@ -1613,7 +1613,7 @@ export default function Graph3D({ embedded = false, initialSubjects = null, show
               {chatStreaming && chatStreamingText && (
                 <div className="flex justify-start">
                   <div className="max-w-[90%] bg-gray-700 text-gray-200 rounded-xl rounded-bl-sm px-3 py-2 text-xs leading-relaxed">
-                    <div className="prose prose-sm prose-invert max-w-none text-xs"><ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <div className="prose prose-sm prose-invert max-w-none text-xs"><ReactMarkdown remarkPlugins={REMARK_PLUGINS}>
                       {fixEmphasisFlanking(chatStreamingText.replace(/<new_links>[\s\S]*?<\/new_links>/g, '').replace(/<new_links[\s\S]*$/g, '').trim() || '...')}
                     </ReactMarkdown></div>
                     <span className="inline-block w-1 h-3 bg-blue-500 animate-pulse ml-0.5" />

@@ -17,11 +17,13 @@ import {
   PROMPT_TONE_INSTRUCTIONS, AI_ROLE_PRESETS, DEFAULT_AI_ROLE, PARTICIPATION_MODES,
   MATERIAL_INTENTS, MATERIAL_INTENT_LABELS,
   getProcedureDisplayCode, getProcedureLabel, replaceInternalProcedureCodes, getNextActiveProcedure,
+  describeProjectGrade,
 } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { getBoardSchemaForPrompt } from 'curriculum-weaver-shared/boardSchemas.js'
 import { PROCEDURE_GUIDE, COMMON_RULES, getCoherenceTargets } from '../data/procedureGuide.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
+import { buildTodayPromptSection } from '../lib/today.js'
 
 /**
  * XML 속성용 절차 토큰 — 모델에게는 표시 코드(T-2)만 노출한다.
@@ -928,7 +930,7 @@ const DEMO_PROC_INFO = {
   },
 }
 
-export function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, participationMode, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes, standardLinks, mode, tone, examinerLens }) {
+export function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, participationMode, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes, standardLinks, mode, tone, examinerLens, now }) {
   // 시연 모드: mode==='demo' 단일 게이트. 협력 모드(기본)는 isDemo=false로 완전 불변.
   const isDemo = mode === 'demo'
   const procInfo = PROCEDURES[procedure] || (isDemo ? DEMO_PROC_INFO[procedure] : null)
@@ -1224,18 +1226,38 @@ ${schemaText}
 4. 가드레일: ${COMMON_RULES.guardrails.join(' / ')}`)
 
   // ─── 10. 세션 정보 ───
+  // 프로젝트를 만들 때 교사가 고른 교과·학년(projects.subjects·grade)도 여기서 넘긴다.
+  // 이게 빠지면 교사가 이미 알려 준 교과·학년을 AI가 처음 듣는 것처럼 다시 묻는다(2026-10-03 제보).
+  const projectSubjects = Array.isArray(session?.subjects)
+    ? session.subjects.filter((v) => typeof v === 'string' && v.trim())
+    : []
   if (session) {
-    parts.push(`[설계 세션]
-제목: ${session.title}
-${session.description ? `설명: ${session.description}` : ''}`)
+    const sessionLines = [`제목: ${session.title}`]
+    if (session.description) sessionLines.push(`설명: ${session.description}`)
+    if (projectSubjects.length > 0) {
+      sessionLines.push(`교과: ${projectSubjects.join(', ')} (프로젝트를 만들 때 교사가 선택)`)
+    }
+    parts.push(`[설계 세션]\n${sessionLines.join('\n')}`)
   }
 
-  // ─── 11. 학습자 맥락 (prep 보드) ───
+  // ─── 10-B. 오늘 날짜 (한국 시간) ───
+  // 날짜를 모르면 팀 일정·기간을 지난 날짜나 안내문 예시 날짜로 제안한다(2026-10-03 요청).
+  parts.push(buildTodayPromptSection(now instanceof Date ? now : new Date()))
+
+  // ─── 11. 학습자 맥락 (prep 보드 + 프로젝트 생성 시 고른 학년) ───
+  // 보드 학년은 팀이 확정한 값이라 우선한다. 보드가 비어 있으면 프로젝트를 만들 때 고른 학년을 쓴다.
   const prepBoard = boards.find(b => b.board_type === 'learner_context')
-  if (prepBoard?.content && Object.keys(prepBoard.content).length > 0) {
-    const lc = prepBoard.content
+  const lc = prepBoard?.content || {}
+  const boardGrade = lc.grade != null ? String(lc.grade).trim() : ''
+  const projectGrade = boardGrade ? null : describeProjectGrade(session?.grade)
+  {
     const contextItems = []
-    if (lc.grade) contextItems.push(`학년: ${lc.grade}`)
+    if (boardGrade) {
+      contextItems.push(`학년: ${boardGrade}`)
+    } else if (projectGrade) {
+      const rangeNote = projectGrade.isRange ? ', 학교급·학년군까지만 정해졌고 구체 학년은 아직 모름' : ''
+      contextItems.push(`학년: ${projectGrade.text} (프로젝트를 만들 때 교사가 선택${rangeNote}. 학습자 맥락 보드에는 아직 입력 전)`)
+    }
     if (lc.studentCount) contextItems.push(`학생 수: ${lc.studentCount}`)
     if (lc.digitalLiteracy) contextItems.push(`디지털 리터러시: ${lc.digitalLiteracy}`)
     if (lc.prevContext) contextItems.push(`선행 학습: ${lc.prevContext}`)
@@ -1243,6 +1265,24 @@ ${session.description ? `설명: ${session.description}` : ''}`)
     if (contextItems.length > 0) {
       parts.push(`[학습자 맥락]\n${contextItems.join('\n')}`)
     }
+  }
+
+  // ─── 11-B. 준비 절차: 프로젝트를 만들 때 받은 정보는 다시 묻지 않는다 ───
+  if (!isDemo && procedure === 'prep' && (projectGrade || projectSubjects.length > 0)) {
+    const known = []
+    if (projectGrade) known.push(`- 대상 학년: ${projectGrade.text}`)
+    if (projectSubjects.length > 0) known.push(`- 교과: ${projectSubjects.join(', ')}`)
+    const rules = [
+      '- 위 정보를 처음 듣는 것처럼 다시 묻지 않는다. 이미 알고 있다고 짧게 언급하고 이어 간다.',
+    ]
+    if (projectGrade) {
+      rules.push('- 학습자 맥락 보드의 학년 칸이 비어 있으므로, 이 학년을 보드에 반영하자고 제안한다.')
+      if (projectGrade.isRange) {
+        rules.push(`- 교사가 고른 값은 "${projectGrade.text}" 단위라 구체 학년(예: 중학교 2학년)은 아직 모른다. 구체 학년만 짧게 확인한다.`)
+      }
+    }
+    rules.push('- 학급 인원, 디지털 리터러시 수준처럼 아직 받지 않은 항목은 물어도 된다.')
+    parts.push(`[프로젝트를 만들 때 이미 받은 정보]\n${known.join('\n')}\n${rules.join('\n')}`)
   }
 
   // ─── 12. 팀 비전 (T-1-1 보드) — 모든 절차에서 참조 ───

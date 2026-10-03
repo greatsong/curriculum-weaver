@@ -574,6 +574,14 @@ export const useChatStore = create((set, get) => ({
     if (typeof editedValue === 'string') {
       try { parsedEdited = JSON.parse(editedValue) } catch { /* 문자열 그대로 사용 */ }
     }
+    // 보드 정리(board_update) 편집은 객체여야 보드에 얹을 수 있다. 예전에는 읽지 못한 편집 값을
+    // 조용히 버리고 "반영했어요"라고 알려, 고쳤는데 보드가 그대로인 문제가 있었다.
+    // 제안은 대기 상태로 두어 교사가 다시 편집하거나 그대로 수락할 수 있게 한다.
+    if (suggestion.procedureCode && !suggestion.field &&
+        !(parsedEdited && typeof parsedEdited === 'object' && !Array.isArray(parsedEdited))) {
+      pushToast({ kind: 'error', message: '편집한 내용을 보드 형식으로 읽지 못했어요. 다시 편집해 주세요.', duration: 5_000 })
+      return
+    }
     if (suggestion.procedureCode) {
       if (suggestion.field) {
         procStore.applyAISuggestion(suggestion.procedureCode, {

@@ -23,6 +23,7 @@ import { isReadOnlyProject } from '../lib/projectGuards.js'
 import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_LIST, getProcedureDisplayCode, replaceInternalProcedureCodes } from 'curriculum-weaver-shared/constants.js'
 import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
 import { getStandardsForSubjects } from '../lib/standardsValidator.js'
+import { formatKoreanToday } from '../lib/today.js'
 
 
 export const demoRouter = Router()
@@ -746,7 +747,8 @@ ${teacherContext}
 ## 사용 가능한 성취기준 목록 (이 목록에서만 선택할 것!)
 ${standardsText || '(해당 교과/학년의 성취기준 데이터가 없습니다. 성취기준 코드를 생성하지 마세요.)'}`
 
-    const userPromptBase = `대상: ${grade}
+    const userPromptBase = `오늘 날짜: ${formatKoreanToday()} (한국 시간 — 팀 일정 등 날짜는 이 날짜 이후로 잡을 것)
+대상: ${grade}
 교과: ${subjects.join(', ')}
 주제: ${topic}
 ${teacherIntentBlock ? `교사 의도 원문:\n[교사 입력 시작]\n${teacherIntentBlock}\n[교사 입력 끝]` : ''}`
@@ -1245,6 +1247,7 @@ ${teacherProfileText}
 
 [프로젝트 데이터 시작]
 ## 프로젝트 개요
+오늘 날짜: ${formatKoreanToday()} (한국 시간 — 팀 일정 등 날짜는 이 날짜 이후로 잡을 것)
 제목: ${sanitizePromptData(original.title, 100)}
 대상: ${original.grade || '(미지정)'} / 교과: ${subjects.join(', ')}
 설명: ${sanitizePromptData(original.description, 500) || '(없음)'}

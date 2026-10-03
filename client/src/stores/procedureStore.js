@@ -21,6 +21,7 @@ import {
 } from 'curriculum-weaver-shared/constants.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
+import { deepMergeBoardContent } from '../lib/boardContent'
 
 // ── 자료 폴링 관리 (모듈 스코프) ────
 // 동일 materialId에 대한 중복 폴링을 막기 위한 Set + 타이머 맵.
@@ -42,24 +43,6 @@ function _stopMaterialPolling(materialId) {
   _pollingStartedAt.delete(materialId)
 }
 
-/**
- * 보드 content 병합 유틸. 중첩 plain object는 깊은 병합으로 기존 하위 키를 보존하고,
- * 배열·스칼라는 incoming 값으로 교체한다(applyBoardContent 주석 참고).
- */
-function deepMergeBoardContent(base, incoming) {
-  const isPlainObject = (v) => v != null && typeof v === 'object' && !Array.isArray(v)
-  if (!isPlainObject(base)) return incoming
-  const out = { ...base }
-  for (const [key, value] of Object.entries(incoming)) {
-    const current = out[key]
-    if (isPlainObject(value) && isPlainObject(current)) {
-      out[key] = deepMergeBoardContent(current, value)
-    } else {
-      out[key] = value
-    }
-  }
-  return out
-}
 
 export const useProcedureStore = create((set, get) => ({
   currentProcedure: 'T-1-1',

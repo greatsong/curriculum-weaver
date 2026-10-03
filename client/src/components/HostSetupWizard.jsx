@@ -92,6 +92,8 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
       const project = await createProject(workspaceId, {
         title: `${targetGrade || ''} 융합수업 설계`.trim(),
         description: description || '',
+        // 제목에만 넣으면 AI가 학년을 모른다 — 프로젝트 필드로 저장해야 채팅 프롬프트에 들어간다
+        grade: targetGrade || null,
       })
       handleFinish()
       navigate(`/workspaces/${workspaceId}/projects/${project.id}`)
