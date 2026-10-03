@@ -175,3 +175,70 @@ describe('여덟 관점 동시 준비', () => {
     expect(root.querySelector('.lab-generation-progress').textContent).toContain('8/8개 준비 완료')
   })
 })
+
+describe('미래 화면의 좌우 방향키', () => {
+  const arrow = (key, target = document.body, extra = {}) => {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...extra })
+    target.dispatchEvent(event)
+    return event
+  }
+  const selected = () => +root.querySelector('[data-lens][aria-pressed="true"]').dataset.lens
+  it('고리 밖 시작 버튼에 포커스가 남아도 이동하며 양 끝에서 순환한다', async () => {
+    reduced = true
+    const start = document.createElement('button'); document.body.append(start)
+    try {
+      mount({ externalGraph: true }).setBridges(bridges); start.focus(); scene.open(); await advance(0)
+      expect(arrow('ArrowLeft', start).defaultPrevented).toBe(true)
+      expect(selected()).toBe(7)
+      arrow('ArrowRight', start); expect(selected()).toBe(0)
+      arrow('ArrowRight'); expect(selected()).toBe(1)
+      expect(request).toHaveBeenCalledTimes(8)
+      const lens = root.querySelector('[data-lens="1"]'); lens.focus()
+      arrow('ArrowRight', lens); expect(selected()).toBe(2)
+      expect(document.activeElement).toBe(lens)
+    } finally { start.remove() }
+  })
+  it.each(['input', 'textarea', 'select', '[contenteditable]', '[contenteditable="plaintext-only"]', '[role="textbox"]', '[role="dialog"]'])('%s에서는 고유 키보드 동작을 보존한다', async selector => {
+    reduced = true; mount().setBridges(bridges); scene.open(); await advance(0)
+    const control = document.createElement(selector.startsWith('[') ? 'div' : selector)
+    if (selector.startsWith('[')) {
+      const [, name, value] = selector.match(/^\[([^=\]]+)(?:="([^"]*)")?\]$/)
+      control.setAttribute(name, value || '')
+    }
+    const nested = control.tagName === 'DIV' ? control.appendChild(document.createElement('span')) : control
+    document.body.append(control)
+    try { expect(arrow('ArrowRight', nested).defaultPrevented).toBe(false); expect(selected()).toBe(0) }
+    finally { control.remove() }
+  })
+  it('조합키·한글 조합·다른 요소가 처리한 이벤트는 가로채지 않는다', async () => {
+    reduced = true; mount().setBridges(bridges); scene.open(); await advance(0)
+    for (const modifier of ['altKey', 'ctrlKey', 'metaKey', 'shiftKey', 'isComposing']) {
+      expect(arrow('ArrowRight', document.body, { [modifier]: true }).defaultPrevented).toBe(false)
+    }
+    const event = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }); event.preventDefault(); document.body.dispatchEvent(event)
+    expect(selected()).toBe(0)
+    expect(arrow('ArrowDown').defaultPrevented).toBe(false)
+  })
+  it('지도와 전환 연출 중에는 이동하지 않고 해제 후에는 문서 리스너도 제거한다', async () => {
+    mount({ externalGraph: true }).setBridges(bridges)
+    expect(arrow('ArrowRight').defaultPrevented).toBe(false)
+    scene.open(); await advance(0)
+    expect(arrow('ArrowRight').defaultPrevented).toBe(false)
+    await advance(3400); expect(selected()).toBe(0)
+    click('graph'); expect(arrow('ArrowRight').defaultPrevented).toBe(false)
+    scene.open(); expect(selected()).toBe(0)
+    scene.destroy(); expect(arrow('ArrowRight').defaultPrevented).toBe(false)
+    mount({ externalGraph: true }).setBridges(bridges); scene.open(); await advance(3400)
+    arrow('ArrowRight'); expect(selected()).toBe(1)
+  })
+  it('생성 중 또는 실패한 관점도 방향키로 이동하며 재요청하지 않는다', async () => {
+    reduced = true
+    request = vi.fn(i => i === 1 ? Promise.reject(new Error('생성 실패')) : new Promise(() => {}))
+    mount().setBridges(bridges); scene.open(); await advance(0)
+    arrow('ArrowRight'); expect(selected()).toBe(1)
+    expect(root.querySelector('.lab-future-card').textContent).toContain('생성 실패')
+    arrow('ArrowRight'); expect(selected()).toBe(2)
+    expect(root.querySelector('.lab-future-card').textContent).toContain('생성하고 있습니다')
+    expect(request).toHaveBeenCalledTimes(8)
+  })
+})

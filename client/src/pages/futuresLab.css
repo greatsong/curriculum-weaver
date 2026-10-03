@@ -176,3 +176,5 @@
 .futures-lab-root .lab-orbit-buttons button[data-status="ready"]:after { content:''; position:absolute; right:5px; bottom:5px; width:7px; height:7px; border-radius:50%; background:#b8ead3; box-shadow:0 0 6px #b8ead366; }
 .futures-lab-root .lab-orbit-buttons button[data-status="error"]:after { content:'!'; position:absolute; right:2px; bottom:2px; width:14px; height:14px; border-radius:50%; background:#ebc389; color:#201b12; font-size:11px; line-height:14px; }
 .futures-lab-root .lab-orbit-panel>.lab-generation-progress { display:block; color:#b8ead3; }
+
+.futures-lab-root .lab-orbit-panel>.lab-keyboard-hint { display:block; margin-top:14px; font-size:12px; color:var(--lab-muted); }

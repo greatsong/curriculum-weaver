@@ -15,6 +15,7 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
   const futures = { fast: new Map(), precise: new Map() }, timers = new Set()
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); if (!dead) fn() }, ms); timers.add(id); return id }
   const cancel = id => { clearTimeout(id); timers.delete(id) }
+  const keyboardTarget = root.ownerDocument
   const $ = s => root.querySelector(s), $$ = s => [...root.querySelectorAll(s)]
   root.innerHTML = `<section class="lab-scene" aria-label="빛의 원과 미래 탐색">
     <div class="lab-graph-view"><div class="lab-scene-head"><div><span class="lab-kicker">TIME STONE · 빛의 원</span><h2>교과 사이에서<br>수업의 가능성을 찾다.</h2></div><button type="button" class="lab-quiet" data-act="replay">연결 다시 보기 ↗</button></div>
@@ -22,7 +23,7 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     <div class="lab-inspector" aria-live="polite"><strong>선택한 성취기준을 중심으로</strong><p>과목 안의 코드와 키워드, 빛나는 연결점을 선택해 보세요.</p></div>
     <div class="lab-graph-actions"><button type="button" class="lab-quiet" data-act="retry-bridges">연결 다시 찾기</button><button type="button" class="lab-primary" data-act="open">미래 보기 ↗</button></div></div>
     <div class="lab-cast" hidden><div class="lab-portal" aria-hidden="true"></div><div class="lab-cast-copy"><span class="lab-kicker">연결이 하나의 가능성으로</span><h2>아직 만나지 않은<br>수업을 엽니다.</h2><p class="lab-cast-progress" role="status">여덟 갈래의 미래를 함께 준비합니다.</p></div></div>
-    <div class="lab-future-view" hidden><button type="button" class="lab-quiet" data-act="graph">← 연결 지도</button><div class="lab-future-layout"><aside class="lab-orbit-panel"><span class="lab-kicker">가능성의 고리</span><div class="lab-orbit"><div class="lab-orbit-art" aria-hidden="true"></div><div class="lab-orbit-core"></div><div class="lab-orbit-buttons"></div></div><div class="lab-orbit-navigation"><button type="button" class="lab-round" data-go="-1" aria-label="이전 미래">←</button><select class="lab-lens-select" aria-label="미래 관점">${LAB_LENSES.map((name, i) => `<option value="${i}">${name}</option>`).join('')}</select><button type="button" class="lab-round" data-go="1" aria-label="다음 미래">→</button></div><p class="lab-generation-progress" role="status"></p></aside><div class="lab-future-card" aria-live="polite"></div></div></div>
+    <div class="lab-future-view" hidden><button type="button" class="lab-quiet" data-act="graph">← 연결 지도</button><div class="lab-future-layout"><aside class="lab-orbit-panel"><span class="lab-kicker">가능성의 고리</span><div class="lab-orbit"><div class="lab-orbit-art" aria-hidden="true"></div><div class="lab-orbit-core"></div><div class="lab-orbit-buttons"></div></div><div class="lab-orbit-navigation"><button type="button" class="lab-round" data-go="-1" aria-label="이전 미래" aria-keyshortcuts="ArrowLeft">←</button><select class="lab-lens-select" aria-label="미래 관점">${LAB_LENSES.map((name, i) => `<option value="${i}">${name}</option>`).join('')}</select><button type="button" class="lab-round" data-go="1" aria-label="다음 미래" aria-keyshortcuts="ArrowRight">→</button></div><p class="lab-keyboard-hint">키보드 ← →로도 이동할 수 있습니다.</p><p class="lab-generation-progress" role="status"></p></aside><div class="lab-future-card" aria-live="polite"></div></div></div>
     <p class="lab-action-status" role="status"></p><p class="lab-ai-note">AI가 제안한 수업 아이디어입니다. 실제 수업의 효과를 예측하거나 보장하지 않습니다.</p>
     </section>`
 
@@ -189,9 +190,18 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
       catch (error) { $('.lab-action-status').textContent = error.message || '저장하지 못했습니다. 다시 시도해 주세요.' }
     }
   }
-  function keydown(e) { if (phase !== 'future' || e.target.closest('input,textarea,select,[contenteditable="true"]')) return; if (['ArrowLeft', 'ArrowRight'].includes(e.key)) { e.preventDefault(); go(current + (e.key === 'ArrowRight' ? 1 : -1)) } }
+  function keydown(e) {
+    // 시작 버튼에 포커스가 남아 있어도 미래 화면에서 바로 방향키를 쓸 수 있다.
+    if (dead || phase !== 'future' || !root.isConnected || root.closest('[hidden],[inert]')) return
+    if (e.defaultPrevented || e.isComposing || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+    if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return
+    // 검색·복사 초안·선택 상자 및 편집기/대화상자의 고유 키보드 동작을 보존한다.
+    if (e.target?.isContentEditable || e.target?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="slider"],[role="combobox"],[role="dialog"],dialog')) return
+    e.preventDefault()
+    go(current + (e.key === 'ArrowRight' ? 1 : -1))
+  }
   function change(e) { if (e.target.matches('.lab-lens-select')) go(+e.target.value) }
-  root.addEventListener('click', click); root.addEventListener('keydown', keydown); root.addEventListener('change', change)
+  root.addEventListener('click', click); keyboardTarget.addEventListener('keydown', keydown); root.addEventListener('change', change)
   let lastWidth = Math.round($('.lab-map').clientWidth)
   const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => { const width = Math.round(entries[0].contentRect.width); if (width && width !== lastWidth) { lastWidth = width; stopReveal(); drawGraph() } }) : null
   observer?.observe($('.lab-map'))
@@ -202,6 +212,6 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     retryBridges() { if (dead || phase !== 'graph') return; bridgeState = 'loading'; bridges = null; active = null; drawGraph(); armAnalysisTimeout(); onRetryBridges?.() },
     setBridges(data) { if (dead || (started && (!externalGraph || phase !== 'graph'))) return; cancel(analysisTimer); stopReveal(); bridges = data; bridgeState = data ? 'ready' : 'error'; active = null; drawGraph(); if (data && !externalGraph) reveal() },
     setModel(next) { if (dead || next === model) return; model = next === 'precise' ? 'precise' : 'fast'; if (started) { ensureAllFutures(); if (phase === 'future') renderFuture() } },
-    destroy() { dead = true; timers.forEach(clearTimeout); timers.clear(); observer?.disconnect(); root.removeEventListener('click', click); root.removeEventListener('keydown', keydown); root.removeEventListener('change', change); root.replaceChildren() },
+    destroy() { dead = true; timers.forEach(clearTimeout); timers.clear(); observer?.disconnect(); root.removeEventListener('click', click); keyboardTarget.removeEventListener('keydown', keydown); root.removeEventListener('change', change); root.replaceChildren() },
   }
 }
