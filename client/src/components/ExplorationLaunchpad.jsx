@@ -8,8 +8,8 @@ import './explorationLaunchpad.css'
 const ENTRIES = [
   {
     to: '/graph?mode=explore',
-    title: '전체 지도(3D)',
-    description: '방향을 정하기 전에 교과 사이 연결을 전체 지도에서 둘러봅니다.',
+    title: '교육과정 성운',
+    description: '방향을 정하기 전에 교과 사이 연결을 3D 전체 지도에서 둘러봅니다.',
     Icon: Orbit,
     tone: 'blue',
   },
