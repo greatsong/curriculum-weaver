@@ -469,6 +469,15 @@ export const useChatStore = create((set, get) => ({
   requestProcedureIntro: async (projectId, procedureCode) => {
     if (get().streaming) return
     if (get().introCache[procedureCode]) return // 이미 인트로 완료 → 스킵
+    // 캐시가 비어 있어도 받은 대화에 이 절차의 AI 메시지가 이미 있으면 인트로를 다시 만들지 않는다
+    // (loadMessages가 캐시를 복원하는 기준과 같다 — 절차별 첫 AI 메시지). 캐시가 어떤 이유로든
+    // 비면 같은 인트로가 대화에 중복 저장되던 문제의 마지막 방어선.
+    const existing = get().messages.find((m) =>
+      m?.sender_type === 'ai' && (m.stage_context || m.procedure_context) === procedureCode)
+    if (existing) {
+      set((state) => ({ introCache: { ...state.introCache, [procedureCode]: existing.content } }))
+      return
+    }
     const project = useProjectStore.getState().currentProject
     if (isReadOnlyProject(project)) return
 

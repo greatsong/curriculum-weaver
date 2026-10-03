@@ -318,19 +318,13 @@ export const useProcedureStore = create((set, get) => ({
 
   /**
    * 건너뛰기 해제. 커서는 건드리지 않는다.
-   * 스킵 전에 캐시된 옛 맥락 인트로가 재생되지 않도록 introCache를 무효화한다.
+   * 예전에는 "스킵 전 옛 맥락 인트로가 재생되지 않도록" introCache를 지웠지만, 절차 인트로는
+   * 이제 고정 문구라 지울 이유가 없다. 지우면 해제 후 다른 절차에 갔다가 돌아올 때 같은 인트로가
+   * 대화에 한 번 더 저장됐다(2026-10-03 왕복 테스트에서 확인).
    */
   unskipProcedure: async (projectId, procedureCode) => {
     const data = await apiDelete(`/api/projects/${projectId}/procedures/${procedureCode}/skip`)
     set({ skippedProcedures: data.skips || [] })
-    try {
-      const mod = await import('./chatStore')
-      mod.useChatStore.setState((state) => {
-        if (!state.introCache[procedureCode]) return state
-        const { [procedureCode]: _removed, ...rest } = state.introCache
-        return { introCache: rest }
-      })
-    } catch { /* chatStore 로드 실패 시 무시 */ }
     return data
   },
 

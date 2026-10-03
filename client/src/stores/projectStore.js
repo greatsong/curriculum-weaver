@@ -2,6 +2,17 @@ import { create } from 'zustand'
 import { apiGet, apiPost, apiPut, apiDelete } from '../lib/api'
 import { sameJson } from '../lib/sameJson'
 
+/**
+ * PUT 응답(프로젝트 행)을 기존 객체에 합친다.
+ * PUT 응답에는 GET에만 붙는 my_role·skipped_procedures가 없다. 통째로 바꾸면
+ * 절차를 옮길 때마다 호스트의 건너뛰기 버튼이 사라지고 화면의 생략 표시가 풀린다.
+ * skipped_procedures는 기존 참조를 유지해 생략 목록 초기화 effect가 다시 돌지 않게 한다.
+ */
+export function mergeProjectRow(prev, updated) {
+  if (!prev || !updated) return updated || prev
+  return { ...prev, ...updated }
+}
+
 export const useProjectStore = create((set, get) => ({
   projects: [],
   currentProject: null,
@@ -72,9 +83,11 @@ export const useProjectStore = create((set, get) => ({
     try {
       const updated = await apiPut(`/api/projects/${id}`, data)
       set((state) => ({
-        projects: state.projects.map((p) => (p.id === id ? updated : p)),
+        projects: state.projects.map((p) => (p.id === id ? mergeProjectRow(p, updated) : p)),
         currentProject:
-          state.currentProject?.id === id ? updated : state.currentProject,
+          state.currentProject?.id === id
+            ? mergeProjectRow(state.currentProject, updated)
+            : state.currentProject,
       }))
       return updated
     } catch (err) {
@@ -110,8 +123,10 @@ export const useProjectStore = create((set, get) => ({
       })
       set((state) => ({
         currentProject:
-          state.currentProject?.id === id ? updated : state.currentProject,
-        projects: state.projects.map((p) => (p.id === id ? updated : p)),
+          state.currentProject?.id === id
+            ? mergeProjectRow(state.currentProject, updated)
+            : state.currentProject,
+        projects: state.projects.map((p) => (p.id === id ? mergeProjectRow(p, updated) : p)),
       }))
       return updated
     } catch (err) {
