@@ -498,11 +498,17 @@ export default function ProjectPage() {
     if (activePanel === 'board') setBoardUpdated(false)
   }, [activePanel])
 
+  // 프로젝트 객체 전체가 아니라 읽기 전용 판단에 쓰는 값이 바뀔 때만 다시 불러온다.
+  // 객체에 걸면 절차 이동 저장(PUT) 응답으로 객체가 바뀔 때마다 같은 조회 4종이 한 번 더 나가,
+  // 단계를 빠르게 둘러보면 요청 한도에 걸렸다(이동 1회 13건 → 8~9건, 2026-10-04 측정).
+  const projectLoaded = !!currentProject
+  const projectStatus = currentProject?.status
+  const projectTitle = currentProject?.title
   useEffect(() => {
-    if (!currentProject) return
+    if (!projectLoaded) return
 
     reloadProjectArtifacts()
-  }, [currentProcedure, projectId, currentProject])
+  }, [currentProcedure, projectId, projectLoaded, projectStatus, projectTitle])
 
   // 원칙 패널을 열 때(데스크톱 드로어/모바일 탭) 현재 단계 원리를 항상 다시 로드.
   // reloadProjectArtifacts 에서는 loadPrinciples 가 loadBoards await 뒤에 있어,

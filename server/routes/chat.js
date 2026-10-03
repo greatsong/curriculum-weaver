@@ -29,6 +29,7 @@ import { planProcedureMove, encodeMoveMeta, MOVE_NOTE_SENDER } from 'curriculum-
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
 import { isReadOnlyProject } from '../lib/projectGuards.js'
+import { aiChatLimiter } from '../middleware/rateLimit.js'
 import { PROCEDURE_GUIDE } from '../data/procedureGuide.js'
 import { resolveSelectedMaterialIds } from '../lib/materialSelection.js'
 
@@ -568,7 +569,18 @@ chatRouter.post('/procedure-move', async (req, res) => {
   }
 })
 
-chatRouter.post('/stage-intro', async (req, res) => {
+// 정적 절차 안내는 AI를 부르지 않으므로 AI 채팅 한도(분당 10회)에서 뺀다. 예전에는 같은 한도에 묶여
+// 단계를 빠르게 둘러보면 안내 요청만으로 한도를 다 써서 그 1분 동안 AI 질문까지 막혔다(2026-10-04 측정).
+// AI를 부르는 시연 모드 코치 안내와, 프로젝트를 확인하지 못한 요청은 종전처럼 한도를 건다.
+function limitAiIntroOnly(req, res, next) {
+  const code = req.body?.procedure || req.body?.stage
+  if (!req.project || req.project.learner_context?.demo === true || isDemoBoardCode(code)) {
+    return aiChatLimiter(req, res, next)
+  }
+  next()
+}
+
+chatRouter.post('/stage-intro', limitAiIntroOnly, async (req, res) => {
   // stage 번호를 procedure 코드로 변환하는 것은 클라이언트에서 처리
   // 여기서는 호환성을 위해 procedure 필드가 있으면 사용
   req.body.procedure = req.body.procedure || req.body.stage
