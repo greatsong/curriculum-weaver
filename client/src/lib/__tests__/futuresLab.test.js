@@ -242,3 +242,74 @@ describe('미래 화면의 좌우 방향키', () => {
     expect(request).toHaveBeenCalledTimes(8)
   })
 })
+
+describe('차분한 미래 전환', () => {
+  let originalAnimate, animations
+  beforeEach(() => {
+    originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate')
+    animations = []
+    Object.defineProperty(Element.prototype, 'animate', { configurable: true, value: function (frames, options) {
+      const animation = { element: this, frames, options, cancel: vi.fn(() => animation.oncancel?.()) }
+      animations.push(animation)
+      return animation
+    } })
+  })
+  afterEach(() => {
+    if (originalAnimate) Object.defineProperty(Element.prototype, 'animate', originalAnimate)
+    else delete Element.prototype.animate
+  })
+  const next = () => root.querySelector('[data-go="1"]').click()
+  it('미래 내용은 즉시 바뀌고 다음·이전 방향과 8→1 순환에 짧은 효과를 적용한다', async () => {
+    mount({ externalGraph: true }).setBridges(bridges); scene.open(); await advance(3400)
+    expect(animations).toHaveLength(0)
+    next()
+    expect(root.querySelector('.lab-future-card h2').textContent).toBe('미래 1')
+    expect(animations[0].frames[0].transform).toBe('translateX(6px)')
+    expect(animations.every(a => a.options.duration <= 420)).toBe(true)
+    root.querySelector('[data-go="-1"]').click()
+    expect(animations[2].frames[0].transform).toBe('translateX(-6px)')
+    root.querySelector('[data-go="-1"]').click(); next()
+    expect(root.querySelector('.lab-future-card h2').textContent).toBe('미래 0')
+    expect(animations.at(-2).frames[0].transform).toBe('translateX(6px)')
+    expect(request).toHaveBeenCalledTimes(8)
+  })
+  it('연속 방향키 입력은 이전 효과를 취소하고 최신 미래와 포커스를 유지한다', async () => {
+    mount({ externalGraph: true }).setBridges(bridges); scene.open(); await advance(3400)
+    const button = root.querySelector('[data-go="1"]'); button.focus()
+    for (let i = 0; i < 5; i++) button.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    expect(root.querySelector('.lab-future-card h2').textContent).toBe('미래 5')
+    expect(document.activeElement).toBe(button)
+    expect(animations.slice(0, -2).every(a => a.cancel.mock.calls.length === 1)).toBe(true)
+    expect(animations.slice(-2).every(a => a.cancel.mock.calls.length === 0)).toBe(true)
+    root.querySelector('[data-lens="5"]').click()
+    expect(animations).toHaveLength(10)
+  })
+  it('모션 줄이기 설정에서는 즉시 이동하며 애니메이션을 만들지 않는다', async () => {
+    reduced = true; mount().setBridges(bridges); scene.open(); await advance(0); next()
+    expect(root.querySelector('.lab-future-card h2').textContent).toBe('미래 1')
+    expect(animations).toHaveLength(0)
+  })
+  it('생성 응답·모델 변경·지도 복귀·장면 해제 때 진행 중 효과를 정리한다', async () => {
+    let complete
+    request = vi.fn(i => i === 1 ? new Promise(resolve => { complete = resolve }) : Promise.resolve(future(i)))
+    mount({ externalGraph: true }).setBridges(bridges); scene.open(); await advance(3400); next()
+    complete(future(1)); await advance(0)
+    expect(animations.every(a => a.cancel.mock.calls.length === 1)).toBe(true)
+    expect(root.querySelector('.lab-future-card h2').textContent).toBe('미래 1')
+    next(); scene.setModel('precise'); await advance(0)
+    expect(animations.every(a => a.cancel.mock.calls.length === 1)).toBe(true)
+    next(); click('graph')
+    expect(animations.every(a => a.cancel.mock.calls.length === 1)).toBe(true)
+    scene.open(); next(); scene.destroy()
+    expect(animations.every(a => a.cancel.mock.calls.length === 1)).toBe(true)
+    expect(root.innerHTML).toBe('')
+  })
+  it('효과가 끝나면 보관하지 않고 애니메이션 API가 없어도 탐색할 수 있다', async () => {
+    mount({ externalGraph: true }).setBridges(bridges); scene.open(); await advance(3400); next()
+    animations.forEach(a => a.onfinish())
+    delete Element.prototype.animate
+    next()
+    expect(root.querySelector('.lab-future-card h2').textContent).toBe('미래 2')
+    expect(animations.every(a => a.cancel.mock.calls.length === 0)).toBe(true)
+  })
+})

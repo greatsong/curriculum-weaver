@@ -70,7 +70,7 @@
 .futures-lab-root .lab-future-layout { display:grid;grid-template-columns:285px minmax(0,1fr);gap:38px;margin-top:35px; }
 .futures-lab-root .lab-orbit-panel { text-align:center;padding-top:15px; }
 .futures-lab-root .lab-orbit { position:relative;width:280px;height:280px;margin:24px auto 12px;overflow:hidden; }
-.futures-lab-root .lab-orbit-art { position:absolute;inset:12%;border-radius:50%;border:1px solid #b8ead3aa;box-shadow:0 0 25px #b8ead31a,inset 0 0 30px #b8ead311;transition:transform .6s ease; }
+.futures-lab-root .lab-orbit-art { position:absolute;inset:12%;border-radius:50%;border:1px solid #b8ead3aa;box-shadow:0 0 25px #b8ead31a,inset 0 0 30px #b8ead311; }
 .futures-lab-root .lab-orbit-art:before { content:'';position:absolute;inset:-12px;border-radius:50%;border:1px dashed #b8ead333; }
 .futures-lab-root .lab-orbit-art:after { content:'';position:absolute;inset:12px;border-radius:50%;border:1px solid #b8ead322; }
 .futures-lab-root .lab-orbit-core { position:absolute;inset:0;display:flex;justify-content:center;align-items:center;flex-direction:column;pointer-events:none; }
