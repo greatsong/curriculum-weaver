@@ -89,8 +89,9 @@ curriculum-weaver/
 - **관문 함수** (`shared/constants.js`): `UNSKIPPABLE_PROCEDURES`(코어 5: T-1-1·T-2-1·A-1-2·A-2-1·A-2-2 — 보고서·AI가 하드코딩 참조), `isProcedureSkippable`, `getActiveProcedures`, `getNextActiveProcedure`. **스킵 인식이 필요한 곳은 `PROCEDURE_LIST` 직접 순회 금지, 반드시 관문 함수 경유** (직접 순회 grep으로 감사 가능)
 - **API**: `POST/DELETE /api/projects/:id/procedures/:code/skip` (host/owner 전용, 코어 403, 멱등). 스킵 대상이 팀 커서면 다음 활성 절차로 자동 보정. `GET /projects/:id` 응답에 `skipped_procedures` 포함
 - **실시간**: `procedure_skips_changed` 소켓 이벤트 (서버 브로드캐스트, designs.js) → procedureStore가 구독
-- **AI**: `buildSystemPrompt({ skippedCodes })` — procedure_advance가 생략 절차를 건너뜀, [생략된 절차] 섹션 주입, 정합성 점검은 "(팀 결정으로 생략됨)" 표기. procedure-intro는 스킵 절차 400
-- **보고서**: procedureStatus 'skipped' 분기, 진행률 분모=활성 절차 수, 본문에 "팀 합의로 생략(사유)" 블록
+- **AI**: `buildSystemPrompt({ skippedCodes })` — procedure_advance가 생략 절차를 건너뜀, [생략된 절차] 섹션 주입, 정합성 점검은 "(팀 결정으로 생략됨)" 표기, 이전 절차 요약에서 생략 절차 제외. T-2-1 생략 시 역할을 짐작하거나 '미정'으로 단정하지 말라는 안내 추가. procedure-intro는 스킵 절차 400
+- **보고서**: procedureStatus 'skipped' 분기, 진행률 분모=활성 절차 수, 본문에 "팀 합의로 생략(사유)" 블록. T-2-1이 생략되면 남은 역할표에서 '참여 선생님'·'참여 교과'를 뽑지 않음
+- **핵심 절차의 기존 생략 기록**: 코어 목록이 바뀌어도 DB의 생략 행은 지우지 않는다. 해제 버튼(`isSkipped ||` 조건)과 DELETE(코어 검사 없음)는 코어에도 동작
 - **데모**: 스킵 프로젝트는 이어서 시뮬레이션 400 차단 (잔여판정·복제·프롬프트가 스킵 미인식 — 전면 지원은 별도 작업)
 - **UI**: ProcedureCanvas 헤더 버튼(host) + 생략 배너 + 읽기전용, ProcedureNav 취소선·분모 제외, 스킵 절차 클릭=로컬 열람만(커서 PATCH 안 함). 진행률·stale 체인에서 스킵 제외
 - **명칭 규칙**: 사용자 노출 문구는 반드시 displayCode(`getProcedureLabel`/`getProcedureDisplayCode`) — 내부 코드(T-1-1)는 DB·API 전용
