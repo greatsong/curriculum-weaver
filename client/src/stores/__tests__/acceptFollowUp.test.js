@@ -90,4 +90,15 @@ describe('제안 수락 후 AI 안내', () => {
     await useChatStore.getState().acceptSuggestion('s1', 'p1')
     expect(sendMessage).not.toHaveBeenCalled()
   })
+
+  it('수락 버튼을 빠르게 두 번 누르거나 캔버스·채팅 카드를 둘 다 눌러도 한 번만 처리한다', async () => {
+    useChatStore.setState({ pendingSuggestions: [sug('s1', 'T-2-3', { a: 1 })] })
+    await Promise.all([
+      useChatStore.getState().acceptSuggestion('s1', 'p1'),
+      useChatStore.getState().acceptSuggestion('s1', 'p1'),
+      useChatStore.getState().editAcceptSuggestion('s1', { a: 2 }, 'p1'),
+    ])
+    expect(apiPut).toHaveBeenCalledTimes(1)
+    expect(sendMessage).toHaveBeenCalledTimes(1)
+  })
 })

@@ -673,7 +673,7 @@ export const useChatStore = create((set, get) => ({
     if (batch.length === 0 || get().streaming || !projectId) return
     const labels = [...new Set(batch.map((b) => b.label))].map((l) => `'${l}'`).join(', ')
     const verb = batch.some((b) => b.edited) ? '고쳐서 ' : ''
-    const note = `✓ AI 제안을 ${verb}${labels} 보드에 반영했어요. 반영된 내용을 짧게 확인하고, 이어서 할 일을 안내해 주세요.`
+    const note = `✓ AI 제안을 ${verb}${labels} 보드에 반영했어요. 반영된 내용을 한두 문장으로 확인하고, 이어서 할 일을 하나만 안내해 주세요.`
     const procedureCode = useProcedureStore.getState().currentProcedure
     Promise.resolve(get().sendMessage(projectId, note, procedureCode)).catch((err) => {
       console.warn('수락 후 AI 안내 요청 실패:', err?.message || err)
