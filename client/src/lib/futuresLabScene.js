@@ -12,7 +12,7 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
   const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
   let dead = false, model = initialModel, phase = 'graph', started = false, current = 0, bridgeState = standards.length >= 2 ? 'loading' : 'idle'
   let bridges = null, layout = null, active = null, revealing = false, revealTimers = [], analysisTimer = null
-  const futures = { fast: new Map(), precise: new Map() }, timers = new Set()
+  const futures = { fast: new Map(), precise: new Map() }, timers = new Set(), transitions = new Set()
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); if (!dead) fn() }, ms); timers.add(id); return id }
   const cancel = id => { clearTimeout(id); timers.delete(id) }
   const keyboardTarget = root.ownerDocument
@@ -93,6 +93,7 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
   }
   function armAnalysisTimeout() { cancel(analysisTimer); analysisTimer = later(() => { if (bridgeState === 'loading' && (!started || (externalGraph && phase === 'graph'))) { bridgeState = 'slow'; updateGraphControls() } }, 25000) }
   function setPhase(next) {
+    stopTransition()
     phase = next; $('.lab-graph-view').hidden = externalGraph || next !== 'graph'; $('.lab-cast').hidden = next !== 'casting'; $('.lab-future-view').hidden = next !== 'future'
     $('.lab-ai-note').hidden = externalGraph && next === 'graph'
     if (next === 'graph') drawGraph()
@@ -150,9 +151,9 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     })
   }
   function renderFuture() {
+    stopTransition()
     const state = futures[model].get(current), f = state?.data
     $('.lab-orbit-core').innerHTML = `<span>${String(current + 1).padStart(2, '0')}<small>/ 08</small></span><strong>${LAB_LENSES[current]}</strong>`
-    $('.lab-orbit-art').style.transform = `rotate(${current * 45}deg)`
     $('.lab-lens-select').value = String(current)
     if (!$('.lab-orbit-buttons').children.length) $('.lab-orbit-buttons').innerHTML = LAB_LENSES.map((name, i) => { const a = i * Math.PI / 4 - Math.PI / 2; return `<button type="button" data-lens="${i}" aria-label="${name}" aria-pressed="${i === current}" style="left:${50 + 38 * Math.cos(a)}%;top:${50 + 38 * Math.sin(a)}%">${i + 1}</button>` }).join('')
     renderProgress()
@@ -171,7 +172,37 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     if (reduced()) { setPhase('future'); return }
     setPhase('casting'); later(() => setPhase('future'), 3400)
   }
-  function go(index) { current = (index + 8) % 8; ensureFuture(current); renderFuture() }
+  function stopTransition() {
+    transitions.forEach(animation => animation.cancel())
+    transitions.clear()
+  }
+  function playTransition(direction) {
+    if (dead || phase !== 'future' || reduced()) return
+    const animate = (element, frames, duration) => {
+      if (!element?.animate) return
+      const animation = element.animate(frames, { duration, easing: 'cubic-bezier(.22,1,.36,1)' })
+      transitions.add(animation)
+      animation.onfinish = animation.oncancel = () => transitions.delete(animation)
+    }
+    // 화면은 고정하고 본문만 6px 이동한다. 이전 효과를 취소하므로 빠른 탐색도 밀리지 않는다.
+    animate($('.lab-future-card'), [
+      { opacity: .68, transform: `translateX(${direction * 6}px)` },
+      { opacity: 1, transform: 'translateX(0)' },
+    ], 280)
+    const restingGlow = '0 0 25px #b8ead31a, inset 0 0 30px #b8ead311'
+    animate($('.lab-orbit-art'), [
+      { boxShadow: restingGlow },
+      { boxShadow: '0 0 32px #b8ead345, inset 0 0 30px #b8ead328', offset: .35 },
+      { boxShadow: restingGlow },
+    ], 420)
+  }
+  function go(index) {
+    const next = (index + 8) % 8
+    if (next === current) return
+    const distance = (next - current + 8) % 8
+    const direction = distance <= 4 ? 1 : -1
+    current = next; ensureFuture(current); renderFuture(); playTransition(direction)
+  }
   function click(e) {
     const button = e.target.closest('button'); if (!button || !root.contains(button)) return
     if (button.dataset.hub !== undefined) { stopReveal(); illuminate(layout.hubs.find(h => h.id === +button.dataset.hub)); updateGraphControls() }
@@ -212,6 +243,6 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     retryBridges() { if (dead || phase !== 'graph') return; bridgeState = 'loading'; bridges = null; active = null; drawGraph(); armAnalysisTimeout(); onRetryBridges?.() },
     setBridges(data) { if (dead || (started && (!externalGraph || phase !== 'graph'))) return; cancel(analysisTimer); stopReveal(); bridges = data; bridgeState = data ? 'ready' : 'error'; active = null; drawGraph(); if (data && !externalGraph) reveal() },
     setModel(next) { if (dead || next === model) return; model = next === 'precise' ? 'precise' : 'fast'; if (started) { ensureAllFutures(); if (phase === 'future') renderFuture() } },
-    destroy() { dead = true; timers.forEach(clearTimeout); timers.clear(); observer?.disconnect(); root.removeEventListener('click', click); keyboardTarget.removeEventListener('keydown', keydown); root.removeEventListener('change', change); root.replaceChildren() },
+    destroy() { dead = true; stopTransition(); timers.forEach(clearTimeout); timers.clear(); observer?.disconnect(); root.removeEventListener('click', click); keyboardTarget.removeEventListener('keydown', keydown); root.removeEventListener('change', change); root.replaceChildren() },
   }
 }
