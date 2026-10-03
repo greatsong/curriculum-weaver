@@ -1,0 +1,157 @@
+/*
+ * 공용 UI 부품 (components/ui) — 색·반경·높이는 index.css 토큰과 이 파일의 --ui-* 변수로만 쓴다.
+ * 배색: 모든 화면에서 기존 밝은 앱 색을 쓴다. 어두운 색은 그 아래 장면 영역(교육과정 성운 캔버스,
+ *       미래보기 시각화)만 유지하고, 이 부품들은 어두운 변형을 두지 않는다(2026-10-03 사용자 결정).
+ * 규칙은 @layer components 안에 둔다 — Tailwind 유틸리티(너비·여백 등)가 필요할 때 덮어쓸 수 있게.
+ * index.css의 기존 토큰 값과 @layer base 전역 규칙은 건드리지 않는다.
+ */
+
+/* Tailwind와 같은 레이어 순서를 먼저 선언한다. 이 파일이 index.css보다 먼저 로드돼도
+   components가 base(preflight) 위, utilities 아래에 오도록 순서를 고정하기 위함. */
+@layer theme, base, components, utilities;
+
+:root {
+  --ui-fg: var(--color-text-primary);
+  --ui-fg-body: var(--color-text-body);
+  --ui-fg-muted: var(--color-text-secondary);
+  --ui-surface: var(--color-bg-secondary);
+  --ui-surface-sunken: var(--color-bg-primary);
+  --ui-surface-subtle: var(--color-bg-tertiary);
+  --ui-line: var(--color-border);
+  --ui-line-strong: var(--color-border-strong);
+  --ui-link: var(--color-link);
+  --ui-link-hover: var(--color-link-hover);
+  --ui-focus: var(--color-primary-hover);
+
+  --ui-h-md: 44px;
+  --ui-h-sm: 36px;
+  --ui-radius-control: var(--radius-md);
+  --ui-radius-card: var(--radius-lg);
+  --ui-radius-panel: var(--radius-xl);
+  --ui-radius-pill: 9999px;
+
+  --ui-btn-primary-bg: var(--color-action);
+  --ui-btn-primary-bg-hover: var(--color-action-hover);
+  --ui-btn-primary-fg: #FFFFFF;
+  --ui-btn-secondary-bg: var(--color-bg-secondary);
+  --ui-btn-secondary-bg-hover: #F9FAFB;
+  --ui-btn-secondary-fg: var(--color-text-body);
+  --ui-btn-secondary-line: var(--color-border);
+  --ui-btn-secondary-line-hover: var(--color-border-strong);
+  --ui-btn-ghost-fg: var(--color-text-body);
+  --ui-btn-ghost-bg-hover: var(--color-bg-tertiary);
+  --ui-btn-disabled-bg: var(--color-bg-tertiary);
+  --ui-btn-disabled-fg: var(--color-text-secondary);
+
+  /* 상태 색 — 글자 대비 4.5:1 이상 */
+  --ui-tone-neutral-bg: var(--color-bg-tertiary); --ui-tone-neutral-fg: var(--color-text-body); --ui-tone-neutral-line: var(--color-border); --ui-tone-neutral-dot: var(--color-text-secondary);
+  --ui-tone-info-bg: #EFF6FF; --ui-tone-info-fg: #1D4ED8; --ui-tone-info-line: #BFDBFE; --ui-tone-info-dot: #2563EB;
+  --ui-tone-outline-bg: var(--color-bg-secondary); --ui-tone-outline-fg: #1D4ED8; --ui-tone-outline-line: #93C5FD; --ui-tone-outline-dot: #2563EB;
+  --ui-tone-review-bg: #F5F3FF; --ui-tone-review-fg: #5B21B6; --ui-tone-review-line: #C4B5FD; --ui-tone-review-dot: #7C3AED;
+  --ui-tone-success-bg: #F0FDF4; --ui-tone-success-fg: #15803D; --ui-tone-success-line: #BBF7D0; --ui-tone-success-dot: #16A34A;
+  --ui-tone-muted-bg: var(--color-bg-secondary); --ui-tone-muted-fg: #4B5563; --ui-tone-muted-line: var(--color-border-strong); --ui-tone-muted-dot: var(--color-text-secondary);
+  --ui-tone-warning-bg: #FFFBEB; --ui-tone-warning-fg: #92400E; --ui-tone-warning-line: #FDE68A; --ui-tone-warning-dot: #D97706;
+  --ui-tone-danger-bg: #FEF2F2; --ui-tone-danger-fg: #B91C1C; --ui-tone-danger-line: #FECACA; --ui-tone-danger-dot: #DC2626;
+
+  /* 절차 배지 — 진행 상태 색으로 통일: 완료 초록, 현재 파랑, 나머지 회색 (단계별 색은 쓰지 않음) */
+  --ui-proc-done: #15803D; --ui-proc-done-bg: #F0FDF4;
+  --ui-proc-current: #2563EB; --ui-proc-current-bg: #EFF6FF;
+  --ui-proc-todo: #4B5563; --ui-proc-todo-bg: var(--color-bg-tertiary);
+
+  --ui-backdrop: rgba(3, 7, 10, 0.6);
+  --ui-shadow-modal: var(--shadow-xl);
+}
+
+@layer components {
+  /* ── 버튼 ── */
+  .ui-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    border: 1px solid transparent; border-radius: var(--ui-radius-control);
+    font-family: inherit; font-weight: 500; line-height: 1.2; white-space: nowrap;
+    text-decoration: none; cursor: pointer;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  }
+  .ui-btn--md { min-height: var(--ui-h-md); padding: 0 16px; font-size: 14px; }
+  .ui-btn--sm { min-height: var(--ui-h-sm); padding: 0 12px; font-size: 13px; }
+  .ui-btn--block { width: 100%; }
+  .ui-btn:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+
+  .ui-btn--primary { background: var(--ui-btn-primary-bg); color: var(--ui-btn-primary-fg); font-weight: 600; }
+  .ui-btn--primary:hover:not(:disabled):not([aria-disabled='true']) { background: var(--ui-btn-primary-bg-hover); color: var(--ui-btn-primary-fg); }
+  .ui-btn--secondary { background: var(--ui-btn-secondary-bg); color: var(--ui-btn-secondary-fg); border-color: var(--ui-btn-secondary-line); }
+  .ui-btn--secondary:hover:not(:disabled):not([aria-disabled='true']) { background: var(--ui-btn-secondary-bg-hover); border-color: var(--ui-btn-secondary-line-hover); color: var(--ui-btn-secondary-fg); }
+  .ui-btn--ghost { background: transparent; color: var(--ui-btn-ghost-fg); }
+  .ui-btn--ghost:hover:not(:disabled):not([aria-disabled='true']) { background: var(--ui-btn-ghost-bg-hover); color: var(--ui-btn-ghost-fg); }
+  .ui-btn--link { background: transparent; color: var(--ui-link); padding-left: 4px; padding-right: 4px; }
+  .ui-btn--link:hover:not(:disabled):not([aria-disabled='true']) { color: var(--ui-link-hover); text-decoration: underline; text-underline-offset: 4px; }
+  .ui-btn:disabled, .ui-btn[aria-disabled='true'] { background: var(--ui-btn-disabled-bg); color: var(--ui-btn-disabled-fg); border-color: transparent; cursor: not-allowed; }
+  .ui-btn--link:disabled, .ui-btn--link[aria-disabled='true'] { background: transparent; }
+
+  /* ── 상태 칩 ── */
+  .ui-chip {
+    --tone-bg: var(--ui-tone-neutral-bg); --tone-fg: var(--ui-tone-neutral-fg); --tone-line: var(--ui-tone-neutral-line); --tone-dot: var(--ui-tone-neutral-dot);
+    display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+    height: 26px; padding: 0 10px; border: 1px solid var(--tone-line); border-radius: var(--ui-radius-pill);
+    background: var(--tone-bg); color: var(--tone-fg);
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .ui-chip__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tone-dot); flex-shrink: 0; }
+  .ui-chip__icon { flex-shrink: 0; }
+  .ui-tone-neutral { --tone-bg: var(--ui-tone-neutral-bg); --tone-fg: var(--ui-tone-neutral-fg); --tone-line: var(--ui-tone-neutral-line); --tone-dot: var(--ui-tone-neutral-dot); }
+  .ui-tone-info { --tone-bg: var(--ui-tone-info-bg); --tone-fg: var(--ui-tone-info-fg); --tone-line: var(--ui-tone-info-line); --tone-dot: var(--ui-tone-info-dot); }
+  .ui-tone-outline { --tone-bg: var(--ui-tone-outline-bg); --tone-fg: var(--ui-tone-outline-fg); --tone-line: var(--ui-tone-outline-line); --tone-dot: var(--ui-tone-outline-dot); }
+  .ui-tone-review { --tone-bg: var(--ui-tone-review-bg); --tone-fg: var(--ui-tone-review-fg); --tone-line: var(--ui-tone-review-line); --tone-dot: var(--ui-tone-review-dot); }
+  .ui-tone-success { --tone-bg: var(--ui-tone-success-bg); --tone-fg: var(--ui-tone-success-fg); --tone-line: var(--ui-tone-success-line); --tone-dot: var(--ui-tone-success-dot); }
+  .ui-tone-muted { --tone-bg: var(--ui-tone-muted-bg); --tone-fg: var(--ui-tone-muted-fg); --tone-line: var(--ui-tone-muted-line); --tone-dot: var(--ui-tone-muted-dot); }
+  .ui-tone-warning { --tone-bg: var(--ui-tone-warning-bg); --tone-fg: var(--ui-tone-warning-fg); --tone-line: var(--ui-tone-warning-line); --tone-dot: var(--ui-tone-warning-dot); }
+  .ui-tone-danger { --tone-bg: var(--ui-tone-danger-bg); --tone-fg: var(--ui-tone-danger-fg); --tone-line: var(--ui-tone-danger-line); --tone-dot: var(--ui-tone-danger-dot); }
+
+  /* ── 절차 배지 ── */
+  .ui-proc {
+    --proc: var(--ui-proc-todo); --proc-bg: var(--ui-proc-todo-bg);
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px;
+    border-radius: var(--ui-radius-pill); background: var(--proc-bg); color: var(--proc);
+    font-size: 12px; font-weight: 600; max-width: 100%;
+  }
+  .ui-proc--name-only { padding-left: 10px; }
+  .ui-proc__code { display: inline-flex; align-items: center; gap: 2px; height: 18px; padding: 0 6px; border-radius: var(--ui-radius-pill); background: var(--proc); color: #FFFFFF; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+  .ui-proc--bare { padding: 0; background: transparent; }
+  .ui-proc--done { --proc: var(--ui-proc-done); --proc-bg: var(--ui-proc-done-bg); }
+  .ui-proc--current { --proc: var(--ui-proc-current); --proc-bg: var(--ui-proc-current-bg); }
+  .ui-proc--todo { --proc: var(--ui-proc-todo); --proc-bg: var(--ui-proc-todo-bg); }
+
+  /* ── 안내 줄 ── */
+  /* 색은 함께 붙는 .ui-tone-* 클래스가 정한다(Notice 부품이 항상 붙인다) */
+  .ui-notice {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px;
+    padding: 10px 12px 10px 16px; border: 1px solid var(--tone-line); border-radius: var(--ui-radius-control);
+    background: var(--tone-bg); color: var(--ui-fg-body);
+  }
+  .ui-notice--flush { border-width: 0 0 1px; border-radius: 0; }
+  .ui-notice__icon { color: var(--tone-dot); flex-shrink: 0; }
+  .ui-notice__text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 320px; min-width: 0; }
+  .ui-notice__title { font-size: 13px; font-weight: 700; color: var(--tone-fg); }
+  .ui-notice__body { font-size: 12px; line-height: 1.55; color: var(--ui-fg-body); }
+  .ui-notice__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+  /* ── 모달 ── */
+  .ui-modal-backdrop {
+    position: fixed; inset: 0; z-index: 10000; display: flex; justify-content: center; align-items: flex-start;
+    padding: max(24px, 6vh) 16px 24px; overflow-y: auto; background: var(--ui-backdrop);
+  }
+  .ui-modal {
+    width: 100%; max-width: 640px; display: flex; flex-direction: column;
+    background: var(--color-bg-secondary); color: var(--color-text-primary);
+    border-radius: var(--ui-radius-panel); box-shadow: var(--ui-shadow-modal);
+    font-family: var(--font-sans);
+  }
+  .ui-modal:focus { outline: none; }
+  .ui-modal__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 12px 12px 24px; border-bottom: 1px solid var(--color-border); }
+  .ui-modal__title { margin: 0; font-size: 18px; font-weight: 700; color: var(--color-text-primary); }
+  .ui-modal__body { padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; }
+  .ui-modal__foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 14px 24px; border-top: 1px solid var(--color-border); background: var(--color-bg-primary); border-radius: 0 0 var(--ui-radius-panel) var(--ui-radius-panel); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ui-btn { transition: none; }
+  }
+}

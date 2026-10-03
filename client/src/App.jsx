@@ -48,6 +48,7 @@ const GuidePage = lazyWithReload(() => import('./pages/GuidePage'), 'GuidePage')
 const AuthCallback = lazyWithReload(() => import('./pages/AuthCallback'), 'AuthCallback')
 const Futures2Page = lazyWithReload(() => import('./pages/Futures2Page'), 'Futures2Page')
 const FuturesLabPage = lazyWithReload(() => import('./pages/FuturesLabPage'), 'FuturesLabPage')
+const ExplorePage = lazyWithReload(() => import('./pages/ExplorePage'), 'ExplorePage')
 const FuturesPage = lazyWithReload(() => import('./pages/FuturesPage'), 'FuturesPage')
 const FutureMapPage = lazyWithReload(() => import('./pages/FutureMapPage'), 'FutureMapPage')
 
@@ -254,6 +255,9 @@ export default function App() {
         />
 
         <Route path="/futures-lab" element={<ProtectedRoute><FuturesLabPage /></ProtectedRoute>} />
+
+        {/* 수업 아이디어 탐색 시작 화면 — 결과를 넣을 곳을 고르고 세 단계로 안내 */}
+        <Route path="/explore" element={<ProtectedRoute><ExplorePage /></ProtectedRoute>} />
 
         {/* 미래 보기 2 — 기존 설계 흐름과 별도로 성취기준 조합을 탐색 */}
         <Route

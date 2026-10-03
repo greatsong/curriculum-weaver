@@ -169,10 +169,10 @@ export function subscribeDraft(projectId, callback) {
   }
 }
 
-/** localStorage 접근 자체가 막힌 환경을 위한 안전한 핸들 */
+/** localStorage 접근 자체가 막힌 환경을 위한 안전한 핸들 (접근만으로 예외가 나는 브라우저 대비) */
 export function safeLocalStorage() {
   try {
-    return typeof window !== 'undefined' ? window.localStorage : null
+    return typeof localStorage !== 'undefined' ? localStorage : null
   } catch {
     return null
   }
@@ -180,7 +180,7 @@ export function safeLocalStorage() {
 
 export function safeSessionStorage() {
   try {
-    return typeof window !== 'undefined' ? window.sessionStorage : null
+    return typeof sessionStorage !== 'undefined' ? sessionStorage : null
   } catch {
     return null
   }

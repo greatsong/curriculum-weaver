@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, afterEach, it, expect, vi } from 'vitest'
 import StandardSearch from '../StandardSearch'
-import ExplorationLaunchpad from '../ExplorationLaunchpad'
+import ExploreEntryCard from '../ExploreEntryCard'
 import { apiGet, apiPost, apiDelete } from '../../lib/api'
 
 const state = vi.hoisted(() => ({ currentProject: { id: 'p1', title: '우리 동네 탐구', my_role: 'owner', status: 'active' } }))
@@ -35,10 +35,11 @@ beforeEach(() => {
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers() })
 
-it('홈의 주요 탐색과 보조 체험을 구분하고 기존 프로젝트 진입 위치를 안내한다', async () => {
-  await act(async () => root.render(<MemoryRouter><ExplorationLaunchpad /></MemoryRouter>))
-  expect([...host.querySelectorAll('a')].map(a => a.getAttribute('href'))).toEqual(['/graph?mode=explore', '/graph?mode=design&lens=pair', '/futures-lab', '/graph?mode=design&lens=theme', '/guide'])
-  expect(host.textContent).toContain('해당 프로젝트')
+it('홈의 탐색 카드는 결과를 넣을 곳을 먼저 고르게 하고, 진행 중인 프로젝트는 A-3에서 이어 간다고 안내한다', async () => {
+  // 옮긴 단언: 다섯 링크(주요 입구 2 + 바로 열기 3)와 진행 중인 프로젝트의 A-3 안내 (PR #149·#155 의도 유지)
+  await act(async () => root.render(<MemoryRouter><ExploreEntryCard /></MemoryRouter>))
+  expect([...host.querySelectorAll('a')].map(a => a.getAttribute('href'))).toEqual(['/explore?for=new', '/explore?for=project', '/graph?mode=explore', '/futures-lab', '/guide'])
+  expect(host.textContent).toContain('진행 중인 프로젝트')
   expect(host.textContent).toContain('A-3')
 })
 

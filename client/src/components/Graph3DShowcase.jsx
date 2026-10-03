@@ -21,6 +21,7 @@ import {
   LINK_TYPE_COLORS_DARK, LINK_TYPE_LABELS, SIZE, TIMING, AUTOROTATE,
 } from '../lib/nebulaTheme'
 import ExplorationContextBar from './ExplorationContextBar'
+import Button from './ui/Button'
 import { useDestinationProject } from './useDestinationProject'
 import { destinationBarModel } from '../lib/exploreBar'
 import { projectDestination, withDestination, readBasket, writeBasket, compareAvailability, futuresUrl } from '../lib/exploreDestination'
@@ -673,7 +674,25 @@ export default function Graph3DShowcase() {
   )
 
   return (
-    <div className="relative h-full w-full overflow-hidden select-none"
+    // 보낼 곳·반영 상태 머리 줄은 장면 위에 겹치지 않고, 3D 영역 바로 위의 밝은 줄로 둔다.
+    // 3D 영역(아래 relative 상자)이 줄어도 상세 카드는 영역 기준 높이(100%-88px)라 잘리지 않는다.
+    <div className="h-full w-full flex flex-col">
+      <ExplorationContextBar icon={bar.icon} target={bar.target} changeHref={bar.changeHref} status={bar.status}
+        actions={basket.size > 0 ? (
+          <>
+            <span className="hidden md:inline text-xs text-text-secondary whitespace-nowrap tabular-nums">{EXPLORE_COPY.graph.basketCount(basket.size)}</span>
+            {destination.type === 'new' && (
+              <Button variant="secondary" size="sm" onClick={() => navigate('/workspaces?createProject=1')}>
+                {EXPLORE_COPY.graph.startProject}
+              </Button>
+            )}
+            <Button variant="primary" size="sm" onClick={openCompare} disabled={!compare.ok}
+              title={compare.ok ? undefined : (compare.reason === 'tooMany' ? EXPLORE_COPY.graph.tooMany : EXPLORE_COPY.graph.tooFew)}>
+              {EXPLORE_COPY.graph.compare}
+            </Button>
+          </>
+        ) : null} />
+    <div className="relative flex-1 min-h-0 w-full overflow-hidden select-none"
       style={{ fontFamily: "'Nanum Gothic', var(--font-sans)" }}>
       {/* 배경: 딥네이비 래디얼 + 비네트 (스펙 §1) */}
       <div className="absolute inset-0 z-0"
@@ -763,34 +782,6 @@ export default function Graph3DShowcase() {
         </div>
       )}
 
-      {/* 보낼 곳·반영 상태 머리 줄 — 상단 바 아래 한 줄. 데스크톱에서는 오른쪽 상세 카드(330px)와
-          겹치지 않게 너비를 제한하고, 별 목록 패널은 이 줄 아래(top-[124px])에서 시작한다. */}
-      {uiReady && !tour.active && (
-        <div className={`absolute z-20 top-[60px] inset-x-3 sm:top-[68px] sm:left-4 sm:right-auto ${
-          selectedNode && !isMobile ? 'sm:max-w-[calc(100%-378px)]' : 'sm:max-w-[min(760px,calc(100%-32px))]'} animate-ui-in`}
-          style={{ animationDelay: '120ms' }}>
-          <ExplorationContextBar theme="nebula" variant="floating" compact icon={bar.icon} target={bar.target}
-            changeHref={bar.changeHref} status={bar.status}
-            chipClassName={basket.size > 0 ? 'hidden sm:inline-flex' : ''}
-            actions={basket.size > 0 ? (
-              <>
-                <span className="hidden md:inline text-xs text-slate-300 whitespace-nowrap tabular-nums">{EXPLORE_COPY.graph.basketCount(basket.size)}</span>
-                {destination.type === 'new' && (
-                  <button onClick={() => navigate('/workspaces?createProject=1')}
-                    className="hidden lg:inline-flex items-center min-h-[32px] px-3 rounded-lg text-xs font-semibold bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-slate-200 whitespace-nowrap transition-colors">
-                    {EXPLORE_COPY.graph.startProject}
-                  </button>
-                )}
-                <button onClick={openCompare} disabled={!compare.ok}
-                  title={compare.ok ? undefined : (compare.reason === 'tooMany' ? EXPLORE_COPY.graph.tooMany : EXPLORE_COPY.graph.tooFew)}
-                  className="inline-flex items-center min-h-[32px] px-3 rounded-lg text-xs font-semibold bg-sky-500/90 hover:bg-sky-400 disabled:bg-white/[0.06] disabled:text-slate-400 disabled:cursor-not-allowed text-white whitespace-nowrap transition-colors">
-                  {EXPLORE_COPY.graph.compare}
-                </button>
-              </>
-            ) : null} />
-        </div>
-      )}
-
       {/* 탐험 가이드 모달 */}
       {helpOpen && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
@@ -852,7 +843,7 @@ export default function Graph3DShowcase() {
       {uiReady && !tour.active && derived && browseOpen && (
         <div className={isMobile
           ? 'fixed inset-x-3 top-16 bottom-3 z-30 flex flex-col bg-[#0B1228]/90 backdrop-blur-2xl border border-white/[0.1] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)]'
-          : 'absolute left-4 top-[124px] bottom-4 z-20 w-[290px] flex flex-col bg-[#0B1228]/75 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] animate-ui-in'}>
+          : 'absolute left-4 top-[72px] bottom-4 z-20 w-[290px] flex flex-col bg-[#0B1228]/75 backdrop-blur-xl border border-white/[0.08] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] animate-ui-in'}>
           <div className="flex items-center gap-2 p-3 pb-2">
             <select
               value={browseSubject}
@@ -1121,6 +1112,7 @@ export default function Graph3DShowcase() {
           </div>
         </>
       )}
+    </div>
     </div>
   )
 }

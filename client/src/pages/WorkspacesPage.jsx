@@ -1,6 +1,12 @@
-import ExplorationLaunchpad from '../components/ExplorationLaunchpad'
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Compass, Inbox } from 'lucide-react'
+import Notice from '../components/ui/Notice'
+import ContinueProjects from '../components/ContinueProjects'
+import ExploreEntryCard from '../components/ExploreEntryCard'
+import { EXPLORE_COPY } from '../lib/explorationCopy'
+import { NEW_DESTINATION, readBasket } from '../lib/exploreDestination'
+import { safeSessionStorage } from '../lib/explorationDraft'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { apiGet } from '../lib/api'
@@ -24,9 +30,8 @@ export default function WorkspacesPage() {
   // 그래프(설계/탐험)에서 성취기준을 담아온 흐름 — 워크스페이스 선택 후
   // 상세 페이지에서 프로젝트 생성 모달이 자동으로 열리도록 쿼리를 이월한다.
   const wantsCreateProject = searchParams.get('createProject') === '1'
-  const [basketCount] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem('cw_design_basket') || '[]').length } catch { return 0 }
-  })
+  // 새 프로젝트로 담아 온 성취기준 (기존 cw_design_basket과 새 키를 함께 읽는다)
+  const [basketCount] = useState(() => readBasket(safeSessionStorage(), NEW_DESTINATION).length)
   const detailPath = (wsId) => `/workspaces/${wsId}${wantsCreateProject ? '?createProject=1' : ''}`
 
   // '교육과정 데이터' 관리 도구는 사이트 관리자 전용 — role 확인 전엔 숨김
@@ -125,7 +130,9 @@ export default function WorkspacesPage() {
             </span>
           </a>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <a href="#exploration" className="text-sm font-semibold text-blue-700">수업 아이디어 탐색</a>
+            <Link to="/explore" className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-md text-sm font-semibold text-link hover:text-link-hover hover:bg-bg-tertiary no-underline">
+              <Compass aria-hidden="true" size={16} />{EXPLORE_COPY.home.exploreLink}
+            </Link>
             <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }} className="hidden sm:inline">
               {user?.email}
             </span>
@@ -162,34 +169,15 @@ export default function WorkspacesPage() {
       </header>
 
       <main style={{ maxWidth: 1120, margin: '0 auto', padding: '32px 24px' }}>
-        {/* 그래프에서 담아온 성취기준 안내 배너 */}
+        {/* 새 프로젝트로 담아 온 성취기준 안내 — 아직 저장 전임을 알린다 */}
         {basketCount > 0 && (
-          <div
-            className="animate-fade-in"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              padding: '12px 16px',
-              marginBottom: 20,
-              background: '#EFF6FF',
-              border: '1px solid #BFDBFE',
-              borderRadius: 'var(--radius-lg)',
-              fontSize: 13,
-              color: '#1D4ED8',
-            }}
-          >
-            <span style={{ fontSize: 16 }}>🧺</span>
-            <span style={{ fontWeight: 600 }}>
-              담아온 성취기준 {basketCount}개
-            </span>
-            <span style={{ color: '#3B82F6' }}>
-              — 아직 프로젝트에 저장되지 않았습니다. 워크스페이스를 선택하고 새 프로젝트 만들기를 완료해 주세요.
-            </span>
-          </div>
+          <Notice tone="info" icon={Inbox} className="mb-5 animate-fade-in" role="status"
+            title={EXPLORE_COPY.home.basketBanner(basketCount)} />
         )}
 
-        <ExplorationLaunchpad />
+        {/* 이어서 하기(최근 프로젝트) → 수업 아이디어 탐색 → 내 워크스페이스 */}
+        <ContinueProjects workspaces={visibleWorkspaces} />
+        <ExploreEntryCard />
 
         {/* 타이틀 + 액션 */}
         <div style={{

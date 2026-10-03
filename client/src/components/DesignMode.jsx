@@ -12,6 +12,7 @@ import ThemeLens from './lenses/ThemeLens'
 import NeighborLens from './lenses/NeighborLens'
 import SeriesLens from './lenses/SeriesLens'
 import ExplorationContextBar from './ExplorationContextBar'
+import Button from './ui/Button'
 import { useDestinationProject } from './useDestinationProject'
 import { destinationBarModel } from '../lib/exploreBar'
 import {
@@ -20,6 +21,7 @@ import {
 } from '../lib/exploreDestination'
 import { safeSessionStorage } from '../lib/explorationDraft'
 import { EXPLORE_COPY } from '../lib/explorationCopy'
+import { UI_COPY } from '../lib/uiCopy'
 
 const LENSES = [
   { id: 'neighbor', label: '성취기준에서 찾기', hint: '이 성취기준과 연결된 것' },
@@ -239,16 +241,16 @@ export default function DesignMode() {
             <span className="px-2 sm:px-4 py-1.5 rounded-[10px] text-xs font-bold bg-blue-600 text-white shadow-sm whitespace-nowrap">🧭 연결 찾기</span>
             <button onClick={toExplore}
               className="px-2 sm:px-4 py-1.5 rounded-[10px] text-xs font-bold text-gray-500 hover:text-gray-700 transition whitespace-nowrap">
-              전체 지도 · 3D
+              {UI_COPY.names.map}
             </button>
           </div>
         </div>
       </div>
 
       {/* 보낼 곳·반영 상태 머리 줄 */}
-      <ExplorationContextBar theme="light" variant="row" icon={bar.icon} target={bar.target}
+      <ExplorationContextBar icon={bar.icon} target={bar.target}
         changeHref={bar.changeHref} status={bar.status}
-        actions={basket.size > 0 ? <span className="text-xs text-gray-600 whitespace-nowrap">{EXPLORE_COPY.graph.basketCount(basket.size)}</span> : null} />
+        actions={basket.size > 0 ? <span className="text-xs text-text-secondary whitespace-nowrap tabular-nums">{EXPLORE_COPY.graph.basketCount(basket.size)}</span> : null} />
 
       {/* 렌즈 바 */}
       <div className="flex items-center gap-2 px-4 py-2.5 bg-white border-b border-gray-200 shrink-0 overflow-x-auto">
@@ -342,21 +344,17 @@ export default function DesignMode() {
           </div>
           <div className="ml-auto flex items-center gap-2 shrink-0">
             {!compare.ok && (
-              <span className="hidden md:inline text-[11px] text-gray-600 whitespace-nowrap">
+              <span className="hidden md:inline text-[11px] text-text-secondary whitespace-nowrap">
                 {compare.reason === 'tooMany' ? EXPLORE_COPY.graph.tooMany : EXPLORE_COPY.graph.tooFew}
               </span>
             )}
             {destination.type === 'new' && (
-              <button onClick={startProject}
-                className="min-h-[36px] px-3.5 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-semibold transition whitespace-nowrap">
-                {EXPLORE_COPY.graph.startProject}
-              </button>
+              <Button variant="secondary" size="sm" onClick={startProject}>{EXPLORE_COPY.graph.startProject}</Button>
             )}
-            <button onClick={openCompare} disabled={!compare.ok}
-              title={compare.ok ? undefined : (compare.reason === 'tooMany' ? EXPLORE_COPY.graph.tooMany : EXPLORE_COPY.graph.tooFew)}
-              className="min-h-[36px] px-4 py-2 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold transition whitespace-nowrap">
+            <Button variant="primary" size="sm" onClick={openCompare} disabled={!compare.ok}
+              title={compare.ok ? undefined : (compare.reason === 'tooMany' ? EXPLORE_COPY.graph.tooMany : EXPLORE_COPY.graph.tooFew)}>
               {EXPLORE_COPY.graph.compare}
-            </button>
+            </Button>
           </div>
         </div>
       )}

@@ -16,29 +16,29 @@ export function a3DisplayCode() {
 /**
  * @param destination { type, projectId }
  * @param projectState { status: 'none'|'loading'|'ready'|'error', project }
- * @returns { icon, target, status:{tone,text}, note, changeHref, access }
+ * @returns { icon, target, status(공용 상태 사전 키), note, changeHref, access }
  */
 export function destinationBarModel(destination, projectState = { status: 'none' }) {
   if (destination?.type !== 'project') {
     return {
-      icon: 'new', target: C.newProject, status: { tone: 'neutral', text: S.exploring }, note: S.exploringNote,
+      icon: 'new', target: C.newProject, status: 'exploring', note: S.exploringNote,
       changeHref: exploreHubUrl(destination, { preferNew: true }), access: { canSend: true, readOnly: false, blocked: false },
     }
   }
   const changeHref = exploreHubUrl(destination)
   if (projectState.status === 'error') {
     return {
-      icon: 'project', target: C.unknownProject, status: { tone: 'warning', text: S.loadFailed }, note: S.loadFailedNote,
+      icon: 'project', target: C.unknownProject, status: 'loadFailed', note: S.loadFailedNote,
       changeHref, access: { canSend: false, readOnly: false, blocked: false },
     }
   }
   if (projectState.status !== 'ready' || !projectState.project) {
-    return { icon: 'project', target: C.loadingProject, status: { tone: 'neutral', text: S.loading }, note: '', changeHref, access: { canSend: false, readOnly: false, blocked: false } }
+    return { icon: 'project', target: C.loadingProject, status: 'loading', note: '', changeHref, access: { canSend: false, readOnly: false, blocked: false } }
   }
   const project = projectState.project
   const access = destinationAccess(project)
   const target = C.projectAtA3(project.title || C.unknownProject, a3DisplayCode())
-  if (access.blocked) return { icon: 'lock', target, status: { tone: 'warning', text: S.blocked }, note: '', changeHref, access }
-  if (access.readOnly) return { icon: 'lock', target, status: { tone: 'warning', text: S.readOnly }, note: S.readOnlyNote, changeHref, access }
-  return { icon: 'project', target, status: { tone: 'neutral', text: S.exploring }, note: S.exploringNote, changeHref, access }
+  if (access.blocked) return { icon: 'lock', target, status: 'blocked', note: '', changeHref, access }
+  if (access.readOnly) return { icon: 'lock', target, status: 'readOnly', note: S.readOnlyNote, changeHref, access }
+  return { icon: 'project', target, status: 'exploring', note: S.exploringNote, changeHref, access }
 }

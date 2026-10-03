@@ -4,11 +4,15 @@
  *
  * 규칙: 합쇼체, 대시 연결 금지, 은유·과장 금지, 절차는 표시 코드(A-3)로만 부른다.
  * 함수로 된 항목은 값이 끼어드는 문장이다. 문장 자체는 그대로 고쳐도 된다.
+ * 여러 화면이 함께 쓰는 이름(기능 이름·상태 7종·주요 버튼)은 lib/uiCopy.js에 있다.
  */
+import { UI_COPY } from './uiCopy'
+
+const N = UI_COPY.names
 
 export const EXPLORE_COPY = {
   common: {
-    title: '수업 아이디어 탐색',
+    title: N.explore,
     destinationLabel: '보낼 곳',
     change: '바꾸기',
     newProject: '새 프로젝트',
@@ -23,14 +27,8 @@ export const EXPLORE_COPY = {
     cancel: '취소',
   },
 
-  // 탐색 화면 머리 줄의 상태 표시
+  // 탐색 화면 머리 줄의 안내 문장 (상태 이름은 UI_COPY.status)
   status: {
-    exploring: '탐색 중 · 저장 전',
-    loading: '프로젝트 확인 중',
-    loadFailed: '프로젝트 확인 실패',
-    readOnly: '읽기 전용 · 보낼 수 없음',
-    blocked: '탐색 제한',
-    copied: '초안 복사함 · 반영 전',
     exploringNote: '보내기 전까지 어느 프로젝트에도 저장되지 않습니다.',
     loadFailedNote: '프로젝트 정보를 확인하지 못했습니다. 탐색은 계속할 수 있지만 보내기 전에 다시 확인합니다.',
     readOnlyNote: '비교용으로 초안을 복사할 수 있습니다.',
@@ -38,7 +36,7 @@ export const EXPLORE_COPY = {
 
   // 홈
   home: {
-    exploreLink: '수업 아이디어 탐색',
+    exploreLink: N.explore,
     continueTitle: '이어서 하기',
     continueHint: '최근에 연 프로젝트',
     currentProcedure: '현재 절차',
@@ -47,7 +45,7 @@ export const EXPLORE_COPY = {
     checkFailed: '프로젝트 정보를 확인하지 못했습니다.',
     checking: '프로젝트 정보를 확인하는 중입니다.',
     roles: { owner: '소유자', host: '호스트', admin: '관리자', member: '멤버', viewer: '열람' },
-    cardTitle: '수업 아이디어 탐색',
+    cardTitle: N.explore,
     cardBody: '성취기준을 고르고, 고른 성취기준으로 만들 수 있는 수업 아이디어를 비교합니다. 결과는 새 프로젝트나 진행 중인 프로젝트로 보낼 수 있습니다.',
     cardNote: '보내기 전까지 어느 프로젝트에도 저장되지 않습니다.',
     steps: ['성취기준 고르기', '수업 아이디어 비교', '프로젝트로 보내기'],
@@ -57,15 +55,16 @@ export const EXPLORE_COPY = {
     projectChoiceTitle: '진행 중인 프로젝트에 더하기',
     projectChoiceBody: '결과를 그 프로젝트의 A-3 대화에서 검토합니다.',
     directLabel: '바로 열기',
-    directMap: '교육과정 전체 지도(3D)',
-    directFutures: '미래보기',
+    directMap: N.map,
+    directMapTitle: `${N.map} (${N.mapDesc})`,
+    directFutures: N.futures,
     directGuide: '사용 안내',
     basketBanner: (n) => `담아 온 성취기준 ${n}개가 있습니다. 아직 프로젝트에 저장되지 않았습니다. 워크스페이스를 고르고 새 프로젝트 만들기를 마쳐야 저장됩니다.`,
   },
 
   // 탐색 시작 화면 (/explore)
   hub: {
-    title: '수업 아이디어 탐색',
+    title: N.explore,
     intro: '세 단계로 진행합니다. 성취기준을 이미 정했다면 2단계에서 시작합니다.',
     destinationLegend: '탐색 결과를 넣을 곳',
     projectOption: '진행 중인 프로젝트',
@@ -81,22 +80,22 @@ export const EXPLORE_COPY = {
     newOptionBody: '결과로 새 프로젝트를 만듭니다. 만들기를 마쳐야 저장됩니다.',
     step1Title: '성취기준 고르기',
     step1Body: '가지고 있는 것에 맞춰 시작합니다.',
-    step1Footer: '학년 간 연결 보기는 성취기준 연결 찾기 화면 위쪽 보기 전환에서 고릅니다.',
+    step1Footer: `${N.series}는 ${N.connect} 화면 위쪽 보기 전환에서 고릅니다.`,
     entries: {
-      theme: { when: '주제가 있을 때', name: '주제로 찾기', body: '기후변화 같은 주제 하나로 여러 교과의 성취기준을 찾습니다.' },
-      pair: { when: '함께할 과목이 정해졌을 때', name: '두 과목으로 찾기', body: '두 과목의 성취기준이 어떻게 연결되는지 봅니다.' },
-      neighbor: { when: '사용할 성취기준이 있을 때', name: '성취기준에서 찾기', body: '그 성취기준과 연결된 다른 교과의 성취기준을 찾습니다.' },
-      map: { when: '아직 정하지 않았을 때', name: '교육과정 전체 지도 (3D)', body: '교과 사이의 연결 전체를 둘러봅니다.' },
+      theme: { when: '주제가 있을 때', name: N.theme, body: '기후변화 같은 주제 하나로 여러 교과의 성취기준을 찾습니다.' },
+      pair: { when: '함께할 과목이 정해졌을 때', name: N.pair, body: '두 과목의 성취기준이 어떻게 연결되는지 봅니다.' },
+      neighbor: { when: '사용할 성취기준이 있을 때', name: N.neighbor, body: '그 성취기준과 연결된 다른 교과의 성취기준을 찾습니다.' },
+      map: { when: '아직 정하지 않았을 때', name: N.map, body: `교과 사이의 연결 전체를 ${N.mapDesc}로 둘러봅니다.` },
     },
     step2Title: '수업 아이디어 비교',
-    step2Body: '미래보기에서 성취기준 2~7개로 여덟 가지 수업 아이디어를 비교합니다.',
+    step2Body: `${N.futures}에서 성취기준 2~7개로 여덟 가지 수업 아이디어를 비교합니다.`,
     step2Count: '지금 담은 성취기준',
     step2Subjects: (n) => `${n}과목`,
     step2Ready: '비교할 수 있는 개수입니다',
     step2TooFew: '2개 이상 담으면 비교할 수 있습니다',
     step2TooMany: '비교는 7개까지 합니다. 담은 성취기준을 줄입니다',
     step2FromProject: '미래보기를 열면 프로젝트에 등록된 성취기준을 가져옵니다.',
-    step2Open: '미래보기 열기',
+    step2Open: `${N.futures} 열기`,
     step2Footer: '성취기준 코드를 알고 있다면 1단계 없이 여기서 바로 시작합니다.',
     step3Title: '프로젝트로 보내기',
     step3BodyProject: '고른 아이디어와 연결 근거를 확인한 뒤 A-3 대화로 보냅니다.',
@@ -112,19 +111,19 @@ export const EXPLORE_COPY = {
     basketFromDest: (title) => `${title}로 보낼 성취기준입니다.`,
     basketForNew: '새 프로젝트에 사용할 성취기준입니다.',
     basketEmpty: '아직 담은 성취기준이 없습니다. 1단계 화면에서 담으면 여기에 표시됩니다.',
-    basketCompare: '미래보기로 비교',
+    basketCompare: `${N.futures}로 비교`,
     basketClear: '비우기',
     basketClearConfirm: '모두 비울까요?',
   },
 
   // 성취기준 연결 찾기·전체 지도의 담기 줄
   graph: {
-    compare: '미래보기로 비교',
+    compare: `${N.futures}로 비교`,
     startProject: '이 조합으로 프로젝트 시작',
     tooFew: '2개 이상 담으면 미래보기로 비교할 수 있습니다.',
     tooMany: '미래보기 비교는 7개까지 합니다. 담은 성취기준을 줄입니다.',
     basketCount: (n) => `담은 성취기준 ${n}`,
-    openInNeighbor: '성취기준에서 찾기로 보기',
+    openInNeighbor: `${N.neighbor}로 보기`,
   },
 
   // 미래보기 보내기 확인 창
@@ -228,22 +227,14 @@ export const EXPLORE_COPY = {
     hide: '초안 접기',
     discard: '버리기',
     discardConfirm: '초안을 버릴까요?',
-    reopen: '미래보기 다시 열기',
+    reopen: `${N.futures} 다시 열기`,
     dismiss: '안내 닫기',
     stepsLabel: '반영 단계',
     steps: { sent: '대화에 보냄', reviewing: '제안 검토 중', reflected: '보드에 반영' },
     savedAt: (time) => time,
   },
 
-  // 상태 이름 (홈 카드·시작 화면에서 공통 사용)
-  draftStatus: {
-    arrived: '초안 도착',
-    sent: '대화에 보냄',
-    reviewing: '제안 검토 중',
-    reflected: '보드에 반영됨',
-    rejected: '반영하지 않음',
-    unconfirmed: '저장 확인 필요',
-  },
+  // 홈 카드의 초안 한 줄 (상태 이름은 UI_COPY.status)
   homeDraftLine: {
     arrived: 'A-3에서 검토할 탐색 초안 1건이 있습니다.',
     sent: '탐색 초안을 A-3 대화에 보냈습니다.',
