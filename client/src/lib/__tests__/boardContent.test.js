@@ -36,6 +36,16 @@ describe('객체 항목 하위 칸', () => {
     ])
   })
 
+  it('AI가 스키마 라벨을 키로 저장한 항목도 해당 칸으로 보여 준다 (완주 테스트 실데이터 모양)', () => {
+    const item = { '교사명': '교사 A', '개인 비전': '영어로 표현', 'AI 정교화 비전': '정교화된 문장' }
+    const fields = listItemFields(item, visionItemSchema)
+    expect(fields.map((f) => [f.key, f.label])).toEqual([
+      ['교사명', '교사명'],
+      ['개인 비전', '개인 비전'],
+      ['AI 정교화 비전', 'AI 정교화 비전'],
+    ])
+  })
+
   it('스키마 키와 별칭 키가 둘 다 있으면 스키마 키를 쓰고 별칭은 별도 칸으로 남긴다', () => {
     const fields = listItemFields({ name: '김', teacherName: '김교사', vision: 'v' }, visionItemSchema)
     expect(fields.map((f) => f.key)).toEqual(['name', 'vision', 'refinedVision', 'teacherName'])

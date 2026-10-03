@@ -84,6 +84,10 @@ export default function ProcedureNav({
                 flexShrink: 0,
               }} />
               <span>{phase.name}</span>
+              {/* 단계 코드(T·A·Ds·DI·E) — AI와 절차 카드가 "A-4"처럼 코드로 부르므로 어느 단계인지 알 수 있게 */}
+              {phase.id !== 'prep' && (
+                <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.6, letterSpacing: '0.02em' }}>{phase.id}</span>
+              )}
               {allDone ? (
                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke={hasCurrentProcedure ? 'rgba(255,255,255,0.8)' : '#22C55E'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3.5 8.5 6.5 11.5 12.5 4.5"/>
@@ -171,7 +175,30 @@ export default function ProcedureNav({
                   }
                 }}
               >
-                {isCompleted && !isActive ? (
+                {proc.displayCode ? (
+                  /* 표시 코드(A-4 등) — 예전 전체 순번(9 등)은 AI·절차 카드의 "A-4"와 연결되지 않았다(2026-10-03 제보) */
+                  <span style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    height: 18,
+                    padding: '0 6px',
+                    borderRadius: 9,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    flexShrink: 0,
+                    background: isActive ? phase?.color : 'transparent',
+                    color: isActive ? '#fff' : isCompleted ? '#16A34A' : phase?.color,
+                    border: `1.5px solid ${isActive ? phase?.color : isCompleted ? '#86EFAC' : '#D1D5DB'}`,
+                  }}>
+                    {isCompleted && !isActive && (
+                      <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="#22C55E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <polyline points="3.5 8.5 6.5 11.5 12.5 4.5"/>
+                      </svg>
+                    )}
+                    {proc.displayCode}
+                  </span>
+                ) : isCompleted && !isActive ? (
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#22C55E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="3.5 8.5 6.5 11.5 12.5 4.5"/>
                   </svg>
