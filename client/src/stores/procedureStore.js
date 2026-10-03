@@ -22,6 +22,7 @@ import {
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
 import { deepMergeBoardContent } from '../lib/boardContent'
+import { sameJson } from '../lib/sameJson'
 
 // ── 자료 폴링 관리 (모듈 스코프) ────
 // 동일 materialId에 대한 중복 폴링을 막기 위한 Set + 타이머 맵.
@@ -139,7 +140,7 @@ export const useProcedureStore = create((set, get) => ({
           saveStatus: d.save_status || null,
         }
       }
-      set({ boardSummaries: summaries })
+      if (!sameJson(summaries, get().boardSummaries)) set({ boardSummaries: summaries })
     } catch { /* 진행 표시는 부가 기능 — 실패해도 무시 */ }
   },
 
@@ -210,6 +211,11 @@ export const useProcedureStore = create((set, get) => ({
       const boardType = BOARD_TYPES[code] || code
       if (design && design.content && Object.keys(design.content).length > 0) {
         boards[boardType] = { ...design, board_type: boardType, content: design.content }
+      }
+      // 같은 내용이면 기존 boards를 유지(탭 복귀 재로딩이 보드를 다시 그리지 않게)
+      if (sameJson(boards, get().boards)) {
+        set({ loading: false })
+        return true
       }
       set({ boards, loading: false })
       return true
@@ -408,7 +414,8 @@ export const useProcedureStore = create((set, get) => ({
   loadStandards: async (projectId) => {
     try {
       const data = await apiGet(`/api/standards/project/${projectId}`)
-      set({ standards: Array.isArray(data) ? data : (data?.standards ?? []) })
+      const standards = Array.isArray(data) ? data : (data?.standards ?? [])
+      if (!sameJson(standards, get().standards)) set({ standards })
     } catch {
       set((state) => ({ standards: state.standards }))
     }
@@ -433,7 +440,7 @@ export const useProcedureStore = create((set, get) => ({
         data = await apiGet(`/api/materials/${projectId}`)
       }
       const list = Array.isArray(data) ? data : (data?.materials ?? [])
-      set({ materials: list })
+      if (!sameJson(list, get().materials)) set({ materials: list })
       // 미완료 상태 자료는 자동으로 폴링 재개
       for (const m of list) {
         if (
@@ -830,7 +837,8 @@ export const useProcedureStore = create((set, get) => ({
   loadPrinciples: async (procedureCode) => {
     try {
       const data = await apiGet('/api/principles', { stage: procedureCode || get().currentProcedure })
-      set({ principles: Array.isArray(data) ? data : (data?.principles ?? []) })
+      const principles = Array.isArray(data) ? data : (data?.principles ?? [])
+      if (!sameJson(principles, get().principles)) set({ principles })
     } catch {
       set((state) => ({ principles: state.principles }))
     }
