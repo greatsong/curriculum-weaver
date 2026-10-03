@@ -23,6 +23,7 @@ import { stripLeftoverAiMarkup } from '../lib/aiMarkup.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode, isDemoBoardCode, resolveParticipationMode } from 'curriculum-weaver-shared/constants.js'
+import { resolveBriefMode, buildBriefIntro } from 'curriculum-weaver-shared/briefMode.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
@@ -453,7 +454,11 @@ chatRouter.post('/procedure-intro', async (req, res) => {
     }
 
     // 정적 인트로 (AI 호출 없음 — 모든 사용자에게 동일한 내용)
-    const introText = buildStaticIntro(procedure)
+    // 약식 기록 팀은 핵심 질문과 필수·선택 입력만 담은 짧은 안내를 쓴다. 설정 조회에 실패하면 종전 안내.
+    const introWorkflowConfig = await getWorkspaceWorkflowConfig(project?.workspace_id).catch(() => null)
+    const introText = (resolveBriefMode(introWorkflowConfig)
+      ? buildBriefIntro(procedure, PROCEDURE_GUIDE[procedure]?.coreQuestion || '')
+      : null) || buildStaticIntro(procedure)
     if (introText) {
       res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: introText })}\n\n`)
 
@@ -812,6 +817,8 @@ chatRouter.post('/message', async (req, res) => {
       currentStep: currentStep ? Number(currentStep) : null,
       aiRole: isDemo ? 'coach' : (aiRole || undefined),
       participationMode: isDemo ? undefined : resolveParticipationMode(workflowConfig),
+      // 약식 기록(연수 모드) — 팀 설정에서 켠 팀만. 조회 실패·미설정은 종전 동작
+      briefMode: isDemo ? false : resolveBriefMode(workflowConfig),
       aiModel: aiModel || undefined,
       mentionedMaterialIds: mentionedIds,
       mentionedMaterials,

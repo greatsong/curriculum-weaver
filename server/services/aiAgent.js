@@ -23,6 +23,7 @@ import {
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { getBoardSchemaForPrompt } from 'curriculum-weaver-shared/boardSchemas.js'
 import { PROCEDURE_GUIDE, COMMON_RULES, getCoherenceTargets } from '../data/procedureGuide.js'
+import { buildBriefModeBlock } from './briefPrompt.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { buildTodayPromptSection } from '../lib/today.js'
 
@@ -922,6 +923,7 @@ function formatMaterialBlock(m, { rich, index }) {
  * @param {number|null} params.currentStep - 현재 스텝 번호
  * @param {string} [params.aiRole] - AI 역할 프리셋 ID (recorder/advisor/facilitator/codesigner)
  * @param {'recorder'|'team_chat'} [params.participationMode] - 팀 진행 방식 (recorder면 1인 기록 지시 주입)
+ * @param {boolean} [params.briefMode] - 약식 기록(연수 모드). true면 [진행 방식 — 약식 기록] 블록 주입
  */
 /**
  * 시연 모드(임용 실연 준비) 전용 보드 코드 → 유사 procInfo 폴백.
@@ -949,9 +951,11 @@ const DEMO_PROC_INFO = {
   },
 }
 
-export function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, participationMode, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes, standardLinks, mode, tone, examinerLens, now, userMessage }) {
+export function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, participationMode, briefMode, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes, standardLinks, mode, tone, examinerLens, now, userMessage }) {
   // 시연 모드: mode==='demo' 단일 게이트. 협력 모드(기본)는 isDemo=false로 완전 불변.
   const isDemo = mode === 'demo'
+  // 약식 기록(연수 모드): 팀 설정 briefMode가 켜진 협력 프로젝트에만. 아니면 지시문은 종전과 같다.
+  const isBrief = !isDemo && briefMode === true
   const procInfo = PROCEDURES[procedure] || (isDemo ? DEMO_PROC_INFO[procedure] : null)
   if (!procInfo) return '시스템 오류: 유효하지 않은 절차 코드입니다.'
 
@@ -1131,7 +1135,8 @@ ${procInfo.description}`)
   }
 
   // ─── 4. 액션 타입별 대화 프로토콜 ───
-  if (currentStepData) {
+  // 약식 기록은 스텝을 하나씩 밟지 않으므로 스텝별 대화 프로토콜(질문으로 이끌기)을 넣지 않는다.
+  if (currentStepData && !isBrief) {
     const protocol = buildConversationProtocol(currentStepData.actionType, currentStepData.actorColumn)
     if (protocol) {
       parts.push(protocol)
@@ -1206,6 +1211,13 @@ ${schemaText}
 5. <ai_suggestion> 블록은 응답 텍스트 뒤에 배치하세요.
 6. 텍스트에서 전체를 나열하지 말고 핵심만 요약한 뒤 <ai_suggestion>에 상세 데이터를 넣으세요.
 7. list 타입 필드에는 순수 문자열 배열 또는 itemSchema에 맞는 객체 배열을 사용하세요.`)
+  }
+
+  // ─── 6-B. 약식 기록(연수 모드) ───
+  // 보드 규칙 바로 뒤에 두어 '모든 필드를 채우라'·'질문 먼저'·스텝 순서보다 우선하게 한다.
+  if (isBrief) {
+    const briefBlock = buildBriefModeBlock({ procedure, boards, skippedCodes })
+    if (briefBlock) parts.push(briefBlock)
   }
 
   // ─── 7. 정합성 점검 컨텍스트 ───
