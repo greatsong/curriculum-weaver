@@ -301,7 +301,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
         </section>
 
         <div ref={graphRef} hidden={scenePhase !== 'graph'} className="futures-root lab-keyword-map">
-          {picked.length >= 2 && <KeywordGraph standards={graphStandards} bridges={bridges} activeLabel={activeLink} onActive={setActiveLink} onRetry={() => sceneRef.current?.retryBridges()} multiEndpoint />}
+          {picked.length >= 2 && <KeywordGraph standards={graphStandards} bridges={bridges} activeLabel={activeLink} onActive={setActiveLink} onRetry={() => sceneRef.current?.retryBridges()} multiEndpoint navigable />}
           <div className="lab-map-actions">
             <p>{picked.length < 2 ? '성취기준 2~7개를 선택해 주세요.' : ['error', 'slow'].includes(graphState.status) ? '연결 분석을 기다리거나 선택한 성취기준으로 미래를 볼 수 있습니다.' : '연결을 확인했다면, 여덟 갈래의 수업을 열어 보세요.'}</p>
             <button type="button" className="lab-map-open" disabled={!graphState.canOpen} onClick={() => sceneRef.current?.open()}>미래 보기 ↗</button>

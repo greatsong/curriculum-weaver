@@ -61,7 +61,7 @@ export const segHitsBox = (x1, y1, x2, y2, b) => {
  * @param {number} W 패널 폭(px)
  * @param {(text:string, font:string) => number} measure
  */
-export function nebulaLayout(standards, bridges, W, measure, { multiEndpoint = false } = {}) {
+export function nebulaLayout(standards, bridges, W, measure, { multiEndpoint = false, minHeight = 0 } = {}) {
   const P = LAYOUT
   const tw = (t, font) => measure(String(t), font)
   const wrap = (t, font, maxW) => {
@@ -128,7 +128,7 @@ export function nebulaLayout(standards, bridges, W, measure, { multiEndpoint = f
     return { w, h }
   }
   const RN = Math.max(40, ...[...groups.values()].map((g) => { const b = blockOf(g); return Math.hypot(b.w / 2 + 6, b.h / 2 + 4) }))
-  let H = [0, 380, 440, 520, 580, 660, 700][n] || 700
+  let H = Math.max(minHeight, [0, 380, 440, 520, 580, 660, 700][n] || 700)
 
   // 1) 각도 칸: 360°를 n등분하되 회전·각도·반지름을 시드로 흔든다
   const slotsFor = (h) => {
