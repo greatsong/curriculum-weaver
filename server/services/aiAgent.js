@@ -23,6 +23,7 @@ import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { getBoardSchemaForPrompt } from 'curriculum-weaver-shared/boardSchemas.js'
 import { PROCEDURE_GUIDE, COMMON_RULES, getCoherenceTargets } from '../data/procedureGuide.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
+import { buildTodayPromptSection } from '../lib/today.js'
 
 /**
  * XML 속성용 절차 토큰 — 모델에게는 표시 코드(T-2)만 노출한다.
@@ -929,7 +930,7 @@ const DEMO_PROC_INFO = {
   },
 }
 
-export function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, participationMode, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes, standardLinks, mode, tone, examinerLens }) {
+export function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, participationMode, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes, standardLinks, mode, tone, examinerLens, now }) {
   // 시연 모드: mode==='demo' 단일 게이트. 협력 모드(기본)는 isDemo=false로 완전 불변.
   const isDemo = mode === 'demo'
   const procInfo = PROCEDURES[procedure] || (isDemo ? DEMO_PROC_INFO[procedure] : null)
@@ -1238,6 +1239,10 @@ ${schemaText}
     }
     parts.push(`[설계 세션]\n${sessionLines.join('\n')}`)
   }
+
+  // ─── 10-B. 오늘 날짜 (한국 시간) ───
+  // 날짜를 모르면 팀 일정·기간을 지난 날짜나 안내문 예시 날짜로 제안한다(2026-10-03 요청).
+  parts.push(buildTodayPromptSection(now instanceof Date ? now : new Date()))
 
   // ─── 11. 학습자 맥락 (prep 보드 + 프로젝트 생성 시 고른 학년) ───
   // 보드 학년은 팀이 확정한 값이라 우선한다. 보드가 비어 있으면 프로젝트를 만들 때 고른 학년을 쓴다.
