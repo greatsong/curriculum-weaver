@@ -267,3 +267,36 @@ it('초안이 대화 한 번 길이(5,000자)를 넘으면 보내기를 막고, 
   await act(async () => document.querySelector('#send-idea').click())
   expect(findButton('A-3로 보내기').disabled).toBe(false)
 })
+
+it('브라우저 저장에 실패하면 이동하지 않고 대화상자에서 알린다(조용한 유실 방지)', async () => {
+  await mount('/futures-lab?codes=s0,s1')
+  await act(async () => vi.advanceTimersByTime(1000))
+  await act(async () => scene.options.onStartProject({ title: '새 아이디어', driving_question: '무엇을 탐구할까?' }))
+  // Storage는 인스턴스 속성 대입이 항목 저장으로 처리되므로 프로토타입의 setItem을 가로챈다
+  vi.spyOn(Object.getPrototypeOf(sessionStorage), 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError') })
+  await click('프로젝트 만들기 화면으로')
+  expect(host.querySelector('output').textContent).toBe('/futures-lab?codes=s0,s1')
+  expect(dialog().textContent).toContain('이 브라우저에 저장하지 못했습니다')
+})
+
+it('워크스페이스 목록 조회가 실패하면 다시 시도할 수 있고, 고쳐 쓴 제목은 남는다', async () => {
+  let fail = true
+  const base = get.getMockImplementation()
+  get.mockImplementation(async (url) => {
+    if (url === '/api/workspaces' && fail) throw new Error('연결 실패')
+    return base(url)
+  })
+  await mount('/futures-lab?codes=s0,s1')
+  await act(async () => vi.advanceTimersByTime(1000))
+  await act(async () => scene.options.onStartProject({ title: '새 아이디어', driving_question: '무엇을 탐구할까?' }))
+  expect(dialog().textContent).toContain('워크스페이스 목록을 불러오지 못했습니다')
+  const titleInput = document.querySelector('#send-new-title')
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(titleInput, '고친 제목')
+    titleInput.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  fail = false
+  await click('다시 시도')
+  expect(document.querySelector('#send-new-ws')).not.toBeNull()
+  expect(document.querySelector('#send-new-title').value).toBe('고친 제목')
+})

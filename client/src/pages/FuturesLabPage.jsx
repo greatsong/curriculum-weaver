@@ -270,13 +270,18 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
     return true
   }
   // 새 프로젝트로 — 담기와 제목·설명 추천을 남기고 그 워크스페이스의 프로젝트 만들기 화면을 연다
+  // 저장에 실패하면 이동하지 않고 false를 돌려준다(대화상자가 안내). 예전에는 실패를 삼키고 이동해,
+  // 고른 성취기준과 제목이 조용히 빠진 만들기 화면이 열렸다(2026-10-03 검토).
   const submitToNew = ({ workspaceId, title, desc }) => {
     try {
       addToBasket(pickedKeys)
       if (title) sessionStorage.setItem('cw_project_title_suggestion', title)
       if (desc) sessionStorage.setItem('cw_project_desc_suggestion', desc)
-    } catch { /* 저장 실패해도 만들기 화면에서 다시 고를 수 있다 */ }
+    } catch {
+      return false
+    }
     navigate(`/workspaces/${encodeURIComponent(workspaceId)}?createProject=1`)
+    return true
   }
   const onCopied = (ok, token) => { if (token === handoffRevision.current) setCopied(ok) }
 
