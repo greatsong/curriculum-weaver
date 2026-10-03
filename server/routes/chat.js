@@ -23,7 +23,7 @@ import { stripLeftoverAiMarkup } from '../lib/aiMarkup.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode, isDemoBoardCode, resolveParticipationMode } from 'curriculum-weaver-shared/constants.js'
-import { resolveBriefMode, buildBriefIntro } from 'curriculum-weaver-shared/briefMode.js'
+import { resolveBriefMode, buildBriefIntro, BRIEF_SAVED_MARK, BRIEF_SAVED_SILENT_REPLY, isNoInterventionActive } from 'curriculum-weaver-shared/briefMode.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
@@ -745,6 +745,26 @@ chatRouter.post('/message', async (req, res) => {
       [...mergedMap.values()].sort((a, b) => new Date(a.created_at) - new Date(b.created_at)),
       { teacherMessageId: req.body?.teacher_message_id, content },
     )
+
+    // 약식 기록: 이 절차에서 교사가 "개입하지 마세요"라고 한 뒤의 양식 저장 알림에는 AI를 부르지 않고
+    // 바로 "저장했습니다."로 답한다. AI 지시문에만 맡기면 지시를 어기고 조언한 경우가 있었다(운영 DB 점검).
+    if (
+      project?.learner_context?.demo !== true &&
+      resolveBriefMode(workflowConfig) &&
+      String(content).startsWith(BRIEF_SAVED_MARK) &&
+      isNoInterventionActive(currentProcMessages.filter((m) => m.id !== req.body?.teacher_message_id))
+    ) {
+      if (!clientDisconnected) res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: BRIEF_SAVED_SILENT_REPLY })}\n\n`)
+      await createMessage({
+        project_id: session_id,
+        sender_type: 'ai',
+        content: BRIEF_SAVED_SILENT_REPLY,
+        procedure_context: activeProcedure,
+      })
+      if (!clientDisconnected) res.write(`data: [DONE]\n\n`)
+      res.end()
+      return
+    }
 
     // 선택 성취기준 간 검증된 교과 연결(curriculum_links) — 분석(A)·설계(Ds) 절차에서만 주입.
     // 프로젝트 학교급(선택 성취기준 최빈값)으로 필터해 고교 프로젝트에 타 학교급 연결이 섞이지 않게 한다.

@@ -74,6 +74,9 @@ export const useProcedureStore = create((set, get) => ({
   // 현재 절차의 활동흐름(가이드북 3장)이 특히 강조하는 총괄 원리(GP) id 목록 — PrinciplePanel 강조용
   relevantGeneralPrincipleIds: [],
   loading: false,
+  // 어느 절차의 보드를 서버에서 다 불러왔는지('*'는 전체). 약식 기록 양식이 불러오기 전에 빈 양식을
+  // 저장해 기존 보드를 덮어쓰지 않도록, 이 값이 현재 절차와 같을 때만 양식을 연다.
+  boardsLoadedFor: null,
 
   // ── 절차/스텝 네비게이션 ────
 
@@ -185,7 +188,7 @@ export const useProcedureStore = create((set, get) => ({
           boards[boardType] = { ...design, board_type: boardType, content: design.content }
         }
       }
-      set({ boards, loading: false })
+      set({ boards, loading: false, boardsLoadedFor: '*' })
       return true
     } catch {
       set((state) => ({ boards: state.boards, loading: false }))
@@ -209,7 +212,7 @@ export const useProcedureStore = create((set, get) => ({
         for (const board of boardList) {
           boards[board.board_type || board.procedure_code] = board
         }
-        set({ boards, loading: false })
+        set({ boards, loading: false, boardsLoadedFor: code })
         return true
       }
       // 새 API: 단일 design 객체 → boards에 BOARD_TYPES 키로 저장 (ProcedureCanvas 호환)
@@ -220,10 +223,10 @@ export const useProcedureStore = create((set, get) => ({
       }
       // 같은 내용이면 기존 boards를 유지(탭 복귀 재로딩이 보드를 다시 그리지 않게)
       if (sameJson(boards, get().boards)) {
-        set({ loading: false })
+        set({ loading: false, boardsLoadedFor: code })
         return true
       }
-      set({ boards, loading: false })
+      set({ boards, loading: false, boardsLoadedFor: code })
       return true
     } catch {
       set((state) => ({ boards: state.boards, loading: false }))

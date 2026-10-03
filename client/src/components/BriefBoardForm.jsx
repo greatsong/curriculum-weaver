@@ -15,6 +15,7 @@ import {
 } from 'curriculum-weaver-shared/briefMode.js'
 import BoardEditor from './BoardEditor'
 import { useChatStore } from '../stores/chatStore'
+import { useProcedureStore } from '../stores/procedureStore'
 import { pushToast } from '../stores/toastStore'
 
 const ADVICE_KEY = (projectId) => `cw_brief_advice_${projectId}`
@@ -50,6 +51,10 @@ export default function BriefBoardForm({ projectId, procedureCode, schema, board
   const [saving, setSaving] = useState(false)
   const [formKey, setFormKey] = useState(0)
   const sendMessage = useChatStore((s) => s.sendMessage)
+  // 이 절차의 보드를 서버에서 다 불러온 뒤에만 양식을 연다. 그 전에 빈 양식을 저장하면
+  // 이미 적어 둔 보드를 빈 내용으로 덮어쓴다(운영 DB 점검에서 확인한 위험).
+  const loadedFor = useProcedureStore((s) => s.boardsLoadedFor)
+  const ready = loadedFor === procedureCode || loadedFor === '*'
 
   const content = board?.content
   const seeded = useMemo(() => seedBriefForm(content || schema.empty, procedureCode), [content, schema.empty, procedureCode])
@@ -87,6 +92,9 @@ export default function BriefBoardForm({ projectId, procedureCode, schema, board
           오프라인 활동 결과를 칸에 적고 저장하세요. <span style={{ color: '#EF4444' }}>*</span> 표시는 필수입니다.
         </span>
       </div>
+      {!ready ? (
+        <div style={{ fontSize: 13, color: 'var(--color-text-tertiary)', padding: '12px 0' }}>보드를 불러오는 중입니다…</div>
+      ) : (
       <BoardEditor
         // 다른 칸 펼치기는 보이는 칸만 바꾼다(다시 그리지 않아 적던 내용이 남는다). 저장 뒤에만 새로 연다.
         key={`${procedureCode}-${formKey}`}
@@ -113,7 +121,8 @@ export default function BriefBoardForm({ projectId, procedureCode, schema, board
           </label>
         )}
       />
-      {cNames.length > 0 && (
+      )}
+      {ready && cNames.length > 0 && (
         <button
           type="button"
           onClick={() => setShowMore((v) => !v)}
