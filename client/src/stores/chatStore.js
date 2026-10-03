@@ -5,8 +5,14 @@ import { useProcedureStore } from './procedureStore'
 import { useProjectStore } from './projectStore'
 import { useWorkspaceStore } from './workspaceStore'
 import { pushToast } from './toastStore'
-import { PROCEDURES, BOARD_TYPES, normalizeProcedureCode } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, normalizeProcedureCode } from 'curriculum-weaver-shared/constants.js'
 import { sameJson } from '../lib/sameJson'
+
+/** 제안이 반영되는 보드의 화면 이름 (예: '팀 일정') */
+function boardLabelOf(suggestion) {
+  const boardType = BOARD_TYPES[suggestion?.procedureCode]
+  return (boardType && BOARD_TYPE_LABELS[boardType]) || '설계'
+}
 
 function isReadOnlyProject(project) {
   return project?.status === 'simulation' ||
@@ -153,6 +159,7 @@ export const useChatStore = create((set, get) => ({
   pendingSuggestions: [],        // 수락/편집/거부 대기 중인 AI 제안
   coherenceCheckResult: null,   // 정합성 점검 결과
   procedureAdvanceSuggestion: null, // 절차 전환 제안
+  _acceptedBoardsInBatch: [],      // 한 번의 AI 응답에서 나온 제안 중 수락된 보드 라벨(마지막 처리 때 한 번만 AI에 알림)
   _lastAiMessageId: null,       // 마지막 AI 메시지 ID (제안 수락 시 사용)
 
   // 인트로 캐시 (절차별 인트로를 1회만 생성)
@@ -203,6 +210,7 @@ export const useChatStore = create((set, get) => ({
       boardSuggestions: [],
       stageAdvanceSuggestion: null,
       pendingSuggestions: [],
+      _acceptedBoardsInBatch: [],
       coherenceCheckResult: null,
       procedureAdvanceSuggestion: null,
       _messageHandler: null,
@@ -321,6 +329,7 @@ export const useChatStore = create((set, get) => ({
       streaming: true,
       streamingText: '',
       pendingSuggestions: [],
+      _acceptedBoardsInBatch: [],
       coherenceCheckResult: null,
       procedureAdvanceSuggestion: null,
       boardSuggestions: [],
@@ -560,16 +569,24 @@ export const useChatStore = create((set, get) => ({
     const mergedContent = boardType
       ? useProcedureStore.getState().boards[boardType]?.content
       : null
+    let persisted = true
     if (mergedContent && suggestion.procedureCode) {
       try {
         await useProcedureStore.getState().updateBoard(projectId, suggestion.procedureCode, mergedContent)
       } catch (err) {
+        persisted = false
         console.error('보드 영속 실패:', err)
+        // 생략된 절차(403)·잠금(423)·네트워크 등으로 저장이 거부되면 사실대로 알린다
+        pushToast({ kind: 'error', message: err?.message || '보드 저장에 실패했어요. 잠시 후 다시 시도해 주세요.', duration: 6_000 })
       }
     }
 
     // 진행률/네비게이션 갱신
     useProcedureStore.getState().loadBoardSummaries(projectId)
+
+    // AI에게 수락 사실을 알리고 이어서 안내받는다 (보드 저장 뒤라 AI가 반영된 보드를 본다).
+    // 저장에 실패했으면 "반영했어요"라고 알리지 않는다.
+    get()._afterSuggestionResolved(projectId, persisted ? boardLabelOf(suggestion) : null, false)
   },
 
   editAcceptSuggestion: async (suggestionId, editedValue, projectId) => {
@@ -618,16 +635,49 @@ export const useChatStore = create((set, get) => ({
     const mergedContent = boardType
       ? useProcedureStore.getState().boards[boardType]?.content
       : null
+    let persisted = true
     if (mergedContent && suggestion.procedureCode) {
       try {
         await useProcedureStore.getState().updateBoard(projectId, suggestion.procedureCode, mergedContent)
       } catch (err) {
+        persisted = false
         console.error('보드 영속 실패:', err)
+        pushToast({ kind: 'error', message: err?.message || '보드 저장에 실패했어요. 잠시 후 다시 시도해 주세요.', duration: 6_000 })
       }
     }
 
     // 진행률/네비게이션 갱신
     useProcedureStore.getState().loadBoardSummaries(projectId)
+
+    get()._afterSuggestionResolved(projectId, persisted ? boardLabelOf(suggestion) : null, true)
+  },
+
+  /**
+   * 제안 하나를 처리(수락·편집 수락·거부)한 뒤 호출한다. 2026-10-03 제보: 수락은 보드 저장과
+   * 알림만 하고 AI를 부르지 않아, AI가 수락 사실을 전혀 몰랐고 아무 반응이 없었다.
+   * - 같은 AI 응답에서 나온 제안이 아직 남아 있으면 기다렸다가, 마지막 처리 때 한 번만 알린다
+   *   (sendMessage는 남은 제안 카드를 비우므로 중간에 보내면 안 된다)
+   * - 하나라도 수락했으면 채팅에 "✓ AI 제안을 '…' 보드에 반영했어요" 메시지를 남기고 AI가 이어서 답한다.
+   *   이미 검증된 sendMessage 경로를 그대로 써서, 팀원 화면·대화 기록·AI 맥락에 모두 남는다
+   * - 모두 거부했거나, 다른 AI 응답이 진행 중이면 보내지 않는다(보드 반영은 이미 끝났다)
+   * @param {string|null} acceptedLabel - 수락한 보드 라벨(거부면 null)
+   */
+  _afterSuggestionResolved: (projectId, acceptedLabel, edited) => {
+    const batch = [...get()._acceptedBoardsInBatch]
+    if (acceptedLabel) batch.push({ label: acceptedLabel, edited: !!edited })
+    if (get().pendingSuggestions.some((s) => s.status === 'pending')) {
+      set({ _acceptedBoardsInBatch: batch })
+      return
+    }
+    set({ _acceptedBoardsInBatch: [] })
+    if (batch.length === 0 || get().streaming || !projectId) return
+    const labels = [...new Set(batch.map((b) => b.label))].map((l) => `'${l}'`).join(', ')
+    const verb = batch.some((b) => b.edited) ? '고쳐서 ' : ''
+    const note = `✓ AI 제안을 ${verb}${labels} 보드에 반영했어요. 반영된 내용을 짧게 확인하고, 이어서 할 일을 안내해 주세요.`
+    const procedureCode = useProcedureStore.getState().currentProcedure
+    Promise.resolve(get().sendMessage(projectId, note, procedureCode)).catch((err) => {
+      console.warn('수락 후 AI 안내 요청 실패:', err?.message || err)
+    })
   },
 
   rejectSuggestion: async (suggestionId, projectId) => {
@@ -642,6 +692,8 @@ export const useChatStore = create((set, get) => ({
         s.id === suggestionId ? { ...s, status: 'rejected' } : s
       ),
     })
+    // 앞서 같은 응답의 다른 제안을 수락했다면, 마지막 처리인 이 거부 뒤에 한 번만 AI에 알린다
+    get()._afterSuggestionResolved(projectId, null, false)
 
     // 서버 기록은 fire-and-forget — 라우트는 활동 로그만 남기므로 응답을 기다릴 이유가 없다
     const messageId = state._lastAiMessageId
