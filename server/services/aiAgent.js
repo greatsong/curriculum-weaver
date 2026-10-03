@@ -25,6 +25,9 @@ import { PROCEDURE_GUIDE, COMMON_RULES, getCoherenceTargets } from '../data/proc
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { buildTodayPromptSection } from '../lib/today.js'
 
+// 프롬프트용 단계 순서(준비 제외 — 표시 코드가 없다)
+const PHASE_LIST_FOR_PROMPT = Object.values(PHASES).filter((p) => p.id !== 'prep')
+
 /**
  * XML 속성용 절차 토큰 — 모델에게는 표시 코드(T-2)만 노출한다.
  * displayCode 없는 절차(prep)는 'prep' 그대로 (T-#-# 혼동 패턴 밖이라 무해).
@@ -1138,7 +1141,7 @@ ${procInfo.description}`)
    - 이 절차의 보드를 충분히 채우는 것이 목표입니다.
    - 절대 금지: 이 절차보다 뒤 절차의 내용을 미리 다루거나 보드에 반영하기.
    - 교사가 뒤 절차를 물어보면: "좋은 질문이에요. 그 부분은 ${nextProcEntry ? (getProcedureDisplayCode(nextProcEntry[0]) || nextProcEntry[0]) + '(' + nextProcEntry[1].name + ')' : '다음'} 절차에서 다루게 됩니다."
-   - 대화 텍스트에서 절차를 언급할 때는 반드시 위 표시 코드(예: "Ds-1")나 절차 이름만 사용하세요. 이 대화에 등장하지 않는 다른 형식의 절차 코드를 만들어 쓰지 마세요.
+   - 대화 텍스트에서 다른 절차를 언급할 때는 표시 코드와 절차 이름을 함께 쓰세요(예: "A-4 핵심 아이디어 도출 및 통합 수업목표 진술", "Ds-1 평가 설계"). 교사 화면의 절차 목록이 이 코드와 이름으로 표시되므로, 코드만 쓰면 교사가 어느 절차인지 찾지 못합니다. 아래 [전체 절차 목록]에 없는 코드나 이름을 만들어 쓰지 마세요.
 
 2. 스텝 순서
    - 스텝 순서를 따르되, 교사의 자연스러운 흐름을 존중합니다.
@@ -1224,6 +1227,20 @@ ${schemaText}
 2. 파일 근거: ${COMMON_RULES.file_evidence.join(' / ')}
 3. 응답 형식: ${COMMON_RULES.response_format}
 4. 가드레일: ${COMMON_RULES.guardrails.join(' / ')}`)
+
+  // ─── 9-B. 전체 절차 목록 (표시 코드 + 이름) ───
+  // 교사 화면의 절차 목록은 "A-4 핵심 아이디어…"처럼 코드와 이름을 함께 보여 준다. AI가 코드만 쓰면
+  // 교사가 어느 절차인지 찾지 못했다(2026-10-03 제보). 이름을 지어내지 않도록 정확한 목록을 준다.
+  if (!isDemo) {
+    const byPhase = PHASE_LIST_FOR_PROMPT.map((ph) => {
+      const items = Object.entries(PROCEDURES)
+        .filter(([, info]) => info.phase === ph.id && info.displayCode)
+        .sort((a, b) => (a[1].order ?? 0) - (b[1].order ?? 0))
+        .map(([, info]) => `${info.displayCode} ${info.name}`)
+      return items.length ? `- ${ph.name}(${ph.id}): ${items.join(' / ')}` : null
+    }).filter(Boolean)
+    if (byPhase.length) parts.push(`[전체 절차 목록 — 교사 화면 표기와 같음]\n${byPhase.join('\n')}`)
+  }
 
   // ─── 10. 세션 정보 ───
   // 프로젝트를 만들 때 교사가 고른 교과·학년(projects.subjects·grade)도 여기서 넘긴다.
