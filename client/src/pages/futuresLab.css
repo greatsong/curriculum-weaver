@@ -1,0 +1,117 @@
+/* 미래보기 실험실 전용. 기존 /futures, /futures2의 화면에는 적용하지 않는다. */
+.futures-lab-root { --lab-bg:#080f17; --lab-text:#edf2f5; --lab-muted:#a0b0bf; --lab-line:#26343e; --lab-green:#b8ead3; background:radial-gradient(ellipse at 50% 40%,#13232977,transparent 65%),var(--lab-bg); color:var(--lab-text); }
+.futures-lab-root .fu-main { max-width:1280px; padding:28px 28px 70px; }
+.futures-lab-root h1 { color:var(--lab-text); font-size:27px; font-weight:500; text-shadow:none; letter-spacing:-.8px; }
+.futures-lab-root .fu-sub { color:var(--lab-muted); max-width:700px; font-size:14px; line-height:1.8; }
+.futures-lab-root .fu-panel { background:#101a23; border-color:#26343e; backdrop-filter:none; }
+.futures-lab-root .fu-chip { animation:none; }
+.futures-lab-root .fu-top { margin-top:26px; }
+.futures-lab-root .fu-slots { max-height:420px; overflow:auto; }
+.futures-lab-root .fu-models button.on { background:#243b32; color:#d9f3e5; box-shadow:none; }
+.futures-lab-root .fu-graph-key { font-size:12px; margin:26px 0 0; }
+.futures-lab-root .lab-scene { margin-top:30px; }
+.futures-lab-root .lab-scene [hidden] { display:none!important; }
+.futures-lab-root .lab-scene button,.futures-lab-root .lab-scene select { font:inherit; cursor:pointer; }
+.futures-lab-root .lab-scene button:focus-visible,.futures-lab-root .lab-scene select:focus-visible,.futures-lab-root .lab-scene summary:focus-visible { outline:2px solid var(--lab-green); outline-offset:4px; }
+.futures-lab-root .lab-scene button:disabled { opacity:.4; cursor:default; }
+.futures-lab-root .lab-scene h2,.futures-lab-root .lab-scene h3,.futures-lab-root .lab-scene h4,.futures-lab-root .lab-scene p { margin:0; }
+.futures-lab-root .lab-scene-head { display:flex; align-items:center; justify-content:space-between; gap:20px; padding-top:24px; border-top:1px solid var(--lab-line); }
+.futures-lab-root .lab-kicker { color:#a1b9ad; font-size:11px; letter-spacing:.16em; }
+.futures-lab-root .lab-scene h2 { font-size:32px; line-height:1.5; font-weight:500; letter-spacing:-1.1px; margin-top:12px; word-break:keep-all; }
+.futures-lab-root .lab-quiet { border:1px solid #40594d; background:#13251c; color:#c4ead7; border-radius:24px; padding:10px 16px; font-size:13px; min-height:42px; }
+.futures-lab-root .lab-primary { border:1px solid #b8ead3; background:#b8ead3; color:#10271b; border-radius:9px; padding:15px 24px; font-size:15px; font-weight:600; min-height:50px; }
+.futures-lab-root .lab-status { font-size:13px; color:var(--lab-muted); margin:20px 0 0; line-height:1.8; }
+.futures-lab-root .lab-map { position:relative; width:100%; margin-top:15px; }
+.futures-lab-root .lab-lines { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+.futures-lab-root .lab-subject { position:absolute; transform:translate(-50%,-50%); z-index:2; display:flex; align-items:center; justify-content:center; flex-direction:column; border-radius:50%; background:radial-gradient(ellipse at 30% 0%,color-mix(in srgb,var(--subject) 15%,transparent),transparent 55%),linear-gradient(155deg,#182332,#0e1821 60%,#0b141d); border:1px solid color-mix(in srgb,var(--subject) 22%,#23303b); box-shadow:inset 0 1px 0 #ffffff10,inset 0 -15px 25px #0003,0 20px 42px #0003,0 0 60px color-mix(in srgb,var(--subject) 5%,transparent); }
+.futures-lab-root .lab-subject:before { content:''; position:absolute; inset:-1px; border-radius:50%; border:1px solid transparent; border-top-color:color-mix(in srgb,var(--subject) 80%,#fff); border-left-color:color-mix(in srgb,var(--subject) 35%,transparent); transform:rotate(-30deg); pointer-events:none; opacity:.7; }
+.futures-lab-root .lab-subject:after { content:''; position:absolute; inset:-9px; border-radius:50%; border:1px solid color-mix(in srgb,var(--subject) 6%,transparent); pointer-events:none; }
+.futures-lab-root .lab-subject small { color:var(--subject); font-size:11px; margin-bottom:5px; }
+.futures-lab-root .lab-subject h3 { font-size:22px; line-height:1.35; font-weight:500; margin:0 12px 9px; letter-spacing:-.5px; max-width:calc(100% - 24px); text-align:center; overflow-wrap:anywhere; }
+.futures-lab-root .lab-standard { background:none; border:0; border-radius:5px; padding:4px 8px; color:#c4d0d9; font-size:12px!important; min-height:25px; max-width:90%; overflow-wrap:anywhere; }
+.futures-lab-root .lab-standard[aria-pressed=true] { background:color-mix(in srgb,var(--subject) 15%,transparent); color:white; }
+.futures-lab-root .lab-keyword { position:absolute; transform:translate(-50%,-50%); border:0; background:none; padding:0; width:44px; height:44px; border-radius:50%; z-index:3; display:grid; place-items:center; transition:opacity .25s; }
+.futures-lab-root .lab-keyword:before { content:''; position:absolute; inset:2px; border-radius:50%; background:radial-gradient(circle,color-mix(in srgb,var(--subject) 20%,transparent),transparent 65%); }
+.futures-lab-root .lab-key-light { width:8px; height:8px; border-radius:50%; background:radial-gradient(circle at 30% 25%,#f4fcff,var(--subject) 40%,#33526a); box-shadow:0 0 10px color-mix(in srgb,var(--subject) 30%,transparent); }
+.futures-lab-root .lab-keyword.is-connected .lab-key-light { width:12px; height:12px; box-shadow:0 0 7px color-mix(in srgb,var(--subject) 70%,transparent),0 0 22px color-mix(in srgb,var(--subject) 35%,transparent); }
+.futures-lab-root .lab-key-name { position:absolute; top:37px; left:50%; transform:translateX(-50%); font-size:16px; line-height:21px; color:#e0eaf0; background:var(--lab-bg); padding:2px; overflow-wrap:anywhere; text-align:center; }
+.futures-lab-root .lab-keyword[aria-pressed=true] { box-shadow:0 0 0 1px color-mix(in srgb,var(--subject) 60%,transparent),0 0 25px color-mix(in srgb,var(--subject) 18%,transparent); }
+.futures-lab-root .lab-hub { position:absolute; transform:translate(-50%,-50%); width:48px; height:48px; border:0; border-radius:50%; background:radial-gradient(circle,#b7e6d854,transparent 72%); z-index:4; display:grid; place-items:center; }
+.futures-lab-root .lab-hub:before { content:''; position:absolute; inset:5px; border:1px solid #bfe9dd22; border-top-color:var(--start); border-bottom-color:var(--end); border-radius:50%; transform:rotate(-30deg); box-shadow:0 0 22px #abe8d340,inset 0 0 10px #caffdf1a; }
+.futures-lab-root .lab-hub:after { content:''; height:8px; width:8px; border-radius:50%; background:#f5fff9; box-shadow:0 0 5px 2px #d4ffe9,0 0 17px 4px #b4efd970,0 0 35px 9px #aeeec424; }
+.futures-lab-root .lab-hub>span { position:absolute; top:50px; left:50%; transform:translateX(-50%); font-size:13px; line-height:20px; color:#d3f3e3; background:var(--lab-bg); padding:5px 8px; border-radius:15px; border:1px solid #7cad935e; overflow-wrap:anywhere; }
+.futures-lab-root .lab-hub[aria-pressed=true]>span { border-color:#b8ead3; color:#f1fff7; }
+.futures-lab-root .lab-beam { opacity:0; fill:#f0fff7; filter:drop-shadow(0 0 5px #b4ffd5); }
+.futures-lab-root .lab-beam.lab-flowing { animation:lab-flow 1.1s both; }
+.futures-lab-root .lab-hub.lab-arrival:before { animation:lab-meeting .8s ease-out; }
+@keyframes lab-flow { 0%{opacity:0} 12%,85%{opacity:1} 100%{opacity:0} }
+@keyframes lab-meeting { 0%{transform:rotate(-30deg) scale(.85)} 35%{box-shadow:0 0 35px #c0ffd67a;transform:rotate(-10deg) scale(1.35)} 100%{transform:rotate(-30deg) scale(1)} }
+.futures-lab-root .lab-inspector { border-top:1px solid var(--lab-line); padding:22px 0; min-height:100px; }
+.futures-lab-root .lab-inspector strong { font-size:15px; font-weight:500; line-height:1.7; }
+.futures-lab-root .lab-inspector p { font-size:14px; color:var(--lab-muted); line-height:1.8; margin-top:7px; }
+.futures-lab-root .lab-graph-actions { display:flex; justify-content:flex-end; gap:12px; }
+.futures-lab-root .lab-ai-note,.futures-lab-root .lab-action-status { color:var(--lab-muted); font-size:12px; line-height:1.8; margin-top:20px; }
+.futures-lab-root .lab-action-status:not(:empty) { color:#e8d8a5; }
+.futures-lab-root .lab-cast { height:650px; display:grid; place-items:center; position:relative; }
+.futures-lab-root .lab-portal { width:min(550px,90%); aspect-ratio:1; border:1px solid #b8ead3aa; border-radius:50%; box-shadow:0 0 65px #b8ead333,inset 0 0 65px #b8ead311; position:absolute; animation:lab-portal 3.4s cubic-bezier(.2,.7,.2,1) both; }
+.futures-lab-root .lab-portal:before,.futures-lab-root .lab-portal:after { content:'';position:absolute;inset:12px;border:1px solid #b8ead333;border-radius:50%; }
+.futures-lab-root .lab-portal:after { inset:-15px;border-style:dashed; }
+.futures-lab-root .lab-cast-copy { position:relative;text-align:center;max-width:80%; }
+.futures-lab-root .lab-cast-copy p { font-size:13px;color:var(--lab-muted);line-height:1.9;margin-top:24px; }
+@keyframes lab-portal { from{transform:scale(.6) rotate(-60deg);opacity:0} 40%{opacity:1} to{transform:scale(1) rotate(0);opacity:1} }
+.futures-lab-root .lab-future-layout { display:grid;grid-template-columns:285px minmax(0,1fr);gap:38px;margin-top:35px; }
+.futures-lab-root .lab-orbit-panel { text-align:center;padding-top:15px; }
+.futures-lab-root .lab-orbit { position:relative;width:280px;height:280px;margin:24px auto 12px;overflow:hidden; }
+.futures-lab-root .lab-orbit-art { position:absolute;inset:12%;border-radius:50%;border:1px solid #b8ead3aa;box-shadow:0 0 25px #b8ead31a,inset 0 0 30px #b8ead311;transition:transform .6s ease; }
+.futures-lab-root .lab-orbit-art:before { content:'';position:absolute;inset:-12px;border-radius:50%;border:1px dashed #b8ead333; }
+.futures-lab-root .lab-orbit-art:after { content:'';position:absolute;inset:12px;border-radius:50%;border:1px solid #b8ead322; }
+.futures-lab-root .lab-orbit-core { position:absolute;inset:0;display:flex;justify-content:center;align-items:center;flex-direction:column;pointer-events:none; }
+.futures-lab-root .lab-orbit-core span { font-size:54px;color:#b8ead3;font-family:Georgia,serif; }
+.futures-lab-root .lab-orbit-core small { font-size:13px;font-family:var(--font-sans);color:var(--lab-muted);margin-left:9px; }
+.futures-lab-root .lab-orbit-core strong { font-size:13px;font-weight:400;margin-top:8px; }
+.futures-lab-root .lab-orbit-buttons button { position:absolute;transform:translate(-50%,-50%);width:44px;height:44px;border:0;background:transparent;color:#c8ddd3;font-size:12px;border-radius:50%;z-index:2; }
+.futures-lab-root .lab-orbit-buttons button:before { content:'';position:absolute;inset:10px;border:1px solid #6b9a7c;border-radius:50%;background:#0c2018;z-index:-1; }
+.futures-lab-root .lab-orbit-buttons button[aria-pressed=true] { color:#10271b; }
+.futures-lab-root .lab-orbit-buttons button[aria-pressed=true]:before { inset:7px;background:linear-gradient(135deg,#edffeb,#8edaab);border-color:#d9ffe7;box-shadow:0 0 20px #a0ffc344; }
+.futures-lab-root .lab-orbit-navigation { display:flex;justify-content:center;align-items:center;gap:10px; }
+.futures-lab-root .lab-round { width:40px;height:40px;flex-shrink:0;border:1px solid var(--lab-line);border-radius:50%;background:none;color:var(--lab-text); }
+.futures-lab-root .lab-lens-select { max-width:160px;background:var(--lab-bg);color:var(--lab-text);font-size:13px;border:1px solid var(--lab-line);border-radius:6px;padding:8px; }
+.futures-lab-root .lab-orbit-panel>p { font-size:13px;line-height:1.9;color:var(--lab-muted);margin-top:24px; }
+.futures-lab-root .lab-future-card { min-width:0;border-left:1px solid var(--lab-line);padding-left:34px; }
+.futures-lab-root .lab-card-meta { display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;color:#b8ead3;font-size:12px; }
+.futures-lab-root .lab-card-meta span { color:var(--lab-muted); }
+.futures-lab-root .lab-future-card h2 { font-size:34px;margin:24px 0; }
+.futures-lab-root .lab-description { font-size:16px;line-height:1.95;color:var(--lab-muted);word-break:keep-all; }
+.futures-lab-root .lab-question { border-left:2px solid #b8ead3;padding-left:17px;margin:30px 0; }
+.futures-lab-root .lab-question small { color:#b8ead3;font-size:12px; }
+.futures-lab-root .lab-question p { margin-top:9px;font-size:17px;line-height:1.8;word-break:keep-all; }
+.futures-lab-root .lab-roles-head { display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:15px; }
+.futures-lab-root .lab-roles-head h3 { font-size:15px;font-weight:500; }
+.futures-lab-root .lab-role { display:grid;grid-template-columns:125px minmax(0,1fr);gap:14px;border-top:1px solid var(--lab-line);padding:15px 0;font-size:14px;line-height:1.8; }
+.futures-lab-root .lab-role small { display:block;font-size:11px; }
+.futures-lab-root .lab-role p { color:var(--lab-muted); }
+.futures-lab-root .lab-details { border-block:1px solid var(--lab-line);margin-top:10px;font-size:14px;line-height:1.9; }
+.futures-lab-root .lab-details summary { padding:18px 0;cursor:pointer; }
+.futures-lab-root .lab-details h4 { margin:18px 0 7px; }
+.futures-lab-root .lab-details p { color:var(--lab-muted);padding-bottom:14px; }
+.futures-lab-root .lab-details ol { padding-left:22px; }
+.futures-lab-root .lab-honesty { color:#c7bc9b;font-size:13px;line-height:1.8;margin:22px 0; }
+.futures-lab-root .lab-card-actions { display:flex;flex-wrap:wrap;gap:10px;margin-top:28px; }
+.futures-lab-root .lab-card-actions .lab-primary { flex:1; }
+.futures-lab-root .lab-wait-mark { width:120px;height:3px;background:linear-gradient(90deg,#b8ead300,#b8ead3,#b8ead300);margin:35px 0; }
+@media(max-width:760px) {
+ .futures-lab-root .fu-main { padding:22px 16px 50px; }
+ .futures-lab-root .lab-scene-head { align-items:flex-start;flex-wrap:wrap; }
+ .futures-lab-root .lab-scene h2 { font-size:27px; }
+ .futures-lab-root .lab-future-layout { display:block; }
+ .futures-lab-root .lab-future-card { border-left:0;border-top:1px solid var(--lab-line);padding:25px 0 0;margin-top:28px; }
+ .futures-lab-root .lab-future-card h2 { font-size:29px; }
+ .futures-lab-root .lab-orbit-panel>p { display:none; }
+ .futures-lab-root .lab-key-name { font-size:14px; }
+ .futures-lab-root .lab-role { grid-template-columns:90px minmax(0,1fr);gap:12px;font-size:13px; }
+ .futures-lab-root .lab-subject h3 { font-size:20px; }
+ .futures-lab-root .lab-cast { height:460px; }
+ .futures-lab-root .lab-cast-copy .lab-kicker { font-size:10px; }
+ .futures-lab-root .lab-cast-copy p { font-size:11px; }
+}
+@media(prefers-reduced-motion:reduce) { .futures-lab-root .lab-scene * { animation:none!important;transition:none!important; } }

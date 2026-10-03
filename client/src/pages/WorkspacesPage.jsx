@@ -123,7 +123,11 @@ export default function WorkspacesPage() {
               커리큘럼 위버
             </span>
           </a>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => navigate('/futures-lab')} title="교과의 연결에서 새로운 수업을 발견하세요"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', background: '#111e2b', border: '1px solid #536c7c', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, color: '#c9e4ed', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--font-sans)' }}>
+              미래보기 실험실
+            </button>
             <button
               type="button"
               onClick={() => navigate('/futures2')}
