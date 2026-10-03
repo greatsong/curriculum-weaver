@@ -5,7 +5,7 @@ import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
 import { apiGet, apiPost } from '../lib/api'
 import { standardKey, codeFromKey, subjectFromKey } from '../lib/standardKey'
-import { PROCEDURES, PHASES, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE, resolveParticipationMode } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, PHASES, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE, resolveParticipationMode, PROJECT_GRADE_OPTIONS } from 'curriculum-weaver-shared/constants.js'
 import ParticipationModePicker from '../components/ParticipationModePicker'
 import Logo from '../components/Logo'
 import HostSetupWizard from '../components/HostSetupWizard'
@@ -981,11 +981,9 @@ export default function WorkspaceDetailPage() {
                   style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
                 >
                   <option value="">선택하세요</option>
-                  <option value="초등학교 3학년">초등학교 3-4학년</option>
-                  <option value="초등학교 5학년">초등학교 5-6학년</option>
-                  <option value="중학교 1학년">중학교</option>
-                  <option value="고등학교 1학년">고등학교 (공통)</option>
-                  <option value="고등학교 2학년">고등학교 (선택)</option>
+                  {PROJECT_GRADE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
                 </select>
               </div>
 
