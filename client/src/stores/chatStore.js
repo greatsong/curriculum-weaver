@@ -9,12 +9,16 @@ import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, normalizeProcedureCode, get
 import { HANDOFF_HEADER } from '../lib/futuresProjectHandoff'
 import { applyDraftEvent, safeLocalStorage } from '../lib/explorationDraft'
 import { sameJson } from '../lib/sameJson'
-import { resolveBriefMode, stripEmptyBoardFields } from 'curriculum-weaver-shared/briefMode.js'
+import { isBriefProcedure, stripEmptyBoardFields } from 'curriculum-weaver-shared/briefMode.js'
 import { workflowConfigForProject } from '../lib/projectWorkspace'
 
-/** 약식 기록(연수 모드) 팀인지 — 지금 연 프로젝트의 워크스페이스 설정 기준. 기존 팀은 false */
-export function isBriefTeam() {
-  return resolveBriefMode(currentWorkflowConfig())
+/**
+ * 이 절차를 약식으로 진행하는지 — 지금 연 프로젝트의 워크스페이스 설정 기준(핵심 절차 정식 진행 반영).
+ * 기존 팀·핵심 절차(정식)는 false
+ * @param {string} procedureCode
+ */
+export function isBriefProcedureNow(procedureCode) {
+  return isBriefProcedure(currentWorkflowConfig(), procedureCode)
 }
 
 /** 지금 연 프로젝트의 작업 공간 설정(다른 작업 공간의 설정이 남아 있으면 null) */
@@ -628,7 +632,7 @@ export const useChatStore = create((set, get) => ({
       } else if (suggestion.value && typeof suggestion.value === 'object') {
         // board_update: 보드 전체 content 병합
         // 약식 기록 팀은 빈 칸을 빼고 얹는다 — 적어 둔 칸이 AI 제안의 빈 값으로 지워지지 않게
-        const value = isBriefTeam() ? stripEmptyBoardFields(suggestion.value) : suggestion.value
+        const value = isBriefProcedureNow(suggestion.procedureCode) ? stripEmptyBoardFields(suggestion.value) : suggestion.value
         procStore.applyBoardContent(suggestion.procedureCode, value)
       }
     }
@@ -761,7 +765,7 @@ export const useChatStore = create((set, get) => ({
     if (batch.length === 0 || get().streaming || !projectId) return
     // 약식 기록 팀은 수락 뒤 AI를 다시 부르지 않는다. 필수 입력 상태와 [다음 절차] 버튼은
     // 채팅 입력창 위 막대(BriefModeBar)가 보드 내용으로 바로 보여 준다.
-    if (isBriefTeam()) return
+    if (isBriefProcedureNow(useProcedureStore.getState().currentProcedure)) return
     const labels = [...new Set(batch.map((b) => b.label))].map((l) => `'${l}'`).join(', ')
     const verb = batch.some((b) => b.edited) ? '고쳐서 ' : ''
     const note = `✓ AI 제안을 ${verb}${labels} 보드에 반영했어요. 반영된 내용을 한두 문장으로 확인하고, 이어서 할 일을 하나만 안내해 주세요.`

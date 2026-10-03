@@ -30,8 +30,8 @@ app.use('/api/chat', chatRouter)
 
 beforeEach(() => { state.workflowConfig = { briefMode: true }; state.fail = false })
 
-const intro = async (path) => {
-  const res = await request(app).post(path).send({ session_id: 'p1', procedure: 'T-2-1' })
+const intro = async (path, procedure = 'T-2-1') => {
+  const res = await request(app).post(path).send({ session_id: 'p1', procedure })
   const text = res.text.split('\n').filter((l) => l.startsWith('data: {')).map((l) => JSON.parse(l.slice(6))).filter((e) => e.type === 'text').map((e) => e.content).join('')
   return { status: res.status, text }
 }
@@ -58,5 +58,18 @@ describe('절차 안내 — 약식 기록', () => {
     state.fail = true
     const failed = await intro('/api/chat/stage-intro')
     expect(failed.text).toContain('절차에 진입했습니다')
+  })
+})
+
+describe('핵심 절차 정식 진행', () => {
+  it('기본(켜짐): 핵심 절차 T-1은 정식 안내, 나머지는 약식 안내', async () => {
+    expect((await intro('/api/chat/stage-intro', 'T-1-1')).text).not.toContain('약식 기록')
+    expect((await intro('/api/chat/stage-intro', 'Ds-1-1')).text).toContain('약식 기록')
+    expect((await intro('/api/chat/stage-intro', 'prep')).text).toContain('약식 기록')
+  })
+
+  it('끄면 핵심 절차도 약식 안내', async () => {
+    state.workflowConfig = { briefMode: true, briefCoreFormal: false }
+    expect((await intro('/api/chat/stage-intro', 'T-1-1')).text).toContain('약식 기록')
   })
 })

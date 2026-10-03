@@ -8,7 +8,7 @@
 import { useMemo } from 'react'
 import { BOARD_TYPES, getNextActiveProcedure, getProcedureDisplayCode, PROCEDURES } from 'curriculum-weaver-shared/constants.js'
 import {
-  resolveBriefMode,
+  isBriefProcedure,
   getBriefStatus,
   getBriefHelpActions,
   BRIEF_GUIDED_LABEL,
@@ -80,7 +80,8 @@ export default function BriefModeBar({ procedureCode, busy, onHelp, onAdvance, h
   const content = boards?.[BOARD_TYPES[procedureCode]]?.content
   const status = useMemo(() => getBriefStatus(procedureCode, content || {}), [procedureCode, content])
 
-  if (!resolveBriefMode(workflowConfig) || isDemo || !status) return null
+  // 약식 절차에만 보인다(핵심 절차를 정식으로 돌리면 그 절차에서는 숨김)
+  if (!isBriefProcedure(workflowConfig, procedureCode) || isDemo || !status) return null
   if (skippedCodes.includes(procedureCode)) return null
 
   const help = getBriefHelpActions(procedureCode)

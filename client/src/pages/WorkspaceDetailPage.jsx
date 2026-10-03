@@ -12,7 +12,7 @@ import { PROCEDURES, PHASES, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_RO
 import ParticipationModePicker from '../components/ParticipationModePicker'
 import BriefModeToggle from '../components/BriefModeToggle'
 import { saveProjectStandards, standardsSaveNotice } from '../lib/projectStandards'
-import { resolveBriefMode } from 'curriculum-weaver-shared/briefMode.js'
+import { resolveBriefMode, resolveCoreFormal } from 'curriculum-weaver-shared/briefMode.js'
 import Logo from '../components/Logo'
 import HostSetupWizard from '../components/HostSetupWizard'
 
@@ -70,6 +70,7 @@ export default function WorkspaceDetailPage() {
   const [aiRole, setAiRole] = useState(DEFAULT_AI_ROLE)
   const [participationMode, setParticipationMode] = useState(() => resolveParticipationMode(null))
   const [briefMode, setBriefMode] = useState(false)
+  const [briefCoreFormal, setBriefCoreFormal] = useState(true)
   const [settingsSaving, setSettingsSaving] = useState(false)
 
   // Feature 3: 셋업 위자드
@@ -105,6 +106,7 @@ export default function WorkspaceDetailPage() {
       setAiRole(!wc.aiRole || wc.aiRole === 'custom' ? DEFAULT_AI_ROLE : wc.aiRole)
       setParticipationMode(resolveParticipationMode(wc))
       setBriefMode(resolveBriefMode(wc))
+      setBriefCoreFormal(resolveCoreFormal(wc))
     }
   }, [currentWorkspace])
 
@@ -144,6 +146,7 @@ export default function WorkspaceDetailPage() {
           aiRole,
           participationMode,
           briefMode,
+          briefCoreFormal,
         },
       })
     } catch (err) {
@@ -151,7 +154,7 @@ export default function WorkspaceDetailPage() {
     } finally {
       setSettingsSaving(false)
     }
-  }, [workspaceId, currentWorkspace, aiConfig, enabledAI, aiRole, participationMode, briefMode, updateWorkspace])
+  }, [workspaceId, currentWorkspace, aiConfig, enabledAI, aiRole, participationMode, briefMode, briefCoreFormal, updateWorkspace])
 
   const toggleProcedure = (code) => {
     setHiddenProcedures((prev) =>
@@ -892,7 +895,7 @@ export default function WorkspaceDetailPage() {
             <SettingsSection title="진행 방식" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>}>
               <p style={{ ...hintStyle, marginBottom: 12, marginTop: 0 }}>팀이 채팅에 참여하는 방식을 선택하세요. AI가 질문하는 방식이 달라집니다.</p>
               <ParticipationModePicker value={participationMode} onChange={setParticipationMode} disabled={settingsSaving} />
-              <BriefModeToggle checked={briefMode} onChange={setBriefMode} disabled={settingsSaving} />
+              <BriefModeToggle checked={briefMode} onChange={setBriefMode} coreFormal={briefCoreFormal} onCoreFormalChange={setBriefCoreFormal} disabled={settingsSaving} />
             </SettingsSection>
 
             {/* 1-C: AI 역할 프리셋 설정 */}
@@ -1289,6 +1292,7 @@ export default function WorkspaceDetailPage() {
                   // 설정 전체를 덮어쓰므로 팀 만들 때 고른 진행 방식을 함께 보존한다
                   participationMode: resolveParticipationMode(currentWorkspace?.workflow_config),
                   briefMode: resolveBriefMode(currentWorkspace?.workflow_config),
+                  briefCoreFormal: resolveCoreFormal(currentWorkspace?.workflow_config),
                 },
               }).catch(() => {})
             }

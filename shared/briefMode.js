@@ -15,13 +15,39 @@
  * 기능을 없앨 때는 이 파일, aiAgent의 [진행 방식 — 약식 기록] 블록, chat.js의 buildBriefIntro 분기,
  * BriefModeBar와 그 사용처, 설정 화면의 체크 상자만 지우면 된다.
  */
-import { PROCEDURES, PHASES, BOARD_TYPES, getProcedureDisplayCode } from './constants.js'
+import { PROCEDURES, PHASES, BOARD_TYPES, getProcedureDisplayCode, UNSKIPPABLE_PROCEDURES } from './constants.js'
 import { BOARD_SCHEMAS } from './boardSchemas.js'
 import { PROCEDURE_STEPS } from './procedureSteps.js'
 
 /** 팀 설정에서 약식 기록이 켜져 있는지. 값이 없는 기존 팀은 꺼진 것으로 본다. */
 export function resolveBriefMode(workflowConfig) {
   return workflowConfig?.briefMode === true
+}
+
+/**
+ * 약식 기록 팀에서 핵심 절차를 정식으로 진행하는지(workflow_config.briefCoreFormal).
+ * 기본은 켜짐 — 값이 없으면 정식으로 본다(2026-10-04 사용자 결정).
+ */
+export function resolveCoreFormal(workflowConfig) {
+  return workflowConfig?.briefCoreFormal !== false
+}
+
+/**
+ * 정식으로 진행하는 핵심 절차 = 건너뛸 수 없는 절차(UNSKIPPABLE_PROCEDURES). 준비(prep)는 넣지 않는다.
+ * 건너뛰기 불가 목록을 그대로 쓰므로, 연수 뒤 T-3로 되돌리면 이 목록도 함께 바뀐다.
+ */
+export const BRIEF_FORMAL_CORE = UNSKIPPABLE_PROCEDURES
+
+/**
+ * 이 절차를 약식으로 진행하는지 — 약식 기록 팀이면서, 핵심 절차를 정식으로 돌리는 설정이 이 절차에 걸리지 않을 때.
+ * 서버 지시문·절차 안내·화면 양식·막대·수락 처리가 모두 이 함수로 판단한다.
+ * @param {object|null} workflowConfig
+ * @param {string} procedureCode
+ */
+export function isBriefProcedure(workflowConfig, procedureCode) {
+  if (!resolveBriefMode(workflowConfig)) return false
+  if (resolveCoreFormal(workflowConfig) && BRIEF_FORMAL_CORE.includes(procedureCode)) return false
+  return true
 }
 
 /**
