@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { apiGet, apiPost, apiPut, apiDelete } from '../lib/api'
+import { sameJson } from '../lib/sameJson'
 
 export const useProjectStore = create((set, get) => ({
   projects: [],
@@ -27,6 +28,13 @@ export const useProjectStore = create((set, get) => ({
     set({ loading: true, error: null })
     try {
       const data = await apiGet(`/api/projects/${id}`)
+      // 내용이 같으면 기존 객체를 유지한다. 새 객체로 바꾸면 currentProject를 의존하는
+      // effect(보드·성취기준·자료 재로딩)가 탭 복귀 때마다 한 번 더 돈다.
+      const prev = get().currentProject
+      if (prev && prev.id === data?.id && sameJson(prev, data)) {
+        set({ loading: false })
+        return prev
+      }
       set({ currentProject: data, loading: false })
       return data
     } catch (err) {

@@ -6,6 +6,7 @@ import { useProjectStore } from './projectStore'
 import { useWorkspaceStore } from './workspaceStore'
 import { pushToast } from './toastStore'
 import { PROCEDURES, BOARD_TYPES, normalizeProcedureCode } from 'curriculum-weaver-shared/constants.js'
+import { sameJson } from '../lib/sameJson'
 
 function isReadOnlyProject(project) {
   return project?.status === 'simulation' ||
@@ -229,7 +230,8 @@ export const useChatStore = create((set, get) => ({
       if (local.length > 0 && msgs.length < local.length) {
         return true
       }
-      // 메시지에서 절차별 첫 AI 인트로를 캐시에 복원
+      // 메시지에서 절차별 첫 AI 인트로를 캐시에 복원 (메시지가 같아도 항상 수행 —
+      // 소켓으로만 받은 팀원의 인트로가 캐시에 없으면 같은 인트로를 다시 생성 요청한다)
       const introsByProcedure = {}
       msgs.forEach(m => {
         const proc = m.stage_context || m.procedure_context
@@ -237,7 +239,16 @@ export const useChatStore = create((set, get) => ({
           introsByProcedure[proc] = m.content
         }
       })
-      set({ messages: msgs, introCache: { ...get().introCache, ...introsByProcedure } })
+      const nextIntroCache = { ...get().introCache, ...introsByProcedure }
+      // 서버 스냅샷이 지금 화면과 같으면 메시지 배열은 그대로 둔다 — 새 배열로 바꾸면 채팅이
+      // 다시 그려지고 자동 스크롤 effect가 읽던 위치를 맨 아래로 끌어내린다(탭 복귀 때마다, 2026-10-03).
+      const sameMessages = sameJson(msgs, local)
+      const sameIntros = sameJson(nextIntroCache, get().introCache)
+      if (sameMessages && sameIntros) return true
+      set({
+        ...(sameMessages ? {} : { messages: msgs }),
+        ...(sameIntros ? {} : { introCache: nextIntroCache }),
+      })
       return true
     } catch {
       return false
