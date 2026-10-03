@@ -12,7 +12,8 @@ import { colorOfStandard, colorOfStone } from '../lib/futures2Scene'
 import { createFuturesLabScene as createFuturesScene } from '../lib/futuresLabScene'
 import './futures2.css'
 import './futuresLab.css'
-import { FUTURE_PRACTICE_SETS, resolvePracticeSet } from '../lib/futures2Practice'
+import { resolvePracticeSet } from '../lib/futures2Practice'
+import { FUTURES_LAB_SAMPLES } from '../lib/futuresLabSamples'
 import { groupFutureStandards } from '../lib/futures2GraphLayout'
 import KeywordGraph, { colorOf } from '../components/futures/KeywordGraph'
 import { subjectOfStandard } from '../lib/futures2GraphLayout'
@@ -70,6 +71,10 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const picked = useMemo(() => keys.map((k) => byKey.get(k)).filter(Boolean), [keys, byKey])
   const pickedKeys = useMemo(() => picked.map((s) => s.key), [picked])
   const pickedSig = JSON.stringify(pickedKeys)
+  const activeSample = useMemo(() => FUTURES_LAB_SAMPLES.find(preset => {
+    const resolved = resolvePracticeSet(catalog, preset)
+    return !resolved.missing.length && pickedKeys.length === resolved.standards.length && resolved.standards.every(s => pickedKeys.includes(s.key))
+  }), [catalog, pickedSig]) // eslint-disable-line react-hooks/exhaustive-deps
   const graphStandards = useMemo(() => picked.map(s => ({ ...s, subject: subjectOfStandard(s) })), [picked])
   const subjectGroups = useMemo(() => groupFutureStandards(picked), [picked])
   const colorIndexOfKey = useMemo(() => new Map(subjectGroups.flatMap(g => g.indices.map(i => [picked[i].key, g.colorIndex]))), [subjectGroups, picked])
@@ -207,11 +212,21 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
         <section className="fu-top">
           <div className="fu-panel">
             <h2><span>넣은 성취기준</span><span>{subjectGroups.length}과목 · {pickedKeys.length} / {FUTURE_MAX}개</span></h2>
-            <div className="fu2-practice" aria-label="연습용 기본 세트">
-              <span>연습용 기본 세트 <small>고등학교 · 3과목 · 성취기준 6개</small></span>
-              <div>{FUTURE_PRACTICE_SETS.map(preset => <button key={preset.id} type="button" className="fu-example" disabled={!catalog} onClick={() => applyPractice(preset)} title={preset.description}>{preset.label}</button>)}</div>
-              {pickedKeys.length > 0 && <small>세트를 고르면 현재 성취기준 조합을 바꿉니다.</small>}
-            </div>
+            <section className="lab-samples" aria-label="학년별 샘플 주제">
+              <div className="lab-samples-heading"><strong>주제로 시작하기</strong><span>3과목 · 과목별 2개 · 성취기준 6개</span></div>
+              {['고1', '고2–3'].map(grade => <div className="lab-sample-group" key={grade}>
+                <h3>{grade}</h3>
+                <div className="lab-sample-grid">{FUTURES_LAB_SAMPLES.filter(p => p.grade === grade).map(preset => <button key={preset.id} type="button" className="lab-sample-card" data-sample={preset.id} disabled={!catalog} aria-label={`${preset.grade} ${preset.label}`} aria-pressed={activeSample?.id === preset.id} onClick={() => applyPractice(preset)}>
+                  <span>{preset.subjects}</span><strong>{preset.label}</strong><p>{preset.description}</p><small>{preset.courses}</small>
+                </button>)}</div>
+              </div>)}
+              {activeSample && <div className="lab-sample-context">
+                <strong>탐구 질문 · {activeSample.question}</strong>
+                <p>결과물 예시 · {activeSample.product}</p>
+                <details key={activeSample.id}><summary>이 기본셋의 과목별 역할</summary><ul>{activeSample.roles.map(role => <li key={role}>{role}</li>)}</ul></details>
+              </div>}
+              <p className="lab-sample-note">학년은 활용 예시입니다. 실제 개설 과목과 이수 시기에 맞춰 성취기준을 바꿀 수 있습니다. 주제를 선택하면 현재 조합이 교체되며, 미래 보기에서는 같은 기준의 여러 수업 가능성을 탐색합니다.</p>
+            </section>
             <div className="fu-pick">
               <div>
                 <div className="fu-searchrow">
