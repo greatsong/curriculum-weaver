@@ -4,6 +4,8 @@ import { Search, Plus, Check, X, BookMarked, Link2, ChevronDown, ChevronUp, File
 import { apiGet, apiPost, apiDelete } from '../lib/api'
 import { standardKey, projectStandardKey, codeFromKey } from '../lib/standardKey'
 import MathText from './MathText'
+import { useProjectStore } from '../stores/projectStore'
+import { buildRecommendBoardContext, resolveRecommendScope, recommendBasisText } from '../lib/recommendContext'
 
 // 교과군(subject_group) 기준 색상 매핑
 const SUBJECT_GROUP_COLORS = {
@@ -54,6 +56,8 @@ export default function StandardSearch({ sessionId, onClose }) {
   const [searchMode, setSearchMode] = useState('keyword') // 'keyword' | 'semantic'
   const [aiActive, setAiActive] = useState(false)          // AI 융합 추천 결과 표시 중
   const [aiLoading, setAiLoading] = useState(false)
+  const [aiBasis, setAiBasis] = useState('')              // AI 추천 근거 안내 문구
+  const currentProject = useProjectStore((st) => st.currentProject)
   const [companions, setCompanions] = useState([])         // 융합 궁합 성취기준 (검증된 링크 기반)
 
   // 에러 메시지 자동 사라짐 (4초)
@@ -127,32 +131,37 @@ export default function StandardSearch({ sessionId, onClose }) {
     return () => clearTimeout(timer)
   }, [doSearch])
 
-  // AI 융합 추천 — 연결된 성취기준의 교과/학년을 바탕으로 융합 가능한 성취기준을 AI가 선별
+  // AI 융합 추천 — 프로젝트 교과·학년과 팀 공통 비전·최종 선정 주제를 근거로 AI가 성취기준을 선별.
+  // 서버(/recommend-ai)는 그대로 두고, 이미 있는 보드 목록 응답에서 근거만 골라 함께 보낸다.
+  // 보드 읽기가 실패해도 교과·학년만으로 예전처럼 추천한다(추천은 목록 표시일 뿐, 담기는 교사가 직접).
   const runAiRecommend = async () => {
-    const groups = [...new Set(
-      sessionStandards
-        .map((s) => { const std = s.curriculum_standards || s; return std.subject_group || std.subject })
-        .filter(Boolean)
-    )]
-    if (groups.length < 1) {
-      setErrorMsg('먼저 교과 성취기준을 1개 이상 추가하면, 그와 융합 가능한 성취기준을 AI가 추천합니다.')
+    const { subjects, grade } = resolveRecommendScope({ project: currentProject, sessionStandards })
+    if (subjects.length < 1) {
+      setErrorMsg('프로젝트에 교과 정보가 없어 추천할 수 없습니다. 성취기준을 하나 먼저 담으면 그 교과를 기준으로 추천합니다.')
       return
     }
-    // 가장 많이 쓰인 학년군을 대표 학년으로 사용
-    const grades = sessionStandards.map((s) => (s.curriculum_standards || s).grade_group).filter(Boolean)
-    const grade = grades.length
-      ? [...grades].sort((a, b) => grades.filter((g) => g === b).length - grades.filter((g) => g === a).length)[0]
-      : ''
     setAiLoading(true)
     setErrorMsg('')
     try {
+      let boardContext = {}
+      try {
+        const data = await apiGet(`/api/projects/${sessionId}/designs`)
+        boardContext = buildRecommendBoardContext(Array.isArray(data) ? data : data?.designs)
+      } catch {
+        boardContext = {}
+      }
       const data = await apiPost('/api/standards/recommend-ai', {
-        projectId: sessionId, subjects: groups, grade, topic: query || '',
+        projectId: sessionId,
+        subjects,
+        grade,
+        topic: query.trim() || boardContext.selectedTopic || '',
+        boardContext,
       })
       const recs = data?.recommendations || []
       setResults(recs)
+      setAiBasis(recommendBasisText(boardContext))
       setAiActive(true)
-      if (recs.length === 0) setErrorMsg('AI가 추천할 추가 성취기준을 찾지 못했습니다.')
+      if (recs.length === 0) setErrorMsg('AI가 추천할 성취기준을 찾지 못했습니다.')
     } catch (err) {
       setErrorMsg(err?.message || 'AI 추천에 실패했습니다.')
     } finally {
@@ -289,7 +298,7 @@ export default function StandardSearch({ sessionId, onClose }) {
               onClick={runAiRecommend}
               disabled={aiLoading}
               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-violet-500 to-blue-500 text-white hover:opacity-90 disabled:opacity-50 transition"
-              title="연결된 성취기준과 융합 가능한 성취기준을 AI가 선별해 이유와 함께 추천합니다"
+              title="프로젝트 교과와 팀 공통 비전·최종 선정 주제를 바탕으로 AI가 성취기준을 골라 이유와 함께 추천합니다"
             >
               <Sparkles size={13} />
               {aiLoading ? '추천 중…' : 'AI 융합 추천'}
@@ -425,7 +434,7 @@ export default function StandardSearch({ sessionId, onClose }) {
               {aiActive ? (
                 <div className="flex items-center gap-1.5 mb-3 text-xs text-violet-600 bg-violet-50 border border-violet-100 rounded-lg px-3 py-2">
                   <Sparkles size={13} className="shrink-0" />
-                  <span>AI 융합 추천 {results.length}개 — 연결된 교과와 융합 가능한 성취기준입니다. 카드의 추천 이유를 확인하세요.</span>
+                  <span>AI 추천 {results.length}개. {aiBasis || '프로젝트 교과와 융합 가능한 성취기준입니다.'} 카드에서 추천 이유를 확인할 수 있습니다.</span>
                 </div>
               ) : (
                 <p className="text-xs text-gray-400 mb-3">{results.length}개 결과{searchMode === 'semantic' ? ' · 의미 검색' : ''}</p>
@@ -472,8 +481,9 @@ export default function StandardSearch({ sessionId, onClose }) {
                               해설에서 매칭
                             </span>
                           )}
-                          {std.keywords?.length > 0 && std.keywords.map((k) => (
-                            <span key={k} className="px-1.5 py-0.5 bg-gray-100 rounded text-xs text-gray-500">
+                          {/* 정본 49개 성취기준이 같은 키워드를 두 번 가진다 — 키워드만 key로 쓰면 React key 중복 */}
+                          {std.keywords?.length > 0 && std.keywords.map((k, i) => (
+                            <span key={`${i}-${k}`} className="px-1.5 py-0.5 bg-gray-100 rounded text-xs text-gray-500">
                               {k}
                             </span>
                           ))}
