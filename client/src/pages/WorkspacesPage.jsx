@@ -1,3 +1,4 @@
+import ExplorationLaunchpad from '../components/ExplorationLaunchpad'
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
@@ -124,10 +125,7 @@ export default function WorkspacesPage() {
             </span>
           </a>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => navigate('/futures-lab')} title="교과의 연결에서 새로운 수업을 발견하세요"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', background: '#111e2b', border: '1px solid #536c7c', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, color: '#c9e4ed', cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'var(--font-sans)' }}>
-              미래보기 실험실
-            </button>
+            <a href="#exploration" className="text-sm font-semibold text-blue-700">수업 탐색</a>
             <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }} className="hidden sm:inline">
               {user?.email}
             </span>
@@ -186,10 +184,12 @@ export default function WorkspacesPage() {
               담아온 성취기준 {basketCount}개
             </span>
             <span style={{ color: '#3B82F6' }}>
-              — 프로젝트를 만들 워크스페이스를 선택하세요. 새 프로젝트에 자동으로 포함됩니다.
+              — 아직 프로젝트에 저장되지 않았습니다. 워크스페이스를 선택하고 새 프로젝트 만들기를 완료해 주세요.
             </span>
           </div>
         )}
+
+        <ExplorationLaunchpad />
 
         {/* 타이틀 + 액션 */}
         <div style={{
@@ -238,37 +238,6 @@ export default function WorkspacesPage() {
                 교육과정 데이터
               </button>
             )}
-            <button
-              onClick={() => navigate('/demo')}
-              className="btn"
-              style={{
-                padding: '8px 16px',
-                fontSize: 13,
-                background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
-                color: '#fff',
-                border: 'none',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.9'}
-              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              데모 체험
-            </button>
-            <button
-              onClick={() => navigate('/graph?mode=explore')}
-              className="btn"
-              style={{
-                padding: '8px 16px',
-                fontSize: 13,
-                background: '#111827',
-                color: '#fff',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#1F2937'}
-              onMouseLeave={(e) => e.currentTarget.style.background = '#111827'}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-              3D 교육과정 그래프
-            </button>
           </div>
         </div>
 
