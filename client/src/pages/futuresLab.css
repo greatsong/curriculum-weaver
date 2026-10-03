@@ -18,7 +18,15 @@
 .futures-lab-root .lab-scene-head { display:flex; align-items:center; justify-content:space-between; gap:20px; padding-top:24px; border-top:1px solid var(--lab-line); }
 .futures-lab-root .lab-kicker { color:#a1b9ad; font-size:11px; letter-spacing:.16em; }
 .futures-lab-root .lab-scene h2 { font-size:32px; line-height:1.5; font-weight:500; letter-spacing:-1.1px; margin-top:12px; word-break:keep-all; }
-.futures-lab-root .lab-quiet { border:1px solid #40594d; background:#13251c; color:#c4ead7; border-radius:24px; padding:10px 16px; font-size:13px; min-height:42px; }
+.futures-lab-root .lab-quiet { border:1px solid #628f7c; background:#1b352b; color:#d5f3e4; border-radius:24px; padding:10px 16px; font-size:13px; min-height:42px; cursor:pointer; transition:background-color .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease; }
+/* 지도 밖의 A-3 가져가기 버튼에도 같은 조작 피드백을 제공한다. */
+@media (hover:hover) {
+ .futures-lab-root .lab-quiet:enabled:hover { background:#b8ead3; border-color:#d9ffeb; color:#10271b; box-shadow:0 0 18px #b8ead326; }
+}
+.futures-lab-root .lab-quiet:enabled:focus-visible { background:#b8ead3; border-color:#d9ffeb; color:#10271b; outline:2px solid #b8ead3; outline-offset:4px; }
+.futures-lab-root .lab-quiet:enabled:active { background:#97d5b9; border-color:#b8ead3; color:#10271b; box-shadow:inset 0 2px 4px #10271b26; }
+.futures-lab-root .lab-quiet:disabled { opacity:.4; cursor:default; }
+@media (prefers-reduced-motion:reduce) { .futures-lab-root .lab-quiet { transition:none; } }
 .futures-lab-root .lab-primary { border:1px solid #b8ead3; background:#b8ead3; color:#10271b; border-radius:9px; padding:15px 24px; font-size:15px; font-weight:600; min-height:50px; }
 .futures-lab-root .lab-status { font-size:13px; color:var(--lab-muted); margin:20px 0 0; line-height:1.8; }
 .futures-lab-root .lab-map { position:relative; width:100%; margin-top:15px; }
