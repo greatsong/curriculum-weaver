@@ -48,6 +48,7 @@ const GuidePage = lazyWithReload(() => import('./pages/GuidePage'), 'GuidePage')
 const AuthCallback = lazyWithReload(() => import('./pages/AuthCallback'), 'AuthCallback')
 const Futures2Page = lazyWithReload(() => import('./pages/Futures2Page'), 'Futures2Page')
 const FuturesPage = lazyWithReload(() => import('./pages/FuturesPage'), 'FuturesPage')
+const FutureMapPage = lazyWithReload(() => import('./pages/FutureMapPage'), 'FutureMapPage')
 
 // 레거시 호환: /session/:id 로 들어오면 워크스페이스로 돌려보냄
 function LegacySessionRedirect() {
@@ -305,6 +306,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <FuturesPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* 미래 지도 — 기존 미래 보기·타임스톤과 별개의 비교용 판 */}
+        <Route
+          path="/future-map"
+          element={
+            <ProtectedRoute>
+              <FutureMapPage />
             </ProtectedRoute>
           }
         />
