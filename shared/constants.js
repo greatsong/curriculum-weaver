@@ -189,11 +189,28 @@ export const PROCEDURE_LIST = Object.entries(PROCEDURES)
 
 /**
  * 스킵(건너뜀) 금지 절차 — 보고서·AI 파이프라인이 하드코딩 참조하는 코어.
- * T-1-1(T-1 비전)·T-2-1(T-3 역할)·A-1-2(A-2 주제)·A-2-1(A-3 성취기준)·A-2-2(A-4 목표).
+ * T-1-1(T-1 비전)·T-1-2(T-2 방향)·A-1-2(A-2 주제)·A-2-1(A-3 성취기준)·A-2-2(A-4 목표).
+ * (T-1-2는 하드코딩 참조가 없고, 연수 운영 결정으로 핵심에 넣었다.)
  * 이 목록을 줄이려면 reportGenerator designMap·supabaseService A-2-1 게이트키퍼 동반 수정 필요.
+ *
+ * ⚠️ 교사 연수 한정 임시 설정 (2026-10-03, 사용자 결정). 연수가 끝나면 되돌린다.
+ *   - 원래 값: ['T-1-1', 'T-2-1', 'A-1-2', 'A-2-1', 'A-2-2']  (T-3 역할 배분이 핵심, T-2 방향은 생략 가능)
+ *   - 바꾼 값: T-2-1(T-3 역할 배분)을 빼고 T-1-2(T-2 수업설계 방향 설정)를 넣었다.
+ *   - 되돌리는 방법 (상세: docs/임시설정-건너뛰기-핵심절차-20261003.md)
+ *     가장 쉬운 길: `git log --oneline --no-merges --grep='연수 한정 핵심 절차'`로 찾은 커밋 하나를 `git revert` 한다.
+ *     그 커밋에 아래 1~4가 모두 들어 있다. 손으로 되돌릴 때는
+ *     1. 이 상수를 원래 값으로 바꾸고 이 경고 주석을 지운다.
+ *     2. server/lib/__tests__/procedureSkipGateway.test.js의 목록 기대값을 원래 값으로, '연수 한정' it를 지운다.
+ *     3. '연수 한정 핵심 절차' describe를 지운다: server/routes/__tests__/procedureSkipRoutes.test.js,
+ *        client/src/components/__tests__/skipButtonCore.test.jsx
+ *     4. CLAUDE.md "절차 스킵(건너뛰기) 시스템" 절, docs/절차-문구-교체-인수인계.md 5절 메모를 원래대로 돌리고
+ *        docs/임시설정-건너뛰기-핵심절차-20261003.md를 지운다.
+ *     유지할 것: reportGenerator.js 참여자 추출과 aiAgent.js 역할 안내의 T-2-1 생략 인식(별도 커밋 'fix(skip): T-3 역할 배분이…').
+ *     연수 중 T-3을 생략한 프로젝트 기록이 되돌린 뒤에도 남으므로 계속 필요하다(해제 버튼·DELETE는 핵심 절차에도 동작).
+ *     확인: server `npx vitest run --maxWorkers=2`, client `npx vitest run`, client `npx vite build`.
  * @type {string[]}
  */
-export const UNSKIPPABLE_PROCEDURES = ['T-1-1', 'T-2-1', 'A-1-2', 'A-2-1', 'A-2-2']
+export const UNSKIPPABLE_PROCEDURES = ['T-1-1', 'T-1-2', 'A-1-2', 'A-2-1', 'A-2-2']
 
 /**
  * 해당 절차를 스킵할 수 있는지 — 코어 절차와 prep(준비)은 스킵 불가.
