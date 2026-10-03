@@ -1094,9 +1094,10 @@ function TableRenderer({ columns, data }) {
               onMouseEnter={(e) => e.currentTarget.style.background = '#EFF6FF'}
               onMouseLeave={(e) => e.currentTarget.style.background = i % 2 === 0 ? '#fff' : '#F8FAFC'}
             >
-              <td style={{ textAlign: 'center', padding: '10px 8px', fontSize: 11, color: '#94A3B8', fontWeight: 600 }}>{i + 1}</td>
+              {/* 위쪽 정렬 — 긴 행에서 가운데 정렬이면 짧은 칸(날짜 등)이 행 중간에 떠서 비어 보였다 */}
+              <td style={{ textAlign: 'center', padding: '10px 8px', fontSize: 11, color: '#94A3B8', fontWeight: 600, verticalAlign: 'top' }}>{i + 1}</td>
               {columns.map((col) => (
-                <td key={col.name} style={{ padding: '10px 12px', color: 'var(--color-text-primary)', lineHeight: 1.5 }}>
+                <td key={col.name} style={{ padding: '10px 12px', color: 'var(--color-text-primary)', lineHeight: 1.5, verticalAlign: 'top' }}>
                   {String(row[col.name] ?? row[col.label] ?? '')}
                 </td>
               ))}

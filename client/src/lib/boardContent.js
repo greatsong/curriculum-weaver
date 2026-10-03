@@ -74,7 +74,9 @@ export function listItemFields(item, itemSchema) {
   for (const [schemaKey, def] of Object.entries(itemSchema || {})) {
     let key = schemaKey
     if (!has(schemaKey)) {
-      const alias = (ITEM_KEY_ALIASES[schemaKey] || []).find((a) => has(a) && !seen.has(a))
+      // 별칭 목록 + 스키마 라벨 자체(AI가 "AI 정교화 비전"처럼 라벨을 키로 저장한 경우, 2026-10-03 완주 테스트에서 발견)
+      const candidates = [...(ITEM_KEY_ALIASES[schemaKey] || []), def?.label].filter(Boolean)
+      const alias = candidates.find((a) => has(a) && !seen.has(a))
       if (alias) key = alias
     }
     fields.push({ key, label: def?.label || null, type: def?.type === 'textarea' ? 'textarea' : 'text' })
