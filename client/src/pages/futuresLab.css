@@ -171,3 +171,8 @@
 .futures-lab-root .lab-handoff textarea { display: block; box-sizing: border-box; width: 100%; height: 260px; margin-top: 10px; padding: 14px; border: 1px solid #365c52; border-radius: 12px; background: #071219; color: #d8e6e1; font: inherit; resize: vertical; }
 .futures-lab-root .lab-handoff ol { padding-left: 22px; }
 @media (max-width: 600px) { .futures-lab-root .lab-project-context { padding: 18px; } }
+
+/* 각 미래의 준비 상태는 색과 안내 문구를 함께 제공한다. */
+.futures-lab-root .lab-orbit-buttons button[data-status="ready"]:after { content:''; position:absolute; right:5px; bottom:5px; width:7px; height:7px; border-radius:50%; background:#b8ead3; box-shadow:0 0 6px #b8ead366; }
+.futures-lab-root .lab-orbit-buttons button[data-status="error"]:after { content:'!'; position:absolute; right:2px; bottom:2px; width:14px; height:14px; border-radius:50%; background:#ebc389; color:#201b12; font-size:11px; line-height:14px; }
+.futures-lab-root .lab-orbit-panel>.lab-generation-progress { display:block; color:#b8ead3; }
