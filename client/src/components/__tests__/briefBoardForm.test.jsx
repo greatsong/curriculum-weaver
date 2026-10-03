@@ -12,6 +12,7 @@ vi.mock('../../stores/chatStore', () => ({ useChatStore: (sel) => sel({ sendMess
 vi.mock('../../stores/toastStore', () => ({ pushToast: mocks.toast }))
 
 import BriefBoardForm from '../BriefBoardForm'
+import { useProcedureStore } from '../../stores/procedureStore'
 import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
 import { BOARD_TYPES } from 'curriculum-weaver-shared/constants.js'
 
@@ -31,6 +32,7 @@ beforeEach(() => {
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
+  useProcedureStore.setState({ boardsLoadedFor: 'A-1-2' })
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals() })
 
@@ -89,4 +91,15 @@ it('저장에 실패하면 알리고 AI를 부르지 않는다', async () => {
   await act(async () => save.click())
   expect(mocks.sendMessage).not.toHaveBeenCalled()
   expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({ kind: 'error' }))
+})
+
+it('이 절차의 보드를 다 불러오기 전에는 양식을 열지 않는다(빈 양식으로 덮어쓰기 방지)', async () => {
+  useProcedureStore.setState({ boardsLoadedFor: 'T-1-1' })
+  const updateBoard = vi.fn()
+  await render(updateBoard)
+  const form = host.querySelector('[data-testid="brief-board-form"]')
+  expect(form.textContent).toContain('보드를 불러오는 중')
+  expect([...form.querySelectorAll('button')].some((b) => b.textContent.includes('저장'))).toBe(false)
+  await act(async () => useProcedureStore.setState({ boardsLoadedFor: 'A-1-2' }))
+  expect([...form.querySelectorAll('button')].some((b) => b.textContent.includes('저장'))).toBe(true)
 })

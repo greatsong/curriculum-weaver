@@ -293,3 +293,28 @@ export function seedBriefForm(content, procedureCode) {
   }
   return base
 }
+
+// "개입하지 마세요" 같은 지시와, 다시 도움을 청하는 말. 양식 저장 알림에 AI를 부를지 서버가 이것으로 정한다.
+// (AI 지시문에만 맡기면 운영 DB 점검에서 지시를 어기고 조언한 경우가 있었다 — 2026-10-03)
+const NO_INTERVENTION = /개입\s*(?:하지|하시지)?\s*(?:마|말)|개입\s*(?:없이|금지)|간섭\s*(?:하지|하시지)?\s*(?:마|말)|(?:묻|질문하)지\s*(?:마|말)|조언\s*(?:하지\s*(?:마|말)|은?\s*(?:필요\s*)?없|없이|빼|생략)|그대로\s*(?:만\s*)?(?:넣|옮기|옮겨|저장)/
+const RESUME_HELP = /조언\s*(?:해|을|좀|부탁)|도와\s*(?:주|줘)|도움\s*(?:을|이)?\s*(?:주|줘|필요)|같이\s*해|함께\s*(?:해|진행)|단계별로|다시\s*(?:개입|조언)/
+
+/**
+ * 이 절차 대화에서 교사의 "개입하지 마세요" 지시가 아직 유효한지. 교사 메시지를 시간순으로 보며
+ * 마지막으로 나온 쪽(개입 금지 / 다시 도움 요청)을 따른다. 양식 저장 알림 자체는 보지 않는다.
+ * @param {Array<{sender_type: string, content: string}>} messages - 이 절차의 메시지(시간순)
+ */
+export function isNoInterventionActive(messages) {
+  let active = false
+  for (const m of messages || []) {
+    if (m?.sender_type !== 'teacher') continue
+    const text = String(m.content || '')
+    if (text.startsWith(BRIEF_SAVED_MARK)) continue
+    if (RESUME_HELP.test(text)) active = false
+    else if (NO_INTERVENTION.test(text)) active = true
+  }
+  return active
+}
+
+/** "개입하지 마세요" 상태에서 양식 저장 알림에 AI 대신 돌려줄 답 */
+export const BRIEF_SAVED_SILENT_REPLY = '저장했습니다.'
