@@ -10,6 +10,9 @@ export const HANDOFF_HEADER = H.header
 
 export const A3_PROCEDURE = 'A-2-1'
 
+/** 서버 채팅 라우트의 메시지 길이 제한(server/routes/chat.js, 5,000자)과 같아야 한다 */
+export const CHAT_MESSAGE_MAX = 5000
+
 // 보드의 저장 상태는 확인할 수 있지만, AI가 재작성한 탐색 초안의 채택 여부는 추정하지 않는다.
 export function a3BoardStatus(design) {
   if (!design) return B.unknown

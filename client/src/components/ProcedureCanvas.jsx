@@ -1,4 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { Compass } from 'lucide-react'
+import { EXPLORE_COPY } from '../lib/explorationCopy'
+import './ui/ui.css'
 import {
   PROCEDURES, PHASES, PHASE_LIST, ACTION_TYPES, ACTOR_COLUMNS,
   BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_ACTIVITIES,
@@ -596,6 +599,12 @@ function SuggestionCard({ suggestion, onAccept, onReject, onEditAccept }) {
         </svg>
         <span style={{ fontSize: 13, fontWeight: 600, color: '#6D28D9' }}>AI 제안</span>
         <span style={{ fontSize: 12, color: '#A78BFA' }}>{suggestion.field ? `${labelize(suggestion.field)} 항목` : '보드 정리'}</span>
+        {/* 미래보기 탐색 초안을 대화로 보낸 응답에서 나온 제안 — 출처를 밝혀 반영 상태와 잇는다 */}
+        {suggestion.fromExploration && (
+          <span className="ml-auto inline-flex items-center gap-1 h-6 px-2 rounded-full border border-[var(--ui-tone-review-line)] bg-bg-secondary text-[11px] font-semibold text-[var(--ui-tone-review-fg)] whitespace-nowrap">
+            <Compass size={11} strokeWidth={2.4} aria-hidden="true" />{EXPLORE_COPY.strip.suggestionTag}
+          </span>
+        )}
       </div>
 
       {suggestion.rationale && (

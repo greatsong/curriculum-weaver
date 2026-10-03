@@ -162,6 +162,8 @@ export const EXPLORE_COPY = {
     submit: 'A-3로 보내기',
     copy: '초안 복사',
     draftDetails: '보낼 초안 전체 보기',
+    length: (n, max) => `${n.toLocaleString()}자 / 대화 한 번에 최대 ${max.toLocaleString()}자`,
+    tooLong: '대화 한 번에 보낼 수 있는 길이를 넘습니다. 연결 키워드나 아이디어를 빼서 줄입니다.',
     draftTextLabel: '보낼 초안',
     copied: '초안을 복사했습니다. 프로젝트의 A-3 대화에 붙여 넣으면 됩니다.',
     copyFailed: '자동 복사를 사용할 수 없습니다. 보낼 초안 전체 보기를 펼쳐 직접 복사해 주세요.',
@@ -233,6 +235,7 @@ export const EXPLORE_COPY = {
     stepsLabel: '반영 단계',
     steps: { sent: '대화에 보냄', reviewing: '제안 검토 중', reflected: '보드에 반영' },
     savedAt: (time) => time,
+    suggestionTag: '미래보기 탐색 초안에서',
   },
 
   // 홈 카드의 초안 한 줄 (상태 이름은 UI_COPY.status)

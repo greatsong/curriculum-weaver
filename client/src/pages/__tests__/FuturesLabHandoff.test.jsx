@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, afterEach, it, expect, vi } from 'vitest'
 import FuturesLabPage from '../FuturesLabPage'
-import A3ExplorationEntry from '../../components/A3ExplorationEntry'
 import ContinueSimulationButton from '../../components/ContinueSimulationButton'
 import { a3BoardStatus, resolveProjectStandards } from '../../lib/futuresProjectHandoff'
 import { readDraft } from '../../lib/explorationDraft'
@@ -61,15 +60,7 @@ beforeEach(() => {
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-it('A-3에서 새 탭으로 열며 다른 단계와 시연 모드에는 진입 버튼이 없다', async () => {
-  await act(async () => root.render(<A3ExplorationEntry project={project} procedure="A-2-1"/>))
-  expect(host.querySelector('a').getAttribute('href')).toBe('/futures-lab?project=p1')
-  expect(host.querySelector('a').target).toBe('_blank')
-  await act(async () => root.render(<A3ExplorationEntry project={project} procedure="A-2-2"/>))
-  expect(host.querySelector('a')).toBeNull()
-  await act(async () => root.render(<A3ExplorationEntry project={{ ...project, learner_context: { demo: true } }} procedure="A-2-1"/>))
-  expect(host.querySelector('a')).toBeNull()
-})
+// A-3 입구 단언(진입 링크·다른 단계·시연 모드)은 components/__tests__/explorationDraftStrip.test.jsx로 옮겼다.
 
 it('등록 기준·A-3 분석표를 합쳐 가져오고 복사·보내기 뒤에도 프로젝트와 건너뛰기는 보존한다', async () => {
   const before = JSON.stringify({ project, design })
@@ -266,4 +257,13 @@ it('새 프로젝트 만들기 화면으로 가면 담기·제목·설명을 넘
   expect(JSON.parse(sessionStorage.getItem('cw_design_basket'))).toEqual(['s0', 's1'])
   expect(sessionStorage.getItem('cw_project_title_suggestion')).toBe('새 아이디어')
   expect(sessionStorage.getItem('cw_project_desc_suggestion')).toBe('무엇을 탐구할까?')
+})
+
+it('초안이 대화 한 번 길이(5,000자)를 넘으면 보내기를 막고, 아이디어를 빼면 다시 보낼 수 있다', async () => {
+  await mount(); await act(async () => vi.advanceTimersByTime(1000))
+  await act(async () => scene.options.onStartProject({ title: '긴 아이디어', situation: '가'.repeat(5200) }))
+  expect(dialog().textContent).toContain('대화 한 번에 보낼 수 있는 길이를 넘습니다')
+  expect(findButton('A-3로 보내기').disabled).toBe(true)
+  await act(async () => document.querySelector('#send-idea').click())
+  expect(findButton('A-3로 보내기').disabled).toBe(false)
 })

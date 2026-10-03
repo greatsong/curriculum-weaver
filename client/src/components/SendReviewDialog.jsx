@@ -14,7 +14,7 @@ import Button from './ui/Button'
 import Notice from './ui/Notice'
 import { EXPLORE_COPY } from '../lib/explorationCopy'
 import { UI_COPY } from '../lib/uiCopy'
-import { A3_PROCEDURE, a3BoardStatus, buildA3Handoff, sendPolicy } from '../lib/futuresProjectHandoff'
+import { A3_PROCEDURE, CHAT_MESSAGE_MAX, a3BoardStatus, buildA3Handoff, sendPolicy } from '../lib/futuresProjectHandoff'
 import { getProcedureDisplayCode, getProcedureLabel } from 'curriculum-weaver-shared/constants.js'
 import { exploreHubUrl, projectDestination, destinationAccess } from '../lib/exploreDestination'
 
@@ -102,6 +102,10 @@ function ProjectBody({ project, design, boardCheck, onRecheckBoard, standards, b
           <span className="text-xs leading-relaxed text-text-secondary">{S.standardsAlways} {S.standardsRegistered(registered, standards.length)}</span>
         </CheckRow>
         {future && <p className="m-0 mt-1 text-xs leading-relaxed text-text-secondary">{S.notSent}</p>}
+        <p className={`m-0 text-xs tabular-nums ${text.length > CHAT_MESSAGE_MAX ? 'text-[var(--ui-tone-warning-fg)] font-semibold' : 'text-text-secondary'}`}>
+          {S.length(text.length, CHAT_MESSAGE_MAX)}
+        </p>
+        {text.length > CHAT_MESSAGE_MAX && <Notice tone="warning" icon={AlertTriangle} role="alert">{S.tooLong}</Notice>}
       </fieldset>
 
       <Section title={S.afterTitle}>
@@ -198,6 +202,7 @@ export default function SendReviewDialog({
     ? buildA3Handoff({ project, standards, bridges: include.bridges ? bridges : null, future: include.idea ? future : null })
     : ''), [mode, project, standards, bridges, future, include])
   const policy = mode === 'project' ? sendPolicy(project, design) : null
+  const tooLong = text.length > CHAT_MESSAGE_MAX
 
   // 새 프로젝트
   const workspaces = useWorkspaceProjects(get, mode === 'new')
@@ -252,8 +257,8 @@ export default function SendReviewDialog({
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={onClose}>{UI_COPY.actions.cancel}</Button>
         <Button variant="secondary" icon={Copy} onClick={copy}>{S.copy}</Button>
-        <Button variant="primary" icon={Send} onClick={submitProject} disabled={!policy?.canSend}
-          title={policy?.canSend ? undefined : S.readOnlyReason}>{S.submit}</Button>
+        <Button variant="primary" icon={Send} onClick={submitProject} disabled={!policy?.canSend || tooLong}
+          title={!policy?.canSend ? S.readOnlyReason : tooLong ? S.tooLong : undefined}>{S.submit}</Button>
       </div>
     </>
   ) : (

@@ -114,6 +114,9 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
   const closeIntroModal = useChatStore((s) => s.closeIntroModal)
   const { currentStep, getCurrentStep, materials, uploadMaterial, getSelectedMaterialIds, skippedProcedures } = useProcedureStore()
   const [input, setInput] = useState('')
+  // 미래보기 탐색 초안 — 프로젝트 화면 안내 줄의 "대화 입력창에 넣기"로 들어온다. 입력창에만 넣고 보내지 않는다.
+  const composerDraft = useChatStore((s) => s.composerDraft)
+  const consumeComposerDraft = useChatStore((s) => s.consumeComposerDraft)
   const [aiModel, setAiModel] = useState(() => localStorage.getItem('cw_ai_model') || 'fast')
   const scrollRef = useRef(null)
   const textareaRef = useRef(null)
@@ -150,6 +153,19 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages, pendingSuggestions, procedureAdvanceSuggestion, stageAdvanceSuggestion])
+
+  useEffect(() => {
+    if (!composerDraft || composerDraft.projectId !== projectId) return
+    setInput((prev) => (prev.trim() ? `${prev.trimEnd()}\n\n${composerDraft.text}` : composerDraft.text))
+    consumeComposerDraft()
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange?.(0, 0)
+      el.scrollTop = 0
+    })
+  }, [composerDraft, projectId, consumeComposerDraft])
 
   const handleOpenAttachment = useCallback((id) => setDetailMaterialId(id), [])
 
