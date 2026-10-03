@@ -165,6 +165,13 @@ export function getBriefFieldClasses(procedureCode) {
   return { a, b, c }
 }
 
+/** 내용이 채워진 칸의 라벨 목록(스키마 순서). 절차 이동 안내에서 보드 현황을 말할 때 쓴다. */
+export function getFilledFieldLabels(procedureCode, content) {
+  const schema = schemaFor(procedureCode)
+  if (!schema) return []
+  return schema.fields.filter((field) => isBriefValueFilled(readField(content, field))).map((field) => field.label)
+}
+
 /**
  * 현재 보드 내용으로 본 약식 진행 상태.
  * @returns {{ a: {name,label,filled}[], b: {name,label,filled}[], allAFilled: boolean } | null}

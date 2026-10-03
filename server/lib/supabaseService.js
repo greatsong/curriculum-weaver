@@ -809,6 +809,30 @@ export async function getMessage(messageId) {
 }
 
 /**
+ * 메시지 한 건 삭제 (프로젝트 경계 확인). 절차 이동 기록이 지나쳐 간 이동의 기록·안내를 정리할 때만 쓴다.
+ * @param {string} projectId
+ * @param {string} messageId
+ * @returns {Promise<boolean>} 지웠으면 true
+ */
+export async function deleteMessage(projectId, messageId) {
+  const sb = getSupabase()
+  if (!sb) {
+    const list = mem.messages.get(projectId) || []
+    const idx = list.findIndex((m) => m.id === messageId)
+    if (idx < 0) return false
+    list.splice(idx, 1)
+    return true
+  }
+  const { data, error } = await sb.from('messages')
+    .delete()
+    .eq('id', messageId)
+    .eq('project_id', projectId)
+    .select('id')
+  if (error) throw new Error(`메시지 삭제 실패: ${error.message}`)
+  return (data || []).length > 0
+}
+
+/**
  * 메시지 생성
  * @param {{
  *   project_id: string,

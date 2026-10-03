@@ -9,6 +9,7 @@ import { useAuthStore } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { socket, joinSession, leaveSession } from '../lib/socket'
 import { PROCEDURES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
+import { isMoveNote } from 'curriculum-weaver-shared/procedureMove.js'
 import Logo from '../components/Logo'
 import ProcedureNav from '../components/ProcedureNav'
 import DemoStepNav from '../components/DemoStepNav'
@@ -189,6 +190,7 @@ export default function ProjectPage() {
   } = useProcedureStore()
   const {
     loadMessages, subscribe, unsubscribe, boardSuggestions, requestProcedureIntro, loadingMessages,
+    recordProcedureMove,
   } = useChatStore()
   const { setMembers } = useSessionStore()
 
@@ -245,6 +247,8 @@ export default function ProjectPage() {
 
   const joinedRef = useRef(false)
   const introRequestedRef = useRef(false)
+  // 절차 이동 기록·첫 안내를 이동 순서대로 처리하는 대기열
+  const moveQueueRef = useRef(Promise.resolve())
   const messagesLoadedRef = useRef(false)
   const allBoardsLoadedRef = useRef(false)
   const resumeRefreshRef = useRef(false)
@@ -330,7 +334,7 @@ export default function ProjectPage() {
     if (!introRequestedRef.current && loaded) {
       introRequestedRef.current = true
       const { messages: msgs, introCache } = useChatStore.getState()
-      const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
+      const hasContent = msgs.some((m) => (m.sender_type === 'ai' && !isMoveNote(m)) || m.sender_type === 'teacher')
       // currentProject가 아직 로드되지 않으면 projIsDemo를 신뢰할 수 없어(기본 커서 T-1-1로
       // 협력 인트로가 새는 경쟁 상태) 메시지 로드처럼 한 차례 대기 후 다시 읽는다.
       let proj = useProjectStore.getState().currentProject
@@ -554,6 +558,7 @@ export default function ProjectPage() {
   }, [currentProcedure, projectId, currentProject])
 
   const handleProcedureChange = async (code) => {
+    const from = useProcedureStore.getState().currentProcedure
     setProcedure(code)
     // 시연 모드: 팀 커서(current_procedure) PATCH·소켓 전파·인트로 생성을 건너뛴다.
     // 로컬 뷰 전환만 수행(개인 단독이라 공유 커서 개념 없음).
@@ -566,10 +571,16 @@ export default function ProjectPage() {
     // 시뮬레이션/generating/failed 프로젝트에서는 AI 인트로 요청하지 않음
     // introCache에 이미 있으면 스킵 (requestProcedureIntro 내부에서도 체크하지만 명시적으로)
     if (!isSimulation && !isGenerating && !isFailed) {
-      const { introCache } = useChatStore.getState()
-      if (!introCache[code]) {
-        requestProcedureIntro(projectId, code)
-      }
+      const visited = !!useChatStore.getState().introCache[code]
+      // 이동 기록 → 첫 안내 순서를 지키도록 이동마다 차례로 처리한다. 빠르게 여러 번 눌러도
+      // 기록이 섞이지 않고, 이미 다른 절차로 옮겨 간 뒤에는 지나친 절차의 안내를 만들지 않는다.
+      // 한 단계가 네트워크 문제로 멈춰도 다음 이동이 막히지 않게 단계마다 최대 20초만 기다린다.
+      const atMost = (promise) => Promise.race([promise, new Promise((resolve) => setTimeout(resolve, 20000))])
+      moveQueueRef.current = moveQueueRef.current.then(async () => {
+        if (from && from !== code) await atMost(recordProcedureMove(projectId, from, code, { visited }))
+        if (useProcedureStore.getState().currentProcedure !== code) return
+        if (!useChatStore.getState().introCache[code]) await atMost(requestProcedureIntro(projectId, code))
+      }).catch((err) => console.warn('절차 이동 처리 실패:', err?.message || err))
     }
   }
 
@@ -1096,7 +1107,7 @@ export default function ProjectPage() {
         markTourDone()
         // 투어 완료 후 AI 환영 메시지 요청
         const msgs = useChatStore.getState().messages
-        const hasContent = msgs.some((m) => m.sender_type === 'ai' || m.sender_type === 'teacher')
+        const hasContent = msgs.some((m) => (m.sender_type === 'ai' && !isMoveNote(m)) || m.sender_type === 'teacher')
         const proj = useProjectStore.getState().currentProject
         const isReadOnly2 = proj?.status === 'simulation' || proj?.status === 'generating' || proj?.status === 'failed' || proj?.title?.startsWith('[시뮬레이션]')
         if (!isReadOnly2 && !hasContent) {
