@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { EXPLORE_COPY } from '../../lib/explorationCopy'
 import { Search, Plus, Check } from 'lucide-react'
 import { apiGet } from '../../lib/api'
 import { subjectColor, simBadge, nodeSchoolLevel, getLinkId, linkQuality, LINK_TYPE_LABELS, LINK_TYPE_COLORS } from './lensCommon'
@@ -184,7 +185,7 @@ export default function ThemeLens({ graph, query, onQuery, level, basket, onTogg
                     return (
                       <div key={stdKey} className="group border border-gray-200 rounded-xl px-3 py-2 bg-white hover:shadow-sm transition">
                         <div className="flex items-center gap-1.5">
-                          <button onClick={() => onOpenNeighbor(stdKey)} title="이웃 렌즈로 보기"
+                          <button onClick={() => onOpenNeighbor(stdKey)} title={EXPLORE_COPY.graph.openInNeighbor}
                             className="font-mono text-[11px] font-bold text-blue-600 hover:underline underline-offset-2">{std.code}</button>
                           {badge && (
                             <span className={`px-1.5 py-px rounded border text-[9.5px] font-bold ${badge.cls}`}

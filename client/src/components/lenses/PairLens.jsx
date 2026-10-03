@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import { EXPLORE_COPY } from '../../lib/explorationCopy'
 import { Sparkles, Plus, Check, Loader2 } from 'lucide-react'
 import { apiGet, apiPost } from '../../lib/api'
 import { useScenario, ScenarioPanel } from './scenarioShared'
@@ -265,7 +266,7 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
         <ExploreBanner tone={explore.result?.accepted > 0 ? 'success' : 'neutral'}
           text={explore.result?.accepted > 0
             ? `AI가 새 연결 제안 ${explore.result.accepted}개를 찾았어요 — 점선으로 표시됩니다. 좋은 제안은 "담기"로 수업 설계에 바로 쓸 수 있어요.`
-            : `AI가 ${explore.result?.judged ?? 0}개 조합을 검토했지만 교육적으로 확실한 연결을 찾지 못했어요. 이 조합은 다른 렌즈(주제 검색)로 접근해 보세요.`} />
+            : `AI가 ${explore.result?.judged ?? 0}개 조합을 검토했지만 교육적으로 확실한 연결을 찾지 못했어요. 이 조합은 '주제로 찾기'에서 다른 방식으로 찾을 수 있어요.`} />
       )}
       {explore.phase === 'already' && (
         <ExploreBanner tone="neutral"
@@ -393,7 +394,7 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
             <button
               onClick={() => onOpenNeighbor(standardKey(selectedLink.a))}
               className="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg text-xs font-medium transition">
-              이웃 렌즈로 보기
+              {EXPLORE_COPY.graph.openInNeighbor}
             </button>
           </div>
         </div>

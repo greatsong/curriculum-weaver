@@ -411,11 +411,11 @@ const FAQ_DATA = [
 function MockLensPair() {
   const cardCls = 'rounded-lg border border-slate-200 bg-white px-2.5 py-1.5'
   return (
-    <BrowserFrame title="교과 연결 — 설계 모드 · 과목쌍 렌즈">
+    <BrowserFrame title="성취기준 연결 찾기 · 두 과목으로 찾기">
       <div className="flex gap-1.5 mb-3">
-        {['이웃', '주제', '계열', '과목쌍'].map((l) => (
+        {['성취기준', '주제', '학년 간 연결', '두 과목'].map((l) => (
           <span key={l} className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border ${
-            l === '과목쌍' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'border-slate-200 text-slate-400'}`}>
+            l === '두 과목' ? 'bg-blue-50 border-blue-400 text-blue-700' : 'border-slate-200 text-slate-400'}`}>
             {l}
           </span>
         ))}
@@ -833,24 +833,24 @@ export default function GuidePage() {
         </div>
       </Section>
 
-      {/* S4-5: 교과 연결 탐색 (설계 모드 + 탐험 3D) */}
+      {/* S4-5: 성취기준 연결 찾기 + 교육과정 성운(3D) */}
       <Section id="curriculum-graph">
         <div className="grid md:grid-cols-2 gap-10 md:gap-16 items-center">
           <div>
             <span className="text-xs font-semibold text-cyan-600 tracking-widest uppercase mb-3 block">Curriculum Graph</span>
-            <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4">교과 연결 탐색</h2>
+            <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-4">성취기준 연결 찾기</h2>
             <p className="text-sm text-slate-600 leading-relaxed mb-5">
               6,400여 개 성취기준과 AI가 검증한 교과 간 연결을 탐색하세요.
               교사의 질문에 하나씩 대응하는 <b>성취기준 연결 찾기의 네 가지 보기</b>와,
-              교육과정 전체를 성운처럼 조망하는 <b>교육과정 전체 지도 · 3D</b>를 오가며 융합 수업 소재를 발견할 수 있습니다.
+              교육과정 전체를 성운처럼 조망하는 <b>교육과정 성운(3D 전체 지도)</b>을 오가며 융합 수업 소재를 발견할 수 있습니다.
             </p>
             <ul className="space-y-2.5 text-sm text-slate-600 mb-6">
               {[
-                '성취기준에서 찾기 — 내 성취기준이 다른 교과 수업에서 실제로 쓰이는 장면들',
-                '주제로 찾기 — "기후변화"로 몇 개 교과가 연결되는지 한눈에',
-                '학년 간 연결 보기 — 학년을 넘나드는 연결 / 두 과목으로 찾기 — 함께할 과목의 연결',
-                '이 연결로 수업 예시 보기 — 연결을 고르면 AI가 상황·데이터·핵심 질문까지 초안 생성',
-                '모든 연결에 근거·융합 주제·수업 아이디어 포함, 담아서 바로 프로젝트로',
+                '성취기준에서 찾기: 내 성취기준이 다른 교과 수업에서 실제로 쓰이는 장면들',
+                '주제로 찾기: "기후변화"로 몇 개 교과가 연결되는지 한눈에',
+                '학년 간 연결 보기: 학년을 넘나드는 연결 / 두 과목으로 찾기: 함께할 과목의 연결',
+                '이 연결로 수업 예시 보기: 연결을 고르면 AI가 상황·데이터·핵심 질문까지 초안 생성',
+                '모든 연결에 근거·융합 주제·수업 아이디어 포함, 담아서 미래보기 비교나 프로젝트로',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-2.5">
                   <svg className="w-5 h-5 text-cyan-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -864,7 +864,7 @@ export default function GuidePage() {
               onClick={() => navigate('/graph')}
               className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-semibold rounded-xl transition shadow-sm"
             >
-              교과 연결 탐색해보기 →
+              성취기준 연결 찾기 열기 →
             </button>
           </div>
           <MockLensPair />

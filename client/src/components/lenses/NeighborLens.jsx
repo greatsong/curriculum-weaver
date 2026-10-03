@@ -171,7 +171,7 @@ export default function NeighborLens({ graph, focusKey, onFocus, level, basket, 
         {!query.trim() && !pickSubject && (
           <div className="w-full max-w-md mt-2">
             <p className="text-[11px] font-semibold text-gray-400 mb-2 flex items-center gap-1">
-              <Sparkles size={12} className="text-violet-400" /> 이런 렌즈는 어때요?
+              <Sparkles size={12} className="text-violet-400" /> 이런 질문으로 시작할 수 있어요
             </p>
             <div className="flex flex-col gap-1.5">
               {shuffledNudges(nudgeSeed).filter(n => nodeByKey.has(n.concept)).map(n => (

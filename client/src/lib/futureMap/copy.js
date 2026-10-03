@@ -57,7 +57,7 @@ export const COPY = {
   decide: {
     basket: '성취기준 담기',
     basketDone: (n) => `성취기준 ${n}개 담김`,
-    basketTip: '설계 모드와 프로젝트 만들기에서 이어서 사용할 수 있습니다.',
+    basketTip: '성취기준 연결 찾기와 프로젝트 만들기에서 이어서 사용할 수 있습니다.',
     modelAria: 'AI 모델',
     models: [
       { id: 'fast', label: '빠른', model: 'Sonnet 5.5', tip: 'Sonnet 5.5로 만듭니다.' },
