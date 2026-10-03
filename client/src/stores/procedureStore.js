@@ -23,6 +23,7 @@ import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
 import { deepMergeBoardContent } from '../lib/boardContent'
 import { sameJson } from '../lib/sameJson'
+import { useProjectStore } from './projectStore'
 
 // ── 자료 폴링 관리 (모듈 스코프) ────
 // 동일 materialId에 대한 중복 폴링을 막기 위한 Set + 타이머 맵.
@@ -259,8 +260,11 @@ export const useProcedureStore = create((set, get) => ({
     // 주의: 내 화면(로컬 뷰)은 강제 이동시키지 않는다. 스킵 절차는 열람이 허용되고,
     // 편집 중이던 멤버를 다른 절차로 튕기면 미저장 초안이 유실된다.
     // 화면에는 생략 배너·읽기전용 전환만 일어나고, 이동은 사용자의 선택.
-    const skipsHandler = ({ skips }) => {
+    const skipsHandler = ({ projectId, skips, current_procedure: cursor } = {}) => {
       set({ skippedProcedures: skips || [] })
+      // 서버가 팀 커서를 보정했으면 로컬 사본만 맞춘다(화면은 위 원칙대로 옮기지 않는다).
+      // 사본이 옛 값으로 남으면 다음 탭 복귀 때 화면이 팀 위치로 튄다.
+      if (projectId && cursor) useProjectStore.getState().syncTeamCursorQuietly(projectId, cursor)
     }
     // 자료 분석 상태 실시간 반영 — 서버가 parsing/analyzing/completed/failed 전이마다
     // material_updated를 쏜다. 폴링(3초 주기)의 감지 지연 없이 즉시 반영하고,
@@ -302,7 +306,8 @@ export const useProcedureStore = create((set, get) => ({
 
   /**
    * 절차 건너뛰기 (host/owner 전용 — 서버가 검증).
-   * 서버가 커서를 보정했으면 로컬 뷰도 따라간다.
+   * 보던 절차를 건너뛰면 화면을 팀 커서(보정됐을 수 있음)로 옮긴다.
+   * 반환값의 movedTo는 화면이 옮겨 간 절차다. 호출부가 그 절차 안내를 요청할 때 쓴다.
    */
   skipProcedure: async (projectId, procedureCode, reason) => {
     const data = await apiPost(
@@ -310,10 +315,13 @@ export const useProcedureStore = create((set, get) => ({
       reason ? { reason } : {}
     )
     set({ skippedProcedures: data.skips || [] })
-    if (data.current_procedure && get().currentProcedure === procedureCode) {
+    useProjectStore.getState().syncTeamCursorQuietly(projectId, data.current_procedure)
+    let movedTo = null
+    if (data.current_procedure && data.current_procedure !== procedureCode && get().currentProcedure === procedureCode) {
       get().setProcedure(data.current_procedure)
+      movedTo = data.current_procedure
     }
-    return data
+    return { ...data, movedTo }
   },
 
   /**
@@ -325,6 +333,7 @@ export const useProcedureStore = create((set, get) => ({
   unskipProcedure: async (projectId, procedureCode) => {
     const data = await apiDelete(`/api/projects/${projectId}/procedures/${procedureCode}/skip`)
     set({ skippedProcedures: data.skips || [] })
+    useProjectStore.getState().syncTeamCursorQuietly(projectId, data.current_procedure)
     return data
   },
 

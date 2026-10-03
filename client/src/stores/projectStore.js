@@ -13,6 +13,21 @@ export function mergeProjectRow(prev, updated) {
   return { ...prev, ...updated }
 }
 
+// 건너뛰기로 서버가 옮긴 팀 커서를 "화면 이동 없이" 로컬 사본에만 반영했다는 표식.
+// ProjectPage의 커서 effect가 consumeQuietCursor로 한 번 확인하고 바로 지운다.
+// 스토어 상태로 두면 표식을 지울 때마다 구독 컴포넌트가 다시 그려져 모듈 변수로 둔다.
+let quietCursor = null
+
+/**
+ * 이번 팀 커서 변경이 syncTeamCursorQuietly로 들어온 것인지 확인한다.
+ * 맞든 틀리든 표식은 지운다. 남은 표식이 나중의 진짜 절차 이동을 막지 않게 하기 위해서다.
+ */
+export function consumeQuietCursor(projectId, cursor) {
+  const q = quietCursor
+  quietCursor = null
+  return !!q && q.projectId === projectId && q.cursor === cursor
+}
+
 export const useProjectStore = create((set, get) => ({
   projects: [],
   currentProject: null,
@@ -133,6 +148,20 @@ export const useProjectStore = create((set, get) => ({
       set({ error: err.message })
       throw err
     }
+  },
+
+  /**
+   * 서버가 보정한 팀 커서를 로컬 사본에만 반영한다(화면은 옮기지 않는다).
+   * 건너뛰기로 서버 커서가 바뀌어도 사본이 옛 값이면, 다음 탭 복귀 때 fetchProject가 새 값을
+   * 받아 커서 effect가 화면을 팀 위치로 옮겼다. 해제한 절차를 다시 쓰던 호스트가 다음 절차로
+   * 넘어가고 편집창이 닫혔다(2026-10-03 교사 동선 점검에서 확인).
+   */
+  syncTeamCursorQuietly: (projectId, cursor) => {
+    if (typeof cursor !== 'string' || !cursor) return
+    const current = get().currentProject
+    if (!current || current.id !== projectId || current.current_procedure === cursor) return
+    quietCursor = { projectId, cursor }
+    set({ currentProject: { ...current, current_procedure: cursor } })
   },
 
   /**
