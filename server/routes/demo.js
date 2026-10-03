@@ -200,7 +200,7 @@ function parseAIResponse(fullText, label) {
 /**
  * 보드 스키마 텍스트 생성 (테이블 데이터 형식 명시)
  */
-function buildSchemaText(codes) {
+export function buildSchemaText(codes) {
   return codes
     .map((code) => {
       const boardType = BOARD_TYPES[code]
@@ -217,7 +217,8 @@ function buildSchemaText(codes) {
           const exampleRow = '{' + colNames.map((n) => `"${n}": "..."`).join(', ') + '}'
           desc += `\n    형식: [${exampleRow}, ...]  ← 반드시 이 배열 형식으로! 최소 2~4행`
         }
-        if (f.type === 'list') {
+        // 항목 형식(itemSchema)이 있는 목록 칸에 문자열 배열 안내까지 붙이면 모델이 가끔 문자열 목록을 만든다
+        if (f.type === 'list' && !f.itemSchema) {
           desc += '\n    형식: ["항목1", "항목2", ...]  ← 문자열 배열'
         }
         if (f.itemSchema) {
@@ -264,7 +265,8 @@ async function streamAndParse({ systemPrompt, userPrompt, codes, startIndex, lab
         startIndex: startIndex + codes.indexOf(code), label: `${label}-보충:${code}`, sendEvent, signal,
         focusInstruction: `\n\n[보충 지시] 위 요구 전체 중, 지금은 절차 "${code}"(${procedureNameMap[code] || code}) 하나만 생성해 save_boards로 저장하라. 다른 절차는 포함하지 말 것.`,
       })
-      if (isValidSimulationBoard(code, single[code]?.board)) best = { ...best, [code]: single[code] }
+      const fixed = validGeneratedBoards(single, [code])
+      if (fixed[code]) best = { ...best, [code]: fixed[code] }
     } catch (fillErr) {
       console.warn(`[demo][${label}] 보충 생성 실패 (${code}):`, fillErr?.message)
     }
@@ -424,29 +426,75 @@ function buildPhase1Summary(phase1Data) {
   return buildGeneratedSummary(phase1Data, ['prep', 'T-1-1', 'T-1-2', 'T-2-1', 'A-1-1', 'A-1-2', 'A-2-1', 'A-2-2'])
 }
 
+const hasBoardValue = v => !isBoardContentEmpty({ value: v })
+function isValidSimulationField(f, v) {
+  if (!hasBoardValue(v)) return !f.required
+  if (['list', 'tags', 'table'].includes(f.type)) {
+    if (!Array.isArray(v)) return false
+    if (f.columns || f.itemSchema) {
+      const keys = f.columns?.map(c => c.name) || Object.keys(f.itemSchema)
+      return v.every(row => row && typeof row === 'object' && !Array.isArray(row) && keys.some(k => hasBoardValue(row[k])))
+    }
+    return v.every(item => typeof item === 'string')
+  }
+  if (f.type === 'number') return typeof v === 'number' && Number.isFinite(v)
+  if (['text', 'textarea', 'select'].includes(f.type)) return typeof v === 'string'
+  return true
+}
 export function isValidSimulationBoard(code, board) {
   const schema = BOARD_SCHEMAS[BOARD_TYPES[code]]
   if (!schema || !board || typeof board !== 'object' || Array.isArray(board)) return false
-  const hasValue = v => !isBoardContentEmpty({ value: v })
-  const validField = f => {
-    const v = board[f.name]
-    if (!hasValue(v)) return !f.required
-    if (['list', 'tags', 'table'].includes(f.type)) {
-      if (!Array.isArray(v)) return false
-      if (f.columns || f.itemSchema) {
-        const keys = f.columns?.map(c => c.name) || Object.keys(f.itemSchema)
-        return v.every(row => row && typeof row === 'object' && !Array.isArray(row) && keys.some(k => hasValue(row[k])))
+  return schema.fields.every(f => isValidSimulationField(f, board[f.name])) && schema.fields.some(f => hasBoardValue(board[f.name]))
+}
+
+// 항목 형식의 주된 키: 서술형(textarea) 키, 없으면 첫 키
+function mainItemKey(itemSchema) {
+  const entries = Object.entries(itemSchema || {})
+  return (entries.find(([, v]) => v?.type === 'textarea') || entries[0])?.[0]
+}
+
+/**
+ * 생성된 보드의 사소한 형태 차이를 검증 전에 맞춘다. 형태 하나 때문에 절차 전체를 버리면
+ * 시뮬레이션이 '실패'로 표시된다(2026-10-04 E-1 학습 결과가 문자열 목록으로 와서 18/19 실패).
+ * - 항목 형식이 있는 목록 칸의 문자열 항목 → 주된 키에 담은 객체
+ * - 문자열 목록 칸의 객체 항목 → 문자열 값을 이어 붙인 문장
+ * - 그래도 형태가 맞지 않는 선택 칸은 그 칸만 지운다. 필수 칸은 남겨 검증에서 걸러지게 한다.
+ */
+export function normalizeSimulationBoard(code, board) {
+  const schema = BOARD_SCHEMAS[BOARD_TYPES[code]]
+  if (!schema || !board || typeof board !== 'object' || Array.isArray(board)) return board
+  const out = { ...board }
+  for (const f of schema.fields) {
+    const v = out[f.name]
+    if (['list', 'tags'].includes(f.type) && Array.isArray(v)) {
+      if (f.itemSchema) {
+        const key = mainItemKey(f.itemSchema)
+        out[f.name] = v
+          .map(item => ((typeof item === 'string' || typeof item === 'number') && key ? { [key]: String(item) } : item))
+          .filter(item => item && typeof item === 'object' && !Array.isArray(item))
+      } else {
+        out[f.name] = v
+          .map(item => {
+            if (typeof item === 'number') return String(item)
+            if (item && typeof item === 'object' && !Array.isArray(item)) {
+              return Object.values(item).filter(x => typeof x === 'string' && x.trim()).join(' / ')
+            }
+            return item
+          })
+          .filter(item => !(typeof item === 'string' && !item.trim()))
       }
-      return v.every(item => typeof item === 'string')
     }
-    if (f.type === 'number') return typeof v === 'number' && Number.isFinite(v)
-    if (['text', 'textarea', 'select'].includes(f.type)) return typeof v === 'string'
-    return true
+    if (!f.required && !isValidSimulationField(f, out[f.name])) delete out[f.name]
   }
-  return schema.fields.every(validField) && schema.fields.some(f => hasValue(board[f.name]))
+  return out
 }
 function validGeneratedBoards(data, codes) {
-  return Object.fromEntries(codes.filter(code => isValidSimulationBoard(code, data?.[code]?.board)).map(code => [code, data[code]]))
+  return Object.fromEntries(codes.flatMap((code) => {
+    const entry = data?.[code]
+    if (!entry || typeof entry !== 'object') return []
+    const board = normalizeSimulationBoard(code, entry.board)
+    return isValidSimulationBoard(code, board) ? [[code, { ...entry, board }]] : []
+  }))
 }
 
 /**
@@ -778,7 +826,7 @@ conversation은 4~7턴의 대화 배열이며, 각 턴은:
 - table 타입 필드: 반드시 객체 배열로 생성. 예: [{"phase":"T","goal":"...","result":"...","improvement":"..."}]
   빈 배열 []로 두지 마세요! 최소 2~4개 행을 채우세요.
 - list 타입 필드: 문자열 배열. 예: ["항목1", "항목2"]
-- itemSchema가 있는 필드: 해당 키를 포함하는 객체 배열
+- 보드 스키마에 "객체 배열"로 표시된 list 필드: 문자열이 아니라 표시된 키를 담은 객체 배열. 예: [{"subject":"...","processResult":"..."}]
 - text/textarea 필드: 문자열
 ${teacherContext}
 
@@ -1380,7 +1428,7 @@ conversation은 4~7턴의 대화 배열이며, 각 턴은:
 - table 타입 필드: 반드시 객체 배열로 생성. 예: [{"phase":"T","goal":"...","result":"...","improvement":"..."}]
   빈 배열 []로 두지 마세요! 최소 2~4개 행을 채우세요.
 - list 타입 필드: 문자열 배열. 예: ["항목1", "항목2"]
-- itemSchema가 있는 필드: 해당 키를 포함하는 객체 배열
+- 보드 스키마에 "객체 배열"로 표시된 list 필드: 문자열이 아니라 표시된 키를 담은 객체 배열. 예: [{"subject":"...","processResult":"..."}]
 - text/textarea 필드: 문자열
 
 ## 사용 가능한 성취기준 목록 (이 목록에서만 선택할 것!)
