@@ -272,8 +272,16 @@ it('브라우저 저장에 실패하면 이동하지 않고 대화상자에서 �
   await mount('/futures-lab?codes=s0,s1')
   await act(async () => vi.advanceTimersByTime(1000))
   await act(async () => scene.options.onStartProject({ title: '새 아이디어', driving_question: '무엇을 탐구할까?' }))
-  // Storage는 인스턴스 속성 대입이 항목 저장으로 처리되므로 프로토타입의 setItem을 가로챈다
-  vi.spyOn(Object.getPrototypeOf(sessionStorage), 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError') })
+  // 저장이 실패하는 저장소로 바꿔 끼운다. 페이지는 전역 sessionStorage를 그때그때 읽으므로(safeSessionStorage)
+  // Node 버전·테스트 환경의 Storage 구현과 관계없이 같은 결과가 나온다(프로토타입 가로채기는 Node 22에서 걸리지 않았다).
+  vi.stubGlobal('sessionStorage', {
+    getItem: () => null,
+    setItem: () => { throw new Error('QuotaExceededError') },
+    removeItem: () => {},
+    clear: () => {},
+    key: () => null,
+    get length() { return 0 },
+  })
   await click('프로젝트 만들기 화면으로')
   expect(host.querySelector('output').textContent).toBe('/futures-lab?codes=s0,s1')
   expect(dialog().textContent).toContain('이 브라우저에 저장하지 못했습니다')
