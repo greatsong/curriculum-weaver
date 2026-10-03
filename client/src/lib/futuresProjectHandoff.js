@@ -2,6 +2,16 @@ import { buildFuturesSearch, FUTURE_MAX } from './futures2'
 
 export const A3_PROCEDURE = 'A-2-1'
 
+// 보드의 저장 상태는 확인할 수 있지만, AI가 재작성한 탐색 초안의 채택 여부는 추정하지 않는다.
+export function a3BoardStatus(design) {
+  if (!design) return '저장 상태 확인 필요'
+  if (design.created === false) return '아직 저장된 보드 없음'
+  if (design.save_status === 'locked') return '저장된 보드 · 잠김'
+  if (design.save_status === 'confirmed') return '저장된 보드 · 확정됨'
+  if (design.id || design.updated_at || design.created_at) return '저장된 보드 · 초안'
+  return '저장 상태 확인 필요'
+}
+
 export function projectExplorationUrl(projectId) {
   return `/futures-lab?project=${encodeURIComponent(projectId)}`
 }

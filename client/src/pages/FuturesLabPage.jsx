@@ -18,7 +18,8 @@ import { groupFutureStandards } from '../lib/futures2GraphLayout'
 import KeywordGraph, { colorOf } from '../components/futures/KeywordGraph'
 import { subjectOfStandard } from '../lib/futures2GraphLayout'
 import './futures.css'
-import { A3_PROCEDURE, buildA3Handoff, explorationSearch, handoffPolicy, resolveProjectStandards } from '../lib/futuresProjectHandoff'
+import { A3_PROCEDURE, a3BoardStatus, buildA3Handoff, explorationSearch, handoffPolicy, resolveProjectStandards } from '../lib/futuresProjectHandoff'
+import ExplorationStatus from '../components/ExplorationStatus'
 
 const LEVELS = [
   { id: '고등학교', label: '고등' }, { id: '중학교', label: '중학' }, { id: '초등학교', label: '초등' }, { id: '', label: '전체' },
@@ -44,6 +45,10 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const [projectTry, setProjectTry] = useState(0)
   const [handoffText, setHandoffText] = useState('')
   const [copyNote, setCopyNote] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [boardCheck, setBoardCheck] = useState('idle')
+  const contextRequest = useRef(0)
+  const handoffRevision = useRef(0)
   const handoffRef = useRef(null)
   const importedProject = useRef(null)
   const { keys, model } = useMemo(() => parseFuturesSearch(location.search), [location.search])
@@ -69,7 +74,9 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
 
   useEffect(() => {
     let alive = true
-    setProjectContext(null); setProjectError(''); setHandoffText(''); importedProject.current = null
+    contextRequest.current += 1
+    handoffRevision.current += 1
+    setProjectContext(null); setProjectError(''); setHandoffText(''); setCopied(false); setCopyNote(''); setBoardCheck('idle'); importedProject.current = null
     if (!projectId) return undefined
     const id = encodeURIComponent(projectId)
     Promise.all([get(`/api/projects/${id}`), get(`/api/standards/project/${id}`), get(`/api/projects/${id}/designs/${A3_PROCEDURE}`)])
@@ -91,7 +98,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const picked = useMemo(() => keys.map((k) => byKey.get(k)).filter(Boolean), [keys, byKey])
   const pickedKeys = useMemo(() => picked.map((s) => s.key), [picked])
   const pickedSig = JSON.stringify(pickedKeys)
-  useEffect(() => { setHandoffText(''); setCopyNote('') }, [pickedSig])
+  useEffect(() => { handoffRevision.current += 1; setHandoffText(''); setCopyNote(''); setCopied(false) }, [pickedSig])
   const projectStandards = useMemo(() => catalog && projectContext ? resolveProjectStandards(catalog, projectContext.standards, projectContext.design) : null, [catalog, projectContext])
   const projectPolicy = handoffPolicy(projectContext?.project, projectContext?.design)
   const canExplore = !projectId || (!!projectContext && !projectPolicy.blocked)
@@ -106,8 +113,22 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   }, [projectId, projectStandards, canExplore, location.search, keys.length, setUrl])
   const prepareHandoff = (future = null) => {
     if (!projectContext || !canExplore) throw new Error('프로젝트 정보를 확인한 뒤 다시 시도해 주세요.')
+    handoffRevision.current += 1
     setHandoffText(buildA3Handoff({ project: projectContext.project, standards: picked, bridges: bridges.data, future }))
     setCopyNote('')
+    setCopied(false)
+  }
+  const checkBoard = async () => {
+    const request = ++contextRequest.current
+    setBoardCheck('loading')
+    try {
+      const design = await get(`/api/projects/${encodeURIComponent(projectId)}/designs/${A3_PROCEDURE}`)
+      if (request !== contextRequest.current) return
+      setProjectContext(current => current ? { ...current, design } : current)
+      setBoardCheck('checked')
+    } catch {
+      if (request === contextRequest.current) setBoardCheck('error')
+    }
   }
   const handoffActionRef = useRef(prepareHandoff)
   handoffActionRef.current = prepareHandoff
@@ -241,7 +262,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
         <header className="fu-header">
           <div>
             <button type="button" className="fu-back" onClick={() => navigate(returnPath || '/workspaces')}>{returnPath ? '‹ 프로젝트로 돌아가기' : '‹ 워크스페이스'}</button>
-            <h1>미래보기 실험실</h1>
+            <h1>미래보기</h1>
             <div className="fu-sub">교과의 연결에서 새로운 수업을 발견하세요. 성취기준 2~7개를 고르면, 같은 과목의 기준이 하나의 빛의 원에 모입니다.</div>
           </div>
           <div className="fu-models" role="radiogroup" aria-label="AI 모델">
@@ -253,12 +274,25 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
           </div>
         </header>
 
+        <ExplorationStatus dark target={projectId ? projectContext ? `${projectContext.project.title} · A-3` : '기존 프로젝트 확인 중' : undefined}
+          status={projectId ? projectError ? '프로젝트 확인 실패 · 반영 상태 확인 불가' : !projectContext ? '프로젝트 정보 불러오는 중' : projectPolicy.blocked ? '탐색 제한 · 프로젝트 상태 확인 필요' : copied ? '복사 완료 · 프로젝트 반영 여부 확인 필요' : handoffText ? '전달할 초안 준비됨 · 저장 전' : '아이디어 검토 중 · 자동 반영되지 않음' : undefined}>
+          {projectContext ? <>
+            <div>A-3 보드 (마지막 조회 기준): {boardCheck === 'error' ? '최신 저장 상태 확인 실패' : a3BoardStatus(projectContext.design)}
+              {' '}<button type="button" className="lab-quiet" disabled={boardCheck === 'loading'} onClick={checkBoard}>{boardCheck === 'loading' ? '확인 중…' : '저장 상태 새로 확인'}</button>
+            </div>
+            <div>보드가 저장되어 있어도 이번 아이디어가 반영되었다는 뜻은 아닙니다. 원래 프로젝트에서 내용을 비교하고 저장해 주세요.</div>
+            {boardCheck === 'checked' && <div role="status">보드 상태를 다시 확인했습니다. 이번 아이디어의 반영 여부는 보드 내용에서 확인해 주세요.</div>}
+          </> : !projectId ? '성취기준 선택과 미래보기는 검토 단계입니다. 새 프로젝트 만들기를 완료해야 프로젝트에 저장됩니다.' : null}
+        </ExplorationStatus>
+
         {projectId && <section className="lab-project-context" aria-label="A-3 프로젝트 연결">
-          <h2>{projectContext ? `${projectContext.project.title} · A-3 연결 탐색` : '프로젝트 성취기준 불러오기'}</h2>
+          <h2>{projectContext ? '현재 프로젝트의 성취기준' : '프로젝트 성취기준 불러오기'}</h2>
           {projectError ? <p role="alert">{projectError} <button type="button" onClick={() => setProjectTry(n => n + 1)}>다시 시도</button></p> : !projectContext ? <p role="status">프로젝트와 A-3 분석표를 확인하고 있습니다.</p> : <>
             <p>{projectPolicy.note}</p>
+            <details><summary>A-3에 반영하는 방법과 시뮬레이션 안내</summary>
             <p>기존 주제와 분석 내용은 아이디어 생성에 자동 반영되지 않습니다. 결과를 기존 설계와 비교해 주세요. 프로젝트의 내용·진행 단계·건너뛰기 상태는 바뀌지 않습니다.</p>
             <p>이 아이디어로 이어서 시뮬레이션하려면, 먼저 원래 프로젝트에서 검토하고 A-3 보드에 저장해 주세요. 복사만 한 내용은 보드에 반영되지 않습니다.</p>
+            </details>
             {!!projectContext.project.skipped_procedures?.length && <p>생략한 단계가 있는 프로젝트는 현재 ‘이어서 시뮬레이션’을 지원하지 않습니다. 연결 아이디어 탐색과 복사는 가능합니다.</p>}
             {projectStandards && <details open={projectStandards.needsChoice}>
               <summary>프로젝트의 성취기준 {projectStandards.standards.length}개 확인</summary>
@@ -371,17 +405,25 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
         </div>
         <div ref={sceneRootRef} />
         {projectId && handoffText && <section ref={handoffRef} className="lab-project-context lab-handoff" aria-label="A-3에 가져갈 탐색 결과">
-          <h2>A-3에서 이어서 검토하기</h2>
+          <h2>{projectContext.project.title} · A-3에서 이어서 검토하기</h2>
+          <p role="status">{copied ? '복사 완료 · 아직 프로젝트 반영을 확인하지 않았습니다.' : '검토용 초안 · 아직 보드에 저장되지 않았습니다.'}</p>
           <p>{projectPolicy.note}</p>
           <ol><li>아래 탐색 결과를 복사합니다.</li><li>열어 둔 원래 프로젝트 탭으로 돌아갑니다.</li><li>편집 가능한 프로젝트의 A-3 대화창에 붙여넣고, 기존 분석과 비교해 ‘핵심 요소 통합·조정’ 초안을 요청합니다.</li></ol>
           <label>복사할 탐색 결과<textarea readOnly value={handoffText} onFocus={e => e.target.select()} /></label>
           <div className="lab-handoff-actions"><button type="button" className="lab-primary" onClick={async () => {
-            try { await navigator.clipboard.writeText(handoffText); setCopyNote('복사했습니다. 위 안내에 따라 원래 프로젝트에서 검토해 주세요.') }
-            catch { setCopyNote('자동 복사가 지원되지 않습니다. 위 텍스트를 선택해 직접 복사해 주세요.'); handoffRef.current?.querySelector('textarea')?.focus() }
+            const revision = handoffRevision.current
+            try {
+              await navigator.clipboard.writeText(handoffText)
+              if (revision !== handoffRevision.current) return
+              setCopied(true); setCopyNote('복사했습니다. 위 안내에 따라 원래 프로젝트에서 검토해 주세요.')
+            } catch {
+              if (revision !== handoffRevision.current) return
+              setCopied(false); setCopyNote('자동 복사가 지원되지 않습니다. 위 텍스트를 선택해 직접 복사해 주세요.'); handoffRef.current?.querySelector('textarea')?.focus()
+            }
           }}>탐색 결과 복사</button><button type="button" className="lab-quiet" onClick={() => navigate(returnPath)}>프로젝트로 돌아가기 ↗</button></div>
           {copyNote && <p role="status">{copyNote}</p>}
         </section>}
-        <p className="fu-note">연결과 미래는 AI가 성취기준 원문을 바탕으로 그린 수업 아이디어입니다. 키워드는 원문에 있는 말만 쓰고, 이어지지 않는 성취기준은 억지로 엮지 않습니다. 한 번 본 미래는 저장되어 다시 열면 바로 보입니다.</p>
+        <p className="fu-note">연결과 미래는 AI가 성취기준 원문을 바탕으로 그린 수업 아이디어입니다. 키워드는 원문에 있는 말만 쓰고, 이어지지 않는 성취기준은 억지로 엮지 않습니다. 한 번 본 미래는 다시 볼 수 있도록 캐시됩니다. 프로젝트 보드에 저장되는 것은 아닙니다.</p>
       </main>
     </div>
   )

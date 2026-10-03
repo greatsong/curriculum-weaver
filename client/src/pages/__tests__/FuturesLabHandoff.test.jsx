@@ -5,7 +5,7 @@ import { beforeEach, afterEach, it, expect, vi } from 'vitest'
 import FuturesLabPage from '../FuturesLabPage'
 import A3ExplorationEntry from '../../components/A3ExplorationEntry'
 import ContinueSimulationButton from '../../components/ContinueSimulationButton'
-import { resolveProjectStandards } from '../../lib/futuresProjectHandoff'
+import { a3BoardStatus, resolveProjectStandards } from '../../lib/futuresProjectHandoff'
 
 const scene = vi.hoisted(() => ({ options: null }))
 vi.mock('../../lib/api', () => ({ apiGet: vi.fn(), apiPost: vi.fn(), API_BASE: '', getHeaders: vi.fn() }))
@@ -69,6 +69,7 @@ it('등록 기준·A-3 분석표를 합쳐 가져오고 복사·복귀해도 프
   const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
   await click('탐색 결과 복사')
   expect(copy).toHaveBeenCalledWith(text)
+  expect(host.querySelector('[aria-label="탐색 대상과 반영 상태"]').textContent).toContain('복사 완료 · 프로젝트 반영 여부 확인 필요')
   expect(sessionStorage.length).toBe(0)
   expect(post.mock.calls.every(([url]) => url === '/api/futures2/bridges')).toBe(true)
   await click('프로젝트로 돌아가기 ↗')
@@ -90,6 +91,7 @@ it.each([
   vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('거부'))
   await click('탐색 결과 복사')
   expect(host.textContent).toContain('직접 복사해 주세요')
+  expect(host.querySelector('[aria-label="탐색 대상과 반영 상태"]').textContent).not.toContain('복사 완료')
   expect(post.mock.calls.every(([url]) => url === '/api/futures2/bridges')).toBe(true)
 })
 
@@ -137,6 +139,54 @@ it('동일 코드의 다른 과목은 임의로 매칭하지 않는다', () => {
   const items = [{ key: 'one', code: '[공통]', subject: '국어' }, { key: 'two', code: '[공통]', subject: '영어' }]
   expect(resolveProjectStandards(items, [{ code: '[공통]' }]).missing).toEqual(['[공통]'])
   expect(resolveProjectStandards(items, [{ key: 'two', code: '[공통]' }]).standards).toEqual([items[1]])
+})
+
+it('보드 저장과 이번 초안 채택을 구분하고, 조회 실패 시 이전 상태를 최신으로 표시하지 않는다', async () => {
+  design = { id: 'd1', content: {}, save_status: 'confirmed' }
+  await mount()
+  const status = () => host.querySelector('[aria-label="탐색 대상과 반영 상태"]').textContent
+  expect(status()).toContain('진행 중인 프로젝트 · A-3')
+  expect(status()).toContain('저장된 보드 · 확정됨')
+  expect(status()).toContain('아이디어 검토 중 · 자동 반영되지 않음')
+  get.mockRejectedValueOnce(new Error('서버 중단'))
+  await click('저장 상태 새로 확인')
+  expect(status()).toContain('최신 저장 상태 확인 실패')
+  expect(status()).not.toContain('확정됨')
+  design.save_status = 'locked'
+  await click('저장 상태 새로 확인')
+  expect(status()).toContain('저장된 보드 · 잠김')
+  expect(status()).toContain('반영 여부는 보드 내용에서 확인')
+  expect(post).not.toHaveBeenCalled()
+})
+
+it('선택을 바꾸면 이전 복사 상태가 새 아이디어로 이어지지 않는다', async () => {
+  await mount()
+  await act(async () => scene.options.onStartProject({ title: '첫 아이디어' }))
+  vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+  await click('탐색 결과 복사')
+  await act(async () => host.querySelector('.fu-chip .fu-x').click())
+  expect(host.querySelector('[aria-label="탐색 대상과 반영 상태"]').textContent).toContain('아이디어 검토 중')
+  expect(host.querySelector('.lab-handoff')).toBeNull()
+})
+
+it('복사 응답이 늦게 와도 새 선택을 복사 완료로 표시하지 않는다', async () => {
+  await mount()
+  await act(async () => scene.options.onStartProject({ title: '이전 아이디어' }))
+  let finish
+  vi.spyOn(navigator.clipboard, 'writeText').mockImplementation(() => new Promise(resolve => { finish = resolve }))
+  await click('탐색 결과 복사')
+  await act(async () => host.querySelector('.fu-chip .fu-x').click())
+  await act(async () => finish())
+  expect(host.querySelector('[aria-label="탐색 대상과 반영 상태"]').textContent).not.toContain('복사 완료')
+})
+
+it.each([
+  [undefined, '저장 상태 확인 필요'],
+  [{ created: false, save_status: 'draft', content: {} }, '아직 저장된 보드 없음'],
+  [{ content: { standards: [] }, save_status: 'draft' }, '저장 상태 확인 필요'],
+  [{ id: 'd1', save_status: 'draft' }, '저장된 보드 · 초안'],
+])('DB 저장 근거 없이 저장 완료로 추정하지 않는다 (%j)', (value, label) => {
+  expect(a3BoardStatus(value)).toBe(label)
 })
 
 it('단계 생략 시 이어서 시뮬레이션은 실행 전에 안내하고 요청을 보내지 않는다', async () => {

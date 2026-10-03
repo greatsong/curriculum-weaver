@@ -654,7 +654,7 @@ export default function Graph3DShowcase() {
           </button>
           <button onClick={openInDesign} title="이 성취기준을 설계 모드 이웃 렌즈에서 열기"
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-slate-300/90 hover:text-slate-100 transition-colors duration-150">
-            <Compass size={13} /> 설계에서 열기
+            <Compass size={13} /> 연결 찾기에서 열기
           </button>
         </div>
       </div>
@@ -747,7 +747,7 @@ export default function Graph3DShowcase() {
             )}
             <button onClick={toDesign}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-slate-300/90 hover:text-slate-100 transition-colors duration-150">
-              <Compass size={14} /> <span className="hidden sm:inline">설계 모드</span>
+              <Compass size={14} /> <span className="hidden sm:inline">연결 찾기</span>
             </button>
             {!tour.active && (
               <button onClick={() => setHelpOpen(true)} title="탐험 가이드"
@@ -796,7 +796,7 @@ export default function Graph3DShowcase() {
                 <p className="text-[11px] font-semibold text-slate-400/80 uppercase tracking-wide mb-2">별 상세 카드</p>
                 <ul className="space-y-1.5 text-[13px] text-slate-300/90 leading-relaxed">
                   <li>· 🧺 담기 — 성취기준을 담아 두면 프로젝트 만들 때 자동 포함</li>
-                  <li>· 설계에서 열기 — 이 별을 설계 모드 이웃 렌즈로 이어서 보기</li>
+                  <li>· 연결 찾기에서 열기 — 이 별을 설계 모드 이웃 렌즈로 이어서 보기</li>
                   <li>· 이상해요 — 억지스러운 연결을 발견하면 검토 요청</li>
                 </ul>
               </div>

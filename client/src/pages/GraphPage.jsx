@@ -1,3 +1,4 @@
+import ExplorationStatus from '../components/ExplorationStatus'
 import { lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
@@ -42,7 +43,9 @@ export default function GraphPage() {
   const initialSubjects = (searchParams.get('subjects') || '').split(',').filter(Boolean)
 
   return (
-    <div className="h-screen w-screen overflow-hidden">
+    <div className="h-screen w-screen overflow-hidden flex flex-col">
+      <ExplorationStatus dark={mode !== 'design'}>담기는 이 브라우저 탭의 후보 목록입니다. 기존 프로젝트에 자동 반영되지 않으며, 프로젝트 만들기를 완료해야 저장됩니다.</ExplorationStatus>
+      <div className="flex-1 min-h-0">
       <Suspense fallback={
         <div className="flex items-center justify-center h-full bg-gray-50">
           <div className="text-center text-gray-400">
@@ -59,13 +62,14 @@ export default function GraphPage() {
             {/* 설계 모드 복귀 토글 */}
             <button onClick={toDesign}
               className="absolute bottom-4 right-4 z-30 flex items-center gap-1.5 px-4 py-2 bg-white/95 hover:bg-white text-gray-800 rounded-full text-xs font-bold shadow-lg border border-gray-200 transition">
-              🧭 설계 모드로
+              🧭 성취기준 연결 찾기로
             </button>
           </div>
         ) : (
           <DesignMode />
         )}
       </Suspense>
+      </div>
     </div>
   )
 }

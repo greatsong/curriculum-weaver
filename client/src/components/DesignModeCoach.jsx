@@ -12,11 +12,11 @@ const STORAGE_KEY = 'cw_design_coach_done'
 const STEPS = [
   {
     title: '질문으로 시작하세요',
-    subtitle: '렌즈 4개',
-    content: '상단의 렌즈가 교사의 질문에 하나씩 대응합니다 — 이웃(이 성취기준의 연결), 주제(어떤 교과가 연결되나), 계열(앞뒤 학습 흐름), 과목쌍(두 교과가 어떻게 붙나). 각 렌즈의 예시 버튼으로 바로 체험할 수 있어요.',
+    subtitle: '네 가지 탐색 방법',
+    content: '상단에서 성취기준에서 찾기, 주제로 찾기, 학년 간 연결 보기, 두 과목으로 찾기를 선택하세요. 각 보기의 예시 버튼으로 바로 체험할 수 있어요.',
     visual: (
       <div className="flex gap-2 justify-center py-2">
-        {['이웃', '주제', '계열', '과목쌍'].map((l, i) => (
+        {['성취기준', '주제', '학년 간 연결', '두 과목'].map((l, i) => (
           <span key={l} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
             i === 0 ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-gray-200 text-gray-500'}`}>
             {l}
@@ -42,14 +42,14 @@ const STEPS = [
   {
     title: '담아서 프로젝트로',
     subtitle: '탐색 → 설계',
-    content: '마음에 드는 성취기준을 담으면(＋) 하단에 트레이가 생깁니다. "이 조합으로 프로젝트 시작"을 누르면 새 프로젝트에 자동으로 포함돼요. 전체 그림이 궁금하면 우상단 "✨ 탐험 3D"로 성운을 둘러보세요.',
+    content: '마음에 드는 성취기준을 담으면(＋) 하단에 트레이가 생깁니다. "이 조합으로 프로젝트 시작"을 누르면 새 프로젝트 생성 화면으로 이동합니다. 만들기를 완료해야 저장됩니다. 전체 그림이 궁금하면 우상단 "전체 지도 · 3D"를 열어 보세요.',
     visual: (
       <div className="flex items-center justify-center gap-2 py-2 text-[11px] text-gray-600">
         <span className="px-2 py-1 bg-gray-100 rounded-lg font-mono">🧺 담기</span>
         <span className="text-gray-300">→</span>
         <span className="px-2.5 py-1 bg-blue-600 text-white rounded-lg font-bold">프로젝트 시작</span>
         <span className="text-gray-300">→</span>
-        <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg">자동 포함 ✓</span>
+        <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg">생성 후 저장</span>
       </div>
     ),
   },
@@ -93,7 +93,7 @@ export default function DesignModeCoach({ forceShow = false, onComplete }) {
   const s = STEPS[step]
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="설계 모드 가이드">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="성취기준 연결 찾기 가이드">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={close} />
       <div className="relative w-[400px] max-w-[92vw] bg-white rounded-2xl shadow-2xl overflow-hidden">
         <div className="h-1 bg-gray-100">

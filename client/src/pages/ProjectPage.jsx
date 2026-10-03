@@ -1071,6 +1071,7 @@ export default function ProjectPage() {
       {needsNickname && !isDemo && <NicknameModal onConfirm={handleNicknameConfirm} />}
       {showStandardSearch && (
         <StandardSearch
+          key={projectId}
           sessionId={projectId}
           onClose={() => { setShowStandardSearch(false); loadStandards(projectId) }}
         />
