@@ -5,7 +5,7 @@
  * - remapClonedMessageRows: 채팅 복제 시 멘션 자료 ID 재매핑
  */
 import { describe, it, expect } from 'vitest'
-import { isBoardContentEmpty, computeRemainingCodes, remapClonedMessageRows } from '../demo.js'
+import { isBoardContentEmpty, computeRemainingCodes, remapClonedMessageRows, buildBoardsContextBlock } from '../demo.js'
 
 describe('isBoardContentEmpty', () => {
   it('null/undefined/비객체는 비어 있음', () => {
@@ -121,5 +121,21 @@ describe('remapClonedMessageRows', () => {
       'clone-id', idMap
     )
     expect(rows[0].created_at).toBe('2026-07-01T00:00:00Z')
+  })
+})
+
+
+describe('시뮬레이션 보드 맥락 예산', () => {
+  it('많은 보드가 있어도 A-3/A-4 핵심 결정을 보존하고 총 상한을 지킨다', () => {
+    const codes = ['prep', 'T-1-1', 'T-1-2', 'T-2-1', 'T-2-2', 'T-2-3', 'A-1-1', 'A-1-2', 'A-2-1', 'A-2-2', 'Ds-1-1', 'Ds-1-2', 'Ds-1-3', 'Ds-2-1', 'Ds-2-2', 'DI-1-1', 'DI-2-1', 'E-1-1', 'E-2-1']
+    const designs = codes.map(code => ({ procedure_code: code, content: { text: '가'.repeat(3000) } }))
+    designs[8].content = { standards: [{ content: '긴 원문'.repeat(2000) }], duplicateCheck: '교과 연결 핵심', restructuredStandards: ['재구조화 결정'] }
+    designs[9].content = { coreIdea: '핵심 아이디어', subObjectives: ['긴 목표'.repeat(2000)], integratedObjectives: ['최종 통합 목표'] }
+    const result = buildBoardsContextBlock(designs, codes)
+    expect(result.length).toBeLessThanOrEqual(12000)
+    expect(result).toContain('교과 연결 핵심')
+    expect(result).toContain('재구조화 결정')
+    expect(result).toContain('최종 통합 목표')
+    expect(result.indexOf('학습자/맥락')).toBeLessThan(result.indexOf('주제의 상세 내용 분석'))
   })
 })

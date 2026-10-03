@@ -19,6 +19,7 @@ import {
   getProjectSkips,
   ensurePersonalWorkspace, getProjectsByWorkspace,
 } from '../lib/supabaseService.js'
+import { Standards } from '../lib/store.js'
 import { isReadOnlyProject } from '../lib/projectGuards.js'
 import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, PROCEDURE_LIST, getProcedureDisplayCode, replaceInternalProcedureCodes } from 'curriculum-weaver-shared/constants.js'
 import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
@@ -968,21 +969,59 @@ function sanitizePromptData(text, maxLen) {
     .slice(0, maxLen)
 }
 
-/** 작성된 보드 요약 블록 (절차 순서, 절차당 800자, 총 상한) */
-function buildBoardsContextBlock(designs, writtenCodes) {
+/** 탐색 후 A-3에 새로 수락한 기준도 복제·생성에 포함한다. 원본 연결은 변경하지 않는다. */
+async function collectContinuationStandards(linkedStandards, designs) {
+  const result = [...(linkedStandards || [])]
+  const rows = designs.find(d => d.procedure_code === 'A-2-1')?.content?.standards || []
+  for (const row of rows) {
+    const registered = result.some(e => {
+      const s = e.curriculum_standards
+      return s?.code === row.code && (!row.subject || s.subject === row.subject || s.content === row.content)
+    })
+    if (registered) continue
+    const byCode = Standards.list().filter(s => s.code === row.code)
+    const matches = byCode.length === 1 ? byCode : byCode.filter(s => s.key === row.key || s.subject === row.subject || s.content === row.content)
+    if (matches.length !== 1) throw new Error(`A-3 성취기준 확인 실패: ${row.code}`)
+    const standard = matches[0]
+    const standardId = await resolveStandardId({ code: standard.key || standard.code })
+    if (!standardId) throw new Error(`A-3 성취기준 ID 확인 실패: ${row.code}`)
+    if (!result.some(e => e.standard_id === standardId)) {
+      result.push({ standard_id: standardId, is_primary: false, curriculum_standards: standard })
+    }
+  }
+  return result
+}
+
+/** A-3/A-4는 긴 표에 가려 최종 결정이 사라지지 않도록 필드별로 요약한다. */
+export function buildBoardsContextBlock(designs, writtenCodes) {
   const designByCode = new Map((designs || []).map((d) => [d.procedure_code, d]))
-  const parts = []
+  const budgets = { 'A-2-1': 3000, 'A-2-2': 2000 }
+  const blocks = new Map()
   let total = 0
-  for (const code of writtenCodes) {
+  // 이후 절차가 많아도 분석·목표의 공간을 먼저 확보한다. 출력은 원래 절차 순서다.
+  const priority = [...new Set(['A-2-1', 'A-2-2', ...writtenCodes])].filter(c => writtenCodes.includes(c))
+  for (const code of priority) {
     const d = designByCode.get(code)
     if (!d) continue
-    const summary = sanitizePromptData(JSON.stringify(d.content), 800)
+    let summary
+    if (budgets[code]) {
+      const fields = BOARD_SCHEMAS[BOARD_TYPES[code]].fields
+      const perField = Math.floor(budgets[code] / fields.length)
+      summary = fields.map(f => {
+        const value = d.content?.[f.name]
+        if (value == null) return ''
+        const text = typeof value === 'string' ? value : JSON.stringify(value)
+        return `${f.label}: ${sanitizePromptData(text, perField)}${text.length > perField ? '…(요약)' : ''}`
+      }).filter(Boolean).join('\n')
+    } else {
+      summary = sanitizePromptData(JSON.stringify(d.content), 800)
+    }
     const block = `### ${procedureNameMap[code] || code} (${getProcedureDisplayCode(code) || code})\n${summary}`
-    if (total + block.length > CONTINUE_CAPS.boards) break
-    parts.push(block)
-    total += block.length
+    if (total + block.length + 2 > CONTINUE_CAPS.boards) continue
+    blocks.set(code, block)
+    total += block.length + 2
   }
-  return parts.join('\n\n')
+  return writtenCodes.map(code => blocks.get(code)).filter(Boolean).join('\n\n')
 }
 
 /** 최근 대화 요약 블록 — 최신이 방향 신호이므로 뒤에서부터 채우고 시간순 출력 */
@@ -1111,8 +1150,8 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
   try {
     // ── 1. 원본 데이터 로드 (원본은 읽기만) ──
     const allMessages = await loadAllMessages(sourceProjectId)
-    const materialRows = await getMaterialRowsByProject(sourceProjectId).catch(() => [])
-    const linkedStandards = await getStandardsByProject(sourceProjectId).catch(() => [])
+    const materialRows = await getMaterialRowsByProject(sourceProjectId)
+    const linkedStandards = await collectContinuationStandards(await getStandardsByProject(sourceProjectId), designs)
     console.log(`[demo/continue] 원본 로드 — 보드 ${designs.length}, 메시지 ${allMessages.length}, 자료 ${materialRows.length}, 성취기준 ${linkedStandards?.length || 0}`)
 
     // ── 2. 복제본 프로젝트 생성 (넘버링 #N) ──
@@ -1166,7 +1205,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
         await upsertDesign(cloneId, d.procedure_code, d.content, userId)
         copiedBoards++
       } catch (e) {
-        console.warn(`[demo/continue] 보드 복제 실패 (${d.procedure_code}):`, e.message)
+        throw new Error(`보드 복제 실패 (${d.procedure_code}): ${e.message}`)
       }
     }
 
@@ -1178,7 +1217,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
         const inserted = await createMaterialRowsBulk(cloneRows)
         inserted.forEach((row, i) => materialIdMap.set(materialRows[i].id, row.id))
       } catch (e) {
-        console.warn('[demo/continue] 자료 복제 실패(계속 진행):', e.message)
+        throw new Error(`자료 복제 실패: ${e.message}`)
       }
     }
 
@@ -1188,7 +1227,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
       try {
         copiedMessages = await createMessagesBulk(remapClonedMessageRows(allMessages, cloneId, materialIdMap))
       } catch (e) {
-        console.warn('[demo/continue] 채팅 복제 실패(계속 진행):', e.message)
+        throw new Error(`채팅 복제 실패: ${e.message}`)
       }
     }
 
@@ -1196,10 +1235,10 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
     let copiedStandards = 0
     for (const entry of linkedStandards || []) {
       try {
-        if (!entry.standard_id) continue
+        if (!entry.standard_id) throw new Error('성취기준 ID 누락')
         await addStandardToProject(cloneId, entry.standard_id, userId, entry.is_primary || false)
         copiedStandards++
-      } catch { /* 중복 무시 */ }
+      } catch (e) { throw new Error(`성취기준 복제 실패: ${e.message}`) }
     }
     console.log(`[demo/continue] 복제 완료 — 보드 ${copiedBoards}, 메시지 ${copiedMessages}, 자료 ${materialIdMap.size}, 성취기준 ${copiedStandards}`)
     sendEvent({ type: 'clone_complete', boards: copiedBoards, messages: copiedMessages, materials: materialIdMap.size, standards: copiedStandards })
@@ -1343,22 +1382,28 @@ JSON 형식:
         sendEvent,
       })
 
-      generatedSaved += await saveGeneratedProcedures(cloneId, chunkData, userId, label)
-      priorSummaries.push(buildGeneratedSummary(chunkData, chunk))
+      // 모델이 요청하지 않은 A-3 등 기존 보드를 돌려줘도 덮어쓰지 않는다.
+      // 빈 보드도 저장 성공/완료 수에 포함하지 않는다.
+      const requestedData = Object.fromEntries(chunk
+        .filter(code => !isBoardContentEmpty(chunkData[code]?.board))
+        .map(code => [code, chunkData[code]]))
+      generatedSaved += await saveGeneratedProcedures(cloneId, requestedData, userId, label)
+      priorSummaries.push(buildGeneratedSummary(requestedData, chunk))
       sendEvent({ type: 'phase_complete', phase: chunkNo, saved: generatedSaved, total: remaining.length })
     }
 
     // ── 9. 마무리 ──
     console.log(`[demo/continue] === 완료: 복제 ${copiedBoards} + 생성 ${generatedSaved}/${remaining.length} ===`)
-    if (generatedSaved === 0) {
+    if (generatedSaved !== remaining.length) {
       await updateProject(cloneId, { status: 'failed' })
       sendEvent({
         type: 'partial_failure',
         projectId: cloneId,
         workspaceId: original.workspace_id,
-        savedBoards: copiedBoards,
-        generated: 0,
-        message: '이어서 생성에 실패했습니다. 실패본을 삭제하고 다시 시도해주세요.',
+        savedBoards: copiedBoards + generatedSaved,
+        generated: generatedSaved,
+        expected: remaining.length,
+        message: `남은 ${remaining.length}개 절차 중 ${generatedSaved}개만 저장되어 시뮬레이션을 완료하지 못했습니다. 원본 프로젝트에서 다시 시도해주세요.`,
       })
     } else {
       await updateProject(cloneId, { status: 'simulation', current_procedure: remaining[remaining.length - 1] })
@@ -1374,7 +1419,7 @@ JSON 형식:
     safeEnd()
   } catch (error) {
     console.error('[demo/continue] 오류:', error?.message || error)
-    if (cloneId && !aborted) {
+    if (cloneId) {
       await updateProject(cloneId, { status: 'failed' }).catch(() => {})
     }
     sendEvent({ type: 'error', message: '이어서 시뮬레이션 생성 중 오류가 발생했습니다.', projectId: cloneId })
