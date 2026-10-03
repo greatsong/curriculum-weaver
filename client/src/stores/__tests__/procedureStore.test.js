@@ -289,7 +289,7 @@ describe('절차 스킵 — 상태·액션·실시간 동기화', () => {
     expect(useProcedureStore.getState().currentProcedure).toBe('A-1-1')
   })
 
-  it('unskipProcedure: 목록에서 제거되고 introCache가 무효화된다', async () => {
+  it('unskipProcedure: 목록에서 제거되고 introCache는 유지된다 (인트로 중복 저장 방지)', async () => {
     const { useChatStore } = await import('../chatStore.js')
     useChatStore.setState({ introCache: { 'T-2-2': '옛 인트로', 'A-1-1': '유지' } })
     apiDelete.mockResolvedValue({ skips: [], current_procedure: 'A-1-1' })
@@ -300,8 +300,9 @@ describe('절차 스킵 — 상태·액션·실시간 동기화', () => {
 
     expect(apiDelete).toHaveBeenCalledWith('/api/projects/proj-1/procedures/T-2-2/skip')
     expect(useProcedureStore.getState().skippedProcedures).toHaveLength(0)
-    // 스킵 전 캐시된 옛 맥락 인트로가 재생되지 않도록 해당 절차만 제거
-    expect(useChatStore.getState().introCache['T-2-2']).toBeUndefined()
+    // 2026-10-03: 인트로는 고정 문구라 캐시를 지우지 않는다. 지우면 해제 후 다른 절차에
+    // 갔다가 돌아올 때 같은 인트로가 대화에 한 번 더 저장됐다(왕복 테스트에서 확인).
+    expect(useChatStore.getState().introCache['T-2-2']).toBe('옛 인트로')
     expect(useChatStore.getState().introCache['A-1-1']).toBe('유지')
   })
 

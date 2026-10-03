@@ -16,7 +16,7 @@ import { normalizeListItem } from '../lib/boardContent'
 
 export default function ProcedureCanvas({ projectId, procedureCode, readOnly = false, loading = false, memberRole = null }) {
   const { boards, currentStep, setStep, updateBoard, skippedProcedures, skipProcedure, unskipProcedure } = useProcedureStore()
-  const { pendingSuggestions, coherenceCheckResult, acceptSuggestion, editAcceptSuggestion, rejectSuggestion, sendMessage, examinerLens, setExaminerLens } = useChatStore()
+  const { pendingSuggestions, coherenceCheckResult, acceptSuggestion, editAcceptSuggestion, rejectSuggestion, sendMessage, examinerLens, setExaminerLens, requestProcedureIntro } = useChatStore()
   const [editing, setEditing] = useState(false)
   const [skipBusy, setSkipBusy] = useState(false)
 
@@ -59,7 +59,10 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
         const label = getProcedureLabel(procedureCode)
         if (!window.confirm(`${label} 절차를 건너뛸까요?\n보드 내용은 지워지지 않으며, 언제든 해제할 수 있습니다.`)) return
         const reason = window.prompt('생략 사유 (선택 — 보고서에 함께 표기됩니다):', '')
-        await skipProcedure(projectId, procedureCode, reason?.trim() || undefined)
+        const result = await skipProcedure(projectId, procedureCode, reason?.trim() || undefined)
+        // 보던 절차를 건너뛰어 화면이 다음 절차로 옮겨졌으면 그 절차 안내를 만든다.
+        // 직접 절차를 옮길 때와 같은 규칙이고, 이미 안내가 있으면 requestProcedureIntro가 건너뛴다.
+        if (result?.movedTo) requestProcedureIntro(projectId, result.movedTo)
       }
     } catch (err) {
       alert(err?.message || '건너뛰기 처리에 실패했습니다.')

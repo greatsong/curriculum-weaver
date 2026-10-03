@@ -2,6 +2,32 @@ import { create } from 'zustand'
 import { apiGet, apiPost, apiPut, apiDelete } from '../lib/api'
 import { sameJson } from '../lib/sameJson'
 
+/**
+ * PUT 응답(프로젝트 행)을 기존 객체에 합친다.
+ * PUT 응답에는 GET에만 붙는 my_role·skipped_procedures가 없다. 통째로 바꾸면
+ * 절차를 옮길 때마다 호스트의 건너뛰기 버튼이 사라지고 화면의 생략 표시가 풀린다.
+ * skipped_procedures는 기존 참조를 유지해 생략 목록 초기화 effect가 다시 돌지 않게 한다.
+ */
+export function mergeProjectRow(prev, updated) {
+  if (!prev || !updated) return updated || prev
+  return { ...prev, ...updated }
+}
+
+// 건너뛰기로 서버가 옮긴 팀 커서를 "화면 이동 없이" 로컬 사본에만 반영했다는 표식.
+// ProjectPage의 커서 effect가 consumeQuietCursor로 한 번 확인하고 바로 지운다.
+// 스토어 상태로 두면 표식을 지울 때마다 구독 컴포넌트가 다시 그려져 모듈 변수로 둔다.
+let quietCursor = null
+
+/**
+ * 이번 팀 커서 변경이 syncTeamCursorQuietly로 들어온 것인지 확인한다.
+ * 맞든 틀리든 표식은 지운다. 남은 표식이 나중의 진짜 절차 이동을 막지 않게 하기 위해서다.
+ */
+export function consumeQuietCursor(projectId, cursor) {
+  const q = quietCursor
+  quietCursor = null
+  return !!q && q.projectId === projectId && q.cursor === cursor
+}
+
 export const useProjectStore = create((set, get) => ({
   projects: [],
   currentProject: null,
@@ -72,9 +98,11 @@ export const useProjectStore = create((set, get) => ({
     try {
       const updated = await apiPut(`/api/projects/${id}`, data)
       set((state) => ({
-        projects: state.projects.map((p) => (p.id === id ? updated : p)),
+        projects: state.projects.map((p) => (p.id === id ? mergeProjectRow(p, updated) : p)),
         currentProject:
-          state.currentProject?.id === id ? updated : state.currentProject,
+          state.currentProject?.id === id
+            ? mergeProjectRow(state.currentProject, updated)
+            : state.currentProject,
       }))
       return updated
     } catch (err) {
@@ -110,14 +138,30 @@ export const useProjectStore = create((set, get) => ({
       })
       set((state) => ({
         currentProject:
-          state.currentProject?.id === id ? updated : state.currentProject,
-        projects: state.projects.map((p) => (p.id === id ? updated : p)),
+          state.currentProject?.id === id
+            ? mergeProjectRow(state.currentProject, updated)
+            : state.currentProject,
+        projects: state.projects.map((p) => (p.id === id ? mergeProjectRow(p, updated) : p)),
       }))
       return updated
     } catch (err) {
       set({ error: err.message })
       throw err
     }
+  },
+
+  /**
+   * 서버가 보정한 팀 커서를 로컬 사본에만 반영한다(화면은 옮기지 않는다).
+   * 건너뛰기로 서버 커서가 바뀌어도 사본이 옛 값이면, 다음 탭 복귀 때 fetchProject가 새 값을
+   * 받아 커서 effect가 화면을 팀 위치로 옮겼다. 해제한 절차를 다시 쓰던 호스트가 다음 절차로
+   * 넘어가고 편집창이 닫혔다(2026-10-03 교사 동선 점검에서 확인).
+   */
+  syncTeamCursorQuietly: (projectId, cursor) => {
+    if (typeof cursor !== 'string' || !cursor) return
+    const current = get().currentProject
+    if (!current || current.id !== projectId || current.current_procedure === cursor) return
+    quietCursor = { projectId, cursor }
+    set({ currentProject: { ...current, current_procedure: cursor } })
   },
 
   /**

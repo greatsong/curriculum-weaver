@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo, Component } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { useProjectStore } from '../stores/projectStore'
+import { useProjectStore, consumeQuietCursor } from '../stores/projectStore'
 import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
@@ -387,8 +387,12 @@ export default function ProjectPage() {
     // currentProcedure를 의존성에 넣으면 안 된다 — 다른 팀원이 절차를 넘겨 소켓으로 새 절차를
     // 받는 순간 이 effect가 다시 돌아, 아직 옛 값인 current_procedure로 화면을 즉시 되돌렸다
     // (기록자만 넘어가고 팀원 화면은 그대로이던 버그, 2026-10-03).
+    // 건너뛰기로 서버가 보정한 커서는 사본만 맞추고 화면은 옮기지 않는다(syncTeamCursorQuietly).
+    // 표식은 이번에 바로 소비해, 남은 표식이 나중의 진짜 이동을 막지 않게 한다.
     if (isDemo) return
-    if (currentProject?.current_procedure) setProcedure(currentProject.current_procedure)
+    const cursor = currentProject?.current_procedure
+    const quiet = consumeQuietCursor(currentProject?.id, cursor)
+    if (cursor && !quiet) setProcedure(cursor)
   }, [currentProject?.current_procedure, isDemo, setProcedure])
 
   const connectSocket = useCallback(({ name: nickname, subject: subjectName }) => {
