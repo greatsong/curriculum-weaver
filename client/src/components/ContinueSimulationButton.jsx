@@ -105,9 +105,11 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
           padding: '7px 14px',
           margin: '0 4px',
           borderRadius: 999,
-          fontSize: 12.5,
+          fontSize: 12,
           fontWeight: 500,
           letterSpacing: '-0.01em',
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
           color: '#fff',
           background: 'linear-gradient(90deg, #8B5CF6, #3B82F6)',
           boxShadow: '0 1px 8px rgba(139, 92, 246, 0.35)',
@@ -118,7 +120,7 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
           borderRadius: '50%', background: '#fff',
           animation: 'pulseSoft 1.2s ease-in-out infinite',
         }} />
-        <span className="hidden sm:inline">{progress?.phase || '생성'} 중</span>
+        <span className="hidden xl:inline">{progress?.phase || '생성'} 중</span>
         {progress?.total > 0 && (
           <span style={{
             padding: '1px 7px',
@@ -146,7 +148,9 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
         background: 'none',
         border: 'none',
         borderRadius: 'var(--radius-md)',
-        fontSize: 13,
+        fontSize: 12,
+        whiteSpace: 'nowrap',
+        flexShrink: 0,
         color: '#8B5CF6',
         cursor: 'pointer',
         transition: 'all var(--transition-fast)',
@@ -161,7 +165,8 @@ export default function ContinueSimulationButton({ projectId, workspaceId }) {
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polygon points="5 3 19 12 5 21 5 3" />
       </svg>
-      <span className="hidden sm:inline">여기부터 시뮬레이션</span>
+      {/* 프로젝트 헤더의 다른 버튼과 같은 기준 — 확대된 작업 화면에서 줄바꿈되지 않도록 xl부터 글자 표시 */}
+      <span className="hidden xl:inline">여기부터 시뮬레이션</span>
     </button>
   )
 }

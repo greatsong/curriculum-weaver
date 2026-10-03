@@ -651,7 +651,7 @@ export default function ProjectPage() {
           {currentProject.title}
         </h1>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
           <MemberList />
           {!isReadOnlyProject && !isDemo && (
             <ContinueSimulationButton projectId={projectId} workspaceId={workspaceId} />
@@ -674,7 +674,9 @@ export default function ProjectPage() {
                 background: 'none',
                 border: 'none',
                 borderRadius: 'var(--radius-md)',
-                fontSize: 13,
+                fontSize: 12,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
                 color,
                 cursor: 'pointer',
                 transition: 'all var(--transition-fast)',
@@ -687,7 +689,9 @@ export default function ProjectPage() {
               onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
             >
               {icon}
-              <span className="hidden sm:inline">{label}</span>
+              {/* 작업 화면은 데스크톱에서 1.5배 확대된다(.work-shell). 확대 후에도 글자가 한 줄로
+                  들어가는 넓은 화면(xl)에서만 글자를 보이고, 그보다 좁으면 아이콘만 둔다(title이 툴팁). */}
+              <span className="hidden xl:inline">{label}</span>
             </button>
           ))}
           <button
