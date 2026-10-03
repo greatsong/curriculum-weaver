@@ -47,6 +47,7 @@ const DemoPrepPage = lazyWithReload(() => import('./pages/DemoPrepPage'), 'DemoP
 const GuidePage = lazyWithReload(() => import('./pages/GuidePage'), 'GuidePage')
 const AuthCallback = lazyWithReload(() => import('./pages/AuthCallback'), 'AuthCallback')
 const Futures2Page = lazyWithReload(() => import('./pages/Futures2Page'), 'Futures2Page')
+const FuturesLabPage = lazyWithReload(() => import('./pages/FuturesLabPage'), 'FuturesLabPage')
 const FuturesPage = lazyWithReload(() => import('./pages/FuturesPage'), 'FuturesPage')
 const FutureMapPage = lazyWithReload(() => import('./pages/FutureMapPage'), 'FutureMapPage')
 
@@ -251,6 +252,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        <Route path="/futures-lab" element={<ProtectedRoute><FuturesLabPage /></ProtectedRoute>} />
 
         {/* 미래 보기 2 — 기존 설계 흐름과 별도로 성취기준 조합을 탐색 */}
         <Route
