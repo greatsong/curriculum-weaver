@@ -131,6 +131,8 @@ function stripXmlMarkers(text) {
     .replace(/<procedure_advance[\s\S]*$/g, '')
     .replace(/<board_update[\s\S]*$/g, '')
     .replace(/<stage_advance[\s\S]*$/g, '')
+    // 짝 없는 닫는 태그(두 응답이 섞이거나 앞부분이 잘린 경우)도 지운다
+    .replace(/<\/(ai_suggestion|coherence_check|procedure_advance|board_update|stage_advance)>/g, '')
     .trim()
 }
 
@@ -258,7 +260,11 @@ export const useChatStore = create((set, get) => ({
     set({ loadingMessages: true })
     try {
       const data = await apiGet(`/api/chat/${projectId}`)
-      const msgs = Array.isArray(data) ? data : (data?.messages ?? [])
+      // AI 답이 길이 한도에서 끊겨 닫히지 않은 제안 원문이 저장된 경우가 있어, 보여 줄 때 지운다
+      const msgs = (Array.isArray(data) ? data : (data?.messages ?? [])).map((m) =>
+        m?.sender_type === 'ai' && typeof m.content === 'string' && /<\/?(ai_suggestion|coherence_check|procedure_advance|board_update|stage_advance)\b/.test(m.content)
+          ? { ...m, content: stripXmlMarkers(m.content) }
+          : m)
       // 서버 스냅샷이 로컬보다 메시지 수가 적으면(방금 보낸/응답받은 메시지가
       // 아직 서버에 반영되기 전) 덮어쓰지 않는다 — '대화가 이전으로 되돌아가는' 현상 방지.
       // 로컬 AI 메시지는 임시 id라 id 머지는 중복을 만들 수 있어 개수 기준으로 판단한다.
@@ -304,7 +310,15 @@ export const useChatStore = create((set, get) => ({
    */
   sendMessage: async (projectId, content, optsOrCode) => {
     const project = useProjectStore.getState().currentProject
-    if (isReadOnlyProject(project)) return
+    if (isReadOnlyProject(project)) return false
+    // 보내는 순간 바로 잠근다. 예전에는 교사 메시지 저장이 끝난 뒤에 streaming을 켜서, 그 사이에
+    // 들어온 두 번째 전송(엔터·수락 후 자동 안내)이 함께 통과했다. 두 AI 응답이 같은 streamingText에
+    // 섞여 제안 원문(</ai_suggestion>)이 보이고 답이 중간부터 보였다(2026-10-03 운영 제보).
+    // 거절되면 false를 돌려준다(입력창은 글을 되살린다).
+    if (get().streaming) return false
+    const seq = (get()._streamSeq || 0) + 1
+    set({ streaming: true, streamingText: '', _streamSeq: seq })
+    const isCurrent = () => get()._streamSeq === seq
 
     // 옵션 정규화
     const opts = typeof optsOrCode === 'string' || optsOrCode == null
@@ -342,16 +356,22 @@ export const useChatStore = create((set, get) => ({
       }
     } catch { /* 무시 */ }
 
-    // 1) 교사 메시지 저장
-    const teacherMsg = await apiPost('/api/chat/teacher', {
-      session_id: projectId,
-      content,
-      stage: procedureCode,
-      sender_name: senderName,
-      sender_subject: senderSubject,
-      // 멘션된 자료 — 서버에서 기본값('{}')으로 처리하므로 하위 호환
-      mentioned_material_ids: mentionedIds,
-    })
+    // 1) 교사 메시지 저장 (실패하면 잠금을 풀고 오류를 그대로 올린다)
+    let teacherMsg
+    try {
+      teacherMsg = await apiPost('/api/chat/teacher', {
+        session_id: projectId,
+        content,
+        stage: procedureCode,
+        sender_name: senderName,
+        sender_subject: senderSubject,
+        // 멘션된 자료 — 서버에서 기본값('{}')으로 처리하므로 하위 호환
+        mentioned_material_ids: mentionedIds,
+      })
+    } catch (err) {
+      if (isCurrent()) set({ streaming: false, streamingText: '' })
+      throw err
+    }
 
     set((state) => ({ messages: [...state.messages, teacherMsg] }))
     socket.emit('new_message', { projectId, message: teacherMsg })
@@ -393,6 +413,7 @@ export const useChatStore = create((set, get) => ({
       examiner_lens: get().examinerLens === true,
     }, {
       onText: (text) => {
+        if (!isCurrent()) return // 늦게 끝난 이전 요청의 글자는 섞지 않는다
         set((state) => ({ streamingText: state.streamingText + text }))
       },
       onPrinciples: (_principles, relevantGeneralPrincipleIds) => {
@@ -451,6 +472,7 @@ export const useChatStore = create((set, get) => ({
         if (data?.messageId) set({ _lastAiMessageId: data.messageId })
       },
       onDone: () => {
+        if (!isCurrent()) return
         const streamedText = get().streamingText
         const cleanText = stripXmlMarkers(streamedText)
 
