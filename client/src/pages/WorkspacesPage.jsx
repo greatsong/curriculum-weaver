@@ -291,6 +291,24 @@ export default function WorkspacesPage() {
               미래 보기
             </button>
             <button
+              onClick={() => navigate('/future-map')}
+              className="btn"
+              title="성취기준 2~6개로 과목이 만나는 키워드 지도를 보고 수업 아이디어를 만듭니다"
+              style={{
+                padding: '8px 16px',
+                fontSize: 13,
+                fontWeight: 700,
+                background: '#0B1230',
+                color: '#93C5FD',
+                boxShadow: 'inset 0 0 0 1px rgba(147,197,253,.4)',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(147,197,253,.75)'}
+              onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'inset 0 0 0 1px rgba(147,197,253,.4)'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="7" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><path d="M8.6 8.4l6.6-1.2M7.4 9.6l3.3 5.8M16.6 8.4l-3.3 7"/></svg>
+              미래 지도
+            </button>
+            <button
               onClick={() => navigate('/graph?mode=explore')}
               className="btn"
               style={{

@@ -99,6 +99,17 @@ export const futuresLimiter = rateLimit({
 })
 
 // ── 미래 보기 2: 분당 40회 (사용자당), 기존 채팅 한도와 별도 버킷 ──
+// 미래 지도(/api/future-map) — 미래 보기와 같은 정책, 버킷은 따로
+export const futureMapLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 40,
+  skip: (req) => req.method === 'GET',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userKey,
+  message: { error: '수업 아이디어 요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.' },
+})
+
 export const futures2Limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 40,

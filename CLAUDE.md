@@ -48,6 +48,15 @@ curriculum-weaver/
 - **기능**: 첫 진입 카메라 다이브+교과군 스태거 점등, 노드 선택(펄스 링·이웃 하이라이트·상세 카드·"다음 연결로 여행"), 자동 투어(교과군 스톱별 캡션+궤도 선회), 칩=조명 스위치(끄면 감광, 더블클릭=솔로), idle 오토로테이트. URL이 상태 기록: `?subjects=&levels=&focus=&tour=1` — DesignMode의 toExplore 이월과 호환
 - **QA 주의**: 헤드리스/백그라운드 탭은 rAF 정지 + 뷰포트 0×0(모바일 오인) — dev 한정 `window.__nebula.frame(t)` 수동 펌프로 검증(프로덕션 제외). 씬 재생성 시 sceneEpoch로 선택/필터 재주입
 
+## 미래 지도 — 비교용 세 번째 판 (2026-10-03, /future-map)
+
+워크스페이스 첫 화면 "미래 지도" 버튼. 기존 `/futures`(미래 보기, #133)·`/futures2`(타임스톤, 코덱스)와 **파일·API·캐시를 완전히 분리**한 비교용 판. 사용자가 셋을 보고 하나를 고른 뒤 나머지를 지운다.
+
+- **그래프 단위 = 과목**(사용자 손그림): 큰 원 하나 = 과목, 원 안에 과목 이름 + 그 과목에서 고른 성취기준 코드(코드마다 표식 ●◆▲■, 키워드도 같은 표식 → 소속이 늘 보임). 키워드는 원 둘레에 짧은 선. 과목 원들은 360° 바깥 링, 연결된 과목은 멀리 마주 보고 연결선(두 교과색 그라데이션·가산 혼합·강도=밝기)이 가운데를 가로지른다
+- **배치 엔진** `client/src/lib/futureMap/ringLayout.js`(순수 함수, 결정적, 테스트 `__tests__/ringLayout.test.js`는 실제 연결 찾기 출력 6종 고정 자료). 1,232px에서 표본 6종 겹침 0. 패널 폭 < 1,160이면 1,160으로 배치 후 viewBox 축소, < 720은 목록 모드
+- **서버** `server/services/futureMapGenerator.js`(미래 보기 생성기에서 갈라짐) + `routes/futureMap.js` → `/api/future-map`(catalog·bridges·카드). 추가 규칙: ① 연결은 서로 다른 과목 사이만(한 과목뿐이면 그 안에서) — 프롬프트 6-1·검토 쌍 목록·V9-1 ② 동사형 키워드 제거 V5-1(`hasVerbTail`: ~한다·받침ㄴ+다·~하는). 캐시 접두 `fmap-bridge:v1:`/`fmap-future:v1:`, 큐 env `FUTURE_MAP_QUEUE_CONCURRENCY`, limiter `futureMapLimiter`
+- 카드(3×3)·고르기·근거 목록·문구는 #133 것을 복제해 `fm-` 접두로 분리(`pages/future-map.css`, `lib/futureMap/copy.js`). 기존 두 판 파일은 건드리지 않는다
+
 ## 미래 보기 — 타임스톤 (2026-10-02)
 
 `/futures` (워크스페이스 첫 화면 "미래 보기" 버튼). 성취기준 2~6개 → "타임스톤으로 수업의 미래 보기" → ① 키워드 성운 ② 미래 마방진(3×3).
