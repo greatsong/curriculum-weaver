@@ -125,7 +125,7 @@ export default function WorkspacesPage() {
             </span>
           </a>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <a href="#exploration" className="text-sm font-semibold text-blue-700">수업 탐색</a>
+            <a href="#exploration" className="text-sm font-semibold text-blue-700">수업 아이디어 탐색</a>
             <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }} className="hidden sm:inline">
               {user?.email}
             </span>

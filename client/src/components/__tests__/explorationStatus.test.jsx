@@ -37,7 +37,7 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi
 
 it('홈의 주요 탐색과 보조 체험을 구분하고 기존 프로젝트 진입 위치를 안내한다', async () => {
   await act(async () => root.render(<MemoryRouter><ExplorationLaunchpad /></MemoryRouter>))
-  expect([...host.querySelectorAll('a')].map(a => a.getAttribute('href'))).toEqual(['/graph?mode=design', '/futures-lab', '/graph?mode=explore', '/demo'])
+  expect([...host.querySelectorAll('a')].map(a => a.getAttribute('href'))).toEqual(['/graph?mode=explore', '/graph?mode=design&lens=pair', '/futures-lab', '/graph?mode=design&lens=theme', '/guide'])
   expect(host.textContent).toContain('해당 프로젝트')
   expect(host.textContent).toContain('A-3')
 })
