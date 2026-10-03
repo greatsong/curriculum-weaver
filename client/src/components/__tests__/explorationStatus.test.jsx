@@ -38,7 +38,8 @@ afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi
 it('홈의 주요 탐색과 보조 체험을 구분하고 기존 프로젝트 진입 위치를 안내한다', async () => {
   await act(async () => root.render(<MemoryRouter><ExplorationLaunchpad /></MemoryRouter>))
   expect([...host.querySelectorAll('a')].map(a => a.getAttribute('href'))).toEqual(['/graph?mode=explore', '/graph?mode=design&lens=pair', '/futures-lab', '/graph?mode=design&lens=theme', '/guide'])
-  expect(host.textContent).toContain('해당 프로젝트')
+  // 진행 중인 프로젝트는 어디서 이어 가는지(A-3 절차) 안내해야 한다(2026-10-03 밝은 카드로 문구 정리)
+  expect(host.textContent).toContain('진행 중인 프로젝트')
   expect(host.textContent).toContain('A-3')
 })
 
