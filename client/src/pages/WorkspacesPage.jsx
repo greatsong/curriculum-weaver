@@ -26,6 +26,7 @@ export default function WorkspacesPage() {
   const [description, setDescription] = useState('')
   const [participationMode, setParticipationMode] = useState(DEFAULT_PARTICIPATION_MODE_FOR_NEW_TEAM)
   const [briefMode, setBriefMode] = useState(false)
+  const [briefCoreFormal, setBriefCoreFormal] = useState(true)
   const [inviteToken, setInviteToken] = useState('')
   const [creating, setCreating] = useState(false)
 
@@ -60,13 +61,14 @@ export default function WorkspacesPage() {
       const ws = await createWorkspace({
         name: name.trim(),
         description: description.trim(),
-        workflow_config: { participationMode, briefMode },
+        workflow_config: { participationMode, briefMode, briefCoreFormal },
       })
       setShowCreate(false)
       setName('')
       setDescription('')
       setParticipationMode(DEFAULT_PARTICIPATION_MODE_FOR_NEW_TEAM)
       setBriefMode(false)
+      setBriefCoreFormal(true)
       navigate(detailPath(ws.id))
     } catch (err) {
       alert(`워크스페이스 생성 실패: ${err.message}`)
@@ -431,7 +433,7 @@ export default function WorkspacesPage() {
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 6 }}>진행 방식</div>
                 <ParticipationModePicker value={participationMode} onChange={setParticipationMode} disabled={creating} />
-                <BriefModeToggle checked={briefMode} onChange={setBriefMode} disabled={creating} />
+                <BriefModeToggle checked={briefMode} onChange={setBriefMode} coreFormal={briefCoreFormal} onCoreFormalChange={setBriefCoreFormal} disabled={creating} />
                 <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', margin: '6px 0 0' }}>만든 뒤에도 워크스페이스 설정에서 바꿀 수 있습니다.</p>
               </div>
             </div>

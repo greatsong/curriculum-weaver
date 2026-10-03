@@ -108,3 +108,11 @@ it('뒤 절차가 모두 생략되면 그 앞 절차에서도 [보고서 작성�
   const bar = host.querySelector('[data-testid="brief-mode-bar"]')
   expect(bar.textContent).toContain('보고서 작성하기')
 })
+
+it('핵심 절차(T-1)는 기본으로 정식 진행이라 약식 막대를 보이지 않고, 정식 진행을 끄면 보인다', async () => {
+  useWorkspaceStore.setState({ currentWorkspace: { workflow_config: { briefMode: true } } })
+  await render({ procedureCode: 'T-1-1' })
+  expect(host.querySelector('[data-testid="brief-mode-bar"]')).toBeNull()
+  await act(async () => useWorkspaceStore.setState({ currentWorkspace: { workflow_config: { briefMode: true, briefCoreFormal: false } } }))
+  expect(host.querySelector('[data-testid="brief-mode-bar"]')).not.toBeNull()
+})

@@ -14,6 +14,9 @@ import { BOARD_SCHEMAS } from 'curriculum-weaver-shared/boardSchemas.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import {
   resolveBriefMode,
+  resolveCoreFormal,
+  isBriefProcedure,
+  BRIEF_FORMAL_CORE,
   getBriefFieldClasses,
   getBriefStatus,
   getBriefHelpActions,
@@ -225,5 +228,24 @@ describe('역할 프리셋과 함께 켰을 때', () => {
     const prompt = buildSystemPrompt({ ...baseContext, aiRole: 'codesigner' })
     expect(prompt).toContain('[AI 역할 톤: 공동설계자')
     expect(prompt).not.toContain('약식 기록')
+  })
+})
+
+describe('절차별 약식 판단(핵심 절차 정식 진행)', () => {
+  it('기본으로 켜져 있고, 핵심 절차는 건너뛰기 불가 목록과 같으며 준비는 넣지 않는다', () => {
+    expect(resolveCoreFormal({ briefMode: true })).toBe(true)
+    expect(resolveCoreFormal({ briefMode: true, briefCoreFormal: false })).toBe(false)
+    expect(BRIEF_FORMAL_CORE).not.toContain('prep')
+    for (const code of BRIEF_FORMAL_CORE) expect(isProcedureSkippable(code)).toBe(false)
+  })
+
+  it('약식 팀: 핵심 절차는 정식, 준비와 나머지는 약식 / 끄면 모두 약식 / 약식 아닌 팀은 모두 정식', () => {
+    const on = { briefMode: true }
+    expect(isBriefProcedure(on, 'T-1-1')).toBe(false)
+    expect(isBriefProcedure(on, 'A-2-2')).toBe(false)
+    expect(isBriefProcedure(on, 'prep')).toBe(true)
+    expect(isBriefProcedure(on, 'Ds-1-1')).toBe(true)
+    expect(isBriefProcedure({ ...on, briefCoreFormal: false }, 'T-1-1')).toBe(true)
+    expect(isBriefProcedure({}, 'Ds-1-1')).toBe(false)
   })
 })

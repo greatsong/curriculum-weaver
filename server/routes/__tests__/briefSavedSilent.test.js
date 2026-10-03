@@ -84,3 +84,16 @@ describe('약식 기록 — 개입 금지 뒤 양식 저장 알림', () => {
     expect(buildAIResponse).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('핵심 절차 정식 진행', () => {
+  it('핵심 절차(T-1)의 AI 요청에는 약식 플래그가 꺼져 있고, 약식 절차(T-3)에는 켜져 있다', async () => {
+    const core = { id: 'cur', sender_type: 'teacher', content: '추천해 주세요', procedure_context: 'T-1-1', created_at: at(3) }
+    state.history = [core]
+    await request(app).post('/api/chat/message').send({ session_id: 'p1', procedure: 'T-1-1', content: '추천해 주세요', teacher_message_id: 'cur' })
+    expect(buildAIResponse.mock.calls[0][0].briefMode).toBe(false)
+    vi.clearAllMocks()
+    state.history = [teacher('cur', '- 김 / 영어', 3)]
+    await send('- 김 / 영어')
+    expect(buildAIResponse.mock.calls[0][0].briefMode).toBe(true)
+  })
+})

@@ -521,6 +521,10 @@ export default function ProjectPage() {
       setResumeRefreshing(true)
       try {
         await fetchProject(projectId).catch(() => null)
+        // 다른 탭에서 팀 설정(약식 기록·핵심 절차 정식 진행·AI 역할)을 바꿨을 수 있다. 서버 AI는 요청마다
+        // 새 설정을 읽으므로, 화면(양식·막대)도 탭에 돌아올 때 맞춘다. 같은 작업 공간이면 화면을 비우지 않는다.
+        const wsId = useProjectStore.getState().currentProject?.workspace_id || workspaceId
+        if (wsId) fetchWorkspace(wsId).catch(() => {})
         await loadMessagesWithRetry(projectId)
         loadGeneralPrinciples()
         await reloadProjectArtifacts({ forceReadonlyReload: true })

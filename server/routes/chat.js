@@ -23,7 +23,7 @@ import { stripLeftoverAiMarkup } from '../lib/aiMarkup.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode, isDemoBoardCode, resolveParticipationMode } from 'curriculum-weaver-shared/constants.js'
-import { resolveBriefMode, buildBriefIntro, BRIEF_SAVED_MARK, BRIEF_SAVED_SILENT_REPLY, isNoInterventionActive } from 'curriculum-weaver-shared/briefMode.js'
+import { isBriefProcedure, buildBriefIntro, BRIEF_SAVED_MARK, BRIEF_SAVED_SILENT_REPLY, isNoInterventionActive } from 'curriculum-weaver-shared/briefMode.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
@@ -47,7 +47,8 @@ const SSE_HEARTBEAT_MS = 15_000
  */
 async function buildIntroForProject(procedure, project) {
   const workflowConfig = await getWorkspaceWorkflowConfig(project?.workspace_id).catch(() => null)
-  const brief = resolveBriefMode(workflowConfig)
+  // 약식 기록 팀이라도 핵심 절차를 정식으로 돌리면 그 절차는 정식 안내
+  const brief = isBriefProcedure(workflowConfig, procedure)
     ? buildBriefIntro(procedure, PROCEDURE_GUIDE[procedure]?.coreQuestion || '')
     : null
   return brief || buildStaticIntro(procedure)
@@ -759,7 +760,7 @@ chatRouter.post('/message', async (req, res) => {
     // 바로 "저장했습니다."로 답한다. AI 지시문에만 맡기면 지시를 어기고 조언한 경우가 있었다(운영 DB 점검).
     if (
       project?.learner_context?.demo !== true &&
-      resolveBriefMode(workflowConfig) &&
+      isBriefProcedure(workflowConfig, activeProcedure) &&
       String(content).startsWith(BRIEF_SAVED_MARK) &&
       isNoInterventionActive(currentProcMessages.filter((m) => m.id !== req.body?.teacher_message_id))
     ) {
@@ -846,8 +847,8 @@ chatRouter.post('/message', async (req, res) => {
       currentStep: currentStep ? Number(currentStep) : null,
       aiRole: isDemo ? 'coach' : (aiRole || undefined),
       participationMode: isDemo ? undefined : resolveParticipationMode(workflowConfig),
-      // 약식 기록(연수 모드) — 팀 설정에서 켠 팀만. 조회 실패·미설정은 종전 동작
-      briefMode: isDemo ? false : resolveBriefMode(workflowConfig),
+      // 약식 기록(연수 모드) — 팀 설정에서 켠 팀의 약식 절차만(핵심 절차 정식 진행 설정 반영). 조회 실패·미설정은 종전 동작
+      briefMode: isDemo ? false : isBriefProcedure(workflowConfig, activeProcedure),
       aiModel: aiModel || undefined,
       mentionedMaterialIds: mentionedIds,
       mentionedMaterials,
