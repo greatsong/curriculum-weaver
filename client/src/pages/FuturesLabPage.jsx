@@ -14,6 +14,9 @@ import './futures2.css'
 import './futuresLab.css'
 import { FUTURE_PRACTICE_SETS, resolvePracticeSet } from '../lib/futures2Practice'
 import { groupFutureStandards } from '../lib/futures2GraphLayout'
+import KeywordGraph, { colorOf } from '../components/futures/KeywordGraph'
+import { subjectOfStandard } from '../lib/futures2GraphLayout'
+import './futures.css'
 
 const LEVELS = [
   { id: '고등학교', label: '고등' }, { id: '중학교', label: '중학' }, { id: '초등학교', label: '초등' }, { id: '', label: '전체' },
@@ -42,6 +45,11 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const [subject, setSubject] = useState('')
   const [bulkText, setBulkText] = useState('')
   const [pasteNote, setPasteNote] = useState(null)
+  const [scenePhase, setScenePhase] = useState('graph')
+  const [graphState, setGraphState] = useState({ canOpen: false, status: 'idle' })
+  const [bridges, setBridges] = useState({ status: 'idle', data: null, startedAt: 0 })
+  const [activeLink, setActiveLink] = useState(null)
+  const graphRef = useRef(null)
   const sceneRootRef = useRef(null)
   const sceneRef = useRef(null)
 
@@ -62,6 +70,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const picked = useMemo(() => keys.map((k) => byKey.get(k)).filter(Boolean), [keys, byKey])
   const pickedKeys = useMemo(() => picked.map((s) => s.key), [picked])
   const pickedSig = JSON.stringify(pickedKeys)
+  const graphStandards = useMemo(() => picked.map(s => ({ ...s, subject: subjectOfStandard(s) })), [picked])
   const subjectGroups = useMemo(() => groupFutureStandards(picked), [picked])
   const colorIndexOfKey = useMemo(() => new Map(subjectGroups.flatMap(g => g.indices.map(i => [picked[i].key, g.colorIndex]))), [subjectGroups, picked])
 
@@ -85,9 +94,27 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   useEffect(() => {
     const root = sceneRootRef.current
     if (!root || !catalog) return undefined
+    let alive = true
+    setScenePhase('graph'); setActiveLink(null)
+    setBridges({ status: picked.length >= 2 ? 'loading' : 'idle', data: null, startedAt: Date.now() })
+    const loadBridges = () => {
+      setBridges({ status: 'loading', data: null, startedAt: Date.now() })
+      post('/api/futures2/bridges', { codes: pickedKeys }, { timeoutMs: 120_000 })
+        .then(body => {
+          if (!alive) return
+          const data = body?.bridges || null
+          setBridges({ status: data ? 'ready' : 'error', data, startedAt: 0 })
+          scene.setBridges(data)
+        })
+        .catch(() => { if (alive) { setBridges({ status: 'error', data: null, startedAt: 0 }); scene.setBridges(null) } })
+    }
     const scene = createFuturesScene(root, {
       standards: picked,
       model: modelRef.current,
+      externalGraph: true,
+      onPhaseChange: setScenePhase,
+      onGraphState: setGraphState,
+      colorForStandard: colorOf,
       requestFuture: async (index, m) => {
         const body = await post('/api/futures2', { codes: pickedKeys, model: m, index }, { timeoutMs: 200_000 })
         if (!body?.future) throw new Error(body?.error || '미래를 그리지 못했습니다.')
@@ -103,22 +130,22 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
         navigate('/workspaces?createProject=1')
       },
       onBasket: addToBasket,
-      onRetryBridges: () => post('/api/futures2/bridges', { codes: pickedKeys }, { timeoutMs: 120_000 })
-        .then(body => scene.setBridges(body?.bridges || null))
-        .catch(() => scene.setBridges(null)),
+      onRetryBridges: loadBridges,
     })
     sceneRef.current = scene
     let timer = null
     if (pickedKeys.length >= 2) {
-      timer = setTimeout(() => {
-        post('/api/futures2/bridges', { codes: pickedKeys }, { timeoutMs: 120_000 })
-          .then((body) => scene.setBridges(body?.bridges || null))
-          .catch(() => scene.setBridges(null))
-      }, BRIDGE_DELAY_MS)
+      timer = setTimeout(loadBridges, BRIDGE_DELAY_MS)
     }
-    return () => { clearTimeout(timer); scene.destroy(); sceneRef.current = null }
+    return () => { alive = false; clearTimeout(timer); scene.destroy(); sceneRef.current = null }
   }, [pickedSig, catalog, post]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { sceneRef.current?.setModel(model) }, [model])
+  const previousPhase = useRef('graph')
+  useEffect(() => {
+    if (scenePhase === 'graph' && previousPhase.current !== 'graph') graphRef.current?.scrollIntoView?.({ block: 'start', behavior: 'auto' })
+    if (scenePhase !== 'graph') sceneRootRef.current?.scrollIntoView?.({ block: 'start', behavior: 'auto' })
+    previousPhase.current = scenePhase
+  }, [scenePhase])
 
   // ── 넣기 · 빼기 ──
   const results = useMemo(
@@ -258,7 +285,13 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
           </div>
         </section>
 
-        {picked.length >= 2 && <p className="fu-graph-key">{subjectGroups.length}과목 · 성취기준 {picked.length}개 — 큰 원은 과목 · 원 안의 코드는 성취기준 · 작은 빛은 키워드</p>}
+        <div ref={graphRef} hidden={scenePhase !== 'graph'} className="futures-root lab-keyword-map">
+          {picked.length >= 2 && <KeywordGraph standards={graphStandards} bridges={bridges} activeLabel={activeLink} onActive={setActiveLink} onRetry={() => sceneRef.current?.retryBridges()} multiEndpoint />}
+          <div className="lab-map-actions">
+            <p>{picked.length < 2 ? '성취기준 2~7개를 선택해 주세요.' : ['error', 'slow'].includes(graphState.status) ? '연결 분석을 기다리거나 선택한 성취기준으로 미래를 볼 수 있습니다.' : '연결을 확인했다면, 여덟 갈래의 수업을 열어 보세요.'}</p>
+            <button type="button" className="lab-map-open" disabled={!graphState.canOpen} onClick={() => sceneRef.current?.open()}>미래 보기 ↗</button>
+          </div>
+        </div>
         <div ref={sceneRootRef} />
         <p className="fu-note">연결과 미래는 AI가 성취기준 원문을 바탕으로 그린 수업 아이디어입니다. 키워드는 원문에 있는 말만 쓰고, 이어지지 않는 성취기준은 억지로 엮지 않습니다. 한 번 본 미래는 저장되어 다시 열면 바로 보입니다.</p>
       </main>

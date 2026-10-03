@@ -115,3 +115,15 @@
  .futures-lab-root .lab-cast-copy p { font-size:11px; }
 }
 @media(prefers-reduced-motion:reduce) { .futures-lab-root .lab-scene * { animation:none!important;transition:none!important; } }
+/* 첫 장면은 기존 미래 보기의 과목·키워드 지도, 다음 장면은 실험실의 고리와 수업 상세. */
+.futures-lab-root .lab-keyword-map { min-height:0; margin-top:28px; }
+.futures-lab-root .lab-keyword-map[hidden] { display:none; }
+.futures-lab-root .lab-keyword-map .fu-panel { background:rgba(11,18,40,.7); padding:0; border-color:rgba(255,255,255,.08); }
+.futures-lab-root .lab-keyword-map .fu-section-head h2 { display:block; margin:0; font-size:17px; }
+.futures-lab-root .lab-map-actions { display:flex; align-items:center; justify-content:flex-end; gap:20px; padding:24px 0; }
+.futures-lab-root .lab-map-actions p { font-size:13px; color:var(--lab-muted); line-height:1.7; }
+.futures-lab-root .lab-map-open { border:1px solid #b8ead3; background:#b8ead3; color:#10271b; border-radius:9px; padding:15px 24px; font-size:15px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.futures-lab-root .lab-map-open:disabled { opacity:.4; cursor:default; }
+.futures-lab-root .lab-keyword-map .fu-end { flex-wrap:wrap; overflow-wrap:anywhere; }
+.futures-lab-root .lab-keyword-map .fu-end code { font-size:11px; color:var(--fu-t3); }
+@media(max-width:760px) { .futures-lab-root .lab-map-actions { align-items:flex-end; flex-direction:column; gap:10px; } }

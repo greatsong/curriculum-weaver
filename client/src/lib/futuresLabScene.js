@@ -7,7 +7,7 @@ const array = value => Array.isArray(value) ? value : value ? [value] : []
 let instance = 0
 
 /** 기존 타임스톤과 상태·스타일·타이머를 공유하지 않는 실험실 장면. */
-export function createFuturesLabScene(root, { standards, model: initialModel = 'fast', requestFuture, onStartProject, onBasket, onRetryBridges }) {
+export function createFuturesLabScene(root, { standards, model: initialModel = 'fast', requestFuture, onStartProject, onBasket, onRetryBridges, externalGraph = false, onPhaseChange, onGraphState, colorForStandard }) {
   const uid = `lab-${++instance}`, byKey = new Map(standards.map(s => [s.key, s]))
   const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
   let dead = false, model = initialModel, phase = 'graph', started = false, current = 0, bridgeState = standards.length >= 2 ? 'loading' : 'idle'
@@ -34,6 +34,7 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     $('[data-act="open"]').disabled = standards.length < 2 || revealing || bridgeState === 'loading'
     $('[data-act="replay"]').disabled = !layout?.hubs.length || revealing
     $('[data-act="retry-bridges"]').hidden = !['error', 'slow'].includes(bridgeState)
+    onGraphState?.({ canOpen: !$('[data-act="open"]').disabled, status: bridgeState })
   }
   function stopReveal() {
     revealTimers.forEach(cancel); revealTimers = []; revealing = false
@@ -89,12 +90,14 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     layout.hubs.forEach((hub, i) => revealTimers.push(later(() => illuminate(hub), i * 1600)))
     revealTimers.push(later(() => { revealing = false; active = null; applyActive(); updateGraphControls() }, layout.hubs.length * 1600 + 250))
   }
-  function armAnalysisTimeout() { cancel(analysisTimer); analysisTimer = later(() => { if (bridgeState === 'loading' && !started) { bridgeState = 'slow'; updateGraphControls() } }, 25000) }
+  function armAnalysisTimeout() { cancel(analysisTimer); analysisTimer = later(() => { if (bridgeState === 'loading' && (!started || (externalGraph && phase === 'graph'))) { bridgeState = 'slow'; updateGraphControls() } }, 25000) }
   function setPhase(next) {
-    phase = next; $('.lab-graph-view').hidden = next !== 'graph'; $('.lab-cast').hidden = next !== 'casting'; $('.lab-future-view').hidden = next !== 'future'
+    phase = next; $('.lab-graph-view').hidden = externalGraph || next !== 'graph'; $('.lab-cast').hidden = next !== 'casting'; $('.lab-future-view').hidden = next !== 'future'
+    $('.lab-ai-note').hidden = externalGraph && next === 'graph'
     if (next === 'graph') drawGraph()
     if (next === 'future') renderFuture()
-    root.scrollIntoView?.({ block: 'start', behavior: reduced() ? 'instant' : 'smooth' })
+    onPhaseChange?.(next)
+    if (!externalGraph) root.scrollIntoView?.({ block: 'start', behavior: reduced() ? 'instant' : 'smooth' })
   }
   function validFuture(future) {
     if (!future?.title || !Array.isArray(future.roles)) return false
@@ -130,7 +133,7 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
       $('.lab-future-card').innerHTML = `${head}<h2>${state?.status === 'error' ? '이 미래를 완성하지 못했습니다.' : '수업의 가능성을 펼치는 중입니다.'}</h2><p class="lab-description">${state?.status === 'error' ? esc(state.error) : '시간의 고리는 준비되었습니다. 수업 아이디어가 도착하면 여기에 표시됩니다. 다른 관점도 선택할 수 있습니다.'}</p>${state?.status === 'error' ? '<button type="button" class="lab-primary" data-act="retry-future">이 관점 다시 생성</button>' : '<div class="lab-wait-mark" aria-hidden="true"></div>'}`
       return
     }
-    const colorFor = key => layout?.groups.find(g => g.standards.some(s => s.key === key))?.color || '#b8ead3'
+    const colorFor = key => colorForStandard?.(byKey.get(key)) || layout?.groups.find(g => g.standards.some(s => s.key === key))?.color || '#b8ead3'
     $('.lab-future-card').innerHTML = `${head}<h2>${esc(f.title)}</h2><p class="lab-description">${esc(f.situation)}</p><div class="lab-question"><small>함께 탐구할 질문</small><p>${esc(f.driving_question)}</p></div><div class="lab-roles-head"><h3>과목들이 만나는 방식</h3><button type="button" class="lab-quiet" data-act="graph">연결 보기 ↗</button></div><div class="lab-roles">${f.roles.map(r => `<div class="lab-role"><div style="color:${colorFor(r.key)}">${esc(subjectOfStandard(byKey.get(r.key) || {}))}<small>${esc(byKey.get(r.key)?.code)}</small></div><p>${esc(r.role)}</p></div>`).join('')}</div><details class="lab-details"><summary>학생들의 활동과 결과물</summary><ol>${array(f.activity_steps).map(step => `<li>${esc(step)}</li>`).join('')}</ol><h4>결과물</h4><p>${esc(f.student_output)}</p><h4>자료</h4><p>${array(f.data_sources).map(esc).join('<br>')}</p><h4>평가 아이디어</h4><p>${esc(f.assessment_idea)}</p></details>${f.honesty_note ? `<p class="lab-honesty">${esc(f.honesty_note)}</p>` : ''}<div class="lab-card-actions"><button type="button" class="lab-primary" data-act="project">이 미래로 프로젝트 시작 ↗</button><button type="button" class="lab-quiet" data-act="basket">성취기준 담기</button></div>`
   }
   function openFuture() {
@@ -165,9 +168,12 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
   let lastWidth = Math.round($('.lab-map').clientWidth)
   const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => { const width = Math.round(entries[0].contentRect.width); if (width && width !== lastWidth) { lastWidth = width; stopReveal(); drawGraph() } }) : null
   observer?.observe($('.lab-map'))
-  drawGraph(); if (standards.length >= 2) armAnalysisTimeout()
+  drawGraph(); if (externalGraph) { $('.lab-graph-view').hidden = true; $('.lab-ai-note').hidden = true }
+  if (standards.length >= 2) armAnalysisTimeout()
   return {
-    setBridges(data) { if (dead || started) return; cancel(analysisTimer); stopReveal(); bridges = data; bridgeState = data ? 'ready' : 'error'; active = null; drawGraph(); if (data) reveal() },
+    open: openFuture,
+    retryBridges() { if (dead || phase !== 'graph') return; bridgeState = 'loading'; bridges = null; active = null; drawGraph(); armAnalysisTimeout(); onRetryBridges?.() },
+    setBridges(data) { if (dead || (started && (!externalGraph || phase !== 'graph'))) return; cancel(analysisTimer); stopReveal(); bridges = data; bridgeState = data ? 'ready' : 'error'; active = null; drawGraph(); if (data && !externalGraph) reveal() },
     setModel(next) { if (dead || next === model) return; model = next === 'precise' ? 'precise' : 'fast'; if (started) { ensureFuture(current); if (phase === 'future') renderFuture() } },
     destroy() { dead = true; timers.forEach(clearTimeout); timers.clear(); observer?.disconnect(); root.removeEventListener('click', click); root.removeEventListener('keydown', keydown); root.removeEventListener('change', change); root.replaceChildren() },
   }

@@ -39,6 +39,24 @@ beforeEach(() => {
 afterEach(() => { scene?.destroy(); root.remove(); vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('실험실 생성과 수명 주기', () => {
+  it('외부 지도의 시작 버튼으로 고리를 열고 지도에 돌아와도 결과와 관점을 보존한다', async () => {
+    const phases = vi.fn(), graph = vi.fn(), retry = vi.fn()
+    mount({ externalGraph: true, onPhaseChange: phases, onGraphState: graph, onRetryBridges: retry }).setBridges(bridges)
+    expect(root.querySelector('.lab-graph-view').hidden).toBe(true)
+    expect(graph).toHaveBeenLastCalledWith({ canOpen: true, status: 'ready' })
+    await advance(90_000); expect(request).not.toHaveBeenCalled()
+    scene.open(); await advance(0)
+    expect(phases).toHaveBeenLastCalledWith('casting')
+    await advance(3400)
+    expect(phases).toHaveBeenLastCalledWith('future')
+    root.querySelector('[data-lens="1"]').click(); click('graph')
+    expect(phases).toHaveBeenLastCalledWith('graph')
+    expect(root.querySelector('.lab-graph-view').hidden).toBe(true)
+    scene.retryBridges(); expect(retry).toHaveBeenCalledTimes(1); scene.setBridges(bridges)
+    scene.open(); await advance(0)
+    expect(root.querySelector('.lab-future-card h2').textContent).toBe('미래 1')
+    expect(request).toHaveBeenCalledTimes(3)
+  })
   it('90초 대기·모델 변경·폭 변경으로 미래를 생성하지 않고 클릭 후 인접 두 관점만 준비한다', async () => {
     mount().setBridges(bridges)
     expect(root.querySelector('[data-act="open"]').disabled).toBe(true)
