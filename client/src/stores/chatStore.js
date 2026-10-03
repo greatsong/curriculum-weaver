@@ -380,6 +380,8 @@ export const useChatStore = create((set, get) => ({
     await guardStreaming(set, get, apiStreamPost('/api/chat/message', {
       session_id: projectId,
       content,
+      // 방금 저장한 이 메시지의 번호 — 서버가 AI 대화 기록에서 빼 같은 말이 두 번 들어가지 않게 한다
+      teacher_message_id: teacherMsg?.id,
       stage: procedureCode,
       aiRole: wsAiRole || undefined,
       aiModel,

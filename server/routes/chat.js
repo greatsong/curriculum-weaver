@@ -18,6 +18,7 @@ import {
   getProject, getMemberRole, getDesignsByProject,
   getStandardsByProject, upsertDesign, getProjectSkips, getWorkspaceWorkflowConfig,
 } from '../lib/supabaseService.js'
+import { excludeCurrentTeacherMessage } from '../lib/currentMessage.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode, isDemoBoardCode, resolveParticipationMode } from 'curriculum-weaver-shared/constants.js'
@@ -732,8 +733,12 @@ chatRouter.post('/message', async (req, res) => {
     const mergedMap = new Map()
     for (const m of procSlice) mergedMap.set(m.id, m)
     for (const m of recentGlobalMessages) mergedMap.set(m.id, m)
-    const recentMessages = [...mergedMap.values()]
-      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    // 화면이 방금 저장한 현재 메시지는 빼고 넘긴다. aiAgent.buildMessages가 현재 메시지를 마지막
+    // 턴으로 다시 붙이므로, 빼지 않으면 AI가 같은 말을 두 번 받는다(lib/currentMessage.js 설명).
+    const recentMessages = excludeCurrentTeacherMessage(
+      [...mergedMap.values()].sort((a, b) => new Date(a.created_at) - new Date(b.created_at)),
+      { teacherMessageId: req.body?.teacher_message_id, content },
+    )
 
     // 선택 성취기준 간 검증된 교과 연결(curriculum_links) — 분석(A)·설계(Ds) 절차에서만 주입.
     // 프로젝트 학교급(선택 성취기준 최빈값)으로 필터해 고교 프로젝트에 타 학교급 연결이 섞이지 않게 한다.
