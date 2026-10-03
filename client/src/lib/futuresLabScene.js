@@ -21,8 +21,8 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     <p class="lab-status" role="status"></p><div class="lab-map"><svg class="lab-lines" aria-hidden="true"></svg><div class="lab-groups"></div><div class="lab-keywords"></div><div class="lab-hubs"></div></div>
     <div class="lab-inspector" aria-live="polite"><strong>선택한 성취기준을 중심으로</strong><p>과목 안의 코드와 키워드, 빛나는 연결점을 선택해 보세요.</p></div>
     <div class="lab-graph-actions"><button type="button" class="lab-quiet" data-act="retry-bridges">연결 다시 찾기</button><button type="button" class="lab-primary" data-act="open">미래 보기 ↗</button></div></div>
-    <div class="lab-cast" hidden><div class="lab-portal" aria-hidden="true"></div><div class="lab-cast-copy"><span class="lab-kicker">연결이 하나의 가능성으로</span><h2>아직 만나지 않은<br>수업을 엽니다.</h2><p>선택한 성취기준에서 시작한 여덟 갈래의 미래</p></div></div>
-    <div class="lab-future-view" hidden><button type="button" class="lab-quiet" data-act="graph">← 연결 지도</button><div class="lab-future-layout"><aside class="lab-orbit-panel"><span class="lab-kicker">가능성의 고리</span><div class="lab-orbit"><div class="lab-orbit-art" aria-hidden="true"></div><div class="lab-orbit-core"></div><div class="lab-orbit-buttons"></div></div><div class="lab-orbit-navigation"><button type="button" class="lab-round" data-go="-1" aria-label="이전 미래">←</button><select class="lab-lens-select" aria-label="미래 관점">${LAB_LENSES.map((name, i) => `<option value="${i}">${name}</option>`).join('')}</select><button type="button" class="lab-round" data-go="1" aria-label="다음 미래">→</button></div><p>같은 성취기준에서<br>새로운 수업이 펼쳐집니다.</p></aside><div class="lab-future-card" aria-live="polite"></div></div></div>
+    <div class="lab-cast" hidden><div class="lab-portal" aria-hidden="true"></div><div class="lab-cast-copy"><span class="lab-kicker">연결이 하나의 가능성으로</span><h2>아직 만나지 않은<br>수업을 엽니다.</h2><p class="lab-cast-progress" role="status">여덟 갈래의 미래를 함께 준비합니다.</p></div></div>
+    <div class="lab-future-view" hidden><button type="button" class="lab-quiet" data-act="graph">← 연결 지도</button><div class="lab-future-layout"><aside class="lab-orbit-panel"><span class="lab-kicker">가능성의 고리</span><div class="lab-orbit"><div class="lab-orbit-art" aria-hidden="true"></div><div class="lab-orbit-core"></div><div class="lab-orbit-buttons"></div></div><div class="lab-orbit-navigation"><button type="button" class="lab-round" data-go="-1" aria-label="이전 미래">←</button><select class="lab-lens-select" aria-label="미래 관점">${LAB_LENSES.map((name, i) => `<option value="${i}">${name}</option>`).join('')}</select><button type="button" class="lab-round" data-go="1" aria-label="다음 미래">→</button></div><p class="lab-generation-progress" role="status"></p></aside><div class="lab-future-card" aria-live="polite"></div></div></div>
     <p class="lab-action-status" role="status"></p><p class="lab-ai-note">AI가 제안한 수업 아이디어입니다. 실제 수업의 효과를 예측하거나 보장하지 않습니다.</p>
     </section>`
 
@@ -104,22 +104,48 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     const roleKeys = future.roles.map(r => r.key)
     return roleKeys.length === standards.length && new Set(roleKeys).size === standards.length && standards.every(s => roleKeys.includes(s.key))
   }
-  function ensureFuture(index, m = model, prefetch = false) {
+  function ensureFuture(index, m = model) {
     if (!started || dead || standards.length < 2 || futures[m].has(index)) return
     futures[m].set(index, { status: 'loading' })
     Promise.resolve().then(() => { if (!dead) return requestFuture(index, m) }).then(future => {
       if (dead) return
       if (!validFuture(future)) throw new Error('선택한 성취기준의 역할을 모두 담지 못했습니다. 다시 생성해 주세요.')
       futures[m].set(index, { status: 'ready', data: future })
-      if (model === m && current === index) {
-        if (phase === 'future') renderFuture()
-        // 현재 관점이 준비된 뒤에만 양옆 두 관점을 미리 준비한다.
-        if (!prefetch) { ensureFuture((index + 7) % 8, m, true); ensureFuture((index + 1) % 8, m, true) }
+      if (model === m) {
+        renderProgress()
+        if (current === index && phase === 'future') renderFuture()
       }
     }).catch(error => {
       if (dead) return
       futures[m].set(index, { status: 'error', error: error?.message || '미래를 생성하지 못했습니다.' })
-      if (model === m && current === index && phase === 'future') renderFuture()
+      if (model === m) {
+        renderProgress()
+        if (current === index && phase === 'future') renderFuture()
+      }
+    })
+  }
+  // 서버의 기존 동시 생성 제한·캐시를 유지하면서 여덟 관점을 모두 즉시 요청한다.
+  function ensureAllFutures() {
+    LAB_LENSES.forEach((_, index) => ensureFuture(index))
+    renderProgress()
+  }
+  function renderProgress() {
+    const states = [...futures[model].values()]
+    const ready = states.filter(s => s.status === 'ready').length
+    const failed = states.filter(s => s.status === 'error').length
+    const pending = LAB_LENSES.length - ready - failed
+    const summary = pending ? `미래 ${ready}/8개 준비 완료 · ${pending}개 생성 중` : `미래 ${ready}/8개 준비 완료`
+    const text = `${summary}${failed ? ` · ${failed}개 재시도 필요` : ''}`
+    $('.lab-generation-progress').textContent = `${text}. ${ready ? '준비된 번호를 누르면 바로 볼 수 있습니다.' : '완성된 아이디어부터 볼 수 있습니다.'}`
+    $('.lab-cast-progress').textContent = text
+    // 완료 응답이 올 때 버튼을 교체하지 않아 키보드 포커스를 보존한다.
+    $$('.lab-orbit-buttons button').forEach(button => {
+      const index = +button.dataset.lens, status = futures[model].get(index)?.status || 'loading'
+      const label = { ready: '준비 완료', loading: '생성 중', error: '재시도 필요' }[status]
+      button.dataset.status = status
+      button.setAttribute('aria-label', `${LAB_LENSES[index]} · ${label}`)
+      button.title = `${LAB_LENSES[index]} · ${label}`
+      button.setAttribute('aria-pressed', String(index === current))
     })
   }
   function renderFuture() {
@@ -127,10 +153,11 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     $('.lab-orbit-core').innerHTML = `<span>${String(current + 1).padStart(2, '0')}<small>/ 08</small></span><strong>${LAB_LENSES[current]}</strong>`
     $('.lab-orbit-art').style.transform = `rotate(${current * 45}deg)`
     $('.lab-lens-select').value = String(current)
-    $('.lab-orbit-buttons').innerHTML = LAB_LENSES.map((name, i) => { const a = i * Math.PI / 4 - Math.PI / 2; return `<button type="button" data-lens="${i}" aria-label="${name}" aria-pressed="${i === current}" style="left:${50 + 38 * Math.cos(a)}%;top:${50 + 38 * Math.sin(a)}%">${i + 1}</button>` }).join('')
+    if (!$('.lab-orbit-buttons').children.length) $('.lab-orbit-buttons').innerHTML = LAB_LENSES.map((name, i) => { const a = i * Math.PI / 4 - Math.PI / 2; return `<button type="button" data-lens="${i}" aria-label="${name}" aria-pressed="${i === current}" style="left:${50 + 38 * Math.cos(a)}%;top:${50 + 38 * Math.sin(a)}%">${i + 1}</button>` }).join('')
+    renderProgress()
     const head = `<div class="lab-card-meta">미래 ${current + 1} / 8 · ${LAB_LENSES[current]}<span>${model === 'precise' ? '정밀' : '빠른'} 모드</span></div>`
     if (!f) {
-      $('.lab-future-card').innerHTML = `${head}<h2>${state?.status === 'error' ? '이 미래를 완성하지 못했습니다.' : '수업의 가능성을 펼치는 중입니다.'}</h2><p class="lab-description">${state?.status === 'error' ? esc(state.error) : '시간의 고리는 준비되었습니다. 수업 아이디어가 도착하면 여기에 표시됩니다. 다른 관점도 선택할 수 있습니다.'}</p>${state?.status === 'error' ? '<button type="button" class="lab-primary" data-act="retry-future">이 관점 다시 생성</button>' : '<div class="lab-wait-mark" aria-hidden="true"></div>'}`
+      $('.lab-future-card').innerHTML = `${head}<h2>${state?.status === 'error' ? '이 미래를 완성하지 못했습니다.' : '수업의 가능성을 펼치는 중입니다.'}</h2><p class="lab-description">${state?.status === 'error' ? esc(state.error) : '여덟 관점의 수업을 함께 생성하고 있습니다. 이 관점이 완성되면 바로 표시됩니다. 준비가 끝난 다른 번호는 기다리지 않고 볼 수 있습니다.'}</p>${state?.status === 'error' ? '<button type="button" class="lab-primary" data-act="retry-future">이 관점 다시 생성</button>' : '<div class="lab-wait-mark" aria-hidden="true"></div>'}`
       return
     }
     const colorFor = key => colorForStandard?.(byKey.get(key)) || layout?.groups.find(g => g.standards.some(s => s.key === key))?.color || '#b8ead3'
@@ -138,8 +165,8 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
   }
   function openFuture() {
     if (standards.length < 2 || revealing || bridgeState === 'loading' || phase === 'casting') return
-    if (started) { setPhase('future'); ensureFuture(current); return }
-    started = true; stopReveal(); cancel(analysisTimer); ensureFuture(current)
+    if (started) { ensureAllFutures(); setPhase('future'); return }
+    started = true; stopReveal(); cancel(analysisTimer); ensureAllFutures()
     if (reduced()) { setPhase('future'); return }
     setPhase('casting'); later(() => setPhase('future'), 3400)
   }
@@ -174,7 +201,7 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     open: openFuture,
     retryBridges() { if (dead || phase !== 'graph') return; bridgeState = 'loading'; bridges = null; active = null; drawGraph(); armAnalysisTimeout(); onRetryBridges?.() },
     setBridges(data) { if (dead || (started && (!externalGraph || phase !== 'graph'))) return; cancel(analysisTimer); stopReveal(); bridges = data; bridgeState = data ? 'ready' : 'error'; active = null; drawGraph(); if (data && !externalGraph) reveal() },
-    setModel(next) { if (dead || next === model) return; model = next === 'precise' ? 'precise' : 'fast'; if (started) { ensureFuture(current); if (phase === 'future') renderFuture() } },
+    setModel(next) { if (dead || next === model) return; model = next === 'precise' ? 'precise' : 'fast'; if (started) { ensureAllFutures(); if (phase === 'future') renderFuture() } },
     destroy() { dead = true; timers.forEach(clearTimeout); timers.clear(); observer?.disconnect(); root.removeEventListener('click', click); root.removeEventListener('keydown', keydown); root.removeEventListener('change', change); root.replaceChildren() },
   }
 }
