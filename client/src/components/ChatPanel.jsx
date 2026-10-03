@@ -176,7 +176,8 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
   const handleSend = async (e) => {
     e.preventDefault()
     const text = input.trim()
-    if (!text || streaming) return
+    // 화면의 streaming 값은 한 박자 늦을 수 있어 스토어의 최신 값도 본다(수락 후 자동 안내와 겹침 방지)
+    if (!text || streaming || useChatStore.getState().streaming) return
 
     // 전송 직전: 본문에 실제로 남아 있는 @파일명 토큰만 mentionedIds에 남김
     // (교사가 @filename 텍스트를 지웠다면 자동 제거)
@@ -199,13 +200,21 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
     setInput('')
     setMentionedIds(new Set())
     setMentionBox(null)
-    await sendMessage(projectId, text, {
-      procedureCode: stage,
-      mentionedIds: survivingIds,
-      selectedIds,
-      materialSelectionExplicit,
-      currentStep,
-    })
+    let sent
+    try {
+      sent = await sendMessage(projectId, text, {
+        procedureCode: stage,
+        mentionedIds: survivingIds,
+        selectedIds,
+        materialSelectionExplicit,
+        currentStep,
+      })
+    } catch (err) {
+      console.warn('메시지 전송 실패:', err?.message || err)
+      sent = false
+    }
+    // 다른 전송이 진행 중이라 거절됐거나 저장에 실패하면 입력한 글을 되살린다
+    if (sent === false) setInput((cur) => (cur ? cur : text))
   }
 
   // ──────────────────────────────
