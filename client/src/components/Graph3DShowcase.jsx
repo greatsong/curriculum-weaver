@@ -999,7 +999,10 @@ export default function Graph3DShowcase() {
             {cardBody}
           </aside>
         ) : (
-          <aside className="absolute right-4 top-[72px] max-h-[calc(100dvh-96px)] z-20 w-[330px] max-w-[calc(100vw-32px)] flex flex-col bg-[#0E1633]/80 backdrop-blur-2xl border border-white/[0.12] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] animate-card-in">
+          // 최대 높이는 창이 아니라 3D 영역(루트) 기준이다. 위에 탐색 상태 줄이 들어가 영역이
+          // 창보다 낮아지면, 창 기준 높이로는 카드 아래 담기·연결 찾기 버튼 줄이 잘렸다.
+          // 88px = 위 여백 72px + 아래 여백 16px.
+          <aside className="absolute right-4 top-[72px] max-h-[calc(100%-88px)] z-20 w-[330px] max-w-[calc(100vw-32px)] flex flex-col bg-[#0E1633]/80 backdrop-blur-2xl border border-white/[0.12] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] animate-card-in">
             {cardBody}
           </aside>
         )
