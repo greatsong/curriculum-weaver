@@ -4,6 +4,7 @@ import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
+import { RequirePrivacyConsent } from './components/PrivacyConsentGate'
 
 // 즉시 로드 (핵심 페이지)
 import LoginPage from './pages/LoginPage'
@@ -79,7 +80,8 @@ function ProtectedRoute({ children }) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  return children
+  // 현재 버전의 개인정보 동의 기록이 없으면(Google 첫 로그인·기록 없던 기존 회원) 한 번 묻는다
+  return <RequirePrivacyConsent user={user}>{children}</RequirePrivacyConsent>
 }
 
 /**

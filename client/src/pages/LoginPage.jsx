@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import Logo from '../components/Logo'
+import PrivacyConsentFields, { isConsentComplete } from '../components/PrivacyConsentFields'
+import { CONSENT_TEXT } from '../lib/privacyConsent'
 
 /** 로그인 뒤 돌아갈 경로 — ProtectedRoute의 state.from, ?next=, 없으면 워크스페이스 (같은 출처의 상대 경로만 허용) */
 export function resolveLoginNext(location) {
@@ -26,7 +28,8 @@ export default function LoginPage() {
   const [displayName, setDisplayName] = useState('')
   const [schoolName, setSchoolName] = useState('')
   const [subject, setSubject] = useState('')
-  const [privacyConsent, setPrivacyConsent] = useState(false)
+  const [privacyConsent, setPrivacyConsent] = useState({ collection: false, transfer: false })
+  const [consentMissing, setConsentMissing] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [googleSubmitting, setGoogleSubmitting] = useState(false)
@@ -54,7 +57,12 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!email.trim() || !password.trim()) return
-    if (mode === 'signup' && (!displayName.trim() || !privacyConsent)) return
+    if (mode === 'signup' && !displayName.trim()) return
+    if (mode === 'signup' && !isConsentComplete(privacyConsent)) {
+      setConsentMissing(true)
+      return
+    }
+    setConsentMissing(false)
 
     setSubmitting(true)
     clearError()
@@ -68,6 +76,7 @@ export default function LoginPage() {
         const data = await signup(email.trim(), password, displayName.trim(), {
           school_name: schoolName.trim(),
           subject: subject.trim(),
+          privacyConsent: true,
         })
         if (data.user && !data.session) {
           setSuccessMessage('인증 이메일이 발송되었습니다. 이메일을 확인해주세요.')
@@ -299,31 +308,18 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* 개인정보 동의 (회원가입) */}
+              {/* 개인정보 동의 (회원가입) — 문구는 lib/privacyConsent.js */}
               {mode === 'signup' && (
-                <label style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 8,
-                  fontSize: 13,
-                  color: 'var(--color-text-secondary)',
-                  cursor: 'pointer',
-                  lineHeight: 1.5,
-                }}>
-                  <input
-                    type="checkbox"
-                    checked={privacyConsent}
-                    onChange={(e) => setPrivacyConsent(e.target.checked)}
-                    style={{ marginTop: 3, accentColor: '#3B82F6' }}
+                <div>
+                  <PrivacyConsentFields
+                    value={privacyConsent}
+                    onChange={(v) => { setPrivacyConsent(v); if (isConsentComplete(v)) setConsentMissing(false) }}
+                    idPrefix="signup"
                   />
-                  <span>
-                    <strong style={{ color: 'var(--color-text-primary)' }}>[필수]</strong> 개인정보 수집·이용에 동의합니다.
-                    <br />
-                    <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>
-                      수집 항목: 이름, 이메일, 소속, 담당 교과 | 목적: 서비스 제공 및 팀 협업 | 보유 기간: 회원 탈퇴 시까지
-                    </span>
-                  </span>
-                </label>
+                  {consentMissing && (
+                    <p role="alert" style={{ margin: '8px 0 0', fontSize: 12, color: '#DC2626' }}>{CONSENT_TEXT.signupMissing}</p>
+                  )}
+                </div>
               )}
 
               {/* 에러 */}
