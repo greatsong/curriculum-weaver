@@ -135,6 +135,7 @@ export const EXPLORE_COPY = {
     openFromBridges: '이 연결을 A-3에 가져가기',
     a3Procedure: (label) => label,
     teamProcedure: (code) => `팀의 현재 절차는 ${code}입니다. 보내도 현재 절차는 바뀌지 않습니다. 초안은 팀이 A-3에서 대화할 때 입력창에 넣을 수 있습니다.`,
+    teamProcedureUnknown: '보내도 팀의 현재 절차는 바뀌지 않습니다. 초안은 팀이 A-3에서 대화할 때 입력창에 넣을 수 있습니다.',
     teamAtA3: '팀이 A-3에 있습니다. 프로젝트로 돌아가면 대화 입력창에 초안을 넣을 수 있습니다.',
     boardLine: (status) => `A-3 보드 (마지막 조회 기준): ${status}`,
     boardRecheck: '새로 확인',
@@ -241,6 +242,11 @@ export const EXPLORE_COPY = {
     reflected: '탐색 초안의 제안이 보드에 반영되었습니다.',
     rejected: '탐색 초안의 제안을 반영하지 않았습니다.',
     unconfirmed: '탐색 초안 제안의 저장 확인이 필요합니다.',
+  },
+
+  // 프로젝트 만들기 창 (워크스페이스 화면)
+  createModal: {
+    basketLine: (n) => `담아 온 성취기준 ${n}개를 이 프로젝트에 함께 저장합니다. 만들기를 마쳐야 저장됩니다.`,
   },
 
   // 프로젝트 화면 헤더
