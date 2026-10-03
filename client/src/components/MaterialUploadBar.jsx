@@ -38,8 +38,11 @@ const { PENDING, PARSING, ANALYZING, COMPLETED, FAILED } = MATERIAL_PROCESSING_S
  * @param {object} props
  * @param {string} props.projectId — 대상 프로젝트 ID (신규, 필수)
  * @param {string} [props.sessionId] — 레거시 호환 alias (projectId가 없을 때 사용)
+ * @param {boolean} [props.open] — 펼침 상태를 바깥에서 제어할 때(헤더의 "자료" 버튼). 없으면 내부 상태
+ * @param {(open: boolean) => void} [props.onOpenChange] — 펼침 상태가 바뀔 때 알림
+ * @param {boolean} [props.hideToggle] — 접힌 요약 줄을 그리지 않는다(작업 화면 세로 공간 확보, 2026-10-03)
  */
-export default function MaterialUploadBar({ projectId: projectIdProp, sessionId }) {
+export default function MaterialUploadBar({ projectId: projectIdProp, sessionId, open, onOpenChange, hideToggle = false }) {
   const projectId = projectIdProp || sessionId
 
   const {
@@ -54,7 +57,13 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId 
     deselectAllMaterials,
   } = useProcedureStore()
 
-  const [expanded, setExpanded] = useState(false)
+  const [internalExpanded, setInternalExpanded] = useState(false)
+  const expanded = open ?? internalExpanded
+  // 제어(open 전달)·비제어 둘 다 지원. 파일을 고르면 자동으로 펼치는 내부 호출도 이 함수를 거친다.
+  const setExpanded = useCallback((next) => {
+    if (open === undefined) setInternalExpanded(next)
+    onOpenChange?.(next)
+  }, [open, onOpenChange])
   const [selectedCategory, setSelectedCategory] = useState('reference')
   const [urlInput, setUrlInput] = useState('')
   const [urlTitle, setUrlTitle] = useState('')
@@ -304,11 +313,15 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId 
     [detailMaterialId, materials],
   )
 
+  // 헤더 버튼으로 여는 방식: 접혀 있으면 줄 자체를 그리지 않는다
+  if (hideToggle && !expanded) return null
+
   return (
     <div className="bg-white border-b border-gray-200 shrink-0">
-      {/* 접힌 상태: 한 줄 요약 */}
+      {/* 접힌 상태: 한 줄 요약 (hideToggle이면 펼친 패널의 머리 줄로만 쓰이고, 누르면 닫힌다) */}
       <button
         type="button"
+        aria-expanded={expanded}
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 sm:px-4 py-2 text-sm hover:bg-gray-50 transition"
       >

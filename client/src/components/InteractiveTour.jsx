@@ -48,9 +48,10 @@ export const TOUR_STEPS = [
   {
     id: 'principle-panel',
     title: '설계 원칙',
-    description: '화면 아래 [원칙] 버튼을 누르면 지금 절차에 해당하는 협력 설계 원칙을 펼쳐 볼 수 있습니다.',
+    description: '위쪽 메뉴의 [원칙] 버튼을 누르면 지금 절차에 해당하는 협력 설계 원칙을 펼쳐 볼 수 있습니다.',
     targetSelector: '[data-tour="principle-panel"]',
-    arrowPosition: 'left',
+    // 원칙 버튼이 아래 줄에서 헤더로 옮겨졌다(2026-10-03) — 말풍선을 버튼 아래에 둔다
+    arrowPosition: 'bottom',
   },
   {
     id: 'complete',

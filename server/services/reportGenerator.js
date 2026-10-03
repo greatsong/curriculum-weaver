@@ -100,8 +100,11 @@ export async function collectReportData(projectId) {
 
   // 참여자 추출: role_assignment 보드에서 추출 (영문/한글 키 모두 대응)
   // 방어: roles가 배열이 아니거나 원소에 null/스칼라가 섞여도 보고서가 죽지 않게 한다.
+  // T-2-1(T-3 역할 배분)이 생략됐으면 작성하다 만 역할표를 '참여 선생님'·'참여 교과'로 내보내지 않는다.
+  // 생략 절차의 남은 내용은 확정이 아니다(보고서 본문은 '팀 합의로 생략'만 표기 — AI 프롬프트와 같은 원칙).
+  // (2026-10-03 연수 한정으로 T-3이 생략 가능해지며 추가. 되돌린 뒤에도 연수 중 생략 기록이 남으므로 유지한다.)
   const participants = []
-  const roleDesign = designMap['T-2-1']
+  const roleDesign = skipMap['T-2-1'] ? null : designMap['T-2-1']
   if (Array.isArray(roleDesign?.content?.roles)) {
     for (const r of roleDesign.content.roles) {
       if (!r || typeof r !== 'object') continue
