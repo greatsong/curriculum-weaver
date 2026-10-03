@@ -210,3 +210,20 @@ describe('보드 상태·빈 칸 제거', () => {
     })).toEqual({ commonVision: '팀 비전' })
   })
 })
+
+describe('역할 프리셋과 함께 켰을 때', () => {
+  it('공동설계자 말투가 있어도 약식 블록이 역할 톤보다 우선한다고 명시한다', () => {
+    const prompt = buildSystemPrompt({ ...baseContext, aiRole: 'codesigner', briefMode: true })
+    expect(prompt).toContain('[AI 역할 톤: 공동설계자')
+    expect(prompt).toContain('[진행 방식 — 약식 기록(연수) · 위 [AI 역할 톤]')
+    expect(prompt).toContain('역할 톤이 먼저 제안하거나 초안을 만들라고 해도')
+    // 약식 블록이 역할 톤보다 뒤에 온다(뒤의 지시가 우선)
+    expect(prompt.indexOf('[진행 방식 — 약식 기록')).toBeGreaterThan(prompt.indexOf('[AI 역할 톤: 공동설계자'))
+  })
+
+  it('약식이 아니면 공동설계자 지시문은 종전과 같다', () => {
+    const prompt = buildSystemPrompt({ ...baseContext, aiRole: 'codesigner' })
+    expect(prompt).toContain('[AI 역할 톤: 공동설계자')
+    expect(prompt).not.toContain('약식 기록')
+  })
+})
