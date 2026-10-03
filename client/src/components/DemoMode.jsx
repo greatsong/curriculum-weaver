@@ -79,6 +79,9 @@ export default function DemoMode() {
   const [tokenCount, setTokenCount] = useState(0)
   const [currentPhase, setCurrentPhase] = useState('')
   const abortRef = useRef(null)
+  const requestRef = useRef(null)
+  const mountedRef = useRef(true)
+  const pollEpochRef = useRef(0)
   const partialProjectRef = useRef(null)
   const generatingRef = useRef(false)
   const pollIntervalRef = useRef(null)
@@ -86,6 +89,7 @@ export default function DemoMode() {
   const pollVisibilityCleanupRef = useRef(null)
 
   const clearRecoveryPolling = () => {
+    pollEpochRef.current++
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current)
       pollIntervalRef.current = null
@@ -98,41 +102,51 @@ export default function DemoMode() {
       pollVisibilityCleanupRef.current()
       pollVisibilityCleanupRef.current = null
     }
-    setRecoveryPolling(false)
+    if (mountedRef.current) setRecoveryPolling(false)
   }
 
   const updatePartialProjectState = (updater) => {
-    setPartialProject((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater
-      partialProjectRef.current = next
-      return next
-    })
+    const next = typeof updater === 'function' ? updater(partialProjectRef.current) : updater
+    partialProjectRef.current = next
+    if (mountedRef.current) setPartialProject(next)
   }
 
   const startRecoveryPolling = (project) => {
-    if (!project?.projectId) return false
+    if (!mountedRef.current || !project?.projectId) return false
 
     clearRecoveryPolling()
     setRecoveryPolling(true)
     setError('')
     setCurrentPhase('서버에서 나머지 절차를 생성 중입니다 (약 5~10분 소요)')
 
+    const epoch = pollEpochRef.current
+    let pending = false
     const pollOnce = async () => {
+      if (pending || !mountedRef.current || epoch !== pollEpochRef.current) return
+      pending = true
       try {
         const proj = await apiGet(`/api/projects/${project.projectId}`)
+        if (!mountedRef.current || epoch !== pollEpochRef.current) return
         if (proj?.status === 'simulation') {
           clearRecoveryPolling()
           generatingRef.current = false
+          requestRef.current = null
           navigate(`/workspaces/${project.workspaceId}/projects/${project.projectId}`)
         } else if (proj?.status === 'failed') {
           clearRecoveryPolling()
           generatingRef.current = false
+          requestRef.current = null
           setGenerating(false)
           setError('서버에서 생성이 실패했습니다.')
         }
-      } catch {
-        // 폴링 실패는 무시 (다음 시도에서 재시도)
-      }
+      } catch (error) {
+        if (mountedRef.current && epoch === pollEpochRef.current && [401, 403, 404].includes(error.status)) {
+          clearRecoveryPolling()
+          generatingRef.current = false
+          setGenerating(false)
+          setError(error.message)
+        }
+      } finally { pending = false }
     }
 
     pollIntervalRef.current = setInterval(pollOnce, 5000)
@@ -155,7 +169,8 @@ export default function DemoMode() {
         setGenerating(false)
         setError('생성 시간이 초과되었습니다. 워크스페이스에서 프로젝트를 확인해주세요.')
       }
-    }, 12 * 60 * 1000)
+    }, 32 * 60 * 1000)
+    pollOnce()
 
     return true
   }
@@ -246,13 +261,16 @@ export default function DemoMode() {
   }, [generating])
 
   useEffect(() => {
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
       abortRef.current?.abort()
       clearRecoveryPolling()
     }
   }, [])
 
   const handleGenerate = async () => {
+    if (generatingRef.current || !canSubmit) return
     clearRecoveryPolling()
     partialProjectRef.current = null
     generatingRef.current = true
@@ -269,24 +287,27 @@ export default function DemoMode() {
     const controller = new AbortController()
     abortRef.current = controller
     let reachedTerminalState = false
+    const input = { workspaceId: selectedWorkspace, grade: selectedGrades.join(', '), subjects: selectedSubjects, topic: topic.trim(), description: description.trim() }
+    const key = JSON.stringify(input)
+    if (requestRef.current?.key !== key) requestRef.current = { key, id: crypto.randomUUID() }
 
     try {
       const headers = await getHeaders()
       const res = await fetch(`${API_BASE}/api/demo/generate`, {
         method: 'POST',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspaceId: selectedWorkspace,
-          grade: selectedGrades.join(', '),
-          subjects: selectedSubjects,
-          topic: topic.trim(),
-          description: description.trim(),
-        }),
+        body: JSON.stringify({ ...input, requestId: requestRef.current.id }),
         signal: controller.signal,
       })
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
+        if ([400, 403, 404, 429].includes(res.status) || data.status === 'failed') requestRef.current = null
+        if (res.status === 409 && data.projectId) {
+          updatePartialProjectState(data)
+          startRecoveryPolling(data)
+          return
+        }
         throw new Error(data.error || `HTTP ${res.status}`)
       }
 
@@ -320,14 +341,17 @@ export default function DemoMode() {
               updatePartialProjectState((prev) => prev ? { ...prev, savedBoards: (prev.savedBoards || 0) + parsed.saved } : prev)
             } else if (parsed.type === 'complete') {
               reachedTerminalState = true
+              requestRef.current = null
               clearRecoveryPolling()
               setTimeout(() => {
+                if (!mountedRef.current) return
                 generatingRef.current = false
                 navigate(`/workspaces/${parsed.workspaceId}/projects/${parsed.projectId}`)
               }, 800)
               return
             } else if (parsed.type === 'partial_failure') {
               reachedTerminalState = true
+              requestRef.current = null
               updatePartialProjectState({ projectId: parsed.projectId, workspaceId: parsed.workspaceId, savedBoards: parsed.savedBoards })
               setError(parsed.message || `${parsed.savedBoards}개만 저장되어 생성에 실패했습니다.`)
               generatingRef.current = false
@@ -344,10 +368,10 @@ export default function DemoMode() {
         }
       }
 
-      if (!reachedTerminalState && startRecoveryPolling(partialProjectRef.current)) {
-        return
-      }
+      if (!reachedTerminalState && startRecoveryPolling(partialProjectRef.current)) return
+      if (!reachedTerminalState) throw new Error('시작 상태를 확인하지 못했습니다. 다시 누르면 기존 요청을 확인합니다.')
     } catch (err) {
+      if (!mountedRef.current) return
       if (err.name === 'AbortError') {
         setError('생성이 취소되었습니다.')
       } else if (startRecoveryPolling(partialProjectRef.current)) {

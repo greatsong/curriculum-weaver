@@ -1,0 +1,24 @@
+name: Verify application
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Server regression tests
+        run: npm test --workspace=server -- --maxWorkers=2
+      - name: Client regression tests
+        run: npm test --workspace=client -- --maxWorkers=2
+      - name: Production build
+        run: npm run build
