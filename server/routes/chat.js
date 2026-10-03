@@ -16,7 +16,7 @@ import { buildAIResponse, buildProcedureIntroResponse } from '../services/aiAgen
 import {
   getMessages, getMessage, createMessage, getRecentMessages,
   getProject, getMemberRole, getDesignsByProject,
-  getStandardsByProject, upsertDesign, getProjectSkips, getWorkspaceWorkflowConfig,
+  getStandardsByProject, upsertDesign, getProjectSkips, getWorkspaceWorkflowConfig, deleteMessage,
 } from '../lib/supabaseService.js'
 import { excludeCurrentTeacherMessage } from '../lib/currentMessage.js'
 import { stripLeftoverAiMarkup } from '../lib/aiMarkup.js'
@@ -25,9 +25,11 @@ import { Materials, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode, isDemoBoardCode, resolveParticipationMode } from 'curriculum-weaver-shared/constants.js'
 import { isBriefProcedure, buildBriefIntro, BRIEF_SAVED_MARK, BRIEF_SAVED_SILENT_REPLY, isNoInterventionActive } from 'curriculum-weaver-shared/briefMode.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
+import { planProcedureMove, encodeMoveMeta, MOVE_NOTE_SENDER } from 'curriculum-weaver-shared/procedureMove.js'
 import { GENERAL_PRINCIPLES, getGeneralPrincipleName } from '../data/generalPrinciples.js'
 import { validateCodesInText } from '../lib/standardsValidator.js'
 import { isReadOnlyProject } from '../lib/projectGuards.js'
+import { aiChatLimiter } from '../middleware/rateLimit.js'
 import { PROCEDURE_GUIDE } from '../data/procedureGuide.js'
 import { resolveSelectedMaterialIds } from '../lib/materialSelection.js'
 
@@ -492,7 +494,93 @@ chatRouter.post('/procedure-intro', async (req, res) => {
 })
 
 // ─── 하위 호환: stage-intro → procedure-intro 리디렉트 ───
-chatRouter.post('/stage-intro', async (req, res) => {
+// ──────────────────────────────────────────
+// 절차 이동 기록 — 팀 커서를 옮긴 클라이언트가 한 번 부른다. 정해진 문구라 AI를 부르지 않는다.
+// 판단은 shared/procedureMove.js(planProcedureMove). 같은 프로젝트의 이동은 차례로 처리해
+// 동시 클릭이나 빠른 연속 이동에서도 기록이 겹치지 않게 한다(단일 인스턴스 전제).
+// ──────────────────────────────────────────
+
+const moveLocks = new Map()
+function withProjectMoveLock(projectId, task) {
+  const run = (moveLocks.get(projectId) || Promise.resolve()).then(task)
+  const tail = run.catch(() => {})
+  moveLocks.set(projectId, tail)
+  tail.then(() => { if (moveLocks.get(projectId) === tail) moveLocks.delete(projectId) })
+  return run
+}
+
+chatRouter.post('/procedure-move', async (req, res) => {
+  const { session_id: projectId, from, to, visited } = req.body || {}
+  if (!projectId || !PROCEDURES[from] || !PROCEDURES[to] || from === to) {
+    return res.status(400).json({ error: '프로젝트와 서로 다른 두 절차가 필요합니다.' })
+  }
+  const project = req.project || await getProject(projectId).catch(() => null)
+  if (!project) return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+  if (isReadOnlyProject(project) || project.learner_context?.demo === true) {
+    return res.status(403).json({ error: '이 프로젝트에는 절차 이동 기록을 남기지 않습니다.' })
+  }
+  if (req.projectRole === 'viewer') {
+    return res.status(403).json({ error: '절차를 옮길 권한이 없습니다.' })
+  }
+
+  try {
+    const result = await withProjectMoveLock(projectId, async () => {
+      const [messages, designs, skips] = await Promise.all([
+        getRecentMessages(projectId, 200),
+        getDesignsByProject(projectId),
+        getProjectSkips(projectId).catch(() => []),
+      ])
+      const skippedCodes = (skips || []).map((s) => s.procedure_code)
+      if (skippedCodes.includes(to)) return { message: null, removedMessages: [] }
+      const plan = planProcedureMove({ messages, designs, skippedCodes, from, to, visitedHint: visited === true })
+      if (plan.duplicate) return { message: plan.duplicate, removedMessages: [], duplicate: true }
+
+      const removedMessages = []
+      for (const id of plan.removeIds) {
+        const row = messages.find((m) => m.id === id)
+        try {
+          if (await deleteMessage(projectId, id)) {
+            removedMessages.push({ id, procedure_context: row?.procedure_context || null, content: row?.content || '' })
+          }
+        } catch (err) {
+          console.warn('[procedure-move] 지난 기록 정리 실패:', err.message)
+        }
+      }
+      const message = await createMessage({
+        project_id: projectId,
+        sender_type: 'ai',
+        sender_name: MOVE_NOTE_SENDER,
+        sender_subject: encodeMoveMeta(plan.meta),
+        content: plan.content,
+        procedure_context: to,
+      })
+      return { message, removedMessages }
+    })
+
+    const io = req.app.get('io') || globalThis.__cwIo
+    if (io && !result.duplicate) {
+      for (const removed of result.removedMessages) io.to(projectId).emit('message_removed', removed)
+      if (result.message) io.to(projectId).emit('message_added', result.message)
+    }
+    res.json({ message: result.message, removedMessages: result.removedMessages })
+  } catch (error) {
+    console.error('[procedure-move] 오류:', error?.message || error)
+    res.status(500).json({ error: '절차 이동 기록을 남기지 못했습니다.' })
+  }
+})
+
+// 정적 절차 안내는 AI를 부르지 않으므로 AI 채팅 한도(분당 10회)에서 뺀다. 예전에는 같은 한도에 묶여
+// 단계를 빠르게 둘러보면 안내 요청만으로 한도를 다 써서 그 1분 동안 AI 질문까지 막혔다(2026-10-04 측정).
+// AI를 부르는 시연 모드 코치 안내와, 프로젝트를 확인하지 못한 요청은 종전처럼 한도를 건다.
+function limitAiIntroOnly(req, res, next) {
+  const code = req.body?.procedure || req.body?.stage
+  if (!req.project || req.project.learner_context?.demo === true || isDemoBoardCode(code)) {
+    return aiChatLimiter(req, res, next)
+  }
+  next()
+}
+
+chatRouter.post('/stage-intro', limitAiIntroOnly, async (req, res) => {
   // stage 번호를 procedure 코드로 변환하는 것은 클라이언트에서 처리
   // 여기서는 호환성을 위해 procedure 필드가 있으면 사용
   req.body.procedure = req.body.procedure || req.body.stage

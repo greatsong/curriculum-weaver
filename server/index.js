@@ -332,7 +332,7 @@ app.use('/api/auth/signup', authLimiter)
 // AI 채팅 스트리밍 라우트: 분당 10회 (사용자당)
 app.use('/api/chat/message', aiChatLimiter)
 app.use('/api/chat/procedure-intro', aiChatLimiter)
-app.use('/api/chat/stage-intro', aiChatLimiter)
+// /api/chat/stage-intro는 라우트에서 시연 모드(AI 호출)만 aiChatLimiter를 건다. 정적 안내는 일반 한도만 적용
 
 // AI 비용 큰 공개 엔드포인트 보호
 app.use('/api/demo/generate', aiChatLimiter)

@@ -17,6 +17,7 @@ import {
   getActiveProcedures, replaceInternalProcedureCodes,
 } from '../../shared/constants.js'
 import { BOARD_SCHEMAS } from '../../shared/boardSchemas.js'
+import { isMoveNote } from '../../shared/procedureMove.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -93,7 +94,8 @@ export async function collectReportData(projectId) {
     messageStats = {
       total: msgs.length,
       teacher: msgs.filter(m => m.sender_type === 'teacher').length,
-      ai: msgs.filter(m => m.sender_type === 'ai').length,
+      // 절차 이동 기록은 정해진 안내라 AI 대화 수에서 뺀다
+      ai: msgs.filter(m => m.sender_type === 'ai' && !isMoveNote(m)).length,
       system: msgs.filter(m => m.sender_type === 'system').length,
     }
   } catch { /* 메시지 없으면 무시 */ }

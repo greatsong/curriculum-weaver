@@ -63,10 +63,12 @@ export const ipBackstopLimiter = rateLimit({
   validate: { xForwardedForHeader: false, default: true },
 })
 
-// ── 일반 API: 분당 120회 (사용자당) ──
+// ── 일반 API: 분당 240회 (사용자당) ──
+// 절차를 한 번 옮기면 보드·성취기준·자료·원리 조회와 안내·이동 기록으로 8~9회 요청이 나간다.
+// 19개 절차를 빠르게 둘러보면 1분 안에 150회를 넘어 120회 한도에서 보드 조회가 막혔다(2026-10-04 측정).
 export const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 120,
+  max: 240,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: userKey,

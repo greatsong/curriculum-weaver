@@ -11,6 +11,7 @@ import { applyDraftEvent, safeLocalStorage } from '../lib/explorationDraft'
 import { sameJson } from '../lib/sameJson'
 import { isBriefProcedure, stripEmptyBoardFields } from 'curriculum-weaver-shared/briefMode.js'
 import { workflowConfigForProject } from '../lib/projectWorkspace'
+import { isMoveNote } from 'curriculum-weaver-shared/procedureMove.js'
 
 /**
  * 이 절차를 약식으로 진행하는지 — 지금 연 프로젝트의 워크스페이스 설정 기준(핵심 절차 정식 진행 반영).
@@ -238,9 +239,14 @@ export const useChatStore = create((set, get) => ({
         return { messages: [...state.messages, message] }
       })
     }
+    // 절차 이동 기록 정리: 지나쳐 간 이동의 기록·안내가 지워졌다
+    const removeHandler = (removed) => {
+      if (removed?.id) get()._removeMessages([removed])
+    }
     socket.on('message_added', upsertHandler)
     socket.on('message_updated', upsertHandler)
-    set({ _messageHandler: upsertHandler })
+    socket.on('message_removed', removeHandler)
+    set({ _messageHandler: upsertHandler, _removeHandler: removeHandler })
   },
 
   unsubscribe: () => {
@@ -249,6 +255,8 @@ export const useChatStore = create((set, get) => ({
       socket.off('message_added', handler)
       socket.off('message_updated', handler)
     }
+    const removeHandler = get()._removeHandler
+    if (removeHandler) socket.off('message_removed', removeHandler)
     set({
       messages: [],
       boardSuggestions: [],
@@ -260,6 +268,7 @@ export const useChatStore = create((set, get) => ({
       coherenceCheckResult: null,
       procedureAdvanceSuggestion: null,
       _messageHandler: null,
+      _removeHandler: null,
       introCache: {},
       showIntroModal: false,
       introModalContent: '',
@@ -293,7 +302,7 @@ export const useChatStore = create((set, get) => ({
       const introsByProcedure = {}
       msgs.forEach(m => {
         const proc = m.stage_context || m.procedure_context
-        if (m.sender_type === 'ai' && proc && !introsByProcedure[proc]) {
+        if (m.sender_type === 'ai' && !isMoveNote(m) && proc && !introsByProcedure[proc]) {
           introsByProcedure[proc] = m.content
         }
       })
@@ -552,7 +561,7 @@ export const useChatStore = create((set, get) => ({
     // (loadMessages가 캐시를 복원하는 기준과 같다 — 절차별 첫 AI 메시지). 캐시가 어떤 이유로든
     // 비면 같은 인트로가 대화에 중복 저장되던 문제의 마지막 방어선.
     const existing = get().messages.find((m) =>
-      m?.sender_type === 'ai' && (m.stage_context || m.procedure_context) === procedureCode)
+      m?.sender_type === 'ai' && !isMoveNote(m) && (m.stage_context || m.procedure_context) === procedureCode)
     if (existing) {
       set((state) => ({ introCache: { ...state.introCache, [procedureCode]: existing.content } }))
       return
@@ -602,6 +611,46 @@ export const useChatStore = create((set, get) => ({
         set({ streaming: false, streamingText: '' })
       },
     }))
+  },
+
+  /**
+   * 절차 이동 기록 — 팀 커서를 옮긴 쪽에서 한 번 부른다. 실패해도 이동 자체는 막지 않는다.
+   * 서버가 지나쳐 간 이동의 기록·안내를 지웠으면 화면에서도 지운다(팀원은 소켓으로 받는다).
+   */
+  recordProcedureMove: async (projectId, from, to, { visited = false } = {}) => {
+    try {
+      const res = await apiPost('/api/chat/procedure-move', { session_id: projectId, from, to, visited })
+      get()._removeMessages(res?.removedMessages || [])
+      const message = res?.message
+      if (message?.id) {
+        set((state) => (state.messages.some((m) => m.id === message.id)
+          ? {}
+          : { messages: [...state.messages, message] }))
+      }
+    } catch (err) {
+      console.warn('절차 이동 기록 실패:', err?.message || err)
+    }
+  },
+
+  /**
+   * 서버에서 지운 메시지를 화면에서도 지운다. 절차 안내는 이 화면에서 임시 id로 붙인 경우가 있어
+   * id가 달라도 같은 절차의 같은 안내 문구면 같은 메시지로 본다. 지운 안내는 캐시에서도 빼서
+   * 다음에 그 절차에 제대로 들어오면 안내가 다시 만들어지게 한다.
+   */
+  _removeMessages: (removedList) => {
+    if (!Array.isArray(removedList) || removedList.length === 0) return
+    set((state) => {
+      const matches = (m) => removedList.some((r) => r.id === m.id || (
+        m.sender_type === 'ai' && !isMoveNote(m) && r.procedure_context
+        && (m.stage_context || m.procedure_context) === r.procedure_context && m.content === r.content))
+      const removed = state.messages.filter(matches)
+      if (removed.length === 0) return {}
+      const introCache = { ...state.introCache }
+      for (const r of removedList) {
+        if (r.procedure_context && introCache[r.procedure_context] === r.content) delete introCache[r.procedure_context]
+      }
+      return { messages: state.messages.filter((m) => !matches(m)), introCache }
+    })
   },
 
   // ── 인트로 모달 ────
