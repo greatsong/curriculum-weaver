@@ -20,12 +20,18 @@ import {
   NEBULA_BG, SUBJECT_COLORS_DARK, FALLBACK_NODE_COLOR,
   LINK_TYPE_COLORS_DARK, LINK_TYPE_LABELS, SIZE, TIMING, AUTOROTATE,
 } from '../lib/nebulaTheme'
+import ExplorationContextBar from './ExplorationContextBar'
+import Button from './ui/Button'
+import { useDestinationProject } from './useDestinationProject'
+import { destinationBarModel } from '../lib/exploreBar'
+import { projectDestination, withDestination, readBasket, writeBasket, compareAvailability, futuresUrl } from '../lib/exploreDestination'
+import { safeSessionStorage } from '../lib/explorationDraft'
+import { EXPLORE_COPY } from '../lib/explorationCopy'
 
 const groupColor = (g) => SUBJECT_COLORS_DARK[g] || FALLBACK_NODE_COLOR
 
-// 담기 트레이 — 설계 모드(DesignMode)와 같은 sessionStorage 키를 공유해
-// 탐험에서 담은 성취기준이 프로젝트 생성 모달에 그대로 이어진다
-const BASKET_KEY = 'cw_design_basket'
+// 담기 — 성취기준 연결 찾기(DesignMode)와 같은 목적지별 저장소를 쓴다(lib/exploreDestination.js).
+// 새 프로젝트 담기는 프로젝트 만들기 모달에, 프로젝트 담기는 미래보기 비교에 이어진다.
 
 // 연결수 로그 스케일 노드 크기 (스펙 §6-1)
 function nodeSize(degree, maxDegree) {
@@ -101,18 +107,24 @@ export default function Graph3DShowcase() {
   const [browseSubject, setBrowseSubject] = useState('')
   const [helpOpen, setHelpOpen] = useState(false)
   const [themeQuery, setThemeQuery] = useState('') // 주제 스포트라이트 검색어
-  // 담기 트레이 — DesignMode와 sessionStorage 공유 (저장값은 성취기준 key)
-  const [basket, setBasket] = useState(() => {
-    try { return new Set(JSON.parse(sessionStorage.getItem(BASKET_KEY) || '[]')) } catch { return new Set() }
-  })
+  // 보낼 곳 (?project=) — 연결 찾기와 오갈 때도 유지한다
+  const projectParam = searchParams.get('project') || ''
+  const destination = useMemo(() => projectDestination(projectParam), [projectParam])
+  const projectState = useDestinationProject(destination.projectId)
+  const bar = destinationBarModel(destination, projectState)
+  // 담기 트레이 — DesignMode와 같은 목적지별 저장소 (저장값은 성취기준 key)
+  const [basket, setBasket] = useState(() => new Set(readBasket(safeSessionStorage(), destination)))
+  useEffect(() => { setBasket(new Set(readBasket(safeSessionStorage(), destination))) }, [destination])
   const toggleBasket = useCallback((key) => {
     setBasket(prev => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key); else next.add(key)
-      sessionStorage.setItem(BASKET_KEY, JSON.stringify([...next]))
+      writeBasket(safeSessionStorage(), destination, [...next])
       return next
     })
-  }, [])
+  }, [destination])
+  const compare = compareAvailability(basket.size)
+  const openCompare = () => { if (compare.ok) navigate(futuresUrl({ keys: [...basket], destination })) }
   // 링크 신고 상태 (pairId(a, b) → 요청됨/완료)
   const [reportedLinks, setReportedLinks] = useState(() => new Set())
   const [reportingKey, setReportingKey] = useState(null)
@@ -533,14 +545,14 @@ export default function Graph3DShowcase() {
   }
   const resetAll = () => { setActiveGroups(null); setActiveLevels(null); setThemeQuery('') }
   const toDesign = () => {
-    const next = new URLSearchParams()
+    const next = withDestination(new URLSearchParams(), destination)
     next.set('mode', 'design')
     setSearchParams(next)
   }
   // 탐험→설계 컨텍스트 이월: 보고 있던 별을 이웃 렌즈 포커스로 열기
   const openInDesign = () => {
     if (!selected) return
-    const next = new URLSearchParams()
+    const next = withDestination(new URLSearchParams(), destination)
     next.set('mode', 'design')
     next.set('lens', 'neighbor')
     next.set('focus', selected)
@@ -652,7 +664,7 @@ export default function Graph3DShowcase() {
                 : 'bg-white/[0.06] hover:bg-white/[0.12] border-white/[0.08] text-slate-300/90 hover:text-slate-100'}`}>
             🧺 {basket.has(selected) ? '담김 ✓' : '담기'}
           </button>
-          <button onClick={openInDesign} title="이 성취기준을 설계 모드 이웃 렌즈에서 열기"
+          <button onClick={openInDesign} title="이 성취기준을 성취기준 연결 찾기의 성취기준에서 찾기로 열기"
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-slate-300/90 hover:text-slate-100 transition-colors duration-150">
             <Compass size={13} /> 연결 찾기에서 열기
           </button>
@@ -662,7 +674,25 @@ export default function Graph3DShowcase() {
   )
 
   return (
-    <div className="relative h-full w-full overflow-hidden select-none"
+    // 보낼 곳·반영 상태 머리 줄은 장면 위에 겹치지 않고, 3D 영역 바로 위의 밝은 줄로 둔다.
+    // 3D 영역(아래 relative 상자)이 줄어도 상세 카드는 영역 기준 높이(100%-88px)라 잘리지 않는다.
+    <div className="h-full w-full flex flex-col">
+      <ExplorationContextBar icon={bar.icon} target={bar.target} changeHref={bar.changeHref} status={bar.status}
+        actions={basket.size > 0 ? (
+          <>
+            <span className="hidden md:inline text-xs text-text-secondary whitespace-nowrap tabular-nums">{EXPLORE_COPY.graph.basketCount(basket.size)}</span>
+            {destination.type === 'new' && (
+              <Button variant="secondary" size="sm" onClick={() => navigate('/workspaces?createProject=1')}>
+                {EXPLORE_COPY.graph.startProject}
+              </Button>
+            )}
+            <Button variant="primary" size="sm" onClick={openCompare} disabled={!compare.ok}
+              title={compare.ok ? undefined : (compare.reason === 'tooMany' ? EXPLORE_COPY.graph.tooMany : EXPLORE_COPY.graph.tooFew)}>
+              {EXPLORE_COPY.graph.compare}
+            </Button>
+          </>
+        ) : null} />
+    <div className="relative flex-1 min-h-0 w-full overflow-hidden select-none"
       style={{ fontFamily: "'Nanum Gothic', var(--font-sans)" }}>
       {/* 배경: 딥네이비 래디얼 + 비네트 (스펙 §1) */}
       <div className="absolute inset-0 z-0"
@@ -723,13 +753,6 @@ export default function Graph3DShowcase() {
             </div>
           </div>
           <div className="pointer-events-auto flex items-center gap-2 animate-ui-in" style={{ animationDelay: '80ms' }}>
-            {!tour.active && basket.size > 0 && (
-              <button onClick={() => navigate('/workspaces?createProject=1')}
-                title="담은 성취기준으로 프로젝트 시작"
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 transition-colors duration-150">
-                🧺 <b className="tabular-nums">{basket.size}</b> <span className="hidden sm:inline font-medium">프로젝트 시작</span>
-              </button>
-            )}
             {!tour.active && (
               <button onClick={() => setBrowseOpen(v => !v)}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-medium border transition-colors duration-150 ${
@@ -776,40 +799,40 @@ export default function Graph3DShowcase() {
               <div>
                 <p className="text-[11px] font-semibold text-slate-400/80 uppercase tracking-wide mb-2">화면 조작</p>
                 <ul className="space-y-1.5 text-[13px] text-slate-300/90 leading-relaxed">
-                  <li>· 드래그 — 성운 회전</li>
-                  <li>· 스크롤 / 핀치 — 확대·축소</li>
-                  <li>· 별(성취기준) 클릭 — 상세 정보와 연결 목록 보기</li>
-                  <li>· 빈 우주 클릭 — 선택 해제</li>
+                  <li>· 드래그: 성운 회전</li>
+                  <li>· 스크롤 / 핀치: 확대·축소</li>
+                  <li>· 별(성취기준) 클릭: 상세 정보와 연결 목록 보기</li>
+                  <li>· 빈 우주 클릭: 선택 해제</li>
                 </ul>
               </div>
               <div>
                 <p className="text-[11px] font-semibold text-slate-400/80 uppercase tracking-wide mb-2">교과군 필터 (좌하단)</p>
                 <ul className="space-y-1.5 text-[13px] text-slate-300/90 leading-relaxed">
-                  <li>· 칩 클릭 — 해당 교과군 켜기·끄기</li>
-                  <li>· 칩 더블클릭 — 그 교과군만 남기고 나머지 끄기</li>
-                  <li>· 모두 끄기 — 전부 끄고 원하는 교과군만 직접 선택</li>
-                  <li>· 모두 켜기 — 필터를 처음 상태로 되돌리기</li>
-                  <li>· 주제 스포트라이트 — "기후"처럼 입력하면 그 주제의 연결만 점등</li>
+                  <li>· 칩 클릭: 해당 교과군 켜기·끄기</li>
+                  <li>· 칩 더블클릭: 그 교과군만 남기고 나머지 끄기</li>
+                  <li>· 모두 끄기: 전부 끄고 원하는 교과군만 직접 선택</li>
+                  <li>· 모두 켜기: 필터를 처음 상태로 되돌리기</li>
+                  <li>· 주제 스포트라이트: "기후"처럼 입력하면 그 주제의 연결만 점등</li>
                 </ul>
               </div>
               <div>
                 <p className="text-[11px] font-semibold text-slate-400/80 uppercase tracking-wide mb-2">별 상세 카드</p>
                 <ul className="space-y-1.5 text-[13px] text-slate-300/90 leading-relaxed">
-                  <li>· 🧺 담기 — 성취기준을 담아 두면 프로젝트 만들 때 자동 포함</li>
-                  <li>· 연결 찾기에서 열기 — 이 별을 설계 모드 이웃 렌즈로 이어서 보기</li>
-                  <li>· 이상해요 — 억지스러운 연결을 발견하면 검토 요청</li>
+                  <li>· 🧺 담기: 담은 성취기준은 미래보기 비교나 프로젝트 만들기에 사용합니다. 보내기 전까지 어느 프로젝트에도 저장되지 않습니다.</li>
+                  <li>· 연결 찾기에서 열기: 이 별을 성취기준 연결 찾기의 성취기준에서 찾기로 이어서 보기</li>
+                  <li>· 이상해요: 억지스러운 연결을 발견하면 검토 요청</li>
                 </ul>
               </div>
               <div>
                 <p className="text-[11px] font-semibold text-slate-400/80 uppercase tracking-wide mb-2">상단 도구</p>
                 <ul className="space-y-1.5 text-[13px] text-slate-300/90 leading-relaxed">
-                  <li>· 별 목록 — 과목을 골라 성취기준을 텍스트로 찾고, 클릭해 그 별로 이동</li>
-                  <li>· 우주 여행 — 전 교과군을 차례로 도는 가이드 투어. 이전·다음 버튼으로 직접 넘기거나 일시정지 가능 (Esc로 종료)</li>
-                  <li>· 설계 모드 — 성취기준을 실제로 연결·편집하는 화면으로 이동</li>
+                  <li>· 별 목록: 과목을 골라 성취기준을 텍스트로 찾고, 클릭해 그 별로 이동</li>
+                  <li>· 우주 여행: 전 교과군을 차례로 도는 가이드 투어. 이전·다음 버튼으로 직접 넘기거나 일시정지 가능 (Esc로 종료)</li>
+                  <li>· 연결 찾기: 성취기준 연결 찾기 화면으로 이동해 연결을 자세히 살펴보고 담기</li>
                 </ul>
               </div>
               <p className="text-[11.5px] text-slate-400/60 leading-relaxed pt-1 border-t border-white/[0.08]">
-                이 화면은 발표·감상 전용입니다. 연결을 직접 추가하거나 수정하려면 설계 모드를 이용하세요.
+                이 화면은 발표와 감상에 맞춘 화면입니다. 연결을 자세히 살펴보고 담으려면 성취기준 연결 찾기를 사용합니다.
               </p>
             </div>
           </div>
@@ -1089,6 +1112,7 @@ export default function Graph3DShowcase() {
           </div>
         </>
       )}
+    </div>
     </div>
   )
 }

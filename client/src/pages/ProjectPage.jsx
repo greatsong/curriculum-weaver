@@ -22,7 +22,12 @@ import ReportDownload from '../components/ReportDownload'
 import MaterialUploadBar from '../components/MaterialUploadBar'
 import InteractiveTour from '../components/InteractiveTour'
 import ContinueSimulationButton from '../components/ContinueSimulationButton'
-import A3ExplorationEntry from '../components/A3ExplorationEntry'
+import ExplorationDraftStrip from '../components/ExplorationDraftStrip'
+import { Compass } from 'lucide-react'
+import { EXPLORE_COPY } from '../lib/explorationCopy'
+import { exploreHubUrl, projectDestination } from '../lib/exploreDestination'
+import { recordRecentProject } from '../lib/recentProjects'
+import { safeLocalStorage } from '../lib/explorationDraft'
 import { computeWorkZoom, MAX_WORK_ZOOM } from '../lib/workZoom'
 
 // 시연 모드 자립 보드 코드 (BOARD_TYPES['demo_lesson_plan']='lesson_plan', ['demo_script']='demo_script')
@@ -191,6 +196,16 @@ export default function ProjectPage() {
   // demo일 때 팀 전제 UI 4종(닉네임 모달·소켓 join·팀 커서 PATCH·ProcedureNav)을
   // 하나의 게이트로 함께 끈다(§9 리스크1·4). 협력 모드(기본값)는 isDemo=false로 완전 불변.
   const isDemo = currentProject?.learner_context?.demo === true
+
+  // 홈의 "이어서 하기" — 이 브라우저에서 연 프로젝트를 최근 순으로 기록한다(시연 모드 제외)
+  useEffect(() => {
+    if (!currentProject?.id || currentProject.id !== projectId || isDemo) return
+    recordRecentProject(safeLocalStorage(), {
+      id: currentProject.id,
+      workspaceId: currentProject.workspace_id || workspaceId,
+      title: currentProject.title || '',
+    })
+  }, [currentProject?.id, currentProject?.title, currentProject?.workspace_id, projectId, workspaceId, isDemo])
 
   // 시연 모드 얕은 스텝: 'standards'(성취기준·단원 선택) → 'plan'(교수학습과정안)
   const [demoStep, setDemoStep] = useState('standards')
@@ -694,6 +709,8 @@ export default function ProjectPage() {
             { onClick: () => setMaterialsOpen((v) => !v), color: '#4B5563', active: materialsOpen, icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>, label: materialsCount > 0 ? `자료 ${materialsCount}` : '자료', title: '자료 관리' },
             ...(isDesktop ? [{ onClick: () => setShowPrinciples((v) => !v), color: '#2563EB', active: showPrinciples, tour: 'principle-panel', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>, label: '원칙', title: '원칙 보기' }] : []),
             { onClick: () => setShowReport(true), color: '#7C3AED', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>, label: '보고서', title: '결과 보고서' },
+            // 수업 아이디어 탐색 — 이 프로젝트를 보낼 곳으로 정해 시작 화면을 연다(절차는 옮기지 않는다)
+            ...(isDemo ? [] : [{ onClick: () => navigate(exploreHubUrl(projectDestination(projectId))), color: '#1D4ED8', icon: <Compass size={15} strokeWidth={2} aria-hidden="true" />, label: EXPLORE_COPY.projectHeader.explore, title: EXPLORE_COPY.projectHeader.exploreTitle }]),
             { onClick: () => setShowStandardSearch(true), color: '#16A34A', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>, label: '성취기준', title: '성취기준 탐색' },
             // 공유는 협력(팀 워크스페이스) 전용 — 개인 시연 준비에서는 은닉.
             ...(isDemo ? [] : [{ onClick: handleCopyInvite, color: '#3B82F6', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>, label: '공유', title: '프로젝트 링크 복사' }]),
@@ -835,8 +852,10 @@ export default function ProjectPage() {
         </div>
       )}
 
-      <A3ExplorationEntry project={currentProject} procedure={currentProcedure} />
-      {!isDemo && !isReadOnlyProject && skippedCodes.size > 0 && <div role="note" style={{ padding: '8px 16px', background: '#fff8e9', color: '#795619', fontSize: 12, flexShrink: 0 }}>생략한 단계가 있는 프로젝트는 현재 ‘이어서 시뮬레이션’을 지원하지 않습니다. A-3 연결 아이디어 탐색은 사용할 수 있습니다.</div>}
+      {/* 미래보기 탐색 초안 안내 줄 — 모든 절차에서 보이되 절차를 옮기지 않는다(A-3에서만 입력창에 넣기) */}
+      <ExplorationDraftStrip project={currentProject} procedure={currentProcedure} readOnly={isReadOnlyProject}
+        onInserted={() => setActivePanel('chat')} />
+      {!isDemo && !isReadOnlyProject && skippedCodes.size > 0 && <div role="note" style={{ padding: '8px 16px', background: '#fff8e9', color: '#795619', fontSize: 12, flexShrink: 0 }}>{EXPLORE_COPY.projectHeader.skippedNote}</div>}
 
       {/* 후행 절차 재검토 안내 — 앞 절차가 이 절차보다 나중에 수정된 경우 */}
       {currentIsStale && !isReadOnlyProject && (

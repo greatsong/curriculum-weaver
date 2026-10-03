@@ -5,6 +5,9 @@ import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
 import { apiGet, apiPost } from '../lib/api'
 import { standardKey, codeFromKey, subjectFromKey } from '../lib/standardKey'
+import { NEW_DESTINATION, readBasket, readBasketMeta, writeBasket, clearBasket } from '../lib/exploreDestination'
+import { safeSessionStorage } from '../lib/explorationDraft'
+import { EXPLORE_COPY } from '../lib/explorationCopy'
 import { PROCEDURES, PHASES, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE, resolveParticipationMode, PROJECT_GRADE_OPTIONS } from 'curriculum-weaver-shared/constants.js'
 import ParticipationModePicker from '../components/ParticipationModePicker'
 import Logo from '../components/Logo'
@@ -200,10 +203,11 @@ export default function WorkspaceDetailPage() {
     if (!showCreateProject) return
     try {
       // 담기 저장값은 성취기준 key(충돌 코드는 "code|과목") — 서버 bulk 요청에도 그대로 보낸다
-      const keys = JSON.parse(sessionStorage.getItem('cw_design_basket') || '[]')
+      // 새 프로젝트 담기: 새 키(cw_explore_basket:new)와 기존 키(cw_design_basket)를 함께 읽는다
+      const keys = readBasket(safeSessionStorage(), NEW_DESTINATION)
       setDesignBasket(keys)
       // 교과 메타(key→subject_group)로 교과 칩 자동 선택 (사용자가 이미 고른 게 없을 때만)
-      const meta = JSON.parse(sessionStorage.getItem('cw_design_basket_meta') || '{}')
+      const meta = readBasketMeta(safeSessionStorage())
       const groups = [...new Set(keys.map(k => meta[k]).filter(Boolean))]
       if (groups.length > 0) {
         setProjectSubjects(prev => (prev.length > 0 ? prev : [...new Set([...prev, ...groups])]))
@@ -255,8 +259,8 @@ export default function WorkspaceDetailPage() {
           await apiPost(`/api/standards/project/${project.id}/bulk`, {
             standard_codes: allKeys,
           })
-          // 담아온 성취기준은 프로젝트에 반영됐으므로 장바구니 비움
-          sessionStorage.removeItem('cw_design_basket')
+          // 담아온 성취기준은 프로젝트에 반영됐으므로 장바구니 비움 (새 키·기존 키 모두)
+          clearBasket(safeSessionStorage(), NEW_DESTINATION)
           setDesignBasket([])
         } catch (e) {
           console.warn('성취기준 일괄 저장 실패:', e.message)
@@ -1022,7 +1026,7 @@ export default function WorkspaceDetailPage() {
               {designBasket.length > 0 && (
                 <div style={{ border: '1px solid #bfdbfe', borderRadius: 8, padding: 12, background: '#eff6ff' }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: '#1d4ed8', marginBottom: 8 }}>
-                    🧺 교과 연결에서 담아온 성취기준 {designBasket.length}개 — 프로젝트에 자동 포함됩니다
+                    {EXPLORE_COPY.createModal.basketLine(designBasket.length)}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {designBasket.map(key => (
@@ -1039,7 +1043,7 @@ export default function WorkspaceDetailPage() {
                           onClick={() => {
                             const next = designBasket.filter(k => k !== key)
                             setDesignBasket(next)
-                            sessionStorage.setItem('cw_design_basket', JSON.stringify(next))
+                            writeBasket(safeSessionStorage(), NEW_DESTINATION, next)
                           }}
                           style={{ border: 'none', background: 'none', color: '#9ca3af', cursor: 'pointer', padding: 0, fontSize: 11 }}>
                           ✕

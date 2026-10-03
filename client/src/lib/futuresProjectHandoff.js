@@ -1,15 +1,26 @@
 import { buildFuturesSearch, FUTURE_MAX } from './futures2'
+import { EXPLORE_COPY } from './explorationCopy'
+
+const B = EXPLORE_COPY.board
+const P = EXPLORE_COPY.policy
+const H = EXPLORE_COPY.handoff
+
+/** 인계 초안의 첫 줄 — 대화로 보낸 메시지가 초안인지 알아보는 표식으로도 쓴다 */
+export const HANDOFF_HEADER = H.header
 
 export const A3_PROCEDURE = 'A-2-1'
 
+/** 서버 채팅 라우트의 메시지 길이 제한(server/routes/chat.js, 5,000자)과 같아야 한다 */
+export const CHAT_MESSAGE_MAX = 5000
+
 // 보드의 저장 상태는 확인할 수 있지만, AI가 재작성한 탐색 초안의 채택 여부는 추정하지 않는다.
 export function a3BoardStatus(design) {
-  if (!design) return '저장 상태 확인 필요'
-  if (design.created === false) return '아직 저장된 보드 없음'
-  if (design.save_status === 'locked') return '저장된 보드 · 잠김'
-  if (design.save_status === 'confirmed') return '저장된 보드 · 확정됨'
-  if (design.id || design.updated_at || design.created_at) return '저장된 보드 · 초안'
-  return '저장 상태 확인 필요'
+  if (!design) return B.unknown
+  if (design.created === false) return B.none
+  if (design.save_status === 'locked') return B.locked
+  if (design.save_status === 'confirmed') return B.confirmed
+  if (design.id || design.updated_at || design.created_at) return B.draft
+  return B.unknown
 }
 
 export function projectExplorationUrl(projectId) {
@@ -23,14 +34,26 @@ export function explorationSearch(keys, model, projectId) {
 }
 
 export function handoffPolicy(project, design) {
-  if (project?.learner_context?.demo) return { blocked: true, note: '시연 모드는 A-3 대신 성취기준·단원 선택 화면을 사용합니다. 원래 프로젝트에서 이어서 진행해 주세요.' }
-  if (project?.status === 'generating') return { blocked: true, note: '시뮬레이션 생성 중입니다. 완료된 뒤 연결 아이디어를 탐색해 주세요.' }
-  if (project?.status === 'failed') return { blocked: true, note: '생성이 중단된 프로젝트입니다. 복구 상태를 확인한 뒤 탐색해 주세요.' }
-  if (project?.status === 'simulation' || project?.title?.startsWith('[시뮬레이션]')) return { blocked: false, note: '시뮬레이션 결과는 읽기 전용입니다. 탐색 결과는 비교·참고용으로 복사할 수 있으며 원본에 저장되지 않습니다.' }
-  if (project?.my_role === 'viewer') return { blocked: false, note: '열람 권한으로 탐색 중입니다. 복사한 결과는 편집 권한이 있는 팀원과 검토해 주세요.' }
-  if (project?.skipped_procedures?.some(s => (s.procedure_code || s) === A3_PROCEDURE)) return { blocked: false, note: 'A-3가 생략된 상태입니다. 탐색은 참고용이며, 반영하려면 프로젝트에서 단계 상태를 먼저 확인해 주세요.' }
-  if (design?.save_status === 'locked') return { blocked: false, note: 'A-3 보드가 잠겨 있습니다. 탐색 결과를 검토하고, 반영할 때 프로젝트에서 잠금 상태를 확인해 주세요.' }
-  return { blocked: false, note: '결과를 복사한 뒤 원래 프로젝트의 A-3 대화창에 붙여넣으세요. 기존 분석과 비교해 반영할 초안을 요청합니다.' }
+  if (project?.learner_context?.demo) return { blocked: true, note: P.demo }
+  if (project?.status === 'generating') return { blocked: true, note: P.generating }
+  if (project?.status === 'failed') return { blocked: true, note: P.failed }
+  if (project?.status === 'simulation' || project?.title?.startsWith('[시뮬레이션]')) return { blocked: false, note: P.simulation }
+  if (project?.my_role === 'viewer') return { blocked: false, note: P.viewer }
+  if (project?.skipped_procedures?.some(s => (s.procedure_code || s) === A3_PROCEDURE)) return { blocked: false, note: P.skipped }
+  if (design?.save_status === 'locked') return { blocked: false, note: P.locked }
+  return { blocked: false, note: P.normal }
+}
+
+/**
+ * 보내기 확인 창의 정책 — 보내기(초안을 A-3 대화로)와 복사를 구분한다.
+ * 차단(시연·생성 중·실패)은 탐색 자체가 막힌다. 읽기 전용(시뮬레이션·열람·A-3 생략)은 복사만 된다.
+ */
+export function sendPolicy(project, design) {
+  const policy = handoffPolicy(project, design)
+  if (policy.blocked) return { ...policy, canSend: false, readOnly: false }
+  const skippedA3 = !!project?.skipped_procedures?.some(s => (s.procedure_code || s) === A3_PROCEDURE)
+  const readOnly = project?.status === 'simulation' || !!project?.title?.startsWith('[시뮬레이션]') || project?.my_role === 'viewer' || skippedA3
+  return { ...policy, canSend: !!project && !readOnly, readOnly }
 }
 
 /** 프로젝트 등록 기준과 A-3 분석표를 합치되, 동일 코드의 다른 과목을 임의로 고르지 않는다. */
@@ -51,18 +74,20 @@ export function resolveProjectStandards(catalog, entries = [], design = {}) {
 export function buildA3Handoff({ project, standards, bridges, future }) {
   const selected = new Map(standards.map(s => [s.key, s]))
   const lines = [
-    '[A-3 성취기준 분석 · 연결 아이디어 탐색 결과]',
-    `참고 프로젝트: ${project.title}`,
-    '아래 내용은 검토용 탐색 초안입니다. 기존 주제와 성취기준 분석에 비추어 적합성을 검토하고, ‘핵심 요소 통합·조정’에 반영할 초안을 제안해 주세요. 기존 내용을 바로 덮어쓰거나 단계를 완료·이동하지 말고 먼저 비교해 주세요. 재구조화 성취기준은 검토 후 별도로 제안해 주세요.',
-    '\n선택한 성취기준',
+    H.header,
+    H.project(project.title),
+    H.instruction,
+    `\n${H.standards}`,
     ...standards.map(s => `- ${s.subject} ${s.code}: ${s.content}`),
-    '\n연결 키워드와 근거',
-    ...(bridges?.concepts || []).map(c => `- ${c.label}: ${c.ends.map(e => `${selected.get(e.key)?.subject || ''} ${selected.get(e.key)?.code || ''} ‘${e.word}’`).join(' ↔ ')}\n  근거: ${c.why || ''}`),
   ]
+  if (bridges?.concepts?.length) lines.push(
+    `\n${H.bridges}`,
+    ...bridges.concepts.map(c => `- ${c.label}: ${c.ends.map(e => `${selected.get(e.key)?.subject || ''} ${selected.get(e.key)?.code || ''} ‘${e.word}’`).join(' ↔ ')}\n  ${H.bridgeWhy(c.why || '')}`),
+  )
   if (future) lines.push(
-    '\n참고할 수업 아이디어', `제목: ${future.title}`, `상황: ${future.situation || ''}`, `탐구 질문: ${future.driving_question || ''}`,
-    '\n과목별 역할', ...(future.roles || []).map(r => `- ${selected.get(r.key)?.subject || r.subject || ''} ${selected.get(r.key)?.code || r.code || ''}: ${r.role}`),
-    '\n활동과 결과물 (후속 설계 참고)', ...(future.activity_steps || []).map((s, i) => `${i + 1}. ${s}`), `결과물: ${future.student_output || ''}`,
+    `\n${H.idea}`, H.ideaTitle(future.title), H.ideaSituation(future.situation || ''), H.ideaQuestion(future.driving_question || ''),
+    `\n${H.roles}`, ...(future.roles || []).map(r => `- ${selected.get(r.key)?.subject || r.subject || ''} ${selected.get(r.key)?.code || r.code || ''}: ${r.role}`),
+    `\n${H.activities}`, ...(future.activity_steps || []).map((s, i) => `${i + 1}. ${s}`), H.output(future.student_output || ''),
   )
   return lines.join('\n')
 }

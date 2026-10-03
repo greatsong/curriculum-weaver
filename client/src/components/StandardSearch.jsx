@@ -6,7 +6,8 @@ import { standardKey, projectStandardKey, codeFromKey } from '../lib/standardKey
 import MathText from './MathText'
 import { useProjectStore } from '../stores/projectStore'
 import { buildRecommendBoardContext, resolveRecommendScope, recommendBasisText } from '../lib/recommendContext'
-import ExplorationStatus from './ExplorationStatus'
+import ExplorationContextBar from './ExplorationContextBar'
+import Button from './ui/Button'
 
 // 교과군(subject_group) 기준 색상 매핑
 const SUBJECT_GROUP_COLORS = {
@@ -277,12 +278,17 @@ export default function StandardSearch({ sessionId, onClose }) {
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 min-w-[44px] min-h-[44px] flex items-center justify-center -mr-2"><X size={20} /></button>
         </div>
 
-        <ExplorationStatus target={`${currentProject?.id === sessionId ? currentProject.title : `프로젝트 ${sessionId}`} · 성취기준 탐색`}
-          status={saving ? '변경 저장 중 · 완료 전' : saveError || (syncStatus === 'loading' ? '저장된 성취기준 확인 중' : syncStatus === 'error' ? '저장 상태 확인 실패 · 재확인 필요' : `프로젝트에 저장된 성취기준 ${sessionStandards.filter(s => !s._optimistic).length}개`)}>
-          검색·AI 추천 결과는 검토용입니다. 추가한 성취기준만 이 프로젝트에 저장되며, A-3 분석 보드는 별도로 검토·저장합니다.
+        {/* 프로젝트 안 성취기준 탐색 — 탐색 화면과 같은 머리 줄 부품. 저장 상태는 서버 확인 결과로만 표시 */}
+        <ExplorationContextBar icon={readOnly ? 'lock' : 'search'} label={null}
+          target={`${currentProject?.id === sessionId ? currentProject.title : `프로젝트 ${sessionId}`} · 성취기준 탐색`}
+          statusTone={saving ? 'info' : (saveError || syncStatus === 'error') ? 'warning' : 'neutral'}
+          statusLabel={saving ? '변경 저장 중 · 완료 전' : saveError || (syncStatus === 'loading' ? '저장된 성취기준 확인 중' : syncStatus === 'error' ? '저장 상태 확인 실패 · 재확인 필요' : `프로젝트에 저장된 성취기준 ${sessionStandards.filter(s => !s._optimistic).length}개`)}
+          actions={(syncStatus === 'error' || saveError) && !saving
+            ? <Button variant="link" size="sm" onClick={loadSessionStandards}>저장 상태 다시 확인</Button>
+            : null}
+          note="검색·AI 추천 결과는 검토용입니다. 추가한 성취기준만 이 프로젝트에 저장되며, A-3 분석 보드는 별도로 검토·저장합니다.">
           {readOnly && <div>읽기 전용 · 검색과 비교만 가능하며 성취기준을 추가하거나 제거할 수 없습니다.</div>}
-          {(syncStatus === 'error' || saveError) && !saving && <button type="button" className="ml-2 underline" onClick={loadSessionStandards}>저장 상태 다시 확인</button>}
-        </ExplorationStatus>
+        </ExplorationContextBar>
 
         {/* 에러 배너 */}
         {errorMsg && (

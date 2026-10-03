@@ -5,7 +5,9 @@ import { useProcedureStore } from './procedureStore'
 import { useProjectStore } from './projectStore'
 import { useWorkspaceStore } from './workspaceStore'
 import { pushToast } from './toastStore'
-import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, normalizeProcedureCode } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, normalizeProcedureCode, getProcedureLabel } from 'curriculum-weaver-shared/constants.js'
+import { HANDOFF_HEADER } from '../lib/futuresProjectHandoff'
+import { applyDraftEvent, safeLocalStorage } from '../lib/explorationDraft'
 import { sameJson } from '../lib/sameJson'
 
 /** 제안이 반영되는 보드의 화면 이름 (예: '팀 일정') */
@@ -149,6 +151,18 @@ async function guardStreaming(set, get, streamPromise) {
   }
 }
 
+/**
+ * 탐색 초안에서 나온 제안을 수락한 결과를 초안 상태에 남긴다(이 브라우저에만).
+ * 저장 응답을 받았으면 '보드에 반영됨', 받지 못했으면 '저장 확인 필요' — 실패를 성공으로 표시하지 않는다.
+ */
+function noteExplorationOutcome(projectId, suggestion, persisted) {
+  if (!suggestion?.fromExploration) return
+  applyDraftEvent(safeLocalStorage(), projectId, {
+    type: 'accepted', draftId: suggestion.fromExploration, persisted, at: Date.now(),
+    label: suggestion.procedureCode ? getProcedureLabel(suggestion.procedureCode) : '',
+  })
+}
+
 export const useChatStore = create((set, get) => ({
   messages: [],
   loadingMessages: false,
@@ -171,6 +185,18 @@ export const useChatStore = create((set, get) => ({
   // 레거시 호환
   boardSuggestions: [],
   stageAdvanceSuggestion: null,
+
+  // ── 미래보기 탐색 초안 → 대화 입력창 ──
+  // composerDraft: ChatPanel이 한 번 읽어 입력창에 넣고 비운다. 자동 전송하지 않는다.
+  // explorationDraftLink: 입력창에 넣은 초안 — 교사가 그 내용을 보내면 초안 상태를 '대화에 보냄'으로 바꾸고,
+  //   그 응답에서 나온 제안에 fromExploration(초안 id)을 붙여 수락·거부 결과를 초안에 기록한다.
+  composerDraft: null,
+  explorationDraftLink: null,
+  setComposerDraft: ({ text, projectId, draftId }) => set({
+    composerDraft: { text, projectId, draftId, at: Date.now() },
+    explorationDraftLink: { projectId, draftId },
+  }),
+  consumeComposerDraft: () => set({ composerDraft: null }),
 
   // 시연 모드 채점관 렌즈(코치↔채점관 강도 토글). true면 채팅 요청에 examiner_lens=true를 실어
   // 서버(시연 모드)에서 채점관 관점 피드백 강도를 높인다. 협력 모드에서는 서버가 무시한다.
@@ -210,6 +236,8 @@ export const useChatStore = create((set, get) => ({
       boardSuggestions: [],
       stageAdvanceSuggestion: null,
       pendingSuggestions: [],
+      composerDraft: null,
+      explorationDraftLink: null,
       _acceptedBoardsInBatch: [],
       coherenceCheckResult: null,
       procedureAdvanceSuggestion: null,
@@ -292,6 +320,10 @@ export const useChatStore = create((set, get) => ({
       : (opts.selectedIds instanceof Set ? Array.from(opts.selectedIds) : undefined)
     const materialSelectionExplicit = opts.materialSelectionExplicit === true
     const currentStep = opts.currentStep
+    // 입력창에 넣은 탐색 초안을 (머리글을 남긴 채) 보내는 경우 — 이 응답의 제안을 초안과 잇는다
+    const draftLink = get().explorationDraftLink
+    const fromExploration = draftLink && draftLink.projectId === projectId &&
+      typeof content === 'string' && content.includes(HANDOFF_HEADER) ? draftLink.draftId : null
 
     // 로그인 사용자 정보 우선 사용
     let senderName = localStorage.getItem('cw_nickname') || '교사'
@@ -323,6 +355,10 @@ export const useChatStore = create((set, get) => ({
 
     set((state) => ({ messages: [...state.messages, teacherMsg] }))
     socket.emit('new_message', { projectId, message: teacherMsg })
+    if (fromExploration) {
+      applyDraftEvent(safeLocalStorage(), projectId, { type: 'sent', draftId: fromExploration, at: Date.now() })
+      set({ explorationDraftLink: null })
+    }
 
     // 2) AI 응답 (SSE)
     set({
@@ -378,6 +414,7 @@ export const useChatStore = create((set, get) => ({
               rationale: '',
               status: 'pending',
               _serverIndex: i,
+              ...(fromExploration ? { fromExploration } : {}),
             })),
           })
         }
@@ -430,6 +467,7 @@ export const useChatStore = create((set, get) => ({
             ...s,
             id: `suggestion-${Date.now()}-${i}`,
             status: 'pending', // pending | accepted | rejected
+            ...(fromExploration ? { fromExploration } : {}),
           }))
         }
         if (coherence) {
@@ -592,6 +630,7 @@ export const useChatStore = create((set, get) => ({
 
     // 진행률/네비게이션 갱신
     useProcedureStore.getState().loadBoardSummaries(projectId)
+    noteExplorationOutcome(projectId, suggestion, persisted)
 
     // AI에게 수락 사실을 알리고 이어서 안내받는다 (보드 저장 뒤라 AI가 반영된 보드를 본다).
     // 저장에 실패했으면 "반영했어요"라고 알리지 않는다.
@@ -657,6 +696,7 @@ export const useChatStore = create((set, get) => ({
 
     // 진행률/네비게이션 갱신
     useProcedureStore.getState().loadBoardSummaries(projectId)
+    noteExplorationOutcome(projectId, suggestion, persisted)
 
     get()._afterSuggestionResolved(projectId, persisted ? boardLabelOf(suggestion) : null, true)
   },
@@ -701,6 +741,11 @@ export const useChatStore = create((set, get) => ({
         s.id === suggestionId ? { ...s, status: 'rejected' } : s
       ),
     })
+    // 탐색 초안에서 나온 제안이면 초안 상태에 '반영하지 않음'을 남긴다(같은 응답에서 이미 반영됐으면 유지)
+    const rejected = state.pendingSuggestions[idx]
+    if (rejected?.fromExploration) {
+      applyDraftEvent(safeLocalStorage(), projectId, { type: 'rejected', draftId: rejected.fromExploration, at: Date.now() })
+    }
     // 앞서 같은 응답의 다른 제안을 수락했다면, 마지막 처리인 이 거부 뒤에 한 번만 AI에 알린다
     get()._afterSuggestionResolved(projectId, null, false)
 

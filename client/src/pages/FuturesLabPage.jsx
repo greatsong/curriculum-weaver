@@ -18,14 +18,21 @@ import { groupFutureStandards } from '../lib/futures2GraphLayout'
 import KeywordGraph, { colorOf } from '../components/futures/KeywordGraph'
 import { subjectOfStandard } from '../lib/futures2GraphLayout'
 import './futures.css'
-import { A3_PROCEDURE, a3BoardStatus, buildA3Handoff, explorationSearch, handoffPolicy, resolveProjectStandards } from '../lib/futuresProjectHandoff'
-import ExplorationStatus from '../components/ExplorationStatus'
+import { A3_PROCEDURE, explorationSearch, handoffPolicy, resolveProjectStandards } from '../lib/futuresProjectHandoff'
+import ExplorationContextBar from '../components/ExplorationContextBar'
+import SendReviewDialog from '../components/SendReviewDialog'
+import { destinationBarModel } from '../lib/exploreBar'
+import {
+  NEW_DESTINATION, projectDestination, readBasket, writeBasket, mergeBasketMeta, futuresUrl,
+} from '../lib/exploreDestination'
+import { createDraft, readDraft, saveDraft, safeLocalStorage, safeSessionStorage } from '../lib/explorationDraft'
+import { EXPLORE_COPY } from '../lib/explorationCopy'
+import { projectStandardKey } from '../lib/standardKey'
 
 const LEVELS = [
   { id: '고등학교', label: '고등' }, { id: '중학교', label: '중학' }, { id: '초등학교', label: '초등' }, { id: '', label: '전체' },
 ]
-const BASKET_KEY = 'cw_design_basket'
-const BASKET_META_KEY = 'cw_design_basket_meta'
+const LAB_COPY = EXPLORE_COPY.futures
 const BRIDGE_DELAY_MS = 700 // 성취기준을 연달아 넣는 동안은 연결을 찾지 않는다
 
 function Highlight({ text, query }) {
@@ -43,13 +50,12 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const [projectContext, setProjectContext] = useState(null)
   const [projectError, setProjectError] = useState('')
   const [projectTry, setProjectTry] = useState(0)
-  const [handoffText, setHandoffText] = useState('')
-  const [copyNote, setCopyNote] = useState('')
+  // 보내기 확인 창: null | { future } — 진행 중인 프로젝트면 A-3로, 아니면 새 프로젝트로 보낸다
+  const [send, setSend] = useState(null)
   const [copied, setCopied] = useState(false)
   const [boardCheck, setBoardCheck] = useState('idle')
   const contextRequest = useRef(0)
   const handoffRevision = useRef(0)
-  const handoffRef = useRef(null)
   const importedProject = useRef(null)
   const { keys, model } = useMemo(() => parseFuturesSearch(location.search), [location.search])
   const [catalog, setCatalog] = useState(null)
@@ -76,7 +82,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
     let alive = true
     contextRequest.current += 1
     handoffRevision.current += 1
-    setProjectContext(null); setProjectError(''); setHandoffText(''); setCopied(false); setCopyNote(''); setBoardCheck('idle'); importedProject.current = null
+    setProjectContext(null); setProjectError(''); setSend(null); setCopied(false); setBoardCheck('idle'); importedProject.current = null
     if (!projectId) return undefined
     const id = encodeURIComponent(projectId)
     Promise.all([get(`/api/projects/${id}`), get(`/api/standards/project/${id}`), get(`/api/projects/${id}/designs/${A3_PROCEDURE}`)])
@@ -98,7 +104,8 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const picked = useMemo(() => keys.map((k) => byKey.get(k)).filter(Boolean), [keys, byKey])
   const pickedKeys = useMemo(() => picked.map((s) => s.key), [picked])
   const pickedSig = JSON.stringify(pickedKeys)
-  useEffect(() => { handoffRevision.current += 1; setHandoffText(''); setCopyNote(''); setCopied(false) }, [pickedSig])
+  // 고른 조합이 바뀌면 이전 확인 창·복사 상태는 새 조합으로 이어지지 않는다
+  useEffect(() => { handoffRevision.current += 1; setSend(null); setCopied(false) }, [pickedSig])
   const projectStandards = useMemo(() => catalog && projectContext ? resolveProjectStandards(catalog, projectContext.standards, projectContext.design) : null, [catalog, projectContext])
   const projectPolicy = handoffPolicy(projectContext?.project, projectContext?.design)
   const canExplore = !projectId || (!!projectContext && !projectPolicy.blocked)
@@ -111,12 +118,11 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
       setUrl(projectStandards.standards.map(s => s.key))
     }
   }, [projectId, projectStandards, canExplore, location.search, keys.length, setUrl])
-  const prepareHandoff = (future = null) => {
-    if (!projectContext || !canExplore) throw new Error('프로젝트 정보를 확인한 뒤 다시 시도해 주세요.')
+  const openSend = (future = null) => {
+    if (projectId && (!projectContext || !canExplore)) throw new Error('프로젝트 정보를 확인한 뒤 다시 시도해 주세요.')
     handoffRevision.current += 1
-    setHandoffText(buildA3Handoff({ project: projectContext.project, standards: picked, bridges: bridges.data, future }))
-    setCopyNote('')
     setCopied(false)
+    setSend({ future })
   }
   const checkBoard = async () => {
     const request = ++contextRequest.current
@@ -130,9 +136,8 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
       if (request === contextRequest.current) setBoardCheck('error')
     }
   }
-  const handoffActionRef = useRef(prepareHandoff)
-  handoffActionRef.current = prepareHandoff
-  useEffect(() => { if (handoffText) handoffRef.current?.scrollIntoView?.({ block: 'center', behavior: 'auto' }) }, [handoffText])
+  const handoffActionRef = useRef(openSend)
+  handoffActionRef.current = openSend
   const activeSample = useMemo(() => FUTURES_LAB_SAMPLES.find(preset => {
     const resolved = resolvePracticeSet(catalog, preset)
     return !resolved.missing.length && pickedKeys.length === resolved.standards.length && resolved.standards.every(s => pickedKeys.includes(s.key))
@@ -141,18 +146,14 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const subjectGroups = useMemo(() => groupFutureStandards(picked), [picked])
   const colorIndexOfKey = useMemo(() => new Map(subjectGroups.flatMap(g => g.indices.map(i => [picked[i].key, g.colorIndex]))), [subjectGroups, picked])
 
-  // 담기 — 설계 모드·워크스페이스와 같은 세션 저장소를 쓴다
+  // 담기 — 새 프로젝트 담기(성취기준 연결 찾기·프로젝트 만들기와 같은 저장소)에 더한다
   const addToBasket = useCallback((addKeys) => {
-    try {
-      const cur = new Set(JSON.parse(sessionStorage.getItem(BASKET_KEY) || '[]'))
-      const before = cur.size
-      addKeys.forEach((k) => cur.add(k))
-      sessionStorage.setItem(BASKET_KEY, JSON.stringify([...cur]))
-      const meta = JSON.parse(sessionStorage.getItem(BASKET_META_KEY) || '{}')
-      for (const k of addKeys) { const g = byKey.get(k)?.subject_group; if (g) meta[k] = g }
-      sessionStorage.setItem(BASKET_META_KEY, JSON.stringify(meta))
-      return cur.size > before
-    } catch { throw new Error('성취기준을 저장하지 못했습니다. 브라우저 저장 공간을 확인한 뒤 다시 시도해 주세요.') }
+    const storage = safeSessionStorage()
+    const before = readBasket(storage, NEW_DESTINATION)
+    const next = [...new Set([...before, ...addKeys])]
+    if (!storage || !writeBasket(storage, NEW_DESTINATION, next)) throw new Error('성취기준을 저장하지 못했습니다. 브라우저 저장 공간을 확인한 뒤 다시 시도해 주세요.')
+    mergeBasketMeta(storage, addKeys.map((k) => [k, byKey.get(k)?.subject_group]))
+    return next.length > before.length
   }, [byKey])
 
   // 의식 구간(장면) — 고른 조합이 바뀌면 새로 만들고, 연결 찾기를 뒤에서 시작한다. 모델 전환은 장면을 유지한다.
@@ -182,23 +183,14 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
       onPhaseChange: setScenePhase,
       onGraphState: setGraphState,
       colorForStandard: colorOf,
-      projectActionLabel: projectId ? 'A-3에 가져가기' : undefined,
+      projectActionLabel: projectId ? EXPLORE_COPY.send.openProjectAction : EXPLORE_COPY.send.openNewAction,
       hideBasket: !!projectId,
       requestFuture: async (index, m) => {
         const body = await post('/api/futures2', { codes: pickedKeys, model: m, index }, { timeoutMs: 200_000 })
         if (!body?.future) throw new Error(body?.error || '미래를 그리지 못했습니다.')
         return body.future
       },
-      onStartProject: (future) => {
-        if (projectId) { handoffActionRef.current(future); return }
-        addToBasket(pickedKeys)
-        try {
-          if (future?.title) sessionStorage.setItem('cw_project_title_suggestion', future.title)
-          const desc = [future?.driving_question, future?.situation].find(Boolean)
-          if (desc) sessionStorage.setItem('cw_project_desc_suggestion', desc)
-        } catch { throw new Error('프로젝트 시작 정보를 저장하지 못했습니다. 다시 시도해 주세요.') }
-        navigate('/workspaces?createProject=1')
-      },
+      onStartProject: (future) => { handoffActionRef.current(future) },
       onBasket: addToBasket,
       onRetryBridges: loadBridges,
     })
@@ -256,7 +248,51 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const setModel = (m) => setUrl(keys, m)
   const missingFromUrl = catalog ? keys.filter((k) => !byKey.has(k)) : []
 
+  // 보낼 곳 머리 줄 — 밝은 앱 색 줄을 어두운 미래보기 화면 맨 위에 둔다
+  const destination = projectId ? projectDestination(projectId) : NEW_DESTINATION
+  const projectState = !projectId ? { status: 'none' }
+    : projectError ? { status: 'error' }
+      : projectContext ? { status: 'ready', project: projectContext.project } : { status: 'loading' }
+  const bar = destinationBarModel(destination, projectState)
+  const registeredKeys = new Set((projectContext?.standards ?? []).map(projectStandardKey).filter(Boolean))
+
+  // 진행 중인 프로젝트로 보내기 — 초안을 이 브라우저에 저장하고 같은 탭에서 프로젝트로 돌아간다.
+  // 프로젝트 데이터·진행 절차·생략 상태는 바꾸지 않는다(초안을 대화에 넣는 것은 프로젝트 화면에서).
+  const submitToProject = ({ text, include }) => {
+    if (!projectContext || !returnPath) return false
+    const draft = createDraft({
+      projectId, text, standards: picked,
+      keywords: include.bridges ? (bridges.data?.concepts || []).map((c) => c.label) : [],
+      ideaTitle: include.idea ? send?.future?.title || '' : '',
+    })
+    if (!saveDraft(safeLocalStorage(), draft)) return false
+    navigate(returnPath)
+    return true
+  }
+  // 새 프로젝트로 — 담기와 제목·설명 추천을 남기고 그 워크스페이스의 프로젝트 만들기 화면을 연다
+  const submitToNew = ({ workspaceId, title, desc }) => {
+    try {
+      addToBasket(pickedKeys)
+      if (title) sessionStorage.setItem('cw_project_title_suggestion', title)
+      if (desc) sessionStorage.setItem('cw_project_desc_suggestion', desc)
+    } catch { /* 저장 실패해도 만들기 화면에서 다시 고를 수 있다 */ }
+    navigate(`/workspaces/${encodeURIComponent(workspaceId)}?createProject=1`)
+  }
+  const onCopied = (ok, token) => { if (token === handoffRevision.current) setCopied(ok) }
+
   return (
+    <>
+    <ExplorationContextBar icon={bar.icon} target={bar.target} changeHref={bar.changeHref}
+      status={copied ? 'copied' : bar.status} note={bar.note}>
+      {projectId && projectContext && (
+        <details className="mt-1">
+          <summary className="cursor-pointer min-h-[32px] inline-flex items-center font-medium text-link">{LAB_COPY.howTo}</summary>
+          <ul className="m-0 mt-1 pl-4 list-disc flex flex-col gap-1 text-text-body">
+            {LAB_COPY.howToBody.map((line) => <li key={line}>{line}</li>)}
+          </ul>
+        </details>
+      )}
+    </ExplorationContextBar>
     <div className="futures2-root futures-lab-root">
       <main className="fu-main">
         <header className="fu-header">
@@ -274,25 +310,11 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
           </div>
         </header>
 
-        <ExplorationStatus dark target={projectId ? projectContext ? `${projectContext.project.title} · A-3` : '기존 프로젝트 확인 중' : undefined}
-          status={projectId ? projectError ? '프로젝트 확인 실패 · 반영 상태 확인 불가' : !projectContext ? '프로젝트 정보 불러오는 중' : projectPolicy.blocked ? '탐색 제한 · 프로젝트 상태 확인 필요' : copied ? '복사 완료 · 프로젝트 반영 여부 확인 필요' : handoffText ? '전달할 초안 준비됨 · 저장 전' : '아이디어 검토 중 · 자동 반영되지 않음' : undefined}>
-          {projectContext ? <>
-            <div>A-3 보드 (마지막 조회 기준): {boardCheck === 'error' ? '최신 저장 상태 확인 실패' : a3BoardStatus(projectContext.design)}
-              {' '}<button type="button" className="lab-quiet" disabled={boardCheck === 'loading'} onClick={checkBoard}>{boardCheck === 'loading' ? '확인 중…' : '저장 상태 새로 확인'}</button>
-            </div>
-            <div>보드가 저장되어 있어도 이번 아이디어가 반영되었다는 뜻은 아닙니다. 원래 프로젝트에서 내용을 비교하고 저장해 주세요.</div>
-            {boardCheck === 'checked' && <div role="status">보드 상태를 다시 확인했습니다. 이번 아이디어의 반영 여부는 보드 내용에서 확인해 주세요.</div>}
-          </> : !projectId ? '성취기준 선택과 미래보기는 검토 단계입니다. 새 프로젝트 만들기를 완료해야 프로젝트에 저장됩니다.' : null}
-        </ExplorationStatus>
 
         {projectId && <section className="lab-project-context" aria-label="A-3 프로젝트 연결">
-          <h2>{projectContext ? '현재 프로젝트의 성취기준' : '프로젝트 성취기준 불러오기'}</h2>
+          <h2>{projectContext ? LAB_COPY.projectStandardsTitle : LAB_COPY.projectStandardsLoading}</h2>
           {projectError ? <p role="alert">{projectError} <button type="button" onClick={() => setProjectTry(n => n + 1)}>다시 시도</button></p> : !projectContext ? <p role="status">프로젝트와 A-3 분석표를 확인하고 있습니다.</p> : <>
             <p>{projectPolicy.note}</p>
-            <details><summary>A-3에 반영하는 방법과 시뮬레이션 안내</summary>
-            <p>기존 주제와 분석 내용은 아이디어 생성에 자동 반영되지 않습니다. 결과를 기존 설계와 비교해 주세요. 프로젝트의 내용·진행 단계·건너뛰기 상태는 바뀌지 않습니다.</p>
-            <p>이 아이디어로 이어서 시뮬레이션하려면, 먼저 원래 프로젝트에서 검토하고 A-3 보드에 저장해 주세요. 복사만 한 내용은 보드에 반영되지 않습니다.</p>
-            </details>
             {!!projectContext.project.skipped_procedures?.length && <p>생략한 단계가 있는 프로젝트는 현재 ‘이어서 시뮬레이션’을 지원하지 않습니다. 연결 아이디어 탐색과 복사는 가능합니다.</p>}
             {projectStandards && <details open={projectStandards.needsChoice}>
               <summary>프로젝트의 성취기준 {projectStandards.standards.length}개 확인</summary>
@@ -307,7 +329,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
         <section className="fu-top">
           <div className="fu-panel">
             <h2><span>넣은 성취기준</span><span>{subjectGroups.length}과목 · {pickedKeys.length} / {FUTURE_MAX}개</span></h2>
-            <section className="lab-samples" aria-label="학년별 샘플 주제">
+            {!projectId && <section className="lab-samples" aria-label="학년별 샘플 주제">
               <div className="lab-samples-heading"><strong>주제로 시작하기</strong><span>3과목 · 과목별 2개 · 성취기준 6개</span></div>
               {['고1', '고2–3'].map(grade => <div className="lab-sample-group" key={grade}>
                 <h3>{grade}</h3>
@@ -321,7 +343,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
                 <details key={activeSample.id}><summary>이 기본셋의 과목별 역할</summary><ul>{activeSample.roles.map(role => <li key={role}>{role}</li>)}</ul></details>
               </div>}
               <p className="lab-sample-note">학년은 활용 예시입니다. 실제 개설 과목과 이수 시기에 맞춰 성취기준을 바꿀 수 있습니다. 주제를 선택하면 현재 조합이 교체되며, 미래 보기에서는 같은 기준의 여러 수업 가능성을 탐색합니다.</p>
-            </section>
+            </section>}
             <div className="fu-pick">
               <div>
                 <div className="fu-searchrow">
@@ -397,34 +419,25 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
 
         <div ref={graphRef} hidden={scenePhase !== 'graph'} className="futures-root lab-keyword-map">
           {canExplore && picked.length >= 2 && <KeywordGraph standards={graphStandards} bridges={bridges} activeLabel={activeLink} onActive={setActiveLink} onRetry={() => sceneRef.current?.retryBridges()} multiEndpoint navigable />}
-          {projectId && canExplore && bridges.status === 'ready' && <button type="button" className="lab-quiet" onClick={() => prepareHandoff()}>이 연결을 A-3에 가져가기</button>}
+          {projectId && canExplore && bridges.status === 'ready' && <button type="button" className="lab-quiet" onClick={() => openSend()}>{EXPLORE_COPY.send.openFromBridges}</button>}
           <div className="lab-map-actions">
             <p>{picked.length < 2 ? '성취기준 2~7개를 선택해 주세요.' : ['error', 'slow'].includes(graphState.status) ? '연결 분석을 기다리거나 선택한 성취기준으로 미래를 볼 수 있습니다.' : '연결을 확인했다면, 여덟 갈래의 수업을 열어 보세요.'}</p>
             <button type="button" className="lab-map-open" disabled={!canExplore || !graphState.canOpen} onClick={() => sceneRef.current?.open()}>미래 보기 ↗</button>
           </div>
         </div>
         <div ref={sceneRootRef} />
-        {projectId && handoffText && <section ref={handoffRef} className="lab-project-context lab-handoff" aria-label="A-3에 가져갈 탐색 결과">
-          <h2>{projectContext.project.title} · A-3에서 이어서 검토하기</h2>
-          <p role="status">{copied ? '복사 완료 · 아직 프로젝트 반영을 확인하지 않았습니다.' : '검토용 초안 · 아직 보드에 저장되지 않았습니다.'}</p>
-          <p>{projectPolicy.note}</p>
-          <ol><li>아래 탐색 결과를 복사합니다.</li><li>열어 둔 원래 프로젝트 탭으로 돌아갑니다.</li><li>편집 가능한 프로젝트의 A-3 대화창에 붙여넣고, 기존 분석과 비교해 ‘핵심 요소 통합·조정’ 초안을 요청합니다.</li></ol>
-          <label>복사할 탐색 결과<textarea readOnly value={handoffText} onFocus={e => e.target.select()} /></label>
-          <div className="lab-handoff-actions"><button type="button" className="lab-primary" onClick={async () => {
-            const revision = handoffRevision.current
-            try {
-              await navigator.clipboard.writeText(handoffText)
-              if (revision !== handoffRevision.current) return
-              setCopied(true); setCopyNote('복사했습니다. 위 안내에 따라 원래 프로젝트에서 검토해 주세요.')
-            } catch {
-              if (revision !== handoffRevision.current) return
-              setCopied(false); setCopyNote('자동 복사가 지원되지 않습니다. 위 텍스트를 선택해 직접 복사해 주세요.'); handoffRef.current?.querySelector('textarea')?.focus()
-            }
-          }}>탐색 결과 복사</button><button type="button" className="lab-quiet" onClick={() => navigate(returnPath)}>프로젝트로 돌아가기 ↗</button></div>
-          {copyNote && <p role="status">{copyNote}</p>}
-        </section>}
+        {send && (projectId ? projectContext && canExplore : true) && (
+          <SendReviewDialog mode={projectId ? 'project' : 'new'} onClose={() => setSend(null)} get={get}
+            standards={picked} bridges={bridges.data} future={send.future}
+            project={projectContext?.project} design={projectContext?.design} boardCheck={boardCheck} onRecheckBoard={checkBoard}
+            registeredKeys={registeredKeys} existingDraft={projectId ? readDraft(safeLocalStorage(), projectId) : null}
+            revision={handoffRevision.current} onCopied={onCopied} onSubmit={submitToProject}
+            onSubmitNew={submitToNew}
+            onSwitchToProject={(id) => navigate(futuresUrl({ keys: pickedKeys, model, destination: projectDestination(id) }))} />
+        )}
         <p className="fu-note">연결과 미래는 AI가 성취기준 원문을 바탕으로 그린 수업 아이디어입니다. 키워드는 원문에 있는 말만 쓰고, 이어지지 않는 성취기준은 억지로 엮지 않습니다. 한 번 본 미래는 다시 볼 수 있도록 캐시됩니다. 프로젝트 보드에 저장되는 것은 아닙니다.</p>
       </main>
     </div>
+    </>
   )
 }

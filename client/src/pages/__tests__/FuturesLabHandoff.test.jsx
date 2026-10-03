@@ -3,9 +3,10 @@ import { createRoot } from 'react-dom/client'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { beforeEach, afterEach, it, expect, vi } from 'vitest'
 import FuturesLabPage from '../FuturesLabPage'
-import A3ExplorationEntry from '../../components/A3ExplorationEntry'
 import ContinueSimulationButton from '../../components/ContinueSimulationButton'
 import { a3BoardStatus, resolveProjectStandards } from '../../lib/futuresProjectHandoff'
+import { readDraft } from '../../lib/explorationDraft'
+import { readBasket, NEW_DESTINATION } from '../../lib/exploreDestination'
 
 const scene = vi.hoisted(() => ({ options: null }))
 vi.mock('../../lib/api', () => ({ apiGet: vi.fn(), apiPost: vi.fn(), API_BASE: '', getHeaders: vi.fn() }))
@@ -20,14 +21,28 @@ function Url() { return <output data-testid="url">{useLocation().pathname}{useLo
 async function mount(entry = '/futures-lab?project=p1') {
   await act(async () => root.render(<MemoryRouter initialEntries={[entry]}><FuturesLabPage get={get} post={post}/><Url/></MemoryRouter>))
 }
+// 확인 창은 document.body 포털로 그려지므로 문서 전체에서 찾는다
 async function click(text) {
-  const button = [...host.querySelectorAll('button')].find(b => b.textContent === text)
+  const button = [...document.querySelectorAll('button')].find(b => b.textContent === text)
   expect(button).toBeTruthy()
   await act(async () => button.click())
+}
+const findButton = text => [...document.querySelectorAll('button')].find(b => b.textContent === text)
+const dialog = () => document.querySelector('[role="dialog"]')
+const draftText = () => document.querySelector('.send-draft-text').value
+const barText = () => host.querySelector('[aria-label="탐색 대상과 반영 상태"]').textContent
+function memoryStorage() {
+  const map = new Map()
+  return {
+    getItem: k => (map.has(k) ? map.get(k) : null), setItem: (k, v) => { map.set(k, String(v)) },
+    removeItem: k => { map.delete(k) }, clear: () => map.clear(), get length() { return map.size },
+  }
 }
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   vi.useFakeTimers(); sessionStorage.clear(); scene.options = null
+  // Node 25의 전역 localStorage가 테스트 환경 것을 가리므로 메모리 저장소로 바꿔 끼운다
+  vi.stubGlobal('localStorage', memoryStorage())
   host = document.createElement('div'); document.body.append(host); root = createRoot(host)
   project = { id: 'p1', workspace_id: 'w1', title: '진행 중인 프로젝트', status: 'active', current_procedure: 'A-2-1', my_role: 'owner', skipped_procedures: [{ procedure_code: 'T-2-2' }] }
   design = { content: { standards: [catalog[2]], duplicateCheck: '기존 통합 내용' }, save_status: 'draft' }
@@ -37,44 +52,59 @@ beforeEach(() => {
     if (url === '/api/projects/p1') return project
     if (url === '/api/standards/project/p1') return registered
     if (url.endsWith('/designs/A-2-1')) return design
+    if (url === '/api/workspaces') return [{ id: 'w1', name: '1학년 융합 수업 팀' }]
+    if (url === '/api/workspaces/w1/projects') return [{ id: 'p1', workspace_id: 'w1', title: '진행 중인 프로젝트', status: 'active' }]
     throw new Error(`예상하지 않은 조회: ${url}`)
   })
   post = vi.fn(async () => ({ bridges: { keywords: {}, concepts: [{ label: '함께 해석하기', why: '공통 자료를 비교한다.', ends: [{ key: 's0', word: '자료' }, { key: 's1', word: '비교' }] }] } }))
 })
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.restoreAllMocks() })
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-it('A-3에서 새 탭으로 열며 다른 단계와 시연 모드에는 진입 버튼이 없다', async () => {
-  await act(async () => root.render(<A3ExplorationEntry project={project} procedure="A-2-1"/>))
-  expect(host.querySelector('a').getAttribute('href')).toBe('/futures-lab?project=p1')
-  expect(host.querySelector('a').target).toBe('_blank')
-  await act(async () => root.render(<A3ExplorationEntry project={project} procedure="A-2-2"/>))
-  expect(host.querySelector('a')).toBeNull()
-  await act(async () => root.render(<A3ExplorationEntry project={{ ...project, learner_context: { demo: true } }} procedure="A-2-1"/>))
-  expect(host.querySelector('a')).toBeNull()
-})
+// A-3 입구 단언(진입 링크·다른 단계·시연 모드)은 components/__tests__/explorationDraftStrip.test.jsx로 옮겼다.
 
-it('등록 기준·A-3 분석표를 합쳐 가져오고 복사·복귀해도 프로젝트와 건너뛰기는 보존한다', async () => {
+it('등록 기준·A-3 분석표를 합쳐 가져오고 복사·보내기 뒤에도 프로젝트와 건너뛰기는 보존한다', async () => {
   const before = JSON.stringify({ project, design })
   await mount()
   expect(host.querySelectorAll('.fu-chip')).toHaveLength(3)
+  // 프로젝트에서 열면 샘플 주제(조합 교체)는 보이지 않는다
+  expect(host.querySelector('.lab-samples')).toBeNull()
   await click('정밀Opus 5.5')
   expect(host.querySelector('output').textContent).toContain('project=p1')
   expect(host.querySelector('output').textContent).toContain('model=precise')
   await act(async () => vi.advanceTimersByTime(1000))
   expect(scene.options.hideBasket).toBe(true)
+  expect(scene.options.projectActionLabel).toBe('A-3로 보낼 내용 확인')
   await act(async () => scene.options.onStartProject({ title: '탐색한 미래', driving_question: '어떻게 비교할까?', roles: [{ key: 's0', role: '자료 해석' }], activity_steps: ['자료 조사'] }))
-  const text = host.querySelector('.lab-handoff textarea').value
+  // 확인 창: 보낼 곳·보내는 내용·보낸 뒤 순서
+  expect(dialog().textContent).toContain('A-3로 보낼 내용 확인')
+  expect(dialog().textContent).toContain('진행 중인 프로젝트')
+  expect(dialog().textContent).toContain('A-3 주제의 상세 내용 분석')
+  expect(dialog().textContent).not.toContain('A-2-1')
+  const text = draftText()
   expect(text).toContain('탐색한 미래'); expect(text).toContain('공통 자료를 비교한다.'); expect(text).toContain('성취기준 원문 2')
   expect(text).toContain('기존 내용을 바로 덮어쓰거나 단계를 완료·이동하지 말고')
   const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
-  await click('탐색 결과 복사')
+  await click('초안 복사')
   expect(copy).toHaveBeenCalledWith(text)
-  expect(host.querySelector('[aria-label="탐색 대상과 반영 상태"]').textContent).toContain('복사 완료 · 프로젝트 반영 여부 확인 필요')
+  expect(barText()).toContain('초안 복사함 · 반영 전')
   expect(sessionStorage.length).toBe(0)
   expect(post.mock.calls.every(([url]) => url === '/api/futures2/bridges')).toBe(true)
-  await click('프로젝트로 돌아가기 ↗')
+  // 보내기: 초안을 이 브라우저에 저장하고 같은 탭에서 원래 프로젝트로 돌아간다
+  await click('A-3로 보내기')
   expect(host.querySelector('output').textContent).toBe('/workspaces/w1/projects/p1')
+  const saved = readDraft(localStorage, 'p1')
+  expect(saved.status).toBe('arrived'); expect(saved.text).toBe(text); expect(saved.summary.ideaTitle).toBe('탐색한 미래')
   expect(JSON.stringify({ project, design })).toBe(before)
+  expect(post.mock.calls.every(([url]) => url === '/api/futures2/bridges')).toBe(true)
+})
+
+it('보내는 내용에서 아이디어를 빼면 초안에서도 빠진다', async () => {
+  await mount(); await act(async () => vi.advanceTimersByTime(1000))
+  await act(async () => scene.options.onStartProject({ title: '뺄 아이디어' }))
+  expect(draftText()).toContain('뺄 아이디어')
+  await act(async () => document.querySelector('#send-idea').click())
+  expect(draftText()).not.toContain('뺄 아이디어')
+  expect(draftText()).toContain('연결 키워드와 근거')
 })
 
 it.each([
@@ -82,16 +112,18 @@ it.each([
   ['active', { title: '[시뮬레이션] 기존 결과' }, '읽기 전용'],
   ['active', { my_role: 'viewer' }, '열람 권한'],
   ['active', { skipped_procedures: [{ procedure_code: 'A-2-1' }] }, '생략된 상태'],
-])('%s 참고 탐색은 내용 저장·진행 단계 변경 없이 복사한다', async (status, extra, note) => {
+])('%s 참고 탐색은 보내기를 막고 내용 저장·진행 단계 변경 없이 복사만 한다', async (status, extra, note) => {
   Object.assign(project, { status }, extra)
   await mount(); await act(async () => vi.advanceTimersByTime(1000))
   expect(host.querySelector('.lab-project-context').textContent).toContain(note)
   await click('이 연결을 A-3에 가져가기')
-  expect(host.querySelector('.lab-handoff textarea').value).toContain('연결 키워드와 근거')
+  expect(draftText()).toContain('연결 키워드와 근거')
+  expect(findButton('A-3로 보내기').disabled).toBe(true)
   vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('거부'))
-  await click('탐색 결과 복사')
-  expect(host.textContent).toContain('직접 복사해 주세요')
-  expect(host.querySelector('[aria-label="탐색 대상과 반영 상태"]').textContent).not.toContain('복사 완료')
+  await click('초안 복사')
+  expect(dialog().textContent).toContain('직접 복사해 주세요')
+  expect(barText()).not.toContain('복사함')
+  expect(readDraft(localStorage, 'p1')).toBeNull()
   expect(post.mock.calls.every(([url]) => url === '/api/futures2/bridges')).toBe(true)
 })
 
@@ -144,18 +176,19 @@ it('동일 코드의 다른 과목은 임의로 매칭하지 않는다', () => {
 it('보드 저장과 이번 초안 채택을 구분하고, 조회 실패 시 이전 상태를 최신으로 표시하지 않는다', async () => {
   design = { id: 'd1', content: {}, save_status: 'confirmed' }
   await mount()
-  const status = () => host.querySelector('[aria-label="탐색 대상과 반영 상태"]').textContent
-  expect(status()).toContain('진행 중인 프로젝트 · A-3')
-  expect(status()).toContain('저장된 보드 · 확정됨')
-  expect(status()).toContain('아이디어 검토 중 · 자동 반영되지 않음')
+  expect(barText()).toContain('진행 중인 프로젝트 · A-3')
+  expect(barText()).toContain('탐색 중 · 저장 전')
+  // 보드 저장 상태는 보내기 확인 창에서 마지막 조회 기준으로 보인다
+  await act(async () => scene.options.onStartProject({ title: '아이디어' }))
+  expect(dialog().textContent).toContain('저장된 보드 · 확정됨')
   get.mockRejectedValueOnce(new Error('서버 중단'))
-  await click('저장 상태 새로 확인')
-  expect(status()).toContain('최신 저장 상태 확인 실패')
-  expect(status()).not.toContain('확정됨')
+  await click('새로 확인')
+  expect(dialog().textContent).toContain('최신 저장 상태 확인 실패')
+  expect(dialog().textContent).not.toContain('확정됨')
   design.save_status = 'locked'
-  await click('저장 상태 새로 확인')
-  expect(status()).toContain('저장된 보드 · 잠김')
-  expect(status()).toContain('반영 여부는 보드 내용에서 확인')
+  await click('새로 확인')
+  expect(dialog().textContent).toContain('저장된 보드 · 잠김')
+  expect(dialog().textContent).toContain('보드 상태를 다시 확인했습니다')
   expect(post).not.toHaveBeenCalled()
 })
 
@@ -163,10 +196,11 @@ it('선택을 바꾸면 이전 복사 상태가 새 아이디어로 이어지지
   await mount()
   await act(async () => scene.options.onStartProject({ title: '첫 아이디어' }))
   vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
-  await click('탐색 결과 복사')
+  await click('초안 복사')
+  expect(barText()).toContain('초안 복사함')
   await act(async () => host.querySelector('.fu-chip .fu-x').click())
-  expect(host.querySelector('[aria-label="탐색 대상과 반영 상태"]').textContent).toContain('아이디어 검토 중')
-  expect(host.querySelector('.lab-handoff')).toBeNull()
+  expect(barText()).toContain('탐색 중 · 저장 전')
+  expect(dialog()).toBeNull()
 })
 
 it('복사 응답이 늦게 와도 새 선택을 복사 완료로 표시하지 않는다', async () => {
@@ -174,10 +208,10 @@ it('복사 응답이 늦게 와도 새 선택을 복사 완료로 표시하지 �
   await act(async () => scene.options.onStartProject({ title: '이전 아이디어' }))
   let finish
   vi.spyOn(navigator.clipboard, 'writeText').mockImplementation(() => new Promise(resolve => { finish = resolve }))
-  await click('탐색 결과 복사')
+  await click('초안 복사')
   await act(async () => host.querySelector('.fu-chip .fu-x').click())
   await act(async () => finish())
-  expect(host.querySelector('[aria-label="탐색 대상과 반영 상태"]').textContent).not.toContain('복사 완료')
+  expect(barText()).not.toContain('복사함')
 })
 
 it.each([
@@ -196,4 +230,40 @@ it('단계 생략 시 이어서 시뮬레이션은 실행 전에 안내하고 �
   expect(host.querySelector('button').title).toContain('A-3 아이디어 탐색은 가능합니다')
   await act(async () => host.querySelector('button').click())
   expect(fetch).not.toHaveBeenCalled()
+})
+
+it('새 프로젝트로 보낼 때 같은 이름 프로젝트를 알리고, 만들기 화면으로 담기와 제목을 넘긴다', async () => {
+  await mount('/futures-lab?codes=s0,s1')
+  await act(async () => vi.advanceTimersByTime(1000))
+  expect(barText()).toContain('새 프로젝트')
+  expect(scene.options.projectActionLabel).toBe('새 프로젝트로 가져갈 내용 확인')
+  await act(async () => scene.options.onStartProject({ title: '진행 중인 프로젝트', driving_question: '무엇을 탐구할까?' }))
+  expect(dialog().textContent).toContain('새 프로젝트로 가져갈 내용 확인')
+  // 같은 워크스페이스에 같은 이름이 있으면 그 프로젝트의 A-3로 보내기를 권한다
+  expect(dialog().textContent).toContain('같은 이름의 프로젝트가 있습니다')
+  await click('그 프로젝트의 A-3로 보내기')
+  expect(host.querySelector('output').textContent).toBe('/futures-lab?codes=s0%2Cs1&project=p1')
+})
+
+it('새 프로젝트 만들기 화면으로 가면 담기·제목·설명을 넘기고 워크스페이스로 이동한다', async () => {
+  await mount('/futures-lab?codes=s0,s1')
+  await act(async () => vi.advanceTimersByTime(1000))
+  await act(async () => scene.options.onStartProject({ title: '새 아이디어', driving_question: '무엇을 탐구할까?' }))
+  expect(document.querySelector('#send-new-title').value).toBe('새 아이디어')
+  expect(dialog().textContent).not.toContain('같은 이름의 프로젝트가 있습니다')
+  await click('프로젝트 만들기 화면으로')
+  expect(host.querySelector('output').textContent).toBe('/workspaces/w1?createProject=1')
+  expect(readBasket(sessionStorage, NEW_DESTINATION)).toEqual(['s0', 's1'])
+  expect(JSON.parse(sessionStorage.getItem('cw_design_basket'))).toEqual(['s0', 's1'])
+  expect(sessionStorage.getItem('cw_project_title_suggestion')).toBe('새 아이디어')
+  expect(sessionStorage.getItem('cw_project_desc_suggestion')).toBe('무엇을 탐구할까?')
+})
+
+it('초안이 대화 한 번 길이(5,000자)를 넘으면 보내기를 막고, 아이디어를 빼면 다시 보낼 수 있다', async () => {
+  await mount(); await act(async () => vi.advanceTimersByTime(1000))
+  await act(async () => scene.options.onStartProject({ title: '긴 아이디어', situation: '가'.repeat(5200) }))
+  expect(dialog().textContent).toContain('대화 한 번에 보낼 수 있는 길이를 넘습니다')
+  expect(findButton('A-3로 보내기').disabled).toBe(true)
+  await act(async () => document.querySelector('#send-idea').click())
+  expect(findButton('A-3로 보내기').disabled).toBe(false)
 })
