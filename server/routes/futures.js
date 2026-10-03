@@ -1,16 +1,20 @@
 /**
- * 미래 보기 라우트
+ * 미래 보기 라우트 (모두 로그인 필수, 명세 3부 T2)
  *
- * POST /api/futures — body: { codes: string[2..6], model: 'fast'|'precise', index: 0..29 }
- *   교사가 고른 성취기준으로 index번째 "수업의 미래"를 생성(캐시 우선)해 돌려준다.
- * GET /api/futures/catalog — 성취기준 검색용 가벼운 목록(전체, 메모리 캐시)
- * POST /api/futures/bridges — body: { codes } → 고른 성취기준을 엮는 연결 개념 지도(조합당 1회 생성·캐시)
+ * GET  /api/futures/catalog — 성취기준 검색용 가벼운 목록 { fields, rows }(전체, 메모리에 만든 문자열 재사용)
+ * POST /api/futures/bridges — body: { codes: key[2..6] } → { bridges, cached }
+ *   연결 찾기. 조합당 1회 생성·캐시, 모델과 무관.
+ *   bridges = { keywords: {key: string[]}, concepts: [{label, kind, strength, ends: [{key, word}, {key, word}], why}], isolated: key[] }
+ * POST /api/futures — body: { codes: key[2..6], model: 'fast'|'precise', index: 0..29 } → { future, cached }
+ *   수업 아이디어 1장. future = { index, lens_label, title, activity, product, pitch, axis, light_keys, model, keys }
+ *
+ * 상태: 검증 실패 400(1부 §6-7 문구), 모델 거절 422, 생성·파싱 2회 실패 502, 그 밖 500(일반 문구), 미인증 401.
  */
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth.js'
 import { Standards } from '../lib/store.js'
 import {
-  resolveFutureRequest, generateFuture, generateBridges, FutureError,
+  resolveStandards, resolveFutureRequest, generateFuture, generateBridges, FutureError, FUTURE_MESSAGES,
 } from '../services/futuresGenerator.js'
 
 export const futuresRouter = Router()
@@ -33,15 +37,15 @@ futuresRouter.get('/catalog', (req, res) => {
 })
 
 futuresRouter.post('/bridges', async (req, res) => {
-  const resolved = resolveFutureRequest({ codes: req.body?.codes, index: 0 })
+  const resolved = resolveStandards(req.body)
   if (resolved.error) return res.status(400).json({ error: resolved.error })
   try {
     const { bridges, cached } = await generateBridges({ standards: resolved.standards })
     res.json({ bridges, cached })
   } catch (err) {
     if (err instanceof FutureError) return res.status(err.status).json({ error: err.message })
-    console.error('[futures] 연결 개념 오류:', err?.message || err)
-    res.status(500).json({ error: '연결 개념을 그리지 못했습니다. 잠시 후 다시 시도해 주세요.' })
+    console.error('[futures] 연결 찾기 오류:', err?.message || err)
+    res.status(500).json({ error: FUTURE_MESSAGES.bridgeFailed })
   }
 })
 
@@ -53,7 +57,7 @@ futuresRouter.post('/', async (req, res) => {
     res.json({ future, cached })
   } catch (err) {
     if (err instanceof FutureError) return res.status(err.status).json({ error: err.message })
-    console.error('[futures] 생성 오류:', err?.message || err)
-    res.status(500).json({ error: '미래를 그리지 못했습니다. 잠시 후 다시 시도해 주세요.' })
+    console.error('[futures] 수업 아이디어 생성 오류:', err?.message || err)
+    res.status(500).json({ error: FUTURE_MESSAGES.cardFailed })
   }
 })
