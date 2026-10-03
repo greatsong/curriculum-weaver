@@ -149,3 +149,17 @@
 .futures-lab-root .lab-sample-context ul { padding-left:20px; color:var(--lab-muted); }
 .futures-lab-root .lab-sample-note { margin:12px 0 0; font-size:12px; line-height:1.8; color:var(--lab-muted); }
 @media(max-width:640px) { .futures-lab-root .lab-sample-grid { grid-template-columns:1fr; } }
+
+/* 기존 프로젝트에서 A-3 탐색과 수동 검토를 이어가는 안내 */
+.futures-lab-root .lab-project-context { margin: 0 0 24px; padding: 22px 26px; border: 1px solid #365c52; border-radius: 18px; background: #0c1c20; color: #b8cbc7; font-size: 14px; line-height: 1.8; }
+.futures-lab-root .lab-project-context h2 { font-size: 19px; color: #e2efeb; margin: 0 0 10px; }
+.futures-lab-root .lab-project-context p { margin: 8px 0; }
+.futures-lab-root .lab-project-context summary { cursor: pointer; color: #b8ead6; }
+.futures-lab-root .lab-project-standards, .futures-lab-root .lab-handoff-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.futures-lab-root .lab-project-standards button { padding: 8px 12px; border: 1px solid #365c52; border-radius: 12px; background: #101e25; color: #b8cbc7; cursor: pointer; }
+.futures-lab-root .lab-project-standards button[aria-pressed="true"] { border-color: #b8ead6; background: #1d3932; color: #e2efeb; }
+.futures-lab-root .lab-project-standards button:disabled { opacity: .4; cursor: default; }
+.futures-lab-root .lab-handoff { margin-top: 28px; }
+.futures-lab-root .lab-handoff textarea { display: block; box-sizing: border-box; width: 100%; height: 260px; margin-top: 10px; padding: 14px; border: 1px solid #365c52; border-radius: 12px; background: #071219; color: #d8e6e1; font: inherit; resize: vertical; }
+.futures-lab-root .lab-handoff ol { padding-left: 22px; }
+@media (max-width: 600px) { .futures-lab-root .lab-project-context { padding: 18px; } }
