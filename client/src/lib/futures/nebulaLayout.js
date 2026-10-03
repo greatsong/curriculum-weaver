@@ -61,7 +61,7 @@ export const segHitsBox = (x1, y1, x2, y2, b) => {
  * @param {number} W 패널 폭(px)
  * @param {(text:string, font:string) => number} measure
  */
-export function nebulaLayout(standards, bridges, W, measure) {
+export function nebulaLayout(standards, bridges, W, measure, { multiEndpoint = false } = {}) {
   const P = LAYOUT
   const tw = (t, font) => measure(String(t), font)
   const wrap = (t, font, maxW) => {
@@ -97,9 +97,19 @@ export function nebulaLayout(standards, bridges, W, measure) {
     keywords[g.key] = words
   }
   // 연결 끝을 과목 노드로 옮긴다(원래 성취기준 key는 stdKey로 보존). 같은 과목 안의 연결은 그래프 선에서 빼고 목록에만 남는다
-  const concepts = (bridges?.concepts || [])
+  // 실험실의 다자 연결은 같은 이름의 가지로 표시한다. 원본 연결은 목록과 생성에 그대로 보존한다.
+  const sourceConcepts = (bridges?.concepts || []).flatMap(c => {
+    if (!multiEndpoint || c.ends?.length <= 2) return [c]
+    const ends = c.ends
+    const anchor = ends[0]
+    return ends.slice(1).flatMap(end => {
+      const from = nodeOf.get(anchor.key) === nodeOf.get(end.key) ? ends.find(e => nodeOf.get(e.key) !== nodeOf.get(end.key)) : anchor
+      return from ? [{ ...c, src: c, ends: [from, end] }] : []
+    })
+  })
+  const concepts = sourceConcepts
     .filter((c) => c.ends?.length === 2 && c.ends.every((e) => nodeOf.has(e.key)))
-    .map((c) => ({ ...c, src: c, ends: c.ends.map((e) => ({ key: nodeOf.get(e.key), word: e.word, stdKey: e.key })) }))
+    .map((c) => ({ ...c, src: c.src || c, ends: c.ends.map((e) => ({ key: nodeOf.get(e.key), word: e.word, stdKey: e.key })) }))
     .filter((c) => c.ends[0].key !== c.ends[1].key)
   const n = groups.size
   // 원 반지름: 가장 긴 글자 묶음에 맞춰 모든 과목을 같은 크기로(연결 수와 무관하게 대등)
@@ -107,7 +117,9 @@ export function nebulaLayout(standards, bridges, W, measure) {
   const isoLines = wrap(ISOLATED_LABEL, FONTS.iso, 84)
   for (const g of groups.values()) {
     g.nameLines = tw(g.name, FONTS.name) > 84 ? wrap(g.name, FONTS.name, 84) : [g.name]
-    g.iso = concepts.length > 0 && !concepts.some((c) => c.ends.some((e) => e.key === g.key))
+    g.iso = multiEndpoint
+      ? (bridges?.concepts?.length || 0) > 0 && !bridges.concepts.some(c => c.ends.some(e => g.keys.includes(e.key)))
+      : concepts.length > 0 && !concepts.some((c) => c.ends.some((e) => e.key === g.key))
     g.isoLines = g.iso ? isoLines : []
   }
   const blockOf = (g) => {

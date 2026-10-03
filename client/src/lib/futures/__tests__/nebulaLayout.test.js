@@ -48,6 +48,18 @@ const two = {
 }
 
 describe('행성과 위성 그래프 배치', () => {
+  it('실험실 다자 연결은 모든 교과 밖 끝점을 그리며 같은 과목 연결도 원본으로 보존한다', () => {
+    const standards = [{ key: 'a', code: 'A', subject: '음악' }, { key: 'b', code: 'B', subject: '음악' }, { key: 'c', code: 'C', subject: '수학' }, { key: 'd', code: 'D', subject: '국어' }]
+    const multi = C([['a', '음악'], ['b', '박자'], ['c', '비율']], '음악의 비율')
+    const within = C([['d', '읽기'], ['d', '쓰기']], '읽고 쓰기')
+    const bridges = { keywords: { a: ['음악'], b: ['박자'], c: ['비율'], d: ['읽기', '쓰기'] }, concepts: [multi, within] }
+    const layout = nebulaLayout(standards, bridges, 1232, measure, { multiEndpoint: true })
+    expect(layout.chains).toHaveLength(2)
+    expect(layout.chains.every(ch => ch.c.src === multi)).toBe(true)
+    expect(new Set(layout.chains.flatMap(ch => ch.c.ends.map(e => e.stdKey)))).toEqual(new Set(['a', 'b', 'c']))
+    expect(layout.clusters.find(c => c.key === '국어').iso).toBe(false)
+    expect(bridges.concepts).toEqual([multi, within])
+  })
   // 6과목·연결 6은 1,232px(1,280px 노트북의 패널 폭)에서 반드시 통과. 1,100px는 그래프 최소 폭 근처라
   // 품질을 못 채우면 ok=false로 알려 화면이 목록 모드로 바뀐다(명세 2부 §3-8) — 겹친 그림을 내보내지 않는 것이 요건
   it('6과목·연결 6 · 1,100px: 그래프로 그리거나, 품질 미달이면 ok=false로 알린다(겹친 그림을 숨기지 않음)', () => {

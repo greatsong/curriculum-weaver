@@ -4,7 +4,7 @@
  * 상태: 찾는 중(처음 = 행성만 / 조합 변경 = 이전 그래프 흐리게 + "이전 조합") · 결과 · 연결 0 · 오류.
  * 패널 폭 1,080px 미만이거나 배치 품질을 못 채우면 목록 모드(명세서 2부 §3-8).
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { SUBJECT_COLORS_DARK, FALLBACK_NODE_COLOR } from '../../lib/nebulaTheme'
 import { nebulaLayout, LAYOUT } from '../../lib/futures/nebulaLayout'
 import { measureText, fontsReady } from '../../lib/futures/measureText'
@@ -33,8 +33,9 @@ function GraphSvg({ layout, standards, activeLabel, onActive, dim }) {
   // 그래프의 노드 key는 과목(같은 과목 성취기준을 묶은 원)이므로 색은 그 원의 성취기준에서 가져온다
   const nodeColor = useMemo(() => new Map(layout.clusters.map((c) => [c.key, colorOf(c.s)])), [layout])
   const col = (k) => nodeColor.get(k) || FALLBACK_NODE_COLOR
-  const active = activeLabel ? layout.chains.find((ch) => ch.c.label === activeLabel) : null
-  const activePills = new Set(active ? [active.p.id, active.q.id] : [])
+  const activeChains = activeLabel ? layout.chains.filter((ch) => ch.c.label === activeLabel) : []
+  const active = activeChains.length > 0
+  const activePills = new Set(activeChains.flatMap(ch => [ch.p.id, ch.q.id]))
   return (
     <svg className={`fu-graph-svg${dim ? ' dim-all' : ''}${active ? ' has-active' : ''}`} width={layout.W} height={layout.H}
       viewBox={`0 0 ${layout.W} ${layout.H}`} aria-hidden="true">
@@ -68,7 +69,7 @@ function GraphSvg({ layout, standards, activeLabel, onActive, dim }) {
       <g className="fu-chains">
         {layout.chains.map((ch, n) => {
           const st = strengthStyle(ch.c.strength)
-          const on = active === ch
+          const on = activeChains.includes(ch)
           return (
             <path key={`ch${n}`} className={`fu-chain${on ? ' on' : ''}`} d={`M${ch.a0[0]},${ch.a0[1]} Q${ch.ctl[0]},${ch.ctl[1]} ${ch.b0[0]},${ch.b0[1]}`}
               stroke={`url(#fu-ln-${n})`} strokeWidth={on ? st.width + 0.8 : st.width} style={{ opacity: active && !on ? 0.18 : on ? 1 : st.opacity }}
@@ -115,7 +116,8 @@ function GraphSvg({ layout, standards, activeLabel, onActive, dim }) {
       }))}
       {/* 연결 이름표(테두리 없는 상자 + 종류 표시) */}
       {layout.chains.map((ch, n) => {
-        const mx = ch.x - ch.cw / 2 + 11, on = active === ch
+        if (layout.chains.findIndex(other => other.c.label === ch.c.label) !== n) return null
+        const mx = ch.x - ch.cw / 2 + 11, on = activeChains.includes(ch)
         return (
           <g key={`cap${n}`} className={`fu-cap${active && !on ? ' faded' : ''}`} onMouseEnter={() => onActive?.(ch.c.label)} onMouseLeave={() => onActive?.(null)}>
             <rect x={ch.x - ch.cw / 2} y={ch.y - 10} width={ch.cw} height="20" rx="6" />
@@ -134,7 +136,7 @@ function GraphSvg({ layout, standards, activeLabel, onActive, dim }) {
  * @param {object[]} standards 고른 성취기준(2개 이상)
  * @param {{status: 'loading'|'ready'|'error', data: object|null, startedAt: number}} bridges
  */
-export default function KeywordGraph({ standards, bridges, activeLabel, onActive, onRetry }) {
+export default function KeywordGraph({ standards, bridges, activeLabel, onActive, onRetry, multiEndpoint = false }) {
   const panelRef = useRef(null)
   const [width, setWidth] = useState(0)
   const [fontsTick, setFontsTick] = useState(0)
@@ -154,7 +156,7 @@ export default function KeywordGraph({ standards, bridges, activeLabel, onActive
 
   const status = bridges.status
   const data = status === 'ready' ? bridges.data : null
-  const layout = useMemo(() => (width ? nebulaLayout(standards, data, width, measureText) : null), [sig, data, width, fontsTick]) // eslint-disable-line react-hooks/exhaustive-deps
+  const layout = useMemo(() => (width && !(multiEndpoint && width < GRAPH_MIN_WIDTH) ? nebulaLayout(standards, data, width, measureText, { multiEndpoint }) : null), [sig, data, width, fontsTick, multiEndpoint]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (status === 'ready' && layout) lastReady.current = { sig, layout, standards, data } }, [status, layout, sig]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const elapsed = useElapsed(bridges.startedAt, status === 'loading')
@@ -181,7 +183,7 @@ export default function KeywordGraph({ standards, bridges, activeLabel, onActive
           <div className="fu-panel-line">{COPY.graph.errorLine} <button type="button" className="fu-ghost" onClick={onRetry}>{COPY.graph.retry}</button></div>
         )}
         {listMode && status === 'ready' ? (
-          <ConnectionList standards={standards} layout={layout} bridges={data} activeLabel={activeLabel} onActive={onActive} listMode />
+          <ConnectionList standards={standards} layout={layout} bridges={data} activeLabel={activeLabel} onActive={onActive} listMode showClassification={!multiEndpoint} />
         ) : prev ? (
           <div className="fu-graph-prev">
             <span className="fu-prev-tag">{COPY.graph.previousTag}</span>
@@ -191,7 +193,7 @@ export default function KeywordGraph({ standards, bridges, activeLabel, onActive
           <GraphSvg layout={layout} standards={standards} activeLabel={activeLabel} onActive={onActive} />
         ) : null}
         {status === 'ready' && concepts.length > 0 && !listMode && layout && (
-          <ConnectionList standards={standards} layout={layout} bridges={data} activeLabel={activeLabel} onActive={onActive} />
+          <ConnectionList standards={standards} layout={layout} bridges={data} activeLabel={activeLabel} onActive={onActive} showClassification={!multiEndpoint} />
         )}
       </div>
     </section>
