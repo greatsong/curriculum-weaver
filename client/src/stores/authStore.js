@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import { apiGet, apiPut } from '../lib/api'
+import { privacyConsentMetadata } from '../lib/privacyConsent'
 
 export const useAuthStore = create((set, get) => ({
   user: null,
@@ -20,10 +21,14 @@ export const useAuthStore = create((set, get) => ({
     // 프로덕션 빌드(import.meta.env.DEV === false)에서는 절대 바이패스하지 않음
     if (import.meta.env.DEV && (!supabaseUrl || supabaseUrl === 'https://placeholder.supabase.co')) {
       console.info('[Auth] 개발 모드: Supabase 미설정 → 더미 사용자로 진입')
+      // 개발 모드 더미 사용자는 동의한 상태로 둔다. 동의 화면을 로컬에서 확인할 때만 localStorage
+      // cw_dev_no_consent=1로 끈다(개발 서버 전용, 프로덕션 빌드에는 이 분기가 없다).
+      let devNoConsent = false
+      try { devNoConsent = localStorage.getItem('cw_dev_no_consent') === '1' } catch { /* noop */ }
       let devUser = {
         id: 'dev-user-001',
         email: 'dev@curriculum-weaver.local',
-        user_metadata: { display_name: '개발자' },
+        user_metadata: { display_name: '개발자', ...(devNoConsent ? {} : privacyConsentMetadata()) },
       }
       // 서버 DEV_AUTH_BYPASS가 쓰는 실제 dev 유저와 id를 맞춘다.
       // 하드코딩 id를 그대로 두면 owner_id === user.id 판정이 항상 false가 되어
@@ -119,6 +124,8 @@ export const useAuthStore = create((set, get) => ({
             display_name: displayName,
             school_name: extra.school_name || '',
             subject: extra.subject || '',
+            // 가입 화면에서 받은 개인정보 동의 기록(버전·시각). 없으면 첫 접속 때 동의 화면이 묻는다
+            ...(extra.privacyConsent ? privacyConsentMetadata() : {}),
           },
         },
       })
@@ -185,6 +192,23 @@ export const useAuthStore = create((set, get) => ({
       set({ error: err.message })
       throw err
     }
+  },
+
+  /**
+   * 개인정보 동의 기록 저장(동의 화면에서 호출). user_metadata에 버전·시각을 병합한다.
+   * 실패하면 예외를 던진다 — 동의 화면이 다시 시도 또는 이번 접속만 시작을 안내한다.
+   */
+  acceptPrivacyConsent: async () => {
+    const consent = privacyConsentMetadata()
+    const { user, session } = get()
+    if (session?.access_token === 'dev-token') {
+      set({ user: { ...user, user_metadata: { ...(user?.user_metadata || {}), ...consent } } })
+      return
+    }
+    const { data, error } = await supabase.auth.updateUser({ data: consent })
+    if (error) throw error
+    if (!data?.user) throw new Error('동의 기록을 저장하지 못했습니다.')
+    set({ user: data.user })
   },
 
   /**
