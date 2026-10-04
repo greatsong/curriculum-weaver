@@ -63,6 +63,23 @@ const DEMO_REPORT_BOARDS = [
  * @param {string} projectId - 프로젝트 ID
  * @returns {Promise<object|null>} 보고서 데이터 또는 null
  */
+// 사용자에게는 표시 코드만 보인다. 준비 단계(id 'prep')와 준비 절차는 표시 코드가 없으므로 배지를 그리지 않는다
+// (예전에는 내부 코드 prep가 단계·절차 배지에 그대로 찍혔다 — 2026-10-04 QA).
+function phaseBadgeText(phase) {
+  return phase?.id && phase.id !== 'prep' ? phase.id : ''
+}
+function procBadgeText(code) {
+  return getProcedureDisplayCode(code) || ''
+}
+function procBadgeHTML(code, background) {
+  const text = procBadgeText(code)
+  return text ? `<span class="proc-code" style="background:${background};">${esc(text)}</span>` : ''
+}
+function procHeadingMD(code, name) {
+  const text = procBadgeText(code)
+  return text ? `${text}: ${name}` : name
+}
+
 export async function collectReportData(projectId) {
   const project = await getProject(projectId)
   if (!project) return null
@@ -679,7 +696,7 @@ export function generateHTML(data) {
   <div class="phase-header" style="border-left-color: ${phaseColor};">
     <span>${PHASE_ICONS[phase.id] || ''}</span>
     ${esc(phase.name)}
-    <span class="phase-badge" style="background:${phaseColor};">${phase.id}</span>
+    ${phaseBadgeText(phase) ? `<span class="phase-badge" style="background:${phaseColor};">${phaseBadgeText(phase)}</span>` : ''}
   </div>`
 
     for (const proc of procedures) {
@@ -693,7 +710,7 @@ export function generateHTML(data) {
         html += `
   <div class="proc-block">
     <div class="proc-header">
-      <span class="proc-code" style="background:#9CA3AF;">${esc(getProcedureDisplayCode(proc.code) || proc.code)}</span>
+      ${procBadgeHTML(proc.code, '#9CA3AF')}
       <span style="text-decoration:line-through;opacity:0.7;">${esc(proc.name)}</span>
       <span class="proc-status status-empty">팀 합의로 생략</span>
     </div>
@@ -711,7 +728,7 @@ export function generateHTML(data) {
           html += `
   <div class="proc-block">
     <div class="proc-header">
-      <span class="proc-code" style="background:${phaseColor};">${esc(getProcedureDisplayCode(proc.code) || proc.code)}</span>
+      ${procBadgeHTML(proc.code, phaseColor)}
       ${esc(proc.name)}
       <span class="proc-status status-empty">수업 후 예정</span>
     </div>
@@ -729,7 +746,7 @@ export function generateHTML(data) {
       html += `
   <div class="proc-block">
     <div class="proc-header">
-      <span class="proc-code" style="background:${phaseColor};">${esc(getProcedureDisplayCode(proc.code) || proc.code)}</span>
+      ${procBadgeHTML(proc.code, phaseColor)}
       ${esc(proc.name)}
       ${statusLabel ? `<span class="proc-status ${statusClass}">${statusLabel}</span>` : ''}
     </div>
@@ -1065,7 +1082,7 @@ export function generateMarkdown(data) {
     })
     if (!hasContent) continue
 
-    md += `## ${phaseIcon} ${phase.name} (${phase.id})\n\n`
+    md += `## ${phaseIcon} ${phase.name}${phaseBadgeText(phase) ? ` (${phaseBadgeText(phase)})` : ''}\n\n`
 
     for (const proc of procedures) {
       const boardType = BOARD_TYPES[proc.code]
@@ -1074,7 +1091,7 @@ export function generateMarkdown(data) {
       // 생략된 절차: '팀 합의로 생략' 표기 (HTML 쪽과 동일 정책)
       const skip = skipMap[proc.code]
       if (skip) {
-        md += `### ${getProcedureDisplayCode(proc.code) || proc.code}: ~~${proc.name}~~ [팀 합의로 생략]\n\n> ${proc.description}\n\n이 절차는 팀 결정으로 생략되었습니다.${skip.reason ? ` 사유: ${skip.reason}` : ''}\n\n`
+        md += `### ${procBadgeText(proc.code) ? `${procBadgeText(proc.code)}: ` : ''}~~${proc.name}~~ [팀 합의로 생략]\n\n> ${proc.description}\n\n이 절차는 팀 결정으로 생략되었습니다.${skip.reason ? ` 사유: ${skip.reason}` : ''}\n\n`
         continue
       }
 
@@ -1082,7 +1099,7 @@ export function generateMarkdown(data) {
       // 빈 절차는 건너뛰되, E-1-1(수업 성찰)만 '수업 후 예정' 자리표시로 남긴다.
       if (!sections) {
         if (proc.code === 'E-1-1') {
-          md += `### ${getProcedureDisplayCode(proc.code) || proc.code}: ${proc.name} [수업 후 예정]\n\n> ${proc.description}\n\n실제 수업 이후에 작성 예정입니다.\n\n`
+          md += `### ${procHeadingMD(proc.code, proc.name)} [수업 후 예정]\n\n> ${proc.description}\n\n실제 수업 이후에 작성 예정입니다.\n\n`
         }
         continue
       }
@@ -1090,7 +1107,7 @@ export function generateMarkdown(data) {
       const status = procedureStatus[proc.code] || 'empty'
       const statusTag = status === 'confirmed' ? ' [확정]' : status === 'draft' ? ' [초안]' : ''
 
-      md += `### ${getProcedureDisplayCode(proc.code) || proc.code}: ${proc.name}${statusTag}\n\n`
+      md += `### ${procHeadingMD(proc.code, proc.name)}${statusTag}\n\n`
       md += `> ${proc.description}\n\n`
       md += renderSectionsMD(sections)
 
