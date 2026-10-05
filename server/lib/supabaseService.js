@@ -8,6 +8,7 @@ import crypto from 'crypto'
 
 import { supabaseAdmin } from './supabaseAdmin.js'
 import { BOARD_TYPES } from 'curriculum-weaver-shared/constants.js'
+import { normalizeBoardKeys } from 'curriculum-weaver-shared/boardKeys.js'
 
 // ── Supabase 클라이언트 (lazy) ──
 let _fallbackMode = false
@@ -422,6 +423,10 @@ export async function getDesign(projectId, procedureCode) {
  * @returns {Promise<object>}
  */
 export async function upsertDesign(projectId, procedureCode, content, userId) {
+  // AI 제안이 칸 이름 대신 화면 라벨("성취기준 코드" 등)을 키로 쓴 경우 스키마 키로 맞춘다.
+  // 맞추지 않으면 아래 A-2-1 게이트키퍼가 code 칸이 없는 행을 모두 버린다(2026-10-05 리허설).
+  content = normalizeBoardKeys(procedureCode, content)
+
   // ── 게이트키퍼: A-2-1 성취기준 — DB에 존재하는 코드만 허용 ──
   // AI가 생성한 가짜 코드를 원천 차단. 교정하지 않고 제거만 함.
   if (procedureCode === 'A-2-1' && content?.standards && Array.isArray(content.standards)) {
@@ -431,7 +436,12 @@ export async function upsertDesign(projectId, procedureCode, content, userId) {
       content = {
         ...content,
         standards: content.standards.filter(row => {
-          if (!row || typeof row !== 'object' || !row.code) return false
+          if (!row || typeof row !== 'object') return false
+          // 코드 칸을 비워 두고 다른 칸만 적은 행은 교사가 쓴 것이므로 남긴다(예전에는 경고 없이 버렸다).
+          // 가짜 코드 차단이 목적이라, 코드가 없는 행은 검증할 대상이 없다.
+          if (!row.code || (typeof row.code === 'string' && !row.code.trim())) {
+            return Object.entries(row).some(([k, v]) => k !== 'code' && typeof v === 'string' && v.trim())
+          }
           const result = validateCode(row.code)
           if (result.valid) {
             // code/content를 DB 원본으로 고정 — AI가 변형한 내용 방지
