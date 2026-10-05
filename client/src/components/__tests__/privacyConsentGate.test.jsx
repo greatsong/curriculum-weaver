@@ -64,8 +64,8 @@ describe('동의 화면 노출', () => {
     await act(async () => button('자세한 내용 보기').click())
     const text = host.textContent
     expect(text).toContain('개인정보 국외 이전 안내')
-    for (const name of ['Anthropic', 'OpenAI', 'Supabase', 'Railway']) expect(text).toContain(name) // 이전받는 자
-    for (const mail of ['privacy@anthropic.com', 'privacy@openai.com', 'privacy@supabase.com', 'privacy@railway.com']) expect(text).toContain(mail) // 연락처
+    for (const name of ['Anthropic', 'OpenAI', 'Supabase', 'Railway', 'Vercel']) expect(text).toContain(name) // 이전받는 자
+    for (const mail of ['privacy@anthropic.com', 'privacy@openai.com', 'privacy@supabase.com', 'privacy@railway.com', 'privacy@vercel.com']) expect(text).toContain(mail) // 연락처
     for (const country of ['미국', '일본(도쿄)', '싱가포르']) expect(text).toContain(country) // 국가
     expect(text).toContain('암호화된 연결로 전송') // 시기·방법
     expect(text).toContain('회원 탈퇴 시까지 보관') // 보유 기간

@@ -16,8 +16,8 @@ describe('privacyConsent', () => {
     expect(hasPrivacyConsent({ user_metadata: privacyConsentMetadata(new Date('2026-10-04T00:00:00Z')) })).toBe(true)
   })
 
-  it('국외 이전 안내에 실제 전송처 네 곳을 모두 적는다', () => {
-    expect(TRANSFER_ROWS.map((r) => `${r.to}:${r.country}`)).toEqual(['Anthropic:미국', 'OpenAI:미국', 'Supabase:일본(도쿄)', 'Railway:싱가포르'])
+  it('국외 이전 안내에 실제 전송처 다섯 곳(화면 호스팅 Vercel 포함)을 모두 적는다', () => {
+    expect(TRANSFER_ROWS.map((r) => `${r.to}:${r.country}`)).toEqual(['Anthropic:미국', 'OpenAI:미국', 'Supabase:일본(도쿄)', 'Railway:싱가포르', 'Vercel:미국'])
   })
 
   it('이메일 가입에서 동의했으면 가입 요청에 동의 기록을 함께 보낸다', async () => {
