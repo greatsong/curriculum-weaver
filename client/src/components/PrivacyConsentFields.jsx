@@ -39,7 +39,7 @@ function ConsentItem({ id, label, summary, checked, onChange, children }) {
 }
 
 /** 좁은 칸에서는 @ 뒤에서만 줄을 바꾼다(<wbr>는 복사할 때 섞이지 않는다) */
-function ContactMail({ address }) {
+export function ContactMail({ address }) {
   const at = address.indexOf('@')
   return (
     <span style={{ display: 'block', color: 'var(--color-text-tertiary)' }}>
@@ -91,6 +91,7 @@ export default function PrivacyConsentFields({ value, onChange, idPrefix = 'priv
         </div>
         <p style={{ margin: '6px 0 0' }}>{TRANSFER_NOTE}</p>
         <p style={{ margin: '4px 0 0' }}>{CONSENT_TEXT.transferRefusal}</p>
+        <p style={{ margin: '6px 0 0' }}><a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#3B82F6' }}>개인정보 처리방침 전체 보기</a></p>
       </ConsentItem>
       <p style={{ margin: 0, fontSize: 11, color: 'var(--color-text-tertiary)', lineHeight: 1.5 }}>{CONSENT_TEXT.refusal}</p>
     </div>
