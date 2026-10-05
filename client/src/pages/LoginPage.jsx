@@ -28,7 +28,7 @@ export default function LoginPage() {
   const [displayName, setDisplayName] = useState('')
   const [schoolName, setSchoolName] = useState('')
   const [subject, setSubject] = useState('')
-  const [privacyConsent, setPrivacyConsent] = useState({ collection: false, transfer: false })
+  const [privacyConsent, setPrivacyConsent] = useState({ collection: false })
   const [consentMissing, setConsentMissing] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)

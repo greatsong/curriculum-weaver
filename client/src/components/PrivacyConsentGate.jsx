@@ -25,7 +25,7 @@ export default function PrivacyConsentGate({ onPassed }) {
   const user = useAuthStore((s) => s.user)
   const acceptPrivacyConsent = useAuthStore((s) => s.acceptPrivacyConsent)
   const logout = useAuthStore((s) => s.logout)
-  const [value, setValue] = useState({ collection: false, transfer: false })
+  const [value, setValue] = useState({ collection: false })
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
   const complete = isConsentComplete(value)
