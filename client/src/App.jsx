@@ -47,6 +47,7 @@ const IntroPage = lazyWithReload(() => import('./pages/IntroPage'), 'IntroPage')
 const DemoMode = lazyWithReload(() => import('./components/DemoMode'), 'DemoMode')
 const DemoPrepPage = lazyWithReload(() => import('./pages/DemoPrepPage'), 'DemoPrepPage')
 const GuidePage = lazyWithReload(() => import('./pages/GuidePage'), 'GuidePage')
+const PrivacyPolicyPage = lazyWithReload(() => import('./pages/PrivacyPolicyPage'), 'PrivacyPolicyPage')
 const AuthCallback = lazyWithReload(() => import('./pages/AuthCallback'), 'AuthCallback')
 const Futures2Page = lazyWithReload(() => import('./pages/Futures2Page'), 'Futures2Page')
 const FuturesLabPage = lazyWithReload(() => import('./pages/FuturesLabPage'), 'FuturesLabPage')
@@ -244,6 +245,9 @@ export default function App() {
 
         {/* OAuth 콜백 (공개) */}
         <Route path="/auth/callback" element={<AuthCallback />} />
+
+        {/* 개인정보 처리방침 (공개 — 개인정보 보호법 제30조) */}
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
 
         {/* 인트로 (공개) */}
         <Route path="/intro" element={<IntroPage />} />

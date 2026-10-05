@@ -440,6 +440,9 @@ export default function LoginPage() {
           }}>
             서울특별시교육청 &middot; Human-AI Agency
           </p>
+          <p style={{ textAlign: 'center', fontSize: 11, marginTop: 6 }}>
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-text-secondary)', fontWeight: 600 }}>개인정보 처리방침</a>
+          </p>
         </div>
       </main>
     </div>
