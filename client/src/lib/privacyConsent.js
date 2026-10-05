@@ -67,12 +67,14 @@ export const COLLECTION_ROWS = [
 /**
  * 국외 이전 안내 — 표 (전송처·국가는 server/services와 Supabase·Railway 설정에서 확인, 2026-10-04).
  * 연락처는 각 사 개인정보 처리방침의 개인정보 문의 메일(2026-10-05 확인).
+ * Vercel(화면 호스팅)은 2026-10-05 추가 — 화면 요청의 접속 기록을 처리한다. 안내 방식이라 동의 버전은 그대로.
  */
 export const TRANSFER_ROWS = [
   { to: 'Anthropic', contact: 'privacy@anthropic.com', country: '미국', items: '채팅, 설계 보드, 업로드 자료 내용(안에 적힌 이름 포함)', purpose: 'AI 응답 생성, 자료 분석' },
   { to: 'OpenAI', contact: 'privacy@openai.com', country: '미국', items: '성취기준 검색어', purpose: '성취기준 의미 검색' },
   { to: 'Supabase', contact: 'privacy@supabase.com', country: '일본(도쿄)', items: '계정 정보와 설계 데이터 전체', purpose: '데이터 저장, 로그인' },
   { to: 'Railway', contact: 'privacy@railway.com', country: '싱가포르', items: '서비스 이용 중 주고받는 정보', purpose: '서버 운영' },
+  { to: 'Vercel', contact: 'privacy@vercel.com', country: '미국', items: '접속 기록(IP 주소, 브라우저 정보, 접속 일시)', purpose: '서비스 화면 제공' },
 ]
 
-export const TRANSFER_NOTE = '서비스를 이용할 때 암호화된 연결로 전송합니다. Supabase·Railway에서는 회원 탈퇴 시까지 보관하고, Anthropic·OpenAI에서는 각 사의 API 데이터 정책에 따라 처리합니다.'
+export const TRANSFER_NOTE = '서비스를 이용할 때 암호화된 연결로 전송합니다. Supabase·Railway에서는 회원 탈퇴 시까지 보관하고, Anthropic·OpenAI에서는 각 사의 API 데이터 정책에 따라 처리하며, Vercel에서는 접속 기록(IP 주소, 브라우저 정보, 접속 일시)을 받고 Vercel의 데이터 정책에 따라 처리합니다.'
