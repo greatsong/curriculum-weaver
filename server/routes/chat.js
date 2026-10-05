@@ -324,12 +324,20 @@ chatRouter.get('/:sessionId', checkProjectAccess, async (req, res) => {
   }
 })
 
+// 저장 길이 상한 — 채팅 기록은 자르지 않고 AI 입력에 들어가므로 저장 단계에서 막는다
+const MAX_TEACHER_MESSAGE_LENGTH = 5000
+const MAX_SEED_MESSAGE_LENGTH = 12000
+
 // ─── 교사 메시지 저장 ───
 chatRouter.post('/teacher', async (req, res) => {
   const { session_id, content, procedure, sender_name, sender_subject } = req.body
   const mentionedRaw = req.body?.mentioned_material_ids
   if (!session_id || !content?.trim()) {
     return res.status(400).json({ error: '세션 ID와 메시지 내용이 필요합니다.' })
+  }
+  // /message와 같은 상한 — 저장된 기록이 다음 AI 호출의 입력으로 들어간다
+  if (typeof content !== 'string' || content.length > MAX_TEACHER_MESSAGE_LENGTH) {
+    return res.status(400).json({ error: '메시지가 너무 깁니다. (최대 5,000자)' })
   }
 
   const project = req.project || await getProject(session_id).catch(() => null)
@@ -364,6 +372,9 @@ chatRouter.post('/seed', async (req, res) => {
   const { session_id, sender_type, content, procedure, sender_name, sender_subject, principles_used } = req.body
   if (!session_id || !content?.trim() || !sender_type) {
     return res.status(400).json({ error: '필수 필드: session_id, sender_type, content' })
+  }
+  if (typeof content !== 'string' || content.length > MAX_SEED_MESSAGE_LENGTH) {
+    return res.status(400).json({ error: '메시지가 너무 깁니다.' })
   }
 
   // sender_type 값 검증
