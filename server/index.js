@@ -335,7 +335,7 @@ app.use(compression({
 // ── Rate Limiter 적용 ──
 // 사용자별 한도(JWT sub 키) + IP 백스톱 2중 구조 — 학교 NAT(전원 동일 IP) 대응.
 app.use('/api', ipBackstopLimiter)    // IP 백스톱: 분당 3,000회 (IP당, 플러딩 차단)
-app.use('/api', apiLimiter)           // 일반 API: 분당 120회 (사용자당)
+app.use('/api', apiLimiter)           // 일반 API: 분당 240회 (사용자당)
 // 로그인/가입만 brute force 제한 (IP+이메일당) — /me·/logout은 일반 한도로 충분
 app.use('/api/auth/login', authLimiter)
 app.use('/api/auth/signup', authLimiter)

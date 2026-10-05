@@ -438,7 +438,8 @@ export default function StandardSearch({ sessionId, onClose }) {
               const course = courseLabel(std)
               return (
                 <span
-                  key={entry.id}
+                  // 담은 기준 행에는 id가 없다(project_id+standard_id 복합 키). 예전 entry.id는 늘 비어 key가 겹쳤다.
+                  key={entry.standard_id || std.id || std.code}
                   title={[course, std.content].filter(Boolean).join(' · ')}
                   className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${colorClass}`}
                 >
@@ -537,6 +538,18 @@ export default function StandardSearch({ sessionId, onClose }) {
           ) : results.length === 0 ? (
             <div className="text-center py-8 text-gray-400 text-sm">
               {query || subject ? '검색 결과가 없습니다' : '검색어를 입력하거나 교과를 선택하세요'}
+              {/* 키워드 검색은 성취기준 문장·키워드·해설만 찾는다. '논설문'처럼 교수·학습 유의사항에만 있는
+                  낱말은 0건이 되므로 뜻으로 찾는 검색을 바로 고를 수 있게 한다(2026-10-05 리허설) */}
+              {query && searchMode === 'keyword' && !aiActive && (
+                <div className="mt-3">
+                  <button
+                    onClick={() => { setSearchMode('semantic'); exitAiMode() }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-gray-200 text-blue-600 hover:bg-blue-50 transition"
+                  >
+                    의미 검색으로 찾기
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-2">

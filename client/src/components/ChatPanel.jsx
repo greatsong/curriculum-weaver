@@ -29,6 +29,7 @@ import { getDefaultIntent } from '../lib/defaultIntentForStep'
 import { advanceButtonLabel } from '../lib/advanceLabel'
 import BriefModeBar from './BriefModeBar'
 import { buildHelpRequestText } from 'curriculum-weaver-shared/briefMode.js'
+import { stripBoardKeyMentions } from 'curriculum-weaver-shared/boardKeys.js'
 import { validateMaterialFile } from '../lib/materialErrors'
 import { fixEmphasisFlanking } from '../lib/markdownFix'
 import SuggestionEditForm, { canEditSuggestion } from './SuggestionEditForm'
@@ -36,8 +37,9 @@ import { REMARK_PLUGINS } from '../lib/markdownPlugins'
 import ReadableValue from './ReadableValue'
 
 // 스트리밍 텍스트에서 XML 마커 제거 + 내부 절차 코드(T-1-2 등) → 표시 코드(T-2 등) 치환
+// + 본문에 괄호로 붙은 보드 영문 키 제거(저장본은 서버가 같은 함수로 정리한다)
 function cleanStreamingText(text) {
-  return replaceInternalProcedureCodes(text)
+  return stripBoardKeyMentions(replaceInternalProcedureCodes(text)
     .replace(/<ai_suggestion[\s\S]*?<\/ai_suggestion>/g, '')
     .replace(/<coherence_check>[\s\S]*?<\/coherence_check>/g, '')
     .replace(/<procedure_advance>[\s\S]*?<\/procedure_advance>/g, '')
@@ -47,7 +49,7 @@ function cleanStreamingText(text) {
     .replace(/<coherence_check[\s\S]*$/g, '')
     .replace(/<procedure_advance[\s\S]*$/g, '')
     .replace(/<board_update[\s\S]*$/g, '')
-    .replace(/<stage_advance[\s\S]*$/g, '')
+    .replace(/<stage_advance[\s\S]*$/g, ''))
     .trim() || '...'
 }
 
