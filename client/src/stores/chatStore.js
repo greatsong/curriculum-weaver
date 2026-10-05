@@ -159,15 +159,34 @@ function stripXmlMarkers(text) {
  * SSE 스트림 호출을 감싸, 어떤 경로로 끝나든(정상·오류·예외) streaming 플래그가 남지 않게 한다.
  * 플래그가 남으면 입력창이 잠기고 탭 복귀 새로고침(loadMessages)까지 막혀, 페이지를 통째로
  * 새로고침하기 전까지 복구되지 않는다.
+ *
+ * isCurrent: 이 스트림이 지금 요청(_streamSeq)인지. 늦게 끝난 이전 요청이 지금 요청의 잠금과
+ * 글자를 지우지 않게, 지금 요청일 때만 초기화한다. 잠금을 거는 두 함수(sendMessage·requestProcedureIntro)가
+ * 잠글 때마다 번호를 올리므로, 마지막으로 잠근 요청이 항상 지금 요청이고 그 finally가 반드시 잠금을 푼다.
  */
-async function guardStreaming(set, get, streamPromise) {
+async function guardStreaming(set, get, streamPromise, isCurrent = () => true) {
   try {
     await streamPromise
   } catch (err) {
     console.error('AI 스트림 처리 오류:', err)
   } finally {
-    if (get().streaming) set({ streaming: false, streamingText: '' })
+    if (isCurrent() && get().streaming) set({ streaming: false, streamingText: '' })
   }
+}
+
+/** 이 탭의 소켓 id. 연결 전이면 undefined → 본문에서 빠지고 서버는 방송하지 않는다 */
+function requesterSocketId() {
+  const id = socket?.id
+  return typeof id === 'string' && id ? id : undefined
+}
+
+/**
+ * AI 메시지를 붙이되 같은 id가 이미 있으면 그대로 둔다. 서버가 저장 번호(message_saved)를 알려 주면
+ * 그 번호로 붙이는데, 소켓 재연결로 이 탭의 id가 바뀌면 서버 방송(message_added)이 이 탭에도 와서
+ * 먼저 붙어 있을 수 있다. 그때는 서버 원문을 남긴다.
+ */
+function appendUnlessPresent(messages, message) {
+  return messages.some((m) => m.id === message.id) ? messages : [...messages, message]
 }
 
 /**
@@ -227,6 +246,9 @@ export const useChatStore = create((set, get) => ({
   subscribe: (sessionId) => {
     // 메시지 upsert — 동일 id 있으면 덮어쓰기, 없으면 append
     // 시스템 메시지의 processing_status가 parsing → completed로 바뀔 때 필요.
+    // AI 답은 서버가 저장한 원문을 서버 id로 보낸다(routes/chat.js). 옛 탭의 ai_response_done(임시 id)과
+    // 서버 방송은 한 응답에 둘 중 하나만 오므로(옛 탭은 socket_id를 싣지 않아 서버가 방송하지 않는다)
+    // 같은 답이 임시 id와 서버 id로 두 번 붙지 않는다. 요청한 탭 자신은 message_saved 번호로 붙여 id로 거른다.
     const upsertHandler = (message) => {
       if (!message || !message.id) return
       set((state) => {
@@ -406,25 +428,32 @@ export const useChatStore = create((set, get) => ({
     }
 
     // 2) AI 응답 (SSE)
-    set({
-      streaming: true,
-      streamingText: '',
-      pendingSuggestions: [],
-      _acceptedBoardsInBatch: [],
-      coherenceCheckResult: null,
-      procedureAdvanceSuggestion: null,
-      boardSuggestions: [],
-      stageAdvanceSuggestion: null,
-    })
+    // 잠금은 1)에서 이미 걸었다. 그 사이 다른 요청이 지금 요청이 됐으면 그 상태를 건드리지 않는다.
+    if (isCurrent()) {
+      set({
+        streaming: true,
+        streamingText: '',
+        pendingSuggestions: [],
+        _acceptedBoardsInBatch: [],
+        coherenceCheckResult: null,
+        procedureAdvanceSuggestion: null,
+        boardSuggestions: [],
+        stageAdvanceSuggestion: null,
+      })
+    }
 
     // AI 역할 프리셋을 워크스페이스 설정에서 가져옴
     // 다른 작업 공간의 설정이 남아 있으면 쓰지 않는다(서버가 기본 역할로 처리)
     const wsAiRole = currentWorkflowConfig()?.aiRole
 
     const aiModel = localStorage.getItem('cw_ai_model') || 'fast'
+    // 서버가 저장한 이 답의 번호(message_saved). 화면 메시지를 이 번호로 붙인다.
+    let savedMessageId = null
 
     await guardStreaming(set, get, apiStreamPost('/api/chat/message', {
       session_id: projectId,
+      // 이 탭의 소켓 id — 서버가 저장한 원문을 이 탭만 빼고 팀원에게 보낸다(화면 글을 중계하지 않는다)
+      socket_id: requesterSocketId(),
       content,
       // 방금 저장한 이 메시지의 번호 — 서버가 AI 대화 기록에서 빼 같은 말이 두 번 들어가지 않게 한다
       teacher_message_id: teacherMsg?.id,
@@ -443,9 +472,11 @@ export const useChatStore = create((set, get) => ({
         set((state) => ({ streamingText: state.streamingText + text }))
       },
       onPrinciples: (_principles, relevantGeneralPrincipleIds) => {
+        if (!isCurrent()) return
         useProcedureStore.getState().setRelevantGeneralPrincipleIds(relevantGeneralPrincipleIds)
       },
       onBoardSuggestions: (suggestions) => {
+        if (!isCurrent()) return // 이전 요청의 제안 카드가 지금 답에 붙지 않게
         // 보드 반영은 교사가 인라인 제안 카드에서 '수락'해야만 일어난다(자동 저장 없음).
         // 서버는 status:'pending' 제안만 전송하며, 자동 반영(appliedBoards) 경로는 없다.
         set({ boardSuggestions: suggestions || [] })
@@ -469,6 +500,7 @@ export const useChatStore = create((set, get) => ({
         }
       },
       onStageAdvance: (data) => {
+        if (!isCurrent()) return
         // 서버 shape (current/suggested/reason) → 클라이언트 shape (next_procedure/summary/next_name)
         const nextCode = normalizeProcedureCode(data.suggested || data.next_procedure || data.next_stage)
         // 존재하지 않는 절차 코드(AI 환각)는 무시 — 코드·이름이 빈 "제목 없는 이동 버튼" 방지
@@ -485,6 +517,7 @@ export const useChatStore = create((set, get) => ({
         })
       },
       onCoherenceCheck: (data) => {
+        if (!isCurrent()) return
         // 서버 shape (aligned/feedback/details) → 클라이언트 shape (status/issues/suggestions)
         set({
           coherenceCheckResult: {
@@ -495,7 +528,9 @@ export const useChatStore = create((set, get) => ({
         })
       },
       onMessageSaved: (data) => {
-        if (data?.messageId) set({ _lastAiMessageId: data.messageId })
+        if (!data?.messageId) return
+        savedMessageId = data.messageId
+        if (isCurrent()) set({ _lastAiMessageId: data.messageId })
       },
       onDone: () => {
         if (!isCurrent()) return
@@ -528,15 +563,17 @@ export const useChatStore = create((set, get) => ({
         }
 
         if (cleanText) {
+          // 팀원에게는 서버가 저장한 원문을 서버가 직접 보낸다(routes/chat.js). 이 화면의 글은 중계하지
+          // 않는다 — 예전 ai_response_done 중계는 이 탭에서 섞인 글을 팀원 화면에도 퍼뜨렸다(2026-10-05).
+          // 서버 저장 번호를 받았으면 그 번호로 붙인다(옛 서버라 못 받았으면 임시 id).
           const aiMsg = {
-            id: `ai-${Date.now()}`,
+            id: savedMessageId || `ai-${Date.now()}`,
             sender_type: 'ai',
             content: cleanText,
             stage_context: procedureCode,
             created_at: new Date().toISOString(),
           }
-          newState.messages = [...get().messages, aiMsg]
-          socket.emit('ai_response_done', { projectId, message: aiMsg })
+          newState.messages = appendUnlessPresent(get().messages, aiMsg)
         } else {
           newState.messages = get().messages
         }
@@ -545,11 +582,13 @@ export const useChatStore = create((set, get) => ({
       },
       onError: (error) => {
         console.error('AI 응답 오류:', error)
+        // 늦게 실패한 이전 요청은 지금 요청의 잠금·글자를 지우지 않는다(알림도 띄우지 않는다)
+        if (!isCurrent()) return
         set({ streaming: false, streamingText: '' })
         // 조용히 실패하면 "AI가 무시했다"로 오해한다 — 원인을 바로 알린다
         pushToast({ kind: 'error', message: `AI 응답을 받지 못했습니다. ${error || ''}`.trim(), duration: 8_000 })
       },
-    }))
+    }), isCurrent)
   },
 
   // ── 절차 인트로 요청 ────
@@ -569,48 +608,64 @@ export const useChatStore = create((set, get) => ({
     const project = useProjectStore.getState().currentProject
     if (isReadOnlyProject(project)) return
 
-    set({ streaming: true, streamingText: '' })
+    // sendMessage와 같은 요청 번호를 쓴다. 예전에는 번호 없이 잠가, 늦게 끝난 이전 요청이나 다른 요청의
+    // 글자가 인트로에 붙거나 인트로의 마무리가 다른 요청의 상태를 지울 수 있었다.
+    const seq = (get()._streamSeq || 0) + 1
+    set({ streaming: true, streamingText: '', _streamSeq: seq })
+    const isCurrent = () => get()._streamSeq === seq
 
     const aiModel = localStorage.getItem('cw_ai_model') || 'fast'
+    let savedMessageId = null
 
     await guardStreaming(set, get, apiStreamPost('/api/chat/stage-intro', {
       session_id: projectId,
+      // 이 탭의 소켓 id — 서버가 저장한 안내를 이 탭만 빼고 팀원에게 보낸다
+      socket_id: requesterSocketId(),
       stage: procedureCode,
       aiModel,
     }, {
       onText: (text) => {
+        if (!isCurrent()) return
         set((state) => ({ streamingText: state.streamingText + text }))
       },
       onPrinciples: () => {},
       onBoardSuggestions: () => {},
       onStageAdvance: () => {},
+      onMessageSaved: (data) => {
+        if (data?.messageId) savedMessageId = data.messageId
+      },
       onDone: () => {
+        if (!isCurrent()) return
         const streamedText = get().streamingText
         if (streamedText.trim()) {
           const cleanContent = stripXmlMarkers(streamedText)
+          // 팀원에게는 서버가 저장한 안내를 서버가 보낸다. 화면 글은 중계하지 않는다(sendMessage와 같은 이유).
           const aiMsg = {
-            id: `intro-${Date.now()}`,
+            id: savedMessageId || `intro-${Date.now()}`,
             sender_type: 'ai',
             content: cleanContent,
             stage_context: procedureCode,
             created_at: new Date().toISOString(),
           }
-          set((state) => ({
-            messages: [...state.messages, aiMsg],
-            streaming: false,
-            streamingText: '',
-            introCache: { ...state.introCache, [procedureCode]: cleanContent },
-          }))
-          socket.emit('ai_response_done', { projectId, message: aiMsg })
+          set((state) => {
+            const messages = appendUnlessPresent(state.messages, aiMsg)
+            const shown = messages.find((m) => m.id === aiMsg.id) || aiMsg
+            return {
+              messages,
+              streaming: false,
+              streamingText: '',
+              introCache: { ...state.introCache, [procedureCode]: shown.content },
+            }
+          })
         } else {
           set({ streaming: false, streamingText: '' })
         }
       },
       onError: (error) => {
         console.error('절차 인트로 오류:', error)
-        set({ streaming: false, streamingText: '' })
+        if (isCurrent()) set({ streaming: false, streamingText: '' })
       },
-    }))
+    }), isCurrent)
   },
 
   /**
