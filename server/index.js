@@ -226,7 +226,11 @@ io.on('connection', (socket) => {
     if (isInRoom(roomId)) socket.to(roomId).emit('message_added', message)
   })
 
-  // AI 응답 완료 브로드캐스트
+  // AI 응답 완료 브로드캐스트 — 옛 탭 호환 전용(2026-10-05).
+  // 새 탭은 이 이벤트를 보내지 않는다. 요청 본문에 socket_id를 싣고, 서버가 저장한 원문을
+  // routes/chat.js가 직접 방송한다(lib/messageBroadcast.js). 배포 전에 열린 옛 탭은 socket_id 없이
+  // 요청하므로 서버가 방송하지 않고, 대신 이 중계로 팀원에게 전달된다. 한 응답은 둘 중 한 경로로만
+  // 가므로 중복이 생기지 않는다. 옛 탭이 모두 사라지면(배포 뒤 며칠) 이 중계를 지워도 된다.
   socket.on('ai_response_done', ({ projectId, sessionId, message }) => {
     const roomId = projectId || sessionId
     if (isInRoom(roomId)) socket.to(roomId).emit('message_added', message)
