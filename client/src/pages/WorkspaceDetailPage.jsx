@@ -3,8 +3,8 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useProjectStore } from '../stores/projectStore'
 import { useAuthStore } from '../stores/authStore'
-import { apiGet, apiPost } from '../lib/api'
-import { standardKey, codeFromKey, subjectFromKey } from '../lib/standardKey'
+import { apiPost } from '../lib/api'
+import { codeFromKey, subjectFromKey } from '../lib/standardKey'
 import { NEW_DESTINATION, readBasket, readBasketMeta, writeBasket, clearBasket } from '../lib/exploreDestination'
 import { safeSessionStorage } from '../lib/explorationDraft'
 import { EXPLORE_COPY } from '../lib/explorationCopy'
@@ -52,10 +52,6 @@ export default function WorkspaceDetailPage() {
   const [projectDescription, setProjectDescription] = useState('')
   const [projectSubjects, setProjectSubjects] = useState([])
   const [projectGrade, setProjectGrade] = useState('')
-  const [recommendedStandards, setRecommendedStandards] = useState([])
-  const [selectedStandardIds, setSelectedStandardIds] = useState(new Set())
-  const [loadingRecommend, setLoadingRecommend] = useState(false)
-  const [standardSearchQuery, setStandardSearchQuery] = useState('')
   // 설계 모드(교과 연결)에서 담아온 성취기준 — 프로젝트 생성 시 자동 포함
   const [designBasket, setDesignBasket] = useState([])
   const [inviteEmail, setInviteEmail] = useState('')
@@ -162,50 +158,6 @@ export default function WorkspaceDetailPage() {
     )
   }
 
-
-  // 교과/학년 변경 시 성취기준 추천 로드
-  const loadRecommendations = useCallback(async (subjects, grade) => {
-    if (subjects.length === 0) {
-      setRecommendedStandards([])
-      setSelectedStandardIds(new Set())
-      return
-    }
-    setLoadingRecommend(true)
-    try {
-      const params = new URLSearchParams({
-        subjects: subjects.join(','),
-        grade: grade || '',
-        topic: projectTitle || '',
-      })
-      const data = await apiGet(`/api/standards/recommend?${params}`)
-      const recs = data.recommendations || []
-      setRecommendedStandards(recs)
-      // 담아온 성취기준(설계 모드)이 있으면 그것이 곧 교사의 선택 —
-      // 추천을 자동 체크하지 않는다(큐레이션에 엉뚱한 항목이 얹혀 희석되는 것 방지).
-      // 추천 목록은 그대로 보여 필요하면 직접 추가할 수 있게 한다.
-      if (designBasket.length > 0) {
-        setSelectedStandardIds(new Set())
-      } else {
-        // 처음부터 만드는 경우에만 관련도 상위 항목 기본 선택 (교과당 최대 5개)
-        const autoSelected = new Set()
-        const perSubject = {}
-        for (const s of recs) {
-          const sg = s.subject_group || s.subject
-          if (!perSubject[sg]) perSubject[sg] = 0
-          if (perSubject[sg] < 5 && (s._relevance > 0 || recs.length <= 20)) {
-            autoSelected.add(standardKey(s))
-            perSubject[sg]++
-          }
-        }
-        setSelectedStandardIds(autoSelected)
-      }
-    } catch {
-      setRecommendedStandards([])
-    } finally {
-      setLoadingRecommend(false)
-    }
-  }, [projectTitle, designBasket])
-
   // 그래프(설계/탐험)에서 넘어온 흐름 — ?createProject=1이면 생성 모달 자동 오픈.
   // 쿼리는 즉시 제거해 새로고침/뒤로가기 시 모달이 다시 열리지 않게 한다.
   useEffect(() => {
@@ -272,12 +224,12 @@ export default function WorkspaceDetailPage() {
         grade: projectGrade,
       })
 
-      // 선택된 성취기준 + 설계 모드에서 담아온 성취기준 일괄 저장 (값은 전부 key — 서버가 해석)
+      // 설계 모드에서 담아온 성취기준 일괄 저장 (값은 전부 key — 서버가 해석)
+      // 교과·학년만 고른 경우에는 성취기준을 자동으로 넣지 않는다(2026-10-05, 자동 추천 제거).
       // 실패한 항목은 한 번 더 보내고, 그래도 남으면 교사에게 어떤 기준이 빠졌는지 알린다.
-      const allKeys = [...new Set([...selectedStandardIds, ...designBasket])]
       let standardsNotice = null
-      if (allKeys.length > 0) {
-        const outcome = await saveProjectStandards(apiPost, project.id, allKeys)
+      if (designBasket.length > 0) {
+        const outcome = await saveProjectStandards(apiPost, project.id, designBasket)
         if (outcome.error) console.warn('성취기준 일괄 저장 실패:', outcome.error.message)
         standardsNotice = standardsSaveNotice(outcome)
         // 이번에 보낸 기준은 저장 여부와 관계없이 장바구니에서 뺀다. 남겨 두면 다음에 만드는
@@ -293,8 +245,6 @@ export default function WorkspaceDetailPage() {
       setProjectDescription('')
       setProjectSubjects([])
       setProjectGrade('')
-      setRecommendedStandards([])
-      setSelectedStandardIds(new Set())
       if (standardsNotice) alert(standardsNotice)
       navigate(`/workspaces/${workspaceId}/projects/${project.id}`)
     } catch (err) {
@@ -1027,10 +977,7 @@ export default function WorkspaceDetailPage() {
                 <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 6 }}>학년</label>
                 <select
                   value={projectGrade}
-                  onChange={(e) => {
-                    setProjectGrade(e.target.value)
-                    if (projectSubjects.length > 0) loadRecommendations(projectSubjects, e.target.value)
-                  }}
+                  onChange={(e) => setProjectGrade(e.target.value)}
                   style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
                 >
                   <option value="">선택하세요</option>
@@ -1051,11 +998,9 @@ export default function WorkspaceDetailPage() {
                       key={subj}
                       type="button"
                       onClick={() => {
-                        const next = projectSubjects.includes(subj)
+                        setProjectSubjects(projectSubjects.includes(subj)
                           ? projectSubjects.filter(s => s !== subj)
-                          : [...projectSubjects, subj]
-                        setProjectSubjects(next)
-                        if (next.length >= 2 && projectGrade) loadRecommendations(next, projectGrade)
+                          : [...projectSubjects, subj])
                       }}
                       style={{
                         padding: '5px 12px', fontSize: 12, borderRadius: 9999, border: '1px solid',
@@ -1102,91 +1047,11 @@ export default function WorkspaceDetailPage() {
                   </div>
                 </div>
               )}
-
-              {/* 추천 성취기준 목록 */}
-              {recommendedStandards.length > 0 && (() => {
-                const q = standardSearchQuery.trim().toLowerCase()
-                const filtered = q
-                  ? recommendedStandards.filter(s => {
-                      const haystack = `${s.code || ''} ${s.content || ''} ${s.area || ''} ${(s.keywords || []).join(' ')}`.toLowerCase()
-                      return haystack.includes(q)
-                    })
-                  : recommendedStandards
-                return (
-                <div style={{ border: '1px solid var(--color-border)', borderRadius: 8, padding: 12, maxHeight: 280, overflowY: 'auto', background: 'var(--color-bg-secondary)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text-secondary)' }}>
-                      추천 성취기준 ({selectedStandardIds.size}/{filtered.length}{q ? ` · 전체 ${recommendedStandards.length}` : ''}개)
-                    </span>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button type="button" onClick={() => setSelectedStandardIds(new Set([...selectedStandardIds, ...filtered.map(s => standardKey(s))]))}
-                        style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer', color: 'var(--color-text-secondary)' }}>
-                        전체 선택
-                      </button>
-                      <button type="button" onClick={() => setSelectedStandardIds(new Set())}
-                        style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'transparent', cursor: 'pointer', color: 'var(--color-text-secondary)' }}>
-                        전체 해제
-                      </button>
-                    </div>
-                  </div>
-                  {/* 키워드 검색 */}
-                  <input
-                    type="text"
-                    value={standardSearchQuery}
-                    onChange={(e) => setStandardSearchQuery(e.target.value)}
-                    placeholder="성취기준 키워드 검색 (예: 함수, 환경, 데이터)"
-                    style={{ width: '100%', padding: '6px 10px', fontSize: 12, marginBottom: 8, boxSizing: 'border-box' }}
-                  />
-                  {/* 교과별 그룹 */}
-                  {filtered.length === 0 ? (
-                    <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: 16 }}>
-                      "{standardSearchQuery}"에 해당하는 성취기준이 없습니다
-                    </div>
-                  ) : (() => {
-                    const groups = {}
-                    for (const s of filtered) {
-                      const key = s.subject_group || s.subject
-                      if (!groups[key]) groups[key] = []
-                      groups[key].push(s)
-                    }
-                    return Object.entries(groups).map(([subj, stds]) => (
-                      <div key={subj} style={{ marginBottom: 8 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-primary)', marginBottom: 4 }}>{subj} ({stds.length}개)</div>
-                        {stds.map(s => (
-                          <label key={s.id ?? standardKey(s)} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '3px 0', cursor: 'pointer', fontSize: 12, color: 'var(--color-text-primary)' }}>
-                            <input
-                              type="checkbox"
-                              checked={selectedStandardIds.has(standardKey(s))}
-                              onChange={() => {
-                                const k = standardKey(s)
-                                const next = new Set(selectedStandardIds)
-                                next.has(k) ? next.delete(k) : next.add(k)
-                                setSelectedStandardIds(next)
-                              }}
-                              style={{ marginTop: 2, flexShrink: 0 }}
-                            />
-                            <span><strong>{s.code}</strong> {s.content?.slice(0, 60)}{s.content?.length > 60 ? '...' : ''}</span>
-                          </label>
-                        ))}
-                      </div>
-                    ))
-                  })()}
-                </div>
-                )
-              })()}
-              {loadingRecommend && (
-                <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)', textAlign: 'center', padding: 8 }}>
-                  성취기준 추천 로딩 중...
-                </div>
-              )}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
               <button type="button" onClick={() => setShowCreateProject(false)} className="btn btn-ghost" style={{ fontSize: 13 }}>취소</button>
               <button type="submit" disabled={creating} className="btn btn-primary" style={{ fontSize: 13, opacity: creating ? 0.5 : 1 }}>
-                {creating ? '생성 중...' : (() => {
-                  const total = new Set([...selectedStandardIds, ...designBasket]).size // 담기 + 선택 실제 합
-                  return `만들기${total > 0 ? ` (성취기준 ${total}개 포함)` : ''}`
-                })()}
+                {creating ? '생성 중...' : `만들기${designBasket.length > 0 ? ` (성취기준 ${designBasket.length}개 포함)` : ''}`}
               </button>
             </div>
           </form>
