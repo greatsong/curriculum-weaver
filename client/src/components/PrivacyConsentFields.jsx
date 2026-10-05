@@ -1,5 +1,6 @@
 /**
- * 개인정보 동의 체크 두 가지(수집·이용, 국외 이전) — 회원가입 화면과 동의 화면(PrivacyConsentGate)이 함께 사용한다.
+ * 개인정보 수집·이용 동의 체크 — 회원가입 화면과 동의 화면(PrivacyConsentGate)이 함께 사용한다.
+ * 국외 이전은 동의 항목이 아니라 같은 [자세한 내용 보기] 안의 안내다(법 제28조의8 제1항 제3호, lib/privacyConsent.js 설명).
  * 문구·표는 lib/privacyConsent.js 단일 소스.
  */
 import { useState } from 'react'
@@ -37,6 +38,16 @@ function ConsentItem({ id, label, summary, checked, onChange, children }) {
   )
 }
 
+/** 좁은 칸에서는 @ 뒤에서만 줄을 바꾼다(<wbr>는 복사할 때 섞이지 않는다) */
+function ContactMail({ address }) {
+  const at = address.indexOf('@')
+  return (
+    <span style={{ display: 'block', color: 'var(--color-text-tertiary)' }}>
+      {at < 0 ? address : <>{address.slice(0, at + 1)}<wbr />{address.slice(at + 1)}</>}
+    </span>
+  )
+}
+
 export default function PrivacyConsentFields({ value, onChange, idPrefix = 'privacy' }) {
   const set = (key) => (checked) => onChange({ ...value, [key]: checked })
   return (
@@ -58,14 +69,7 @@ export default function PrivacyConsentFields({ value, onChange, idPrefix = 'priv
             ))}
           </tbody>
         </table>
-      </ConsentItem>
-      <ConsentItem
-        id={`${idPrefix}-transfer`}
-        label={CONSENT_TEXT.item2Label}
-        summary={CONSENT_TEXT.item2Summary}
-        checked={!!value.transfer}
-        onChange={set('transfer')}
-      >
+        <p style={{ margin: '10px 0 4px', fontWeight: 600, color: 'var(--color-text-primary)' }}>{CONSENT_TEXT.transferHeading}</p>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 320 }}>
             <thead>
@@ -76,7 +80,7 @@ export default function PrivacyConsentFields({ value, onChange, idPrefix = 'priv
             <tbody>
               {TRANSFER_ROWS.map((row) => (
                 <tr key={row.to}>
-                  <td style={cell}>{row.to}</td>
+                  <td style={cell}>{row.to}<ContactMail address={row.contact} /></td>
                   <td style={{ ...cell, whiteSpace: 'nowrap' }}>{row.country}</td>
                   <td style={cell}>{row.items}</td>
                   <td style={cell}>{row.purpose}</td>
@@ -86,6 +90,7 @@ export default function PrivacyConsentFields({ value, onChange, idPrefix = 'priv
           </table>
         </div>
         <p style={{ margin: '6px 0 0' }}>{TRANSFER_NOTE}</p>
+        <p style={{ margin: '4px 0 0' }}>{CONSENT_TEXT.transferRefusal}</p>
       </ConsentItem>
       <p style={{ margin: 0, fontSize: 11, color: 'var(--color-text-tertiary)', lineHeight: 1.5 }}>{CONSENT_TEXT.refusal}</p>
     </div>
@@ -93,5 +98,5 @@ export default function PrivacyConsentFields({ value, onChange, idPrefix = 'priv
 }
 
 export function isConsentComplete(value) {
-  return !!value?.collection && !!value?.transfer
+  return !!value?.collection
 }
