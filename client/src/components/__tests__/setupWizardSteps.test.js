@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { WIZARD_STEPS } from '../HostSetupWizard.jsx'
+import { WIZARD_STEPS, gradeOptionFromWizard } from '../HostSetupWizard.jsx'
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -69,5 +69,31 @@ describe('유령 설정 재발 방지', () => {
   it('워크플로우 프리셋 상수도 제거됐다', () => {
     const source = readFileSync(join(SRC, 'components/HostSetupWizard.jsx'), 'utf-8')
     expect(source).not.toMatch(/WORKFLOW_PRESETS/)
+  })
+})
+
+describe('첫 프로젝트 만들기 — 제목은 교사가 정한다(2026-10-06)', () => {
+  const source = readFileSync(join(SRC, 'components/HostSetupWizard.jsx'), 'utf-8')
+
+  it('마법사가 학년으로 제목을 지어 프로젝트를 직접 만들지 않는다', () => {
+    // 예전: "고1, 고2 융합수업 설계"로 바로 생성 → 예전 프로젝트와 제목 중복, 교과 빈 프로젝트
+    expect(source).not.toMatch(/createProject\(/)
+    expect(source).not.toMatch(/융합수업 설계`/)
+    expect(source).toMatch(/onCreateProject\?\.\(/)
+  })
+
+  it('작업 공간 화면이 그 요청으로 새 프로젝트 창을 연다', () => {
+    const page = readFileSync(join(SRC, 'pages/WorkspaceDetailPage.jsx'), 'utf-8')
+    expect(page).toMatch(/onCreateProject=\{/)
+    expect(page).toMatch(/setShowCreateProject\(true\)\s*\n\s*\}\}\s*\n\s*onDismiss/)
+  })
+
+  it('세부 학년을 새 프로젝트 창의 학교급으로 바꾼다(하나일 때만)', () => {
+    expect(gradeOptionFromWizard(['고1', '고2'])).toBe('고등학교')
+    expect(gradeOptionFromWizard(['중3'])).toBe('중학교')
+    expect(gradeOptionFromWizard(['초5', '초6'])).toBe('초등학교 5-6학년')
+    expect(gradeOptionFromWizard(['중3', '고1'])).toBe('')
+    expect(gradeOptionFromWizard([])).toBe('')
+    expect(gradeOptionFromWizard(undefined)).toBe('')
   })
 })

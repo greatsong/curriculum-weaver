@@ -1151,6 +1151,12 @@ export default function WorkspaceDetailPage() {
               }).catch(() => {})
             }
           }}
+          onCreateProject={({ grade, description }) => {
+            // 마법사 1단계에서 적은 학년·설명을 '새 프로젝트' 창에 미리 채운다(이미 적은 값은 그대로 둔다)
+            if (grade) setProjectGrade((prev) => prev || grade)
+            if (description) setProjectDescription((prev) => prev || description)
+            setShowCreateProject(true)
+          }}
           onDismiss={() => {
             localStorage.setItem(`cw_wizard_done_${workspaceId}`, '1')
             setShowSetupWizard(false)
