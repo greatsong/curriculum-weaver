@@ -32,6 +32,28 @@ import { isReadOnlyProject } from '../lib/projectGuards.js'
 import { aiChatLimiter } from '../middleware/rateLimit.js'
 import { PROCEDURE_GUIDE } from '../data/procedureGuide.js'
 import { resolveSelectedMaterialIds } from '../lib/materialSelection.js'
+import { broadcastSavedAiMessage, readRequesterSocketId } from '../lib/messageBroadcast.js'
+
+/**
+ * 저장한 AI 메시지를 팀원 탭에 보낸다(요청한 탭 제외, 옛 탭 요청은 보내지 않음 — lib/messageBroadcast.js).
+ * 저장 직후에만 부른다. 실패해도 던지지 않는다.
+ */
+function broadcastSavedAi(req, row) {
+  let io = null
+  try { io = req.app?.get('io') || globalThis.__cwIo } catch { io = globalThis.__cwIo }
+  return broadcastSavedAiMessage(io, {
+    // 방 이름 = 멤버십을 확인한 프로젝트(session_id). 저장 행의 project_id와 같다.
+    projectId: req.body?.session_id || row?.project_id,
+    row,
+    requesterSocketId: readRequesterSocketId(req.body),
+  })
+}
+
+/** 요청한 탭에 저장된 메시지 번호를 알린다 — 화면이 임시 id 대신 이 번호로 붙여 자기 방송과 중복되지 않게 한다 */
+function writeMessageSaved(res, row, extra = {}) {
+  if (!row?.id) return
+  res.write(`data: ${JSON.stringify({ type: 'message_saved', messageId: row.id, ...extra })}\n\n`)
+}
 
 // SSE 하트비트 주기. 큐 대기·컨텍스트 조립·첫 토큰까지 수십 초 넘게 바이트가 없을 수 있어,
 // 학교 프록시 등 중간 장비가 유휴 연결을 끊지 않도록 주석 프레임(': ping')을 보낸다.
@@ -486,12 +508,14 @@ chatRouter.post('/procedure-intro', async (req, res) => {
       res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: introText })}\n\n`)
 
       // 인트로 메시지를 Supabase에 저장
-      await createMessage({
+      const savedIntro = await createMessage({
         project_id: session_id,
         sender_type: 'ai',
         content: introText,
         procedure_context: procedure,
       })
+      broadcastSavedAi(req, savedIntro)
+      writeMessageSaved(res, savedIntro)
     }
 
     res.write(`data: [DONE]\n\n`)
@@ -643,12 +667,15 @@ chatRouter.post('/stage-intro', limitAiIntroOnly, async (req, res) => {
         }
       )
       if (introText.trim()) {
-        await createMessage({
+        // 저장에 실패하면(undefined) 방송·번호 알림을 하지 않는다
+        const savedDemoIntro = await createMessage({
           project_id: session_id,
           sender_type: 'ai',
           content: replaceInternalProcedureCodes(introText),
           procedure_context: procedure,
-        }).catch(() => {})
+        }).catch(() => null)
+        broadcastSavedAi(req, savedDemoIntro)
+        writeMessageSaved(res, savedDemoIntro)
       }
       res.write(`data: [DONE]\n\n`)
       return res.end()
@@ -682,12 +709,14 @@ chatRouter.post('/stage-intro', limitAiIntroOnly, async (req, res) => {
     if (introText) {
       res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: introText })}\n\n`)
 
-      await createMessage({
+      const savedIntro = await createMessage({
         project_id: session_id,
         sender_type: 'ai',
         content: introText,
         procedure_context: procedure,
       })
+      broadcastSavedAi(req, savedIntro)
+      writeMessageSaved(res, savedIntro)
     }
 
     res.write(`data: [DONE]\n\n`)
@@ -864,12 +893,14 @@ chatRouter.post('/message', async (req, res) => {
       isNoInterventionActive(currentProcMessages.filter((m) => m.id !== req.body?.teacher_message_id))
     ) {
       if (!clientDisconnected) res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: BRIEF_SAVED_SILENT_REPLY })}\n\n`)
-      await createMessage({
+      const savedReply = await createMessage({
         project_id: session_id,
         sender_type: 'ai',
         content: BRIEF_SAVED_SILENT_REPLY,
         procedure_context: activeProcedure,
       })
+      broadcastSavedAi(req, savedReply)
+      if (!clientDisconnected) writeMessageSaved(res, savedReply, { suggestionCount: 0 })
       if (!clientDisconnected) res.write(`data: [DONE]\n\n`)
       res.end()
       return
@@ -1105,14 +1136,14 @@ chatRouter.post('/message', async (req, res) => {
         ai_suggestions: suggestions.length > 0 ? suggestions : undefined,
       })
 
-      // 저장된 메시지 ID를 클라이언트에 전송 (제안 수락/거부 시 참조)
-      if (suggestions.length > 0 && savedMsg?.id) {
-        res.write(`data: ${JSON.stringify({
-          type: 'message_saved',
-          messageId: savedMsg.id,
-          suggestionCount: suggestions.length,
-        })}\n\n`)
-      }
+      // 저장한 원문을 팀원 탭에 보낸다. 요청한 탭의 화면 글(streamingText)을 중계하지 않는다 —
+      // 한 탭에서 답이 섞여도 팀원에게 퍼지지 않게. 요청한 탭이 끊겼어도(새로고침) 팀원은 받는다.
+      broadcastSavedAi(req, savedMsg)
+
+      // 저장된 메시지 ID를 클라이언트에 전송 (제안 수락/거부 시 참조).
+      // 제안이 없어도 보낸다 — 화면이 임시 id 대신 이 번호로 메시지를 붙여, 소켓 재연결로 id가 바뀌어
+      // 자기 방송을 받아도 같은 번호로 중복을 거른다.
+      if (!clientDisconnected) writeMessageSaved(res, savedMsg, { suggestionCount: suggestions.length })
     }
 
     res.write(`data: [DONE]\n\n`)
