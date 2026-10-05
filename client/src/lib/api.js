@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { beginWriteRequest } from './pendingRequests'
 
 export const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -49,6 +50,8 @@ export async function getHeaders() {
 async function fetchWithTimeout(url, options = {}, timeout = DEFAULT_TIMEOUT_MS) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeout)
+  // 쓰기 요청은 끝날 때까지 센다. 새 배포 자동 새로고침이 저장 도중에 일어나지 않게 한다.
+  const endWrite = beginWriteRequest(options.method)
 
   try {
     const res = await fetch(url, { ...options, signal: controller.signal })
@@ -67,6 +70,8 @@ async function fetchWithTimeout(url, options = {}, timeout = DEFAULT_TIMEOUT_MS)
       throw new ApiError('서버 응답 시간이 초과되었습니다.', 0)
     }
     throw new ApiError('네트워크 연결을 확인해주세요.', 0)
+  } finally {
+    endWrite()
   }
 }
 
@@ -147,6 +152,8 @@ export async function apiUploadFile(path, file, extraFields = {}, options = {}) 
     // 인증 없이 계속 진행 (테스트 모드)
   }
 
+  // 업로드가 끝날 때까지 쓰기 요청으로 센다(새 배포 자동 새로고침 보류)
+  const endWrite = beginWriteRequest('POST')
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${API_BASE}${path}`)
@@ -191,7 +198,7 @@ export async function apiUploadFile(path, file, extraFields = {}, options = {}) 
     }
 
     xhr.send(formData)
-  })
+  }).finally(endWrite)
 }
 
 /**
@@ -222,8 +229,18 @@ export async function apiDeleteMaterial(materialId) {
  * 어떤 실패 경로(요청 실패·HTTP 오류·수신 중 연결 끊김)에서도 throw하지 않고 onError를 부른다.
  * 호출자(chatStore)는 onError 또는 onDone이 반드시 불린다는 전제로 streaming 상태를 푼다.
  * (예전엔 수신 도중 reader.read()가 던지면 예외가 그대로 전파돼 streaming이 영원히 true로 남았다.)
+ * 스트림이 끝날 때까지 쓰기 요청으로 센다(새 배포 자동 새로고침 보류).
  */
-export async function apiStreamPost(path, body, { onText, onPrinciples, onBoardSuggestions, onStageAdvance, onCoherenceCheck, onMessageSaved, onDone, onError }) {
+export async function apiStreamPost(path, body, handlers) {
+  const endWrite = beginWriteRequest('POST')
+  try {
+    return await streamPost(path, body, handlers)
+  } finally {
+    endWrite()
+  }
+}
+
+async function streamPost(path, body, { onText, onPrinciples, onBoardSuggestions, onStageAdvance, onCoherenceCheck, onMessageSaved, onDone, onError }) {
   // Authorization 헤더 추가
   const headers = { 'Content-Type': 'application/json' }
   try {

@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom'
 import Logo from './Logo'
 import { API_BASE, apiGet, getHeaders } from '../lib/api'
 import { useAuthStore } from '../stores/authStore'
+import { useUnsavedWork } from '../lib/unsavedWork'
 // 절차 내부 코드(T-1-1 등)는 UI에 노출하지 않는다 — 가이드북 표시용 displayCode(T-1 등)만 표시
 import { getProcedureDisplayCode, getProcedureLabel } from 'curriculum-weaver-shared/constants.js'
 
@@ -72,6 +73,8 @@ export default function DemoMode() {
   const [partialProject, setPartialProject] = useState(null) // { projectId, workspaceId, savedBoards }
   const [generationStartedAt, setGenerationStartedAt] = useState(null)
   const [recoveryPolling, setRecoveryPolling] = useState(false)
+  // 생성·복구 확인 중에는 새 배포 자동 새로고침을 미룬다(스트림이 끊긴다)
+  useUnsavedWork('simulation', generating || recoveryPolling)
 
   // SSE 진행률
   const [progressList, setProgressList] = useState([])

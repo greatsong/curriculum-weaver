@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import ReadableValue, { labelize } from './ReadableValue'
 import { normalizeListItem, listItemFields, emptyListItem, isPlainObject } from '../lib/boardContent'
+import { useUnsavedWork } from '../lib/unsavedWork'
 
 /**
  * 보드 편집기 — 보드 스키마의 필드 유형별 입력 폼.
@@ -45,6 +46,9 @@ export default function BoardEditor({
     }
     setExternalChanged(true)
   }, [content, schema.empty, autoSyncWhenPristine])
+
+  // 저장하지 않은 편집이 있으면 새 배포 자동 새로고침을 미룬다(태그 추가·행 추가처럼 글자 칸 밖의 변경 포함)
+  useUnsavedWork('board-edit', JSON.stringify(draft) !== initialSnapshotRef.current)
 
   const updateField = (name, value) => setDraft((prev) => ({ ...prev, [name]: value }))
 

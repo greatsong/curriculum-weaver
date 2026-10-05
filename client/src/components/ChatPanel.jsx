@@ -884,6 +884,8 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
 
           <textarea
             ref={textareaRef}
+            // 새 배포 자동 새로고침 판정이 이 입력창의 글을 본다(lib/reloadSafety.js)
+            data-chat-composer=""
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleInputKeyDown}

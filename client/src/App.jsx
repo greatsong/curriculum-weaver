@@ -9,6 +9,7 @@ import { RequirePrivacyConsent } from './components/PrivacyConsentGate'
 // 즉시 로드 (핵심 페이지)
 import LoginPage from './pages/LoginPage'
 import ToastContainer from './components/ToastContainer'
+import DeployWatcher from './components/DeployWatcher'
 import WorkspacesPage from './pages/WorkspacesPage'
 import WorkspaceDetailPage from './pages/WorkspaceDetailPage'
 import ProjectPage from './pages/ProjectPage'
@@ -214,6 +215,10 @@ export default function App() {
   }, [])
 
   return (
+    <>
+    {/* 새 배포 감시 — 열린 탭이 새 배포를 알아채고 안전할 때 최신 코드로 바뀐다.
+        Routes보다 앞에 두어야 경로 이동 판정이 새 페이지의 effect보다 먼저 돈다(DeployWatcher.jsx 참고). */}
+    <DeployWatcher />
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -350,5 +355,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
+    </>
   )
 }

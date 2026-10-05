@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom'
 import { AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculum-weaver-shared/constants.js'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useProjectStore } from '../stores/projectStore'
+import { useUnsavedWork } from '../lib/unsavedWork'
 
 export const WIZARD_STEPS = [
   { id: 'info', title: '기본 정보', icon: '1' },
@@ -61,6 +62,9 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
   // 팀원 초대
   const [inviteEmails, setInviteEmails] = useState([''])
   const [inviting, setInviting] = useState(false)
+
+  // 단계를 넘기거나 학년을 고른 뒤에는 새 배포 자동 새로고침을 미룬다(진행 상태는 저장되지 않는다)
+  useUnsavedWork('setup', step > 0 || selectedGrades.length > 0)
 
   const currentWizardStep = WIZARD_STEPS[step]
 
