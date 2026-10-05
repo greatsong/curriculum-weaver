@@ -123,6 +123,18 @@ export const futures2Limiter = rateLimit({
   validate: { xForwardedForHeader: false, default: true },
 })
 
+// ── 수업 시나리오 생성: 분당 20회 (사용자당) ──
+// 카드를 열고 "다른 아이디어"를 누르는 속도보다 넉넉하게 잡는다. 캐시된 응답도 같은 한도에 포함된다.
+export const scenarioLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userKey,
+  message: { error: '수업 아이디어 요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.' },
+  validate: { xForwardedForHeader: false, default: true },
+})
+
 // ── 로그인/가입: 분당 10회 (IP+이메일당) — brute force 방지 ──
 // IP 단독 키는 학교 NAT에서 학급 전체가 분당 5회를 공유해 수업 시작 로그인이
 // 막히던 문제가 있었다. 계정(brute force) 단위 보호가 목적이므로 이메일을 키에 포함.

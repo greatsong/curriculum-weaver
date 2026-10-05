@@ -23,7 +23,8 @@ import { verifyTokenCached } from './middleware/auth.js'
 import { hydrateLinksFromDB } from './lib/linkService.js'
 
 // ── Rate Limiter 임포트 ──
-import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter, ipBackstopLimiter, futuresLimiter, futures2Limiter, futureMapLimiter } from './middleware/rateLimit.js'
+import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter, ipBackstopLimiter, futuresLimiter, futures2Limiter, futureMapLimiter, scenarioLimiter } from './middleware/rateLimit.js'
+import { isValidRoomId, checkJoinAccess } from './lib/socketJoinGuard.js'
 
 // ── 라우트 임포트 ──
 import authRouter from './routes/auth.js'
@@ -144,19 +145,22 @@ io.on('connection', (socket) => {
       return
     }
 
-    // 프로젝트 멤버십 검증
-    try {
-      const { getProject, getMemberRole } = await import('./lib/supabaseService.js')
-      const project = await getProject(projectId)
-      if (project?.workspace_id) {
-        const role = await getMemberRole(project.workspace_id, socket.user.id)
-        if (!role) {
-          socket.emit('error', { message: '이 프로젝트에 접근 권한이 없습니다.' })
-          return
-        }
-      }
-    } catch {
-      // Supabase 연결 실패 또는 레거시 세션 → 통과
+    // 프로젝트 멤버십 검증 — 형식이 틀린 ID와 운영에서의 조회 실패는 거절한다
+    const { getProject, getMemberRole } = await import('./lib/supabaseService.js')
+    const access = await checkJoinAccess({
+      projectId,
+      userId: socket.user.id,
+      getProject,
+      getMemberRole,
+      strict: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY),
+    })
+    if (!access.ok) {
+      socket.emit('error', {
+        message: access.reason === 'unavailable'
+          ? '프로젝트를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+          : '이 프로젝트에 접근 권한이 없습니다.',
+      })
+      return
     }
 
     currentProjectId = projectId
@@ -175,12 +179,14 @@ io.on('connection', (socket) => {
     socket.to(projectId).emit('member_joined', userInfo)
   }
 
-  socket.on('join_project', ({ projectId, user }) => {
-    handleJoinProject(projectId, user)
+  // 내용 없는 이벤트로 핸들러가 예외를 던지면 프로세스가 종료되므로 인자 기본값을 둔다
+  socket.on('join_project', ({ projectId, user } = {}) => {
+    handleJoinProject(projectId, user).catch((err) => console.error('[socket.io] 참여 처리 오류:', err.message))
   })
 
   // 프로젝트 퇴장
-  socket.on('leave_project', ({ projectId }) => {
+  socket.on('leave_project', ({ projectId } = {}) => {
+    if (!isValidRoomId(projectId)) return
     socket.leave(projectId)
     if (projectMembers.has(projectId)) {
       const user = projectMembers.get(projectId).get(socket.id)
@@ -196,11 +202,12 @@ io.on('connection', (socket) => {
   })
 
   // 하위 호환성: 기존 session 기반 이벤트도 지원
-  socket.on('join_session', ({ sessionId, user }) => {
-    handleJoinProject(sessionId, user)
+  socket.on('join_session', ({ sessionId, user } = {}) => {
+    handleJoinProject(sessionId, user).catch((err) => console.error('[socket.io] 참여 처리 오류:', err.message))
   })
 
-  socket.on('leave_session', ({ sessionId }) => {
+  socket.on('leave_session', ({ sessionId } = {}) => {
+    if (!isValidRoomId(sessionId)) return
     socket.leave(sessionId)
     if (projectMembers.has(sessionId)) {
       const user = projectMembers.get(sessionId).get(socket.id)
@@ -217,11 +224,11 @@ io.on('connection', (socket) => {
 
   // 참여 중인 방에서만 이벤트 중계 허용
   function isInRoom(roomId) {
-    return roomId && socket.rooms.has(roomId)
+    return isValidRoomId(roomId) && socket.rooms.has(roomId)
   }
 
   // 새 메시지 브로드캐스트
-  socket.on('new_message', ({ projectId, sessionId, message }) => {
+  socket.on('new_message', ({ projectId, sessionId, message } = {}) => {
     const roomId = projectId || sessionId
     if (isInRoom(roomId)) socket.to(roomId).emit('message_added', message)
   })
@@ -231,18 +238,18 @@ io.on('connection', (socket) => {
   // routes/chat.js가 직접 방송한다(lib/messageBroadcast.js). 배포 전에 열린 옛 탭은 socket_id 없이
   // 요청하므로 서버가 방송하지 않고, 대신 이 중계로 팀원에게 전달된다. 한 응답은 둘 중 한 경로로만
   // 가므로 중복이 생기지 않는다. 옛 탭이 모두 사라지면(배포 뒤 며칠) 이 중계를 지워도 된다.
-  socket.on('ai_response_done', ({ projectId, sessionId, message }) => {
+  socket.on('ai_response_done', ({ projectId, sessionId, message } = {}) => {
     const roomId = projectId || sessionId
     if (isInRoom(roomId)) socket.to(roomId).emit('message_added', message)
   })
 
   // 설계 캔버스 업데이트 브로드캐스트 (절차 기반)
-  socket.on('design_updated', ({ projectId, procedureCode, design }) => {
+  socket.on('design_updated', ({ projectId, procedureCode, design } = {}) => {
     if (isInRoom(projectId)) socket.to(projectId).emit('design_changed', { procedureCode, design })
   })
 
   // 절차 변경 브로드캐스트
-  socket.on('procedure_changed', ({ projectId, procedureCode }) => {
+  socket.on('procedure_changed', ({ projectId, procedureCode } = {}) => {
     if (isInRoom(projectId)) socket.to(projectId).emit('procedure_updated', procedureCode)
   })
 
@@ -344,6 +351,8 @@ app.use('/api/standards/graph/chat', aiChatLimiter)
 app.use('/api/standards/recommend-ai', aiChatLimiter)
 // 과목쌍 탐색 시작만 제한 — 상태 폴링(/pairs/jobs)은 일반 API 한도로 충분
 app.use('/api/standards/pairs/explore', aiChatLimiter)
+// 수업 시나리오 생성 — 일반 한도(분당 240회)만 걸려 있던 AI 경로
+app.use('/api/standards/links/scenario', scenarioLimiter)
 app.use('/api/futures2', futures2Limiter)
 app.use('/api/future-map', futureMapLimiter)
 app.use('/api/futures', futuresLimiter)
