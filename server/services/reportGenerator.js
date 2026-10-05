@@ -18,6 +18,7 @@ import {
 } from '../../shared/constants.js'
 import { BOARD_SCHEMAS } from '../../shared/boardSchemas.js'
 import { isMoveNote } from '../../shared/procedureMove.js'
+import { hasFilledBoardContent, ITEM_KEY_ALIASES } from '../../shared/boardKeys.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -148,7 +149,8 @@ export async function collectReportData(projectId) {
   // 아니라 '내용이 채워진 절차'도 완료로 집계한다. (내용이 있으면 그 절차의 설계는 작성 완료)
   const procedureStatus = {}
   const statusFor = (design) => {
-    const hasContent = !!(design?.content && Object.keys(design.content).length > 0)
+    // 칸 이름만 있고 값이 모두 빈 보드는 완료가 아니다(본문에서도 빠지므로 진행률과 맞춘다, 2026-10-05)
+    const hasContent = hasFilledBoardContent(design?.content)
     if (design?.save_status === 'confirmed' || hasContent) return 'confirmed'
     if (design?.save_status === 'draft') return 'draft'
     return design ? 'in_progress' : 'empty'
@@ -1271,7 +1273,8 @@ function itemToText(item) {
 function lookupCell(row, col) {
   const direct = row[col.name] ?? row[col.label] ?? row[col.key]
   if (direct != null && direct !== '') return direct
-  const candidates = [col.name, col.label, col.key].filter(Boolean)
+  // AI가 지어낸 같은 뜻의 키(teacherName 등)로 저장된 예전 보드도 읽는다 — 화면 편집기·저장 정규화와 같은 별칭 표
+  const candidates = [col.name, col.label, col.key, ...(ITEM_KEY_ALIASES[col.name] || [])].filter(Boolean)
   for (const cand of candidates) {
     const compact = String(cand).replace(/\s+/g, '')
     for (const [k, v] of Object.entries(row)) {

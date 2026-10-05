@@ -20,6 +20,7 @@ import {
 } from '../lib/supabaseService.js'
 import { excludeCurrentTeacherMessage } from '../lib/currentMessage.js'
 import { stripLeftoverAiMarkup } from '../lib/aiMarkup.js'
+import { stripBoardKeyMentions } from 'curriculum-weaver-shared/boardKeys.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
 import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode, isDemoBoardCode, resolveParticipationMode } from 'curriculum-weaver-shared/constants.js'
@@ -1086,7 +1087,8 @@ chatRouter.post('/message', async (req, res) => {
     // 5. 내부 절차 코드(T-1-2 등) → 표시 코드(T-2 등) 치환
     //    XML 추출 후의 표시용 텍스트에만 적용 — suggestions의 procedure 속성은 내부 코드 유지
     // 끊긴 제안 원문(닫는 태그 없음)·짝 없는 태그가 본문에 남지 않게 마지막으로 정리한다(lib/aiMarkup.js)
-    const finalCleanText = stripLeftoverAiMarkup(replaceInternalProcedureCodes(extractedText))
+    // 본문에 괄호로 붙은 보드 영문 키("정합성 검토(alignment)")도 지운다 — 제안 JSON은 위에서 이미 뽑아냈다
+    const finalCleanText = stripBoardKeyMentions(stripLeftoverAiMarkup(replaceInternalProcedureCodes(extractedText)))
 
     // ─── SSE 이벤트 전송 ───
 

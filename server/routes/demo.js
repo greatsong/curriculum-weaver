@@ -608,7 +608,8 @@ demoRouter.post('/generate', requireAuth, async (req, res) => {
 
   res.on('close', () => {
     aborted = true
-    console.log('[demo] 클라이언트 연결 끊김 (disconnect/취소) — 서버는 계속 진행')
+    // 정상 완료(safeEnd) 뒤에도 close가 오므로, 응답을 다 쓰기 전에 닫힌 경우만 끊김으로 남긴다
+    if (!res.writableFinished) console.log('[demo] 클라이언트 연결 끊김 (disconnect/취소) — 서버는 계속 진행')
   })
 
   try {
@@ -1232,7 +1233,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
   }
   res.on('close', () => {
     aborted = true
-    console.log('[demo/continue] 클라이언트 연결 끊김 — 서버는 계속 진행')
+    if (!res.writableFinished) console.log('[demo/continue] 클라이언트 연결 끊김 — 서버는 계속 진행')
   })
 
   try {

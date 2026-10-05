@@ -55,3 +55,49 @@ describe('normalizeBoardKeys — AI가 한글 라벨을 키로 쓴 보드', () =
     expect(normalizeBoardKeys('A-2-1', 'text')).toBe('text')
   })
 })
+
+import { hasFilledBoardContent, stripBoardKeyMentions, findDroppedStandardCodes } from 'curriculum-weaver-shared/boardKeys.js'
+
+describe('hasFilledBoardContent — 진행률 판정', () => {
+  it('칸 이름만 있고 값이 모두 빈 보드는 비어 있다(리허설의 빈 A-3 모양)', () => {
+    expect(hasFilledBoardContent({ standards: [], duplicateCheck: '', restructuredStandards: [] })).toBe(false)
+    expect(hasFilledBoardContent({ standards: [{ code: '', subject: '' }] })).toBe(false)
+  })
+  it('값이 하나라도 있으면 채워졌다', () => {
+    expect(hasFilledBoardContent({ grade: '고1' })).toBe(true)
+    expect(hasFilledBoardContent({ studentCount: 0 })).toBe(true)
+    expect(hasFilledBoardContent({ standards: [{ code: '[12정02-04]' }] })).toBe(true)
+  })
+  it('객체가 아니면 비어 있다', () => {
+    expect(hasFilledBoardContent(null)).toBe(false)
+    expect(hasFilledBoardContent([])).toBe(false)
+    expect(hasFilledBoardContent('x')).toBe(false)
+  })
+})
+
+describe('stripBoardKeyMentions — 본문의 괄호 속 영문 키', () => {
+  it('리허설 실제 문장', () => {
+    expect(stripBoardKeyMentions('탐구 질문과 정합성 검토(alignment) 칸은 비워 두었습니다.')).toBe('탐구 질문과 정합성 검토 칸은 비워 두었습니다.')
+  })
+  it('키가 아닌 괄호·링크·수식은 그대로 둔다', () => {
+    const t = '비고(참고) [링크](https://a.b/c) 함수 f(x) (선택)'
+    expect(stripBoardKeyMentions(t)).toBe(t)
+  })
+  it('괄호가 없으면 같은 문자열을 돌려준다', () => {
+    const t = 'alignment 칸'
+    expect(stripBoardKeyMentions(t)).toBe(t)
+    expect(stripBoardKeyMentions(null)).toBe(null)
+  })
+})
+
+describe('findDroppedStandardCodes — A-3 저장에서 빠진 코드', () => {
+  it('보낸 코드 중 저장본에 없는 것만(대괄호·라벨 키 차이 무시)', () => {
+    const sent = { standards: [{ code: '12정02-04' }, { '성취기준 코드': '[가짜99-99]' }, { code: '' }, { subject: '국어' }] }
+    const saved = { standards: [{ code: '[12정02-04]' }, { subject: '국어' }] }
+    expect(findDroppedStandardCodes(sent, saved)).toEqual(['[가짜99-99]'])
+  })
+  it('빠진 것이 없거나 표가 없으면 빈 배열', () => {
+    expect(findDroppedStandardCodes({ standards: [{ code: '[12정02-04]' }] }, { standards: [{ code: '[12정02-04]' }] })).toEqual([])
+    expect(findDroppedStandardCodes({ x: 1 }, {})).toEqual([])
+  })
+})

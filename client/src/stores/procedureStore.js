@@ -19,6 +19,7 @@ import {
   DEFAULT_MATERIAL_INTENT,
   isDemoBoardCode,
 } from 'curriculum-weaver-shared/constants.js'
+import { hasFilledBoardContent, findDroppedStandardCodes } from 'curriculum-weaver-shared/boardKeys.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { createEmptyBoard } from 'curriculum-weaver-shared/boardSchemas.js'
 import { deepMergeBoardContent } from '../lib/boardContent'
@@ -149,7 +150,8 @@ export const useProcedureStore = create((set, get) => ({
         const code = d.procedure_code
         if (!code) continue
         summaries[code] = {
-          hasContent: !!(d.content && Object.keys(d.content).length > 0),
+          // 값이 하나라도 적힌 보드만 완료로 센다(칸 이름만 있는 빈 보드 제외, 보고서와 같은 기준)
+          hasContent: hasFilledBoardContent(d.content),
           updatedAt: d.updated_at || d.created_at || null,
           saveStatus: d.save_status || null,
         }
@@ -271,7 +273,7 @@ export const useProcedureStore = create((set, get) => ({
           boardSummaries: {
             ...state.boardSummaries,
             [procedureCode]: {
-              hasContent: !!(design.content && Object.keys(design.content).length > 0),
+              hasContent: hasFilledBoardContent(design.content),
               updatedAt: design.updated_at || new Date().toISOString(),
               saveStatus: design.save_status || state.boardSummaries[procedureCode]?.saveStatus || null,
             },
@@ -367,6 +369,14 @@ export const useProcedureStore = create((set, get) => ({
 
     // designs API upsert (Supabase 영속 저장)
     const data = await apiPut(`/api/projects/${projectId}/designs/${procedureCode}`, { content })
+    // A-3: 성취기준 목록에 없는 코드의 행은 서버가 지운다. 조용히 사라지지 않게 알린다.
+    if (procedureCode === 'A-2-1') {
+      const dropped = findDroppedStandardCodes(content, data?.content)
+      if (dropped.length > 0) {
+        const shown = dropped.slice(0, 3).join(', ') + (dropped.length > 3 ? ` 외 ${dropped.length - 3}개` : '')
+        pushToast({ kind: 'error', message: `성취기준 목록에서 찾지 못한 코드(${shown})의 행은 저장하지 않았습니다. 코드를 확인해 주세요.`, duration: 8_000 })
+      }
+    }
     set((state) => ({
       boards: {
         ...state.boards,
