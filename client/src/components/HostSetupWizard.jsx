@@ -9,10 +9,8 @@
  */
 
 import { useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculum-weaver-shared/constants.js'
 import { useWorkspaceStore } from '../stores/workspaceStore'
-import { useProjectStore } from '../stores/projectStore'
 import { useUnsavedWork } from '../lib/unsavedWork'
 
 export const WIZARD_STEPS = [
@@ -22,10 +20,20 @@ export const WIZARD_STEPS = [
   { id: 'done', title: '완료', icon: '4' },
 ]
 
-export default function HostSetupWizard({ workspaceId, workspace, onComplete, onDismiss }) {
-  const navigate = useNavigate()
+/**
+ * 마법사에서 고른 세부 학년 → '새 프로젝트' 창의 학년 선택지(PROJECT_GRADE_OPTIONS 값).
+ * 학교급이 하나일 때만 채우고, 섞였거나 고르지 않았으면 빈 값(교사가 창에서 고른다).
+ * @param {string[]} grades - 예: ['고1', '고2']
+ */
+export function gradeOptionFromWizard(grades) {
+  const levels = new Set((grades || []).map((g) => (
+    g.startsWith('초') ? '초등학교 5-6학년' : g.startsWith('중') ? '중학교' : g.startsWith('고') ? '고등학교' : ''
+  )))
+  return levels.size === 1 ? [...levels][0] : ''
+}
+
+export default function HostSetupWizard({ workspaceId, workspace, onComplete, onCreateProject, onDismiss }) {
   const { inviteMember } = useWorkspaceStore()
-  const { createProject } = useProjectStore()
 
   const [step, setStep] = useState(0)
 
@@ -91,19 +99,12 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
     })
   }, [aiModel, enabledAI, aiRole, targetGrade, onComplete])
 
-  const handleCreateProjectAndFinish = async () => {
-    try {
-      const project = await createProject(workspaceId, {
-        title: `${targetGrade || ''} 융합수업 설계`.trim(),
-        description: description || '',
-        // 제목에만 넣으면 AI가 학년을 모른다 — 프로젝트 필드로 저장해야 채팅 프롬프트에 들어간다
-        grade: targetGrade || null,
-      })
-      handleFinish()
-      navigate(`/workspaces/${workspaceId}/projects/${project.id}`)
-    } catch (err) {
-      alert(`프로젝트 생성 실패: ${err.message}`)
-    }
+  // 첫 프로젝트는 '새 프로젝트' 창에서 교사가 제목·교과를 정해 만든다. 예전에는 고른 학년만으로
+  // "고1, 고2 융합수업 설계"라는 제목을 지어 바로 만들어, 같은 학년을 고른 예전 프로젝트와 제목이 똑같아졌고
+  // 교과가 비어 'AI 융합 추천'이 막혔다(2026-10-06 운영 확인). 1단계에서 적은 설명·학년은 그 창에 미리 채운다.
+  const handleCreateProjectAndFinish = () => {
+    handleFinish()
+    onCreateProject?.({ grade: gradeOptionFromWizard(selectedGrades), description: description.trim() })
   }
 
   const goNext = () => step < WIZARD_STEPS.length - 1 && setStep(step + 1)
