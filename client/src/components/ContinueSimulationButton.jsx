@@ -11,11 +11,14 @@ import { useNavigate } from 'react-router-dom'
 import { API_BASE, getHeaders } from '../lib/api'
 import { recoverSimulation } from '../lib/simulationRecovery'
 import { pushToast } from '../stores/toastStore'
+import { useUnsavedWork } from '../lib/unsavedWork'
 
 export default function ContinueSimulationButton({ projectId, workspaceId, skippedCount = 0 }) {
   const navigate = useNavigate()
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState(null) // { phase, saved, total }
+  // 이어서 만드는 중에는 새 배포 자동 새로고침을 미룬다(스트림이 끊긴다)
+  useUnsavedWork('simulation', running)
   const runningRef = useRef(false)
   const mountedRef = useRef(true)
   const requestRef = useRef(null)
