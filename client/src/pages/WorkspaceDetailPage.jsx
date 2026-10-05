@@ -55,7 +55,6 @@ export default function WorkspaceDetailPage() {
   // 설계 모드(교과 연결)에서 담아온 성취기준 — 프로젝트 생성 시 자동 포함
   const [designBasket, setDesignBasket] = useState([])
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState('member')
   const [inviteLinkInfo, setInviteLinkInfo] = useState(null) // 미가입자 토큰 초대 결과
   const [creating, setCreating] = useState(false)
   const creatingRef = useRef(false) // 동기 더블서브밋 가드 (state 재렌더 전 두 번째 클릭 차단)
@@ -259,7 +258,8 @@ export default function WorkspaceDetailPage() {
     e.preventDefault()
     if (!inviteEmail.trim()) return
     try {
-      const result = await inviteMember(workspaceId, inviteEmail.trim(), inviteRole)
+      // 초대는 멤버(편집자)로만 한다. 예전 '관리자' 선택지는 서버가 받지 않아 늘 실패했다(2026-10-05 연수 리허설에서 확인, 제거)
+      const result = await inviteMember(workspaceId, inviteEmail.trim(), 'member')
       if (result?.kind === 'added') {
         setShowInvite(false)
         setInviteEmail('')
@@ -1116,17 +1116,6 @@ export default function WorkspaceDetailPage() {
                     required
                     style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
                   />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--color-text-secondary)', marginBottom: 6 }}>역할</label>
-                  <select
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value)}
-                    style={{ width: '100%', padding: '10px 14px', fontSize: 14, boxSizing: 'border-box' }}
-                  >
-                    <option value="member">멤버</option>
-                    <option value="admin">관리자</option>
-                  </select>
                 </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>

@@ -54,13 +54,9 @@ export function normalizeListItem(item) {
  * 따로 생겼다(2026-10-03). 항목에 스키마 키가 없고 별칭 키가 있으면 별칭 키를 그 칸으로 쓴다.
  * 저장 키는 바꾸지 않는다(항목이 원래 가진 키에 그대로 쓴다).
  */
-export const ITEM_KEY_ALIASES = {
-  name: ['teacherName', 'teacher', 'teacher_name', '교사명', '이름', '교사'],
-  vision: ['personalVision', 'individualVision', '비전', '개인 비전'],
-  refinedVision: ['refined', 'aiRefinedVision', 'refined_vision'],
-  subject: ['subjectName', '교과'],
-  rationale: ['reason', '근거'],
-}
+// 별칭 표는 서버 저장 정규화(shared/boardKeys.js)와 같은 것을 쓴다
+import { ITEM_KEY_ALIASES } from 'curriculum-weaver-shared/boardKeys.js'
+export { ITEM_KEY_ALIASES }
 
 /**
  * 객체 항목에서 편집할 하위 칸. itemSchema 순서가 먼저이고,

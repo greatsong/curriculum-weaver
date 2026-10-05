@@ -541,11 +541,13 @@ export function getBoardSchemaForPrompt(procedureCode) {
 
   const fieldDescriptions = schema.fields.map(f => {
     let desc = `    - ${f.name} (${f.label}, ${f.type}${f.required ? ', 필수' : ''}): ${f.description || ''}`
+    // 열·항목은 'JSON 키=칸 이름'으로 알려 준다. 칸 이름만 알려 주면 AI가 한글 칸 이름을 키로 쓰거나
+    // 영문 키를 지어내(teacherName 등) 화면·보고서·A-3 저장 검증이 값을 읽지 못했다(2026-10-05 리허설, 제안 42건 중 33건).
     if (f.columns) {
-      desc += '\n      열: ' + f.columns.map(c => c.label).join(', ')
+      desc += '\n      열(JSON 키=칸 이름): ' + f.columns.map(c => `${c.name}=${c.label}`).join(', ')
     }
     if (f.itemSchema) {
-      desc += '\n      항목: ' + Object.entries(f.itemSchema).map(([k, v]) => v.label).join(', ')
+      desc += '\n      항목(JSON 키=칸 이름): ' + Object.entries(f.itemSchema).map(([k, v]) => `${k}=${v.label}`).join(', ')
     }
     if (f.options) {
       desc += '\n      선택지: ' + f.options.join(', ')
