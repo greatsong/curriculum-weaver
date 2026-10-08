@@ -1,13 +1,20 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, FileText, FileCode, FileDown, ExternalLink, Loader2, Eye, MessagesSquare } from 'lucide-react'
+import { X, FileText, FileCode, FileDown, ExternalLink, Loader2, Eye, FileArchive } from 'lucide-react'
 import { API_BASE, getHeaders } from '../lib/api'
+
+// 받을 범위 — 보고서만(보드 전부) / 대화 기록만(대화 전문) / 둘 다(두 파일을 zip으로)
+const SCOPES = [
+  { id: 'report', label: '보고서만', desc: '설계 보드 전부. 대화는 건수만' },
+  { id: 'transcript', label: '대화 기록만', desc: '교사·AI 대화 전문' },
+  { id: 'both', label: '둘 다', desc: '보고서 + 대화 기록, zip 한 개' },
+]
 
 const FORMATS = [
   {
     id: 'html',
     label: 'HTML',
-    desc: '브라우저에서 열 수 있는 예쁜 보고서',
+    desc: '브라우저에서 열 수 있는 문서',
     icon: FileCode,
     color: 'text-orange-500',
     bg: 'bg-orange-50',
@@ -36,19 +43,40 @@ const FORMATS = [
   },
 ]
 
+const SCOPE_FILE_LABEL = { report: '보고서', transcript: '대화기록', both: '보고서+대화기록' }
+
 export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
   const [downloading, setDownloading] = useState(null)
   // 앱 안에서 바로 보기 — /preview(인라인 HTML)를 받아 iframe으로 렌더한다.
   const [previewHtml, setPreviewHtml] = useState(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
-  // 전체 기록(보고서 + 대화 전문) — 팀 밖으로 배포할 때 이름 가리기를 선택한다
-  const [anonymize, setAnonymize] = useState(true)
+  const [scope, setScope] = useState('report')
+  // 이름 가리기 — 팀 밖으로 배포할 때. 기본은 끔(팀 내부 기록은 실명이 자연스럽다)
+  const [anonymize, setAnonymize] = useState(false)
+
+  const anonQuery = anonymize ? '?anonymize=1' : ''
+  const anonSuffix = anonymize ? '_익명' : ''
+
+  // 범위·형식에 맞는 서버 경로. PDF는 HTML을 새 창에 열어 인쇄한다(preview 인라인 응답).
+  const buildUrl = (format) => {
+    const base = `${API_BASE}/api/report/${sessionId}`
+    if (scope === 'both') return `${base}/package/${format}${anonQuery}`
+    if (scope === 'transcript') {
+      if (format === 'pdf') return `${base}/transcript/html?preview=1${anonymize ? '&anonymize=1' : ''}`
+      return `${base}/transcript/${format}${anonQuery}`
+    }
+    if (format === 'pdf') return `${base}/preview${anonQuery}`
+    return `${base}/${format}${anonQuery}`
+  }
 
   const handlePreview = async () => {
     setLoadingPreview(true)
     try {
       const headers = await getHeaders()
-      const res = await fetch(`${API_BASE}/api/report/${sessionId}/preview`, { headers })
+      const url = scope === 'transcript'
+        ? `${API_BASE}/api/report/${sessionId}/transcript/html?preview=1${anonymize ? '&anonymize=1' : ''}`
+        : `${API_BASE}/api/report/${sessionId}/preview${anonQuery}`
+      const res = await fetch(url, { headers })
       if (!res.ok) throw new Error('보고서를 불러오지 못했습니다.')
       setPreviewHtml(await res.text())
     } catch (err) {
@@ -63,13 +91,13 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
     setDownloading(format)
     try {
       const headers = await getHeaders()
+      const url = buildUrl(format)
+      const res = await fetch(url, { headers })
+      if (!res.ok) throw new Error(format === 'pdf' ? '미리보기 로드 실패' : '다운로드 실패')
+      const blob = await res.blob()
 
       if (format === 'pdf') {
-        // PDF: fetch로 HTML을 받아 blob URL로 열기 (인증 헤더 포함)
-        const previewUrl = `${API_BASE}/api/report/${sessionId}/preview`
-        const res = await fetch(previewUrl, { headers })
-        if (!res.ok) throw new Error('미리보기 로드 실패')
-        const blob = await res.blob()
+        // PDF: HTML을 blob URL로 열고 인쇄 대화상자를 띄운다 (인증 헤더 포함)
         const blobUrl = URL.createObjectURL(blob)
         const win = window.open(blobUrl, '_blank')
         if (win && window.innerWidth >= 768) {
@@ -77,43 +105,28 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
             setTimeout(() => win.print(), 500)
           })
         }
-      } else if (format === 'full-html' || format === 'full-md') {
-        // 전체 기록: 보고서 + 대화 전문. 익명화는 쿼리로 서버에 맡긴다
-        const ext = format === 'full-md' ? 'md' : 'html'
-        const url = `${API_BASE}/api/report/${sessionId}/full/${ext}${anonymize ? '?anonymize=1' : ''}`
-        const res = await fetch(url, { headers })
-        if (!res.ok) throw new Error('다운로드 실패')
-        const blob = await res.blob()
-        const filename = `${sessionTitle || '보고서'}_전체기록${anonymize ? '_익명' : ''}.${ext}`
-        const a = document.createElement('a')
-        a.href = URL.createObjectURL(blob)
-        a.download = filename
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(a.href)
-      } else {
-        // HTML / MD: 직접 다운로드 (인증 헤더 포함)
-        const url = `${API_BASE}/api/report/${sessionId}/${format}`
-        const res = await fetch(url, { headers })
-        if (!res.ok) throw new Error('다운로드 실패')
-        const blob = await res.blob()
-        const filename = `${sessionTitle || '보고서'}_보고서.${format}`
-        const a = document.createElement('a')
-        a.href = URL.createObjectURL(blob)
-        a.download = filename
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(a.href)
+        return
       }
+
+      const ext = scope === 'both' ? 'zip' : format
+      const filename = `${sessionTitle || '보고서'}_${SCOPE_FILE_LABEL[scope]}${anonSuffix}.${ext}`
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(a.href)
     } catch (err) {
       console.error('보고서 다운로드 오류:', err)
-      alert('보고서 다운로드 중 오류가 발생했습니다.')
+      alert('다운로드 중 오류가 발생했습니다.')
     } finally {
       setDownloading(null)
     }
   }
+
+  // zip(둘 다)은 PDF가 없다 — 보고서·대화 기록을 각각 PDF로 받으면 된다
+  const formats = scope === 'both' ? FORMATS.filter((f) => f.id !== 'pdf') : FORMATS
 
   // ProjectPage는 .work-shell(zoom:1.5)로 감싸져 있어, 그 안에서 position:fixed
   // 모달을 렌더링하면 zoom이 중복 적용돼 화면 밖으로 밀려난다. document.body로
@@ -131,35 +144,72 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
             <X size={18} />
           </button>
           <h2 className="text-lg font-bold">결과 보고서</h2>
-          <p className="text-sm text-white/80 mt-1">여기서 바로 보거나, 파일로 받아보세요</p>
+          <p className="text-sm text-white/80 mt-1">범위를 고르고, 바로 보거나 파일로 받으세요</p>
         </div>
 
-        {/* 바로 보기 — 앱을 벗어나지 않고 보고서를 확인한다 */}
-        <div className="px-6 pt-6">
-          <button
-            onClick={handlePreview}
-            disabled={loadingPreview || !!downloading}
-            className="w-full flex items-center gap-4 p-4 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition disabled:opacity-50 disabled:cursor-not-allowed text-left"
-          >
-            <div className="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
-              {loadingPreview ? (
-                <Loader2 size={22} className="text-indigo-600 animate-spin" />
-              ) : (
-                <Eye size={22} className="text-indigo-600" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-gray-900 text-sm">바로 보기</div>
-              <div className="text-xs text-gray-500 mt-0.5">다운로드 없이 이 화면에서 확인</div>
-            </div>
-          </button>
+        {/* 범위 선택 */}
+        <div className="px-6 pt-5">
+          <div className="text-xs font-medium text-gray-400 mb-2">받을 범위</div>
+          <div className="grid grid-cols-3 gap-2">
+            {SCOPES.map((s) => {
+              const active = scope === s.id
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setScope(s.id)}
+                  disabled={!!downloading || loadingPreview}
+                  className={`rounded-xl border px-2 py-2.5 text-left transition disabled:opacity-50 ${
+                    active ? 'border-indigo-400 bg-indigo-50 ring-1 ring-indigo-300' : 'border-gray-200 bg-white hover:bg-gray-50'
+                  }`}
+                >
+                  <div className={`text-sm font-semibold ${active ? 'text-indigo-700' : 'text-gray-900'}`}>{s.label}</div>
+                  <div className="text-[11px] text-gray-500 mt-0.5 leading-snug">{s.desc}</div>
+                </button>
+              )
+            })}
+          </div>
+          <label className="flex items-center gap-2 mt-3 text-xs text-gray-700 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={anonymize}
+              onChange={(e) => setAnonymize(e.target.checked)}
+              disabled={!!downloading || loadingPreview}
+              className="accent-indigo-600"
+            />
+            이름 가리기 — 교사 이름을 "교사 A·B·C"로, 이메일·워크스페이스 이름은 지움 (팀 밖 배포용)
+          </label>
         </div>
+
+        {/* 바로 보기 — 앱을 벗어나지 않고 확인한다 (zip은 열어 볼 수 없어 제외) */}
+        {scope !== 'both' && (
+          <div className="px-6 pt-4">
+            <button
+              onClick={handlePreview}
+              disabled={loadingPreview || !!downloading}
+              className="w-full flex items-center gap-4 p-4 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition disabled:opacity-50 disabled:cursor-not-allowed text-left"
+            >
+              <div className="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
+                {loadingPreview ? (
+                  <Loader2 size={22} className="text-indigo-600 animate-spin" />
+                ) : (
+                  <Eye size={22} className="text-indigo-600" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-gray-900 text-sm">바로 보기</div>
+                <div className="text-xs text-gray-500 mt-0.5">다운로드 없이 이 화면에서 확인</div>
+              </div>
+            </button>
+          </div>
+        )}
 
         {/* 포맷 선택 */}
         <div className="p-6 space-y-3">
-          <div className="text-xs font-medium text-gray-400">파일로 받기</div>
-          {FORMATS.map((fmt) => {
-            const Icon = fmt.icon
+          <div className="text-xs font-medium text-gray-400">
+            파일로 받기 {scope === 'both' && <span className="text-gray-400">· 보고서와 대화 기록 두 파일이 zip 하나로 담깁니다</span>}
+          </div>
+          {formats.map((fmt) => {
+            const Icon = scope === 'both' ? FileArchive : fmt.icon
             const isLoading = downloading === fmt.id
             return (
               <button
@@ -181,7 +231,7 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-gray-900 text-sm">{fmt.label}</div>
+                  <div className="font-semibold text-gray-900 text-sm">{fmt.label}{scope === 'both' ? ' (zip)' : ''}</div>
                   <div className="text-xs text-gray-500 mt-0.5">{fmt.desc}</div>
                 </div>
                 {fmt.id === 'pdf' && (
@@ -192,40 +242,6 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
           })}
         </div>
 
-        {/* 전체 기록 — 보고서(보드 전부) + 대화 전문을 한 파일로 */}
-        <div className="px-6 pb-4">
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-            <div className="flex items-center gap-2">
-              <MessagesSquare size={16} className="text-emerald-600 flex-shrink-0" />
-              <div className="font-semibold text-gray-900 text-sm">전체 기록</div>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">보고서에 대화 전문까지 더한 한 파일. 팀 밖에 배포할 때 사용합니다.</p>
-            <label className="flex items-center gap-2 mt-3 text-xs text-gray-700 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={anonymize}
-                onChange={(e) => setAnonymize(e.target.checked)}
-                disabled={!!downloading}
-                className="accent-emerald-600"
-              />
-              이름 가리기 (교사 이름을 "교사 A·B·C"로, 이메일·워크스페이스 이름은 지움)
-            </label>
-            <div className="flex gap-2 mt-3">
-              {[['full-html', 'HTML'], ['full-md', 'Markdown']].map(([id, label]) => (
-                <button
-                  key={id}
-                  onClick={() => handleDownload(id)}
-                  disabled={!!downloading}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-300 bg-white text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {downloading === id ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
         {/* 하단 안내 */}
         <div className="px-6 pb-5">
           <p className="text-xs text-gray-400 text-center">
@@ -234,12 +250,12 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
         </div>
       </div>
 
-      {/* 앱 내 보고서 뷰어 — 보고서 HTML은 자체 완결(스타일 포함)이라 iframe으로 격리 렌더 */}
+      {/* 앱 내 뷰어 — 문서 HTML은 자체 완결(스타일 포함)이라 iframe으로 격리 렌더 */}
       {previewHtml && (
         <div className="absolute inset-0 z-10 flex flex-col bg-white">
           <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-200 bg-white">
             <h3 className="text-sm font-semibold text-gray-900 truncate">
-              {sessionTitle || '결과 보고서'}
+              {sessionTitle || '결과 보고서'}{scope === 'transcript' ? ' — 대화 기록' : ''}
             </h3>
             <div className="flex items-center gap-2 flex-shrink-0">
               <button

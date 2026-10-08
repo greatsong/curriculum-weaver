@@ -8,12 +8,15 @@
  * - GET /api/report/:projectId/html     — HTML 보고서 다운로드
  * - GET /api/report/:projectId/md       — Markdown 보고서 다운로드
  * - GET /api/report/:projectId/preview  — HTML 프리뷰 (인앱 표시용)
- * - GET /api/report/:projectId/full/:format — 전체 기록(보고서 + 대화 전문). ?anonymize=1이면 이름 가리기
+ * - GET /api/report/:projectId/transcript/:format — 대화 기록만. ?anonymize=1이면 이름 가리기
+ * - GET /api/report/:projectId/package/:format — 보고서 + 대화 기록 두 파일을 zip으로
+ * - GET /api/report/:projectId/full/:format — 합본(보고서 뒤에 대화 전문). ?anonymize=1이면 이름 가리기
+ * html/md/preview도 ?anonymize=1을 받는다(없으면 종전과 완전히 같다)
  */
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth.js'
 import { collectReportData, generateHTML, generateMarkdown } from '../services/reportGenerator.js'
-import { generateFullRecord } from '../services/fullRecord.js'
+import { generateFullRecord, generateReportDoc, generateTranscriptDoc, generatePackageZip } from '../services/fullRecord.js'
 import { getProject, getMemberRole } from '../lib/supabaseService.js'
 
 export const reportRouter = Router()
@@ -42,12 +45,29 @@ async function checkReportAccess(req, res, next) {
   next()
 }
 
+function wantsAnonymize(req) {
+  return ['1', 'true', 'yes'].includes(String(req.query.anonymize || '').toLowerCase())
+}
+function parseFormat(raw) {
+  return raw === 'md' ? 'md' : raw === 'html' ? 'html' : null
+}
+function sendDoc(res, body, filename, format, inline = false) {
+  res.setHeader('Content-Type', format === 'md' ? 'text/markdown; charset=utf-8' : 'text/html; charset=utf-8')
+  if (!inline) res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
+  res.send(body)
+}
+
 /**
  * GET /api/report/:projectId/html
  * HTML 보고서 파일 다운로드
  */
 reportRouter.get('/:projectId/html', checkReportAccess, async (req, res) => {
   try {
+    if (wantsAnonymize(req)) {
+      const doc = await generateReportDoc(req.params.projectId, { anonymize: true, format: 'html' })
+      if (!doc) return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+      return sendDoc(res, doc.body, `${sanitizeFilename(doc.title)}_보고서_익명.html`, 'html')
+    }
     const data = await collectReportData(req.params.projectId)
     if (!data) {
       return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
@@ -71,6 +91,11 @@ reportRouter.get('/:projectId/html', checkReportAccess, async (req, res) => {
  */
 reportRouter.get('/:projectId/md', checkReportAccess, async (req, res) => {
   try {
+    if (wantsAnonymize(req)) {
+      const doc = await generateReportDoc(req.params.projectId, { anonymize: true, format: 'md' })
+      if (!doc) return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+      return sendDoc(res, doc.body, `${sanitizeFilename(doc.title)}_보고서_익명.md`, 'md')
+    }
     const data = await collectReportData(req.params.projectId)
     if (!data) {
       return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
@@ -94,6 +119,11 @@ reportRouter.get('/:projectId/md', checkReportAccess, async (req, res) => {
  */
 reportRouter.get('/:projectId/preview', checkReportAccess, async (req, res) => {
   try {
+    if (wantsAnonymize(req)) {
+      const doc = await generateReportDoc(req.params.projectId, { anonymize: true, format: 'html' })
+      if (!doc) return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+      return sendDoc(res, doc.body, '', 'html', true)
+    }
     const data = await collectReportData(req.params.projectId)
     if (!data) {
       return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
@@ -109,24 +139,59 @@ reportRouter.get('/:projectId/preview', checkReportAccess, async (req, res) => {
 })
 
 /**
+ * GET /api/report/:projectId/transcript/:format   (format: html | md)
+ * 대화 기록만 — 보드 없이 대화 전문. ?preview=1이면 인라인(인앱 보기·PDF 인쇄용)
+ */
+reportRouter.get('/:projectId/transcript/:format', checkReportAccess, async (req, res) => {
+  const format = parseFormat(req.params.format)
+  if (!format) return res.status(400).json({ error: '형식은 html 또는 md만 지원합니다.' })
+  const anonymize = wantsAnonymize(req)
+  const inline = format === 'html' && ['1', 'true'].includes(String(req.query.preview || ''))
+  try {
+    const doc = await generateTranscriptDoc(req.params.projectId, { anonymize, format })
+    if (!doc) return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+    const filename = `${sanitizeFilename(doc.title)}_대화기록${anonymize ? '_익명' : ''}.${format}`
+    sendDoc(res, doc.body, filename, format, inline)
+  } catch (err) {
+    console.error('[report] 대화 기록 생성 오류:', err.message)
+    res.status(500).json({ error: '대화 기록 생성 중 오류가 발생했습니다.' })
+  }
+})
+
+/**
+ * GET /api/report/:projectId/package/:format   (format: html | md)
+ * 둘 다 — 보고서 파일 + 대화 기록 파일을 zip 하나로
+ */
+reportRouter.get('/:projectId/package/:format', checkReportAccess, async (req, res) => {
+  const format = parseFormat(req.params.format)
+  if (!format) return res.status(400).json({ error: '형식은 html 또는 md만 지원합니다.' })
+  const anonymize = wantsAnonymize(req)
+  try {
+    const pkg = await generatePackageZip(req.params.projectId, { anonymize, format })
+    if (!pkg) return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+    const filename = `${sanitizeFilename(pkg.title)}_보고서+대화기록${anonymize ? '_익명' : ''}.zip`
+    res.setHeader('Content-Type', 'application/zip')
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
+    res.send(pkg.buffer)
+  } catch (err) {
+    console.error('[report] 패키지 생성 오류:', err.message)
+    res.status(500).json({ error: '패키지 생성 중 오류가 발생했습니다.' })
+  }
+})
+
+/**
  * GET /api/report/:projectId/full/:format   (format: html | md)
- * 전체 기록 다운로드 — 보고서(보드 전부)에 대화 전문을 덧붙인 한 파일.
- * ?anonymize=1 이면 교사 이름·이메일·워크스페이스 이름을 가린다(팀 외부 배포용).
+ * 합본 — 보고서 뒤에 대화 전문을 덧붙인 한 파일
  */
 reportRouter.get('/:projectId/full/:format', checkReportAccess, async (req, res) => {
-  const format = req.params.format === 'md' ? 'md' : req.params.format === 'html' ? 'html' : null
+  const format = parseFormat(req.params.format)
   if (!format) return res.status(400).json({ error: '형식은 html 또는 md만 지원합니다.' })
-  const anonymize = ['1', 'true', 'yes'].includes(String(req.query.anonymize || '').toLowerCase())
+  const anonymize = wantsAnonymize(req)
   try {
     const result = await generateFullRecord(req.params.projectId, { anonymize, format })
-    if (!result) {
-      return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
-    }
-    const suffix = anonymize ? '_전체기록_익명' : '_전체기록'
-    const filename = `${sanitizeFilename(result.title)}${suffix}.${format}`
-    res.setHeader('Content-Type', format === 'md' ? 'text/markdown; charset=utf-8' : 'text/html; charset=utf-8')
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
-    res.send(result.body)
+    if (!result) return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+    const filename = `${sanitizeFilename(result.title)}_전체기록${anonymize ? '_익명' : ''}.${format}`
+    sendDoc(res, result.body, filename, format)
   } catch (err) {
     console.error('[report] 전체 기록 생성 오류:', err.message)
     res.status(500).json({ error: '전체 기록 생성 중 오류가 발생했습니다.' })

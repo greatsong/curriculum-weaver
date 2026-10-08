@@ -11,6 +11,7 @@
  *   - 원본 데이터는 건드리지 않는다(깊은 복사 후 치환).
  */
 import { marked } from 'marked'
+import JSZip from 'jszip'
 import { getMessages, getWorkspace } from '../lib/supabaseService.js'
 import { collectReportData, generateHTML, generateMarkdown } from './reportGenerator.js'
 import { getProcedureLabel, replaceInternalProcedureCodes } from '../../shared/constants.js'
@@ -270,17 +271,14 @@ export function renderTranscriptMD(messages, { anonymized = false, nameCount = 0
 // ── 조립 ──
 
 /**
- * 전체 기록(보고서 + 대화 전문) 생성
- * @param {string} projectId
- * @param {{ anonymize?: boolean, format: 'html'|'md' }} opts
- * @returns {Promise<{ title: string, body: string }|null>}
+ * 보고서 데이터 + 메시지 전량을 읽고, 요청 시 익명화한 사본으로 바꾼다.
+ * @returns {Promise<{ data: object, messages: object[], nameCount: number }|null>}
  */
-export async function generateFullRecord(projectId, { anonymize = false, format = 'html' } = {}) {
+async function loadRecord(projectId, anonymize) {
   let data = await collectReportData(projectId)
   if (!data) return null
   let messages = await fetchAllMessages(projectId)
   let nameCount = 0
-
   if (anonymize) {
     let workspace = null
     try {
@@ -291,10 +289,161 @@ export async function generateFullRecord(projectId, { anonymize = false, format 
     messages = result.messages
     nameCount = result.nameMap.size
   }
+  return { data, messages, nameCount }
+}
 
+const ANON_NOTE_CSS = `
+  .anon-note { font-size: 12px; color: #9b9a97; margin: 6px 0 0; }
+`
+function anonNoteHTML(nameCount) {
+  return `<p class="anon-note">이름 가리기를 적용한 기록입니다. 교사 이름 ${nameCount}건을 "교사 A·B·C…"로 바꾸고 이메일·워크스페이스 이름을 지웠습니다.</p>`
+}
+function anonNoteMD(nameCount) {
+  return `> 이름 가리기를 적용한 기록입니다. 교사 이름 ${nameCount}건을 "교사 A·B·C…"로 바꾸고 이메일·워크스페이스 이름을 지웠습니다.\n\n`
+}
+
+/**
+ * 보고서만 (보드 전부, 대화는 통계만). anonymize=false면 기존 보고서와 완전히 같다.
+ * @returns {Promise<{ title: string, body: string }|null>}
+ */
+export async function generateReportDoc(projectId, { anonymize = false, format = 'html' } = {}) {
+  const rec = await loadRecord(projectId, anonymize)
+  if (!rec) return null
+  const { data, nameCount } = rec
+  const extras = anonymize
+    ? (format === 'md' ? { bodyMD: `---\n\n${anonNoteMD(nameCount)}` } : { css: ANON_NOTE_CSS, bodyHTML: `<hr class="divider">${anonNoteHTML(nameCount)}` })
+    : {}
+  const body = format === 'md' ? generateMarkdown(data, extras) : generateHTML(data, extras)
+  return { title: data.project.title, body }
+}
+
+const TRANSCRIPT_SHELL_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #37352f; background: #fff; line-height: 1.7; font-size: 15px; -webkit-font-smoothing: antialiased; }
+  .page { max-width: 900px; margin: 0 auto; padding: 0 96px; }
+  .cover { padding: 72px 0 32px; }
+  .cover-brand { font-size: 13px; color: #9b9a97; letter-spacing: 0.02em; }
+  .cover h1 { font-size: 30px; font-weight: 700; line-height: 1.3; margin: 12px 0 10px; letter-spacing: -0.02em; }
+  .cover-desc { color: #787774; font-size: 15px; }
+  .cover-props { display: flex; flex-wrap: wrap; gap: 6px 24px; margin-top: 20px; font-size: 13px; color: #787774; }
+  .prop-label { margin-right: 6px; color: #9b9a97; }
+  .prop-value { font-weight: 500; color: #37352f; }
+  .divider { border: 0; border-top: 1px solid #e9e9e7; margin: 28px 0; }
+  .section-title { font-size: 20px; font-weight: 700; margin: 8px 0 14px; }
+  .footer { margin: 56px 0 72px; padding-top: 20px; border-top: 1px solid #e9e9e7; font-size: 12px; color: #9b9a97; }
+  .footer-brand { font-weight: 600; color: #37352f; }
+  @media (max-width: 720px) { .page { padding: 0 20px; } .cover { padding-top: 40px; } }
+  @media print { .page { padding: 0; max-width: 100%; } }
+`
+
+/**
+ * 대화 기록만 (보드 없이 대화 전문). 보고서와 같은 표지·푸터 틀을 쓴다.
+ * @returns {Promise<{ title: string, body: string }|null>}
+ */
+export async function generateTranscriptDoc(projectId, { anonymize = false, format = 'html' } = {}) {
+  const rec = await loadRecord(projectId, anonymize)
+  if (!rec) return null
+  return renderTranscriptDoc(rec, { anonymize, format })
+}
+
+/** 이미 읽은 레코드로 대화 기록 문서를 만든다 (zip 패키지와 공유 — 두 번 읽으면 익명 글자 배정이 어긋날 수 있다). */
+export function renderTranscriptDoc({ data, messages, nameCount }, { anonymize = false, format = 'html' } = {}) {
+  const { project } = data
+  const opts = { anonymized: anonymize, nameCount }
+  const dateOpts = { year: 'numeric', month: 'long', day: 'numeric' }
+  const createdDate = new Date(project.created_at).toLocaleDateString('ko-KR', dateOpts)
+  const now = new Date().toLocaleDateString('ko-KR', dateOpts)
+  const workspaceName = project.workspace?.name || ''
+
+  if (format === 'md') {
+    let md = `# ${project.title}\n\n`
+    md += `> 커리큘럼 위버 · 융합 수업 설계 대화 기록\n\n`
+    if (project.description) md += `${project.description}\n\n`
+    md += `- 생성일: ${createdDate}\n- 기록 작성일: ${now}\n`
+    if (workspaceName) md += `- 워크스페이스: ${workspaceName}\n`
+    md += `\n`
+    md += renderTranscriptMD(messages, opts)
+    md += `---\n\n*커리큘럼 위버 — TADDs-DIE 기반 AI 협력 수업 설계 플랫폼*\n*대화 기록 자동 생성일: ${now}*\n`
+    return { title: project.title, body: replaceInternalProcedureCodes(md) }
+  }
+
+  let html = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${esc(project.title)} — 융합 수업 설계 대화 기록</title>
+<style>${TRANSCRIPT_SHELL_CSS}${TRANSCRIPT_CSS}</style>
+</head>
+<body>
+<div class="page">
+  <div class="cover">
+    <div class="cover-brand">커리큘럼 위버 · 융합 수업 설계 대화 기록</div>
+    <h1>${esc(project.title)}</h1>
+    ${project.description ? `<p class="cover-desc">${esc(project.description)}</p>` : ''}
+    <div class="cover-props">
+      ${workspaceName ? `<span><span class="prop-label">워크스페이스</span><span class="prop-value">${esc(workspaceName)}</span></span>` : ''}
+      <span><span class="prop-label">생성일</span><span class="prop-value">${createdDate}</span></span>
+      <span><span class="prop-label">기록</span><span class="prop-value">${now}</span></span>
+    </div>
+  </div>
+`
+  html += renderTranscriptHTML(messages, opts)
+  html += `
+  <div class="footer">
+    <p><span class="footer-brand">커리큘럼 위버</span> — TADDs-DIE 기반 AI 협력 수업 설계 플랫폼</p>
+    <p style="margin-top:4px;">대화 기록 자동 생성일: ${now}</p>
+  </div>
+</div>
+</body>
+</html>`
+  return { title: project.title, body: replaceInternalProcedureCodes(html) }
+}
+
+/**
+ * 합본: 보고서 + 대화 전문을 한 파일로
+ * @returns {Promise<{ title: string, body: string }|null>}
+ */
+export async function generateFullRecord(projectId, { anonymize = false, format = 'html' } = {}) {
+  const rec = await loadRecord(projectId, anonymize)
+  if (!rec) return null
+  const { data, messages, nameCount } = rec
   const opts = { anonymized: anonymize, nameCount }
   const body = format === 'md'
     ? generateMarkdown(data, { bodyMD: renderTranscriptMD(messages, opts) })
     : generateHTML(data, { css: TRANSCRIPT_CSS, bodyHTML: renderTranscriptHTML(messages, opts) })
   return { title: data.project.title, body }
+}
+
+export function safeFilename(name) {
+  return String(name || '보고서').replace(/[<>:"/\\|?*]/g, '_').slice(0, 100)
+}
+
+/**
+ * 둘 다: 보고서 파일 + 대화 기록 파일을 zip 하나로. 같은 데이터를 한 번만 읽어 두 문서를 만든다.
+ * @returns {Promise<{ title: string, buffer: Buffer, files: string[] }|null>}
+ */
+export async function generatePackageZip(projectId, { anonymize = false, format = 'html' } = {}) {
+  const rec = await loadRecord(projectId, anonymize)
+  if (!rec) return null
+  const { data, nameCount } = rec
+  const suffix = anonymize ? '_익명' : ''
+  const base = safeFilename(data.project.title)
+
+  // 보고서(익명이면 안내 한 줄 덧붙임)
+  const reportExtras = anonymize
+    ? (format === 'md' ? { bodyMD: `---\n\n${anonNoteMD(nameCount)}` } : { css: ANON_NOTE_CSS, bodyHTML: `<hr class="divider">${anonNoteHTML(nameCount)}` })
+    : {}
+  const report = format === 'md' ? generateMarkdown(data, reportExtras) : generateHTML(data, reportExtras)
+
+  // 대화 기록 — 같은 사본으로
+  const transcriptDoc = renderTranscriptDoc(rec, { anonymize, format }).body
+
+  const zip = new JSZip()
+  const files = [`${base}_보고서${suffix}.${format}`, `${base}_대화기록${suffix}.${format}`]
+  zip.file(files[0], report)
+  zip.file(files[1], transcriptDoc)
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 6 } })
+  return { title: data.project.title, buffer, files }
 }
