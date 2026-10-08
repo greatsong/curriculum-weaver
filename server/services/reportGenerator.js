@@ -359,7 +359,7 @@ function generateDemoSummary(data) {
 // HTML 보고서 생성
 // ════════════════════════════════════════════
 
-export function generateHTML(data) {
+export function generateHTML(data, extras = {}) {
   const { project, mode, designMap, messageStats, participants, standards, procedureStatus, confirmedCount, totalProcedures, skipMap = {} } = data
   const isDemo = mode === 'demo'
   const coverSubtitle = isDemo ? '임용 수업 실연 준비 보고서' : '융합 수업 설계 보고서'
@@ -599,6 +599,7 @@ export function generateHTML(data) {
     .stats-row { grid-template-columns: repeat(2, 1fr); }
     .members-grid { flex-direction: column; }
   }
+${extras.css || ''}
 </style>
 </head>
 <body>
@@ -767,6 +768,9 @@ export function generateHTML(data) {
       html += `</div>`
     }
   }
+
+  // ── 덧붙임(전체 기록의 대화 전문 등) — 푸터 앞 ──
+  if (extras.bodyHTML) html += extras.bodyHTML
 
   // ── 푸터 ──
   html += `
@@ -1006,7 +1010,7 @@ function renderGraphHTML(label, nodes, edges) {
 // Markdown 보고서 생성
 // ════════════════════════════════════════════
 
-export function generateMarkdown(data) {
+export function generateMarkdown(data, extras = {}) {
   const { project, mode, designMap, messageStats, participants, standards, procedureStatus, confirmedCount, totalProcedures, skipMap = {} } = data
   const isDemo = mode === 'demo'
   const createdDate = new Date(project.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -1122,6 +1126,9 @@ export function generateMarkdown(data) {
       }
     }
   }
+
+  // 덧붙임(전체 기록의 대화 전문 등) — 푸터 앞
+  if (extras.bodyMD) md += extras.bodyMD
 
   // 푸터
   md += `---\n\n`
