@@ -11,8 +11,9 @@
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { createProject, upsertDesign, createMessage, getMessages } from '../../lib/supabaseService.js'
-import { generateFullRecord, cleanMessageText, anonymizeRecord } from '../fullRecord.js'
-import { collectReportData } from '../reportGenerator.js'
+import { generateFullRecord, cleanMessageText, anonymizeRecord, generateReportDoc, generateTranscriptDoc, generatePackageZip } from '../fullRecord.js'
+import JSZip from 'jszip'
+import { collectReportData, generateHTML, generateMarkdown } from '../reportGenerator.js'
 import { MOVE_NOTE_SENDER, encodeMoveMeta } from 'curriculum-weaver-shared/procedureMove.js'
 
 let projectId
@@ -106,5 +107,68 @@ describe('generateFullRecord — 익명화', () => {
     const { messages: out } = anonymizeRecord(data, messages, null)
     expect(out[0].content).not.toContain('김민')
     expect(out[0].content).toMatch(/교사 [A-Z] 선생님과 교사 [A-Z] 선생님/)
+  })
+})
+
+describe('범위별 문서 — 보고서만 / 대화 기록만 / 둘 다', () => {
+  it('보고서만(익명 끔)은 기존 보고서와 완전히 같다', async () => {
+    const data = await collectReportData(projectId)
+    const html = await generateReportDoc(projectId, { format: 'html' })
+    const md = await generateReportDoc(projectId, { format: 'md' })
+    // 생성일 문구는 같은 날이면 같다
+    expect(html.body).toBe(generateHTML(data))
+    expect(md.body).toBe(generateMarkdown(data))
+    expect(html.body).not.toContain('대화 전문')
+  })
+
+  it('보고서만(익명 켬)은 보드의 이름이 가려지고 안내가 붙는다', async () => {
+    const { body } = await generateReportDoc(projectId, { format: 'html', anonymize: true })
+    expect(body).not.toContain('김민수')
+    expect(body).toContain('교사 A')
+    expect(body).toContain('이름 가리기를 적용한 기록')
+    expect(body).not.toContain('대화 전문')
+  })
+
+  it('대화 기록만: 보드 없이 대화 전문만, 표지·푸터 포함', async () => {
+    const html = await generateTranscriptDoc(projectId, { format: 'html' })
+    expect(html.body).toContain('<!DOCTYPE html>')
+    expect(html.body).toContain('대화 기록')
+    expect(html.body).toContain('우리 팀 비전을 정해 봅시다')
+    expect(html.body).not.toContain('함께 그리는 융합 수업')   // T-1 보드 내용은 없다
+    expect(html.body).not.toContain('참여 선생님')
+    expect(html.body).not.toMatch(/\bT-1-1\b/)
+    const md = await generateTranscriptDoc(projectId, { format: 'md', anonymize: true })
+    expect(md.body).toContain('## 대화 전문')
+    expect(md.body).not.toContain('김민수')
+    expect(md.body).toContain('교사 A')
+  })
+
+  it('둘 다: zip 안에 보고서·대화 기록 두 파일, 익명 글자 배정이 두 파일에서 같다', async () => {
+    const pkg = await generatePackageZip(projectId, { format: 'html', anonymize: true })
+    expect(pkg.files).toHaveLength(2)
+    expect(pkg.files[0]).toMatch(/_보고서_익명\.html$/)
+    expect(pkg.files[1]).toMatch(/_대화기록_익명\.html$/)
+    const zip = await JSZip.loadAsync(pkg.buffer)
+    const report = await zip.file(pkg.files[0]).async('string')
+    const transcript = await zip.file(pkg.files[1]).async('string')
+    expect(report).toContain('함께 그리는 융합 수업')
+    expect(report).not.toContain('대화 전문')
+    expect(transcript).toContain('대화 전문')
+    expect(transcript).not.toContain('함께 그리는 융합 수업')
+    for (const doc of [report, transcript]) {
+      expect(doc).not.toContain('김민수')
+      expect(doc).not.toContain('박지영')
+    }
+    // 같은 사람은 두 문서에서 같은 글자: 역할표의 첫 교사(정보·기록)와 첫 메시지 발신자(정보)
+    expect(report).toMatch(/교사 A[\s\S]*정보/)
+    expect(transcript).toContain('교사 A · 정보')
+  })
+
+  it('둘 다(md, 실명): zip 두 파일에 실명이 그대로', async () => {
+    const pkg = await generatePackageZip(projectId, { format: 'md' })
+    const zip = await JSZip.loadAsync(pkg.buffer)
+    const transcript = await zip.file(pkg.files[1]).async('string')
+    expect(pkg.files[1]).toMatch(/_대화기록\.md$/)
+    expect(transcript).toContain('**김민수 · 정보**')
   })
 })
