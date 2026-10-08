@@ -1140,11 +1140,15 @@ function TableRenderer({ columns, data }) {
             >
               {/* 위쪽 정렬 — 긴 행에서 가운데 정렬이면 짧은 칸(날짜 등)이 행 중간에 떠서 비어 보였다 */}
               <td style={{ textAlign: 'center', padding: '10px 8px', fontSize: 11, color: '#94A3B8', fontWeight: 600, verticalAlign: 'top' }}>{i + 1}</td>
-              {columns.map((col) => (
-                <td key={col.name} style={{ padding: '10px 12px', color: 'var(--color-text-primary)', lineHeight: 1.5, verticalAlign: 'top' }}>
-                  {String(row[col.name] ?? row[col.label] ?? '')}
-                </td>
-              ))}
+              {columns.map((col) => {
+                const text = String(row[col.name] ?? row[col.label] ?? '')
+                // 교과명·이름처럼 짧은 칸은 줄바꿈하지 않는다 — 좁은 화면에서 긴 칸에 밀려 한 글자씩 세로로 쪼개지던 것 방지
+                return (
+                  <td key={col.name} style={{ padding: '10px 12px', color: 'var(--color-text-primary)', lineHeight: 1.5, verticalAlign: 'top', whiteSpace: text.length <= 8 ? 'nowrap' : 'normal' }}>
+                    {text}
+                  </td>
+                )
+              })}
             </tr>
           ))}
         </tbody>
@@ -1155,6 +1159,17 @@ function TableRenderer({ columns, data }) {
 
 function ListRenderer({ items, itemSchema }) {
   if (!Array.isArray(items) || items.length === 0) return null
+  // 항목 틀(itemSchema)이 두 칸 이상인 목록(교과별 수업목표·개인 비전·주제 후보 등)은 보고서와
+  // 같이 표로 그린다. 종전에는 칸 값을 " -- "로 이어 한 줄 목록으로 보여 표로 설계한 의도가 드러나지 않았다.
+  // 옛 편집기가 JSON 문자열로 저장한 항목도 normalizeListItem으로 되살려 같은 표에 넣는다.
+  const schemaKeys = itemSchema && typeof itemSchema === 'object' ? Object.keys(itemSchema) : []
+  if (schemaKeys.length >= 2) {
+    const rows = items.map(normalizeListItem)
+    if (rows.every((r) => r && typeof r === 'object')) {
+      const columns = schemaKeys.map((name) => ({ name, label: itemSchema[name]?.label || name }))
+      return <TableRenderer columns={columns} data={rows} />
+    }
+  }
   const toText = (raw) => {
     // 예전 편집기가 객체 항목을 JSON 문자열로 바꿔 저장한 보드도 읽을 수 있게 되살린다
     const item = normalizeListItem(raw)

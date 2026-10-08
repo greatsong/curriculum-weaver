@@ -192,8 +192,10 @@ export const TRANSCRIPT_CSS = `
   .chat-bubble ul, .chat-bubble ol { margin: 4px 0 8px 20px; }
   .chat-bubble pre { white-space: pre-wrap; background: rgba(0,0,0,0.06); padding: 8px 10px; border-radius: 6px; font-size: 12.5px; }
   .chat-bubble code { font-size: 12.5px; }
+  .chat-bubble blockquote { margin: 6px 0; padding: 2px 0 2px 10px; border-left: 3px solid #cbd5e1; color: #4b5563; }
   .chat-bubble table { border-collapse: collapse; margin: 6px 0; font-size: 13px; }
-  .chat-bubble th, .chat-bubble td { border: 1px solid #d1d5db; padding: 4px 8px; }
+  .chat-bubble th, .chat-bubble td { border: 1px solid #d1d5db; padding: 4px 8px; vertical-align: top; }
+  .chat-bubble td:first-child, .chat-bubble th:first-child { min-width: 5em; }
   .chat-msg.teacher .chat-bubble a { color: #c7d2fe; }
   .chat-attach { font-size: 11px; opacity: 0.75; margin-top: 4px; }
   .anon-note { font-size: 12px; color: #9b9a97; margin: 6px 0 0; }
