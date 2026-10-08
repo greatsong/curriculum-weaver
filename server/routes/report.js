@@ -8,10 +8,12 @@
  * - GET /api/report/:projectId/html     — HTML 보고서 다운로드
  * - GET /api/report/:projectId/md       — Markdown 보고서 다운로드
  * - GET /api/report/:projectId/preview  — HTML 프리뷰 (인앱 표시용)
+ * - GET /api/report/:projectId/full/:format — 전체 기록(보고서 + 대화 전문). ?anonymize=1이면 이름 가리기
  */
 import { Router } from 'express'
 import { requireAuth } from '../middleware/auth.js'
 import { collectReportData, generateHTML, generateMarkdown } from '../services/reportGenerator.js'
+import { generateFullRecord } from '../services/fullRecord.js'
 import { getProject, getMemberRole } from '../lib/supabaseService.js'
 
 export const reportRouter = Router()
@@ -103,6 +105,31 @@ reportRouter.get('/:projectId/preview', checkReportAccess, async (req, res) => {
   } catch (err) {
     console.error('[report] 프리뷰 생성 오류:', err.message)
     res.status(500).json({ error: '보고서 프리뷰 생성 중 오류가 발생했습니다.' })
+  }
+})
+
+/**
+ * GET /api/report/:projectId/full/:format   (format: html | md)
+ * 전체 기록 다운로드 — 보고서(보드 전부)에 대화 전문을 덧붙인 한 파일.
+ * ?anonymize=1 이면 교사 이름·이메일·워크스페이스 이름을 가린다(팀 외부 배포용).
+ */
+reportRouter.get('/:projectId/full/:format', checkReportAccess, async (req, res) => {
+  const format = req.params.format === 'md' ? 'md' : req.params.format === 'html' ? 'html' : null
+  if (!format) return res.status(400).json({ error: '형식은 html 또는 md만 지원합니다.' })
+  const anonymize = ['1', 'true', 'yes'].includes(String(req.query.anonymize || '').toLowerCase())
+  try {
+    const result = await generateFullRecord(req.params.projectId, { anonymize, format })
+    if (!result) {
+      return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+    }
+    const suffix = anonymize ? '_전체기록_익명' : '_전체기록'
+    const filename = `${sanitizeFilename(result.title)}${suffix}.${format}`
+    res.setHeader('Content-Type', format === 'md' ? 'text/markdown; charset=utf-8' : 'text/html; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`)
+    res.send(result.body)
+  } catch (err) {
+    console.error('[report] 전체 기록 생성 오류:', err.message)
+    res.status(500).json({ error: '전체 기록 생성 중 오류가 발생했습니다.' })
   }
 })
 

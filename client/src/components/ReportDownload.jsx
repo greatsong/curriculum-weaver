@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, FileText, FileCode, FileDown, ExternalLink, Loader2, Eye } from 'lucide-react'
+import { X, FileText, FileCode, FileDown, ExternalLink, Loader2, Eye, MessagesSquare } from 'lucide-react'
 import { API_BASE, getHeaders } from '../lib/api'
 
 const FORMATS = [
@@ -41,6 +41,8 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
   // 앱 안에서 바로 보기 — /preview(인라인 HTML)를 받아 iframe으로 렌더한다.
   const [previewHtml, setPreviewHtml] = useState(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
+  // 전체 기록(보고서 + 대화 전문) — 팀 밖으로 배포할 때 이름 가리기를 선택한다
+  const [anonymize, setAnonymize] = useState(true)
 
   const handlePreview = async () => {
     setLoadingPreview(true)
@@ -75,6 +77,21 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
             setTimeout(() => win.print(), 500)
           })
         }
+      } else if (format === 'full-html' || format === 'full-md') {
+        // 전체 기록: 보고서 + 대화 전문. 익명화는 쿼리로 서버에 맡긴다
+        const ext = format === 'full-md' ? 'md' : 'html'
+        const url = `${API_BASE}/api/report/${sessionId}/full/${ext}${anonymize ? '?anonymize=1' : ''}`
+        const res = await fetch(url, { headers })
+        if (!res.ok) throw new Error('다운로드 실패')
+        const blob = await res.blob()
+        const filename = `${sessionTitle || '보고서'}_전체기록${anonymize ? '_익명' : ''}.${ext}`
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(a.href)
       } else {
         // HTML / MD: 직접 다운로드 (인증 헤더 포함)
         const url = `${API_BASE}/api/report/${sessionId}/${format}`
@@ -173,6 +190,40 @@ export default function ReportDownload({ sessionId, sessionTitle, onClose }) {
               </button>
             )
           })}
+        </div>
+
+        {/* 전체 기록 — 보고서(보드 전부) + 대화 전문을 한 파일로 */}
+        <div className="px-6 pb-4">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex items-center gap-2">
+              <MessagesSquare size={16} className="text-emerald-600 flex-shrink-0" />
+              <div className="font-semibold text-gray-900 text-sm">전체 기록</div>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">보고서에 대화 전문까지 더한 한 파일. 팀 밖에 배포할 때 사용합니다.</p>
+            <label className="flex items-center gap-2 mt-3 text-xs text-gray-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={anonymize}
+                onChange={(e) => setAnonymize(e.target.checked)}
+                disabled={!!downloading}
+                className="accent-emerald-600"
+              />
+              이름 가리기 (교사 이름을 "교사 A·B·C"로, 이메일·워크스페이스 이름은 지움)
+            </label>
+            <div className="flex gap-2 mt-3">
+              {[['full-html', 'HTML'], ['full-md', 'Markdown']].map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => handleDownload(id)}
+                  disabled={!!downloading}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-emerald-300 bg-white text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {downloading === id ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* 하단 안내 */}
