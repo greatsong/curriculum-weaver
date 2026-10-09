@@ -7,13 +7,6 @@ const Graph3DShowcase = lazy(() =>
     return { default: () => null }
   })
 )
-// 구 3D 화면 (검증 기간 유지 — ?mode=explore-legacy)
-const Graph3D = lazy(() =>
-  import('../components/Graph3D').catch(() => {
-    window.location.reload()
-    return { default: () => null }
-  })
-)
 const DesignMode = lazy(() =>
   import('../components/DesignMode').catch(() => {
     window.location.reload()
@@ -28,18 +21,9 @@ const DesignMode = lazy(() =>
  * URL이 상태를 기록: ?mode=design|explore + 보기/필터 파라미터 + project(보낼 곳)
  */
 export default function GraphPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const mode = searchParams.get('mode') || 'design'
-
-  const toDesign = () => {
-    const next = new URLSearchParams(searchParams)
-    next.set('mode', 'design')
-    next.delete('subjects') // project(보낼 곳)는 그대로 둔다
-    setSearchParams(next)
-  }
-
-  // 설계 모드에서 이월된 교과군 필터 (탐험 모드용)
-  const initialSubjects = (searchParams.get('subjects') || '').split(',').filter(Boolean)
+  const [searchParams] = useSearchParams()
+  // 구 3D 화면(?mode=explore-legacy, react-force-graph-3d)은 2026-10-09 삭제 — 성운(explore)으로 보낸다
+  const mode = searchParams.get('mode') === 'explore-legacy' ? 'explore' : (searchParams.get('mode') || 'design')
 
   return (
     // 보낼 곳·저장 상태 안내는 각 화면(연결 찾기·전체 지도) 안의 머리 줄이 맡는다(ExplorationContextBar).
@@ -54,15 +38,6 @@ export default function GraphPage() {
       }>
         {mode === 'explore' ? (
           <Graph3DShowcase />
-        ) : mode === 'explore-legacy' ? (
-          <div className="relative h-full">
-            <Graph3D initialSubjects={initialSubjects.length > 0 ? initialSubjects : null} />
-            {/* 설계 모드 복귀 토글 */}
-            <button onClick={toDesign}
-              className="absolute bottom-4 right-4 z-30 flex items-center gap-1.5 px-4 py-2 bg-white/95 hover:bg-white text-gray-800 rounded-full text-xs font-bold shadow-lg border border-gray-200 transition">
-              🧭 성취기준 연결 찾기로
-            </button>
-          </div>
         ) : (
           <DesignMode />
         )}
