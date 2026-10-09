@@ -338,7 +338,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
           <div className="fu-panel">
             <h2><span>넣은 성취기준</span><span>{subjectGroups.length}과목 · {pickedKeys.length} / {FUTURE_MAX}개</span></h2>
             {!projectId && <section className="lab-samples" aria-label="학년별 샘플 주제">
-              <div className="lab-samples-heading"><strong>주제로 시작하기</strong><span>3과목 · 과목별 2개 · 성취기준 6개</span></div>
+              <div className="lab-samples-heading"><strong>샘플 주제로 살펴보기</strong><span>3과목 · 과목별 2개 · 성취기준 6개</span></div>
               {['고1', '고2–3'].map(grade => <div className="lab-sample-group" key={grade}>
                 <h3>{grade}</h3>
                 <div className="lab-sample-grid">{FUTURES_LAB_SAMPLES.filter(p => p.grade === grade).map(preset => <button key={preset.id} type="button" className="lab-sample-card" data-sample={preset.id} disabled={!catalog} aria-label={`${preset.grade} ${preset.label}`} aria-pressed={activeSample?.id === preset.id} onClick={() => applyPractice(preset)}>
