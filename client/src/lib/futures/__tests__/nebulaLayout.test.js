@@ -141,3 +141,27 @@ describe('행성과 위성 그래프 배치', () => {
     expect(L.clusters.find((c) => c.key === '지구과학').iso).toBe(false)
   })
 })
+
+// 기후·에너지 샘플(실제 캐시 데이터): 통합과학2 원의 연결 알약 4개가 모두 상대 과목 쪽을 향한다.
+// 2026-10-09 이전에는 ±38° 안에서 자리가 모자라 '지구온난화'가 '신재생 에너지' 위에 강제 배치돼 겹쳤다.
+const climate = {
+  standards: [
+    { key: '[10공국2-02-01]', code: '[10공국2-02-01]', subject: '공통국어2', subject_group: '국어' },
+    { key: '[10공국2-03-03]', code: '[10공국2-03-03]', subject: '공통국어2', subject_group: '국어' },
+    { key: '[10통과2-02-03]', code: '[10통과2-02-03]', subject: '통합과학2', subject_group: '과학' },
+    { key: '[10통과2-02-06]', code: '[10통과2-02-06]', subject: '통합과학2', subject_group: '과학' },
+    { key: '[10공영2-01-07]', code: '[10공영2-01-07]', subject: '공통영어2', subject_group: '영어' },
+    { key: '[10공영2-02-02]', code: '[10공영2-02-02]', subject: '공통영어2', subject_group: '영어' },
+  ],
+  bridges: {"keywords": {"[10공국2-02-01]": ["복합양식", "필자의 관점", "의도", "표현 방법"], "[10공국2-03-03]": ["신뢰할 수 있는 정보", "복합양식 자료", "공동 보고서"], "[10공영2-01-07]": ["다양한 매체", "비판적으로 이해"], "[10공영2-02-02]": ["사실적 정보", "지식", "전달"], "[10통과2-02-03]": ["온실효과", "지구온난화", "엘니뇨", "사막화", "대처 방안"], "[10통과2-02-06]": ["에너지 효율", "지속가능한 발전", "신재생 에너지", "지구 환경 문제"]}, "concepts": [{"label": "기후 보도 비판 읽기", "kind": "same", "strength": 2, "why": "…", "ends": [{"key": "[10공국2-02-01]", "word": "필자의 관점"}, {"key": "[10통과2-02-03]", "word": "지구온난화"}, {"key": "[10공영2-01-07]", "word": "다양한 매체"}]}, {"label": "신재생 에너지 공동 보고서", "kind": "same", "strength": 2, "why": "…", "ends": [{"key": "[10공국2-03-03]", "word": "공동 보고서"}, {"key": "[10통과2-02-06]", "word": "신재생 에너지"}]}, {"label": "기후 현상 정보 전달", "kind": "same", "strength": 2, "why": "…", "ends": [{"key": "[10통과2-02-03]", "word": "엘니뇨"}, {"key": "[10공영2-02-02]", "word": "사실적 정보"}]}, {"label": "에너지 효율 자료 분석", "kind": "same", "strength": 2, "why": "…", "ends": [{"key": "[10공국2-02-01]", "word": "복합양식"}, {"key": "[10통과2-02-06]", "word": "에너지 효율"}]}]},
+}
+describe('같은 방향으로 몰린 알약', () => {
+  it.each([1232, 1440, 1680, 1920])('폭 %i에서 알약을 강제 배치하지 않고 서로 겹치지 않는다', (W) => {
+    const L = nebulaLayout(climate.standards, climate.bridges, W, measure, { multiEndpoint: true, minHeight: 800 })
+    expect(L.quality.forced).toBe(0)
+    for (const c of L.clusters) {
+      const pills = c.pills
+      for (let i = 0; i < pills.length; i++) for (let j = i + 1; j < pills.length; j++) expect(overlap(pills[i].b, pills[j].b)).toBe(false)
+    }
+  })
+})
