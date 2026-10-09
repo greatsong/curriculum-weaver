@@ -492,9 +492,21 @@ export default function Graph3DShowcase() {
     return () => { clearTimeout(dwellTimer); clearTimeout(nextTimer); scene.setForcedRotate(null) }
   }, [tour, tourStops, endTour])
 
-  // Esc: 투어 종료 / 선택 해제
+  // Esc: 투어 종료 / 선택 해제 · 투어 중 ←→: 이전·다음 교과군(버튼과 같은 동작)
   useEffect(() => {
     const onKey = (e) => {
+      if (tour.active && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.isComposing) return
+        const el = e.target
+        if (el?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName)) return
+        e.preventDefault()
+        const step = e.key === 'ArrowRight' ? 1 : -1
+        setTour(t => {
+          const idx = Math.min(tourStops.length - 1, Math.max(0, t.idx + step))
+          return idx === t.idx ? t : { ...t, idx, paused: false }
+        })
+        return
+      }
       if (e.key !== 'Escape') return
       if (tour.active) endTour()
       else {
@@ -506,7 +518,7 @@ export default function Graph3DShowcase() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [tour.active, endTour])
+  }, [tour.active, tourStops.length, endTour])
 
   // 투어 중 드래그 → 일시정지
   const handleCanvasPointerDown = useCallback(() => {
@@ -1055,7 +1067,7 @@ export default function Graph3DShowcase() {
             <div className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-[#0B1228]/70 backdrop-blur-xl border border-white/[0.08]">
               {/* 튜토리얼 내비게이션: 이전 · n/N · 다음 — 발표자가 자기 속도로 넘긴다 */}
               <button onClick={() => setTour(t => ({ ...t, idx: Math.max(0, t.idx - 1), paused: false }))}
-                disabled={tour.idx === 0} title="이전 교과군"
+                disabled={tour.idx === 0} title="이전 교과군 (←)"
                 className="p-1 -m-0.5 rounded-full text-slate-300/90 hover:text-slate-100 hover:bg-white/[0.08] disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
                 <ChevronLeft size={14} />
               </button>
@@ -1063,7 +1075,7 @@ export default function Graph3DShowcase() {
                 {tour.idx + 1}<span className="font-normal text-slate-500">/{tourStops.length}</span>
               </span>
               <button onClick={() => setTour(t => t.idx >= tourStops.length - 1 ? t : ({ ...t, idx: t.idx + 1, paused: false }))}
-                disabled={tour.idx >= tourStops.length - 1} title="다음 교과군"
+                disabled={tour.idx >= tourStops.length - 1} title="다음 교과군 (→)"
                 className="p-1 -m-0.5 rounded-full text-slate-300/90 hover:text-slate-100 hover:bg-white/[0.08] disabled:opacity-30 disabled:hover:bg-transparent transition-colors">
                 <ChevronRight size={14} />
               </button>
