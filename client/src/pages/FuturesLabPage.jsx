@@ -67,6 +67,9 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   const [subject, setSubject] = useState('')
   const [bulkText, setBulkText] = useState('')
   const [pasteNote, setPasteNote] = useState(null)
+  const [checked, setChecked] = useState(() => new Set()) // 결과 목록에서 체크한 성취기준 — 한 번에 넣기
+  const [activeIndex, setActiveIndex] = useState(0) // ↑↓로 고른 결과 항목(엔터로 넣기)
+  const resultsRef = useRef(null)
   const [scenePhase, setScenePhase] = useState('graph')
   const [graphState, setGraphState] = useState({ canOpen: false, status: 'idle' })
   const [bridges, setBridges] = useState({ status: 'idle', data: null, startedAt: 0 })
@@ -255,10 +258,33 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
     if (codesIn(text).length >= 2 && addMany(text)) e.preventDefault()
   }
   const onKeyDown = (e) => {
-    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
+    if (e.nativeEvent.isComposing) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!results.length) return
+      e.preventDefault()
+      setActiveIndex(i => (i + (e.key === 'ArrowDown' ? 1 : -1) + results.length) % results.length)
+      return
+    }
+    if (e.key !== 'Enter') return
     e.preventDefault()
     if (addMany(query)) return
-    if (results[0]) add(results[0]) // 검색어는 유지 — 같은 과목에서 여러 개를 이어서 넣을 수 있다
+    const target = results[Math.min(activeIndex, results.length - 1)]
+    if (target) add(target) // 검색어는 유지 — 같은 과목에서 여러 개를 이어서 넣을 수 있다
+  }
+  // 결과가 바뀌면 첫 항목이 활성, 활성 항목은 보이는 곳으로
+  const resultsSig = results.map(s => s.key).join(',')
+  useEffect(() => { setActiveIndex(0) }, [resultsSig])
+  useEffect(() => { resultsRef.current?.querySelector('.fu-result.is-active')?.scrollIntoView?.({ block: 'nearest' }) }, [activeIndex, resultsSig])
+  // 체크한 것 가운데 지금 목록에 있는 것만 유효하다(검색을 바꾸면 보이지 않는 체크는 세지 않는다)
+  const checkedVisible = useMemo(() => results.filter(s => checked.has(s.key)), [results, checked])
+  const remaining = Math.max(0, FUTURE_MAX - pickedKeys.length)
+  const toggleCheck = (key) => setChecked(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next })
+  const addChecked = () => {
+    const keys = checkedVisible.map(s => s.key).slice(0, remaining)
+    const overflow = checkedVisible.length - keys.length
+    if (keys.length) setUrl([...pickedKeys, ...keys])
+    setPasteNote({ added: keys.length, duplicates: 0, overflow, missing: [] })
+    setChecked(new Set())
   }
 
   // 목록이 로드되기 전에도 공유 URL에 담긴 성취기준을 보존한다.
@@ -416,17 +442,28 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
                   </div>
                 )}
                 {missingFromUrl.length > 0 && <div className="fu-pastenote"><span className="miss">찾지 못한 코드: {missingFromUrl.join(', ')}</span></div>}
+                {full && <div className="fu-full-note" role="status">{FUTURE_MAX}개까지 넣을 수 있습니다. 더 넣으려면 오른쪽에서 하나를 빼야 합니다.</div>}
                 {(query.trim() || subject) && catalog && (
-                  <div className="fu-results">
-                    {results.length > 0 && <div className="fu-empty">{results.length === RESULT_LIMIT ? `최대 ${RESULT_LIMIT}개 표시 중 · 과목을 고르거나 낱말을 입력하면 더 좁힐 수 있습니다.` : `${results.length}개를 찾았습니다.`} 넣은 성취기준은 목록에서 빠지고 오른쪽에 쌓입니다. 목록은 검색어를 바꾸거나 지울 때까지 열려 있습니다.</div>}
+                  <div className="fu-results" ref={resultsRef}>
+                    {results.length > 0 && <div className="fu-empty">{results.length === RESULT_LIMIT ? `최대 ${RESULT_LIMIT}개 표시 중 · 과목을 고르거나 낱말을 입력하면 더 좁힐 수 있습니다.` : `${results.length}개를 찾았습니다.`} 항목을 누르면 바로 넣고, 여러 개는 체크한 뒤 한 번에 넣습니다. ↑↓와 엔터로도 넣을 수 있습니다.</div>}
                     {results.length === 0 && <div className="fu-empty">찾는 성취기준이 없습니다. 다른 낱말이나 학교급으로 찾아 주세요.</div>}
-                    {results.map((s) => (
-                      <button key={s.key} type="button" className="fu-result" style={{ '--c': colorOfStandard(s) }} disabled={full} onClick={() => add(s)}>
-                        <span className="fu-dot" />
-                        <span><b><Highlight text={s.code} query={query} /></b><em><Highlight text={s.subject} query={query} /></em><p><Highlight text={s.content} query={query} /></p></span>
-                        <span className="fu-plus" aria-hidden="true">+</span>
-                      </button>
+                    {results.map((s, i) => (
+                      <div key={s.key} className="fu-result-row">
+                        <input type="checkbox" className="fu-check" checked={checked.has(s.key)} disabled={full} onChange={() => toggleCheck(s.key)} aria-label={`${s.code} 체크`} />
+                        <button type="button" className={`fu-result${i === activeIndex ? ' is-active' : ''}`} style={{ '--c': colorOfStandard(s) }} disabled={full} onClick={() => add(s)} onMouseEnter={() => setActiveIndex(i)}>
+                          <span className="fu-dot" />
+                          <span><b><Highlight text={s.code} query={query} /></b><em><Highlight text={s.subject} query={query} /></em><p><Highlight text={s.content} query={query} /></p></span>
+                          <span className="fu-plus" aria-hidden="true">+</span>
+                        </button>
+                      </div>
                     ))}
+                    {checkedVisible.length > 0 && (
+                      <div className="fu-pick-bar" role="status">
+                        <span>{checkedVisible.length}개 체크{checkedVisible.length > remaining ? ` · 최대 ${FUTURE_MAX}개라서 앞의 ${remaining}개만 넣습니다` : ''}</span>
+                        <button type="button" className="fu-example" onClick={() => setChecked(new Set())}>체크 해제</button>
+                        <button type="button" className="fu-pick-add" disabled={!remaining} onClick={addChecked}>체크한 {Math.min(checkedVisible.length, remaining)}개 넣기</button>
+                      </div>
+                    )}
                   </div>
                 )}
                 {!query.trim() && !subject && catalog && (
@@ -437,11 +474,16 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
               </div>
               <div className="fu-slots">
                 {picked.length === 0 && <div className="fu-slots-empty">넣은 성취기준이 여기에 쌓입니다.</div>}
-                {picked.map((s) => (
-                  <div key={s.key} className="fu-chip" style={{ '--c': colorOfStone(colorIndexOfKey.get(s.key)) }}>
-                    <span className="fu-dot" />
-                    <div><b>{s.code}</b><em>{s.subject}</em><p>{s.content}</p></div>
-                    <button type="button" className="fu-x" onClick={() => remove(s.key)} aria-label={`${s.code} 빼기`}>×</button>
+                {subjectGroups.map((g) => (
+                  <div key={g.subject} className="fu-slot-group" style={{ '--c': colorOfStone(g.colorIndex) }}>
+                    <div className="fu-slot-group-head"><span className="fu-dot" /><strong>{g.subject}</strong><span>{g.indices.length}개</span></div>
+                    {g.indices.map((i) => picked[i]).map((s) => (
+                      <div key={s.key} className="fu-chip" style={{ '--c': colorOfStone(colorIndexOfKey.get(s.key)) }}>
+                        <span className="fu-dot" />
+                        <div><b>{s.code}</b><em>{s.subject}</em><p>{s.content}</p></div>
+                        <button type="button" className="fu-x" onClick={() => remove(s.key)} aria-label={`${s.code} 빼기`}>×</button>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
