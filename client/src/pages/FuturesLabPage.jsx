@@ -211,11 +211,27 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
   }, [scenePhase])
 
   // ── 넣기 · 빼기 ──
+  // 교과 선택값: 교과군 이름(전체) 또는 'c:과목명'(그 과목만). 교과군 전체는 코드순 40개에 뒤 과목이 가려지므로 과목 단위 선택을 함께 둔다
+  const subjectExact = subject.startsWith('c:') ? subject.slice(2) : ''
+  const subjectGroup = subjectExact ? '' : subject
+  const RESULT_LIMIT = subjectExact ? 80 : 40
   const results = useMemo(
-    () => (catalog ? searchStandards(catalog, query, { level, subject, exclude: new Set(pickedKeys), limit: 40 }) : []),
-    [catalog, query, level, subject, pickedKeys],
+    () => (catalog ? searchStandards(catalog, query, { level, subject: subjectGroup, subjectExact, exclude: new Set(pickedKeys), limit: RESULT_LIMIT }) : []),
+    [catalog, query, level, subjectGroup, subjectExact, pickedKeys, RESULT_LIMIT],
   )
-  const subjects = useMemo(() => [...new Set((catalog || []).filter(s => !level || s.school_level === level).map(s => s.subject_group || s.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko')), [catalog, level])
+  // 교과군 → 과목 목록(현재 학교급 기준, 가나다순)
+  const subjectTree = useMemo(() => {
+    const tree = new Map()
+    for (const s of catalog || []) {
+      if (level && s.school_level !== level) continue
+      const g = s.subject_group || s.subject
+      if (!g || !s.subject) continue
+      if (!tree.has(g)) tree.set(g, new Map())
+      tree.get(g).set(s.subject, (tree.get(g).get(s.subject) || 0) + 1)
+    }
+    return [...tree.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko'))
+      .map(([g, m]) => ({ group: g, total: [...m.values()].reduce((x, y) => x + y, 0), courses: [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ko')) }))
+  }, [catalog, level])
   const full = pickedKeys.length >= FUTURE_MAX
   const add = (s) => { if (!s || full || pickedKeys.includes(s.key)) return; setUrl([...pickedKeys, s.key]); setPasteNote(null) }
   const remove = (key) => setUrl(pickedKeys.filter((k) => k !== key))
@@ -374,11 +390,16 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
                 </div>
                 <div className="fu-filterrow">
                   <label htmlFor="fu2-subject">교과</label>
-                  <select id="fu2-subject" className="fu-level" value={subject} onChange={(e) => setSubject(e.target.value)} disabled={!catalog}>
+                  <select id="fu2-subject" className="fu-level fu-subject" value={subject} onChange={(e) => setSubject(e.target.value)} disabled={!catalog}>
                     <option value="">전체 교과</option>
-                    {subjects.map(s => <option key={s} value={s}>{s}</option>)}
+                    {subjectTree.map(({ group, total, courses }) => (
+                      <optgroup key={group} label={group}>
+                        <option value={group}>{group} 전체 ({total})</option>
+                        {courses.length > 1 && courses.map(([name, n]) => <option key={name} value={`c:${name}`}>{name} ({n})</option>)}
+                      </optgroup>
+                    ))}
                   </select>
-                  <span>교과를 고르면 성취기준 목록을 볼 수 있습니다.</span>
+                  <span>{subjectExact ? `${subjectExact} 성취기준만 봅니다.` : subject ? `${subject} 교과군 전체입니다. 과목을 고르면 그 과목만 봅니다.` : '교과군이나 과목을 고르면 성취기준 목록이 열립니다.'}</span>
                 </div>
                 <details className="fu-bulk">
                   <summary>성취기준 코드 여러 개 넣기</summary>
@@ -397,7 +418,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
                 {missingFromUrl.length > 0 && <div className="fu-pastenote"><span className="miss">찾지 못한 코드: {missingFromUrl.join(', ')}</span></div>}
                 {(query.trim() || subject) && catalog && (
                   <div className="fu-results">
-                    {results.length > 0 && <div className="fu-empty">{results.length === 40 ? '최대 40개 표시 중 · 낱말을 입력하면 더 좁힐 수 있습니다.' : `${results.length}개를 찾았습니다.`} 넣은 성취기준은 목록에서 빠지고 오른쪽에 쌓입니다. 목록은 검색어를 바꾸거나 지울 때까지 열려 있습니다.</div>}
+                    {results.length > 0 && <div className="fu-empty">{results.length === RESULT_LIMIT ? `최대 ${RESULT_LIMIT}개 표시 중 · 과목을 고르거나 낱말을 입력하면 더 좁힐 수 있습니다.` : `${results.length}개를 찾았습니다.`} 넣은 성취기준은 목록에서 빠지고 오른쪽에 쌓입니다. 목록은 검색어를 바꾸거나 지울 때까지 열려 있습니다.</div>}
                     {results.length === 0 && <div className="fu-empty">찾는 성취기준이 없습니다. 다른 낱말이나 학교급으로 찾아 주세요.</div>}
                     {results.map((s) => (
                       <button key={s.key} type="button" className="fu-result" style={{ '--c': colorOfStandard(s) }} disabled={full} onClick={() => add(s)}>

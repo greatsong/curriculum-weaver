@@ -52,9 +52,10 @@ const squash = (s) => String(s ?? '').toLowerCase().replace(/\s+/g, '')
  * 성취기준 검색 — 코드를 아는 교사가 빨리 찾도록 코드 일치를 맨 앞에 둔다.
  * 띄어쓰기는 무시하고(개인정보 = 개인 정보), 낱말이 여럿이면 모두 들어 있어야 한다.
  */
-export function searchStandards(list, query, { level = '', subject = '', exclude = new Set(), limit = 60 } = {}) {
+/** subject = 교과군(subject_group) 일치, subjectExact = 과목(subject) 정확 일치. 교과군은 40개 제한에 뒤 과목이 가려지므로 과목 선택을 함께 둔다(2026-10-09). */
+export function searchStandards(list, query, { level = '', subject = '', subjectExact = '', exclude = new Set(), limit = 60 } = {}) {
   const q = String(query || '').trim().toLowerCase()
-  if (!q && !subject) return []
+  if (!q && !subject && !subjectExact) return []
   const tokens = q.split(/\s+/).filter(Boolean).map(squash)
   const qCode = normCode(q)
   const scored = []
@@ -62,6 +63,7 @@ export function searchStandards(list, query, { level = '', subject = '', exclude
     if (exclude.has(s.key)) continue
     if (level && s.school_level !== level) continue
     if (subject && (s.subject_group || s.subject) !== subject) continue
+    if (subjectExact && s.subject !== subjectExact) continue
     if (!q) { scored.push([0, s]); continue }
     const nc = normCode(s.code), sub = squash(s.subject), con = squash(s.content)
     let score
