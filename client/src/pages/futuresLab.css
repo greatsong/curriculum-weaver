@@ -116,6 +116,10 @@
 .futures-lab-root .fu-search:focus { border-color: var(--lab-stone); box-shadow: 0 0 0 3px var(--lab-stone-soft); }
 .futures-lab-root .fu-search::placeholder { color: var(--lab-faint); }
 .futures-lab-root .fu-search:disabled { opacity: .5; }
+.futures-lab-root .fu-search-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
+.futures-lab-root .fu-search-wrap .fu-search { width: 100%; padding-right: 40px; }
+.futures-lab-root .fu-clear { position: absolute; right: 4px; top: 0; width: 36px; height: 44px; border: 0; background: transparent; color: var(--lab-muted); font-size: 20px; line-height: 1; }
+.futures-lab-root .fu-clear:hover { color: var(--lab-text); }
 .futures-lab-root .fu-level { min-height: 44px; border: 1px solid var(--lab-line); border-radius: 12px; background: var(--lab-input); color: var(--lab-text); padding: 0 10px; font-size: 13px; }
 .futures-lab-root .fu-filterrow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--lab-muted); }
 .futures-lab-root .fu-filterrow label { font-weight: 700; }

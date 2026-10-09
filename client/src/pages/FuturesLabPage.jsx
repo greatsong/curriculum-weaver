@@ -242,7 +242,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
     if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
     e.preventDefault()
     if (addMany(query)) return
-    if (results[0]) { add(results[0]); setQuery('') }
+    if (results[0]) add(results[0]) // 검색어는 유지 — 같은 과목에서 여러 개를 이어서 넣을 수 있다
   }
 
   // 목록이 로드되기 전에도 공유 URL에 담긴 성취기준을 보존한다.
@@ -355,6 +355,7 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
             <div className="fu-pick">
               <div>
                 <div className="fu-searchrow">
+                  <div className="fu-search-wrap">
                   <input
                     className="fu-search"
                     value={query}
@@ -365,6 +366,8 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
                     disabled={!catalog || full}
                     aria-label="성취기준 검색"
                   />
+                  {query && <button type="button" className="fu-clear" onClick={() => { setQuery(''); setPasteNote(null) }} aria-label="검색어 지우기">×</button>}
+                  </div>
                   <select className="fu-level" value={level} onChange={(e) => { setLevel(e.target.value); setSubject('') }} aria-label="학교급">
                     {LEVELS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
                   </select>
@@ -394,10 +397,10 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
                 {missingFromUrl.length > 0 && <div className="fu-pastenote"><span className="miss">찾지 못한 코드: {missingFromUrl.join(', ')}</span></div>}
                 {(query.trim() || subject) && catalog && (
                   <div className="fu-results">
-                    {results.length > 0 && <div className="fu-empty">{results.length === 40 ? '최대 40개 표시 중 · 낱말을 입력하면 더 좁힐 수 있습니다.' : `${results.length}개를 찾았습니다.`}</div>}
+                    {results.length > 0 && <div className="fu-empty">{results.length === 40 ? '최대 40개 표시 중 · 낱말을 입력하면 더 좁힐 수 있습니다.' : `${results.length}개를 찾았습니다.`} 넣은 성취기준은 목록에서 빠지고 오른쪽에 쌓입니다. 목록은 검색어를 바꾸거나 지울 때까지 열려 있습니다.</div>}
                     {results.length === 0 && <div className="fu-empty">찾는 성취기준이 없습니다. 다른 낱말이나 학교급으로 찾아 주세요.</div>}
                     {results.map((s) => (
-                      <button key={s.key} type="button" className="fu-result" style={{ '--c': colorOfStandard(s) }} disabled={full} onClick={() => { add(s); setQuery('') }}>
+                      <button key={s.key} type="button" className="fu-result" style={{ '--c': colorOfStandard(s) }} disabled={full} onClick={() => add(s)}>
                         <span className="fu-dot" />
                         <span><b><Highlight text={s.code} query={query} /></b><em><Highlight text={s.subject} query={query} /></em><p><Highlight text={s.content} query={query} /></p></span>
                         <span className="fu-plus" aria-hidden="true">+</span>
