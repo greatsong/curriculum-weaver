@@ -47,10 +47,11 @@
 .futures-lab-root .lab-hero-art { display: grid; place-items: center; justify-self: end; }
 .futures-lab-root .lab-emblem { display: block; filter: drop-shadow(0 0 34px rgba(52, 211, 153, .45)); }
 .futures-lab-root .lab-emblem-ring { transform-origin: 160px 160px; transform-box: view-box; }
-.futures-lab-root .lab-emblem-ring--a { animation: lab-turn 72s linear infinite; }
-.futures-lab-root .lab-emblem-ring--b { animation: lab-turn 48s linear infinite reverse; }
+.futures-lab-root .lab-emblem-ring--a { animation: lab-turn 96s linear infinite; }
+.futures-lab-root .lab-emblem-ring--b { animation: lab-turn 64s linear infinite reverse; }
+.futures-lab-root .lab-emblem-ring--c { animation: lab-turn 44s linear infinite; }
 .futures-lab-root .lab-emblem-halo { transform-origin: 160px 160px; transform-box: view-box; animation: lab-breathe 5.2s ease-in-out infinite; }
-.futures-lab-root .lab-emblem-stone { filter: drop-shadow(0 0 16px rgba(134, 239, 195, .8)); }
+.futures-lab-root .lab-emblem-stone { transform-origin: 160px 160px; transform-box: view-box; animation: lab-breathe 4.4s ease-in-out infinite; filter: drop-shadow(0 0 14px rgba(134, 239, 195, .6)); }
 .futures-lab-root .fu-back { display: inline-flex; align-items: center; min-height: 32px; color: var(--lab-muted); font-size: 13px; background: none; border: 0; padding: 0; }
 .futures-lab-root .fu-back:hover { color: var(--lab-stone-hi); }
 .futures-lab-root h1 { margin: 0; font-size: 40px; font-weight: 800; letter-spacing: -.02em; color: var(--lab-stone-hi); text-shadow: 0 0 22px var(--lab-stone-glow), 0 0 2px rgba(134, 239, 195, .5); }
