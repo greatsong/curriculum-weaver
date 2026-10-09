@@ -105,3 +105,43 @@ describe('실험실 성취기준 입력과 독립 경로', () => {
     expect(host.querySelector('[data-testid="url"]').textContent).toContain('model=precise')
   })
 })
+
+describe('검색 결과 고르기 편의', () => {
+  const pressKey = async (key) => {
+    const input = host.querySelector('[aria-label="성취기준 검색"]')
+    await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })))
+  }
+  it('여러 개를 체크한 뒤 한 번에 넣고 체크를 비운다', async () => {
+    await mount()
+    await change(host.querySelector('#fu2-subject'), '과학')
+    const boxes = host.querySelectorAll('.fu-check')
+    expect(boxes).toHaveLength(2)
+    await act(async () => { boxes[0].click(); boxes[1].click() })
+    await click('체크한 2개 넣기')
+    expect(host.querySelectorAll('.fu-chip')).toHaveLength(2)
+    expect(host.querySelector('[data-testid="url"]').textContent).toContain('k1%2Ck2')
+    expect(host.querySelector('.fu-pick-bar')).toBeNull()
+  })
+  it('↑↓로 고른 항목을 엔터로 넣는다', async () => {
+    await mount()
+    await change(host.querySelector('#fu2-subject'), '과학')
+    await pressKey('ArrowDown')
+    expect(host.querySelectorAll('.fu-result')[1].classList.contains('is-active')).toBe(true)
+    await pressKey('Enter')
+    expect(host.querySelectorAll('.fu-chip')).toHaveLength(1)
+    expect(host.querySelector('.fu-slots').textContent).toContain('[12화학01-01]')
+  })
+  it('넣은 성취기준을 과목별로 묶어 개수를 보여 준다', async () => {
+    await mount('/futures-lab?codes=k1,k3,k2')
+    const heads = [...host.querySelectorAll('.fu-slot-group-head')].map(h => h.textContent)
+    expect(heads).toHaveLength(3)
+    expect(heads.every(t => t.endsWith('1개'))).toBe(true)
+  })
+  it('7개를 채우면 빼고 넣으라는 안내를 보인다', async () => {
+    const many = Array.from({ length: 8 }, (_, i) => [`m${i}`, `[12생과01-0${i}]`, '생명과학', '과학', '고등학교', `내용 ${i}`])
+    get.mockResolvedValue({ fields, rows: many })
+    await mount(`/futures-lab?codes=${many.slice(0, 7).map(r => r[0]).join(',')}`)
+    expect(host.querySelector('.fu-full-note').textContent).toContain('하나를 빼야 합니다')
+    expect(host.querySelector('.fu-slot-group-head').textContent).toContain('7개')
+  })
+})
