@@ -79,7 +79,8 @@ describe('탐색 시작 화면', () => {
     const compareButtons = [...host.querySelectorAll('button')].filter((b) => b.textContent.includes('미래보기'))
     expect(compareButtons.length).toBeGreaterThan(0)
     expect(compareButtons.every((b) => b.disabled)).toBe(true)
-    expect(links().some((h) => h.startsWith('/futures-lab'))).toBe(false)
+    // 본문의 비교 경로만 본다 — 머리 줄의 주요 기능 링크(MainNav)는 담은 개수와 무관한 일반 입구다
+    expect([...host.querySelectorAll('main a')].map((a) => a.getAttribute('href')).some((h) => h.startsWith('/futures-lab'))).toBe(false)
   })
 })
 

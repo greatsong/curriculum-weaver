@@ -11,6 +11,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Hash, Link2, BookMarked, Globe, ChevronRight, Check, Info, LogOut, ArrowRight } from 'lucide-react'
 import Logo from '../components/Logo'
 import Button from '../components/ui/Button'
+import MainNav from '../components/MainNav'
 import StatusChip from '../components/ui/StatusChip'
 import { useDestinationProject } from '../components/useDestinationProject'
 import { useAuthStore } from '../stores/authStore'
@@ -162,6 +163,7 @@ export default function ExplorePage({ get = apiGet }) {
             <span aria-current="page" className="text-sm font-semibold text-text-primary">{C.title}</span>
           </div>
           <nav aria-label="주 메뉴" className="flex flex-wrap items-center gap-1">
+            <MainNav current="explore" className="mr-2" />
             <Button variant="ghost" to="/workspaces">{EXPLORE_COPY.common.myWorkspaces}</Button>
             {user?.email && <span className="hidden sm:inline px-2 text-[13px] text-text-secondary">{user.email}</span>}
             <Button variant="ghost" icon={LogOut} onClick={handleLogout}>{EXPLORE_COPY.common.logout}</Button>

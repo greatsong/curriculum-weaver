@@ -36,9 +36,9 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.useRealTimers() })
 
 it('홈의 탐색 카드는 결과를 넣을 곳을 먼저 고르게 하고, 진행 중인 프로젝트는 A-3에서 이어 간다고 안내한다', async () => {
-  // 옮긴 단언: 다섯 링크(주요 입구 2 + 바로 열기 3)와 진행 중인 프로젝트의 A-3 안내 (PR #149·#155 의도 유지)
+  // 옮긴 단언: 여덟 링크(주요 입구 2 + 바로 열기 6 — 렌즈 3·성운·미래보기·안내)와 진행 중인 프로젝트의 A-3 안내 (PR #149·#155 의도 유지, 2026-10-09 바로 열기에 렌즈 3개 추가)
   await act(async () => root.render(<MemoryRouter><ExploreEntryCard /></MemoryRouter>))
-  expect([...host.querySelectorAll('a')].map(a => a.getAttribute('href'))).toEqual(['/explore?for=new', '/explore?for=project', '/graph?mode=explore', '/futures-lab', '/guide'])
+  expect([...host.querySelectorAll('a')].map(a => a.getAttribute('href'))).toEqual(['/explore?for=new', '/explore?for=project', '/graph?mode=design&lens=theme', '/graph?mode=design&lens=pair', '/graph?mode=design&lens=neighbor', '/graph?mode=explore', '/futures-lab', '/guide'])
   expect(host.textContent).toContain('진행 중인 프로젝트')
   expect(host.textContent).toContain('A-3')
 })

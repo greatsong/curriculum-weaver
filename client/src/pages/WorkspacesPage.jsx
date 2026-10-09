@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Compass, Inbox } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Inbox } from 'lucide-react'
 import Notice from '../components/ui/Notice'
 import ContinueProjects from '../components/ContinueProjects'
 import ExploreEntryCard from '../components/ExploreEntryCard'
+import MainNav from '../components/MainNav'
 import { EXPLORE_COPY } from '../lib/explorationCopy'
 import { NEW_DESTINATION, readBasket } from '../lib/exploreDestination'
 import { safeSessionStorage } from '../lib/explorationDraft'
@@ -135,9 +136,7 @@ export default function WorkspacesPage() {
             </span>
           </a>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <Link to="/explore" className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-md text-sm font-semibold text-link hover:text-link-hover hover:bg-bg-tertiary no-underline">
-              <Compass aria-hidden="true" size={16} />{EXPLORE_COPY.home.exploreLink}
-            </Link>
+            <MainNav />
             <span style={{ fontSize: 13, color: 'var(--color-text-tertiary)' }} className="hidden sm:inline">
               {user?.email}
             </span>

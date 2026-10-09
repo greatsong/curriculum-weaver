@@ -10,12 +10,12 @@ import {
 } from '../lib/futures2'
 import { colorOfStandard, colorOfStone } from '../lib/futures2Scene'
 import { createFuturesLabScene as createFuturesScene } from '../lib/futuresLabScene'
-import './futures2.css'
 import './futuresLab.css'
 import { resolvePracticeSet } from '../lib/futures2Practice'
 import { FUTURES_LAB_SAMPLES } from '../lib/futuresLabSamples'
 import { groupFutureStandards } from '../lib/futures2GraphLayout'
 import KeywordGraph, { colorOf } from '../components/futures/KeywordGraph'
+import TimeStoneEmblem from '../components/futures/TimeStoneEmblem'
 import { subjectOfStandard } from '../lib/futures2GraphLayout'
 import './futures.css'
 import { A3_PROCEDURE, explorationSearch, handoffPolicy, resolveProjectStandards } from '../lib/futuresProjectHandoff'
@@ -33,6 +33,7 @@ const LEVELS = [
   { id: '고등학교', label: '고등' }, { id: '중학교', label: '중학' }, { id: '초등학교', label: '초등' }, { id: '', label: '전체' },
 ]
 const LAB_COPY = EXPLORE_COPY.futures
+const GRAPH_BASE = { mid: '#0B1F1A', deep: '#04090A' } // 과목 원 안쪽 — 타임 스톤 바탕색(futuresLab.css와 같은 계열)
 const BRIDGE_DELAY_MS = 700 // 성취기준을 연달아 넣는 동안은 연결을 찾지 않는다
 
 function Highlight({ text, query }) {
@@ -298,21 +299,23 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
         </details>
       )}
     </ExplorationContextBar>
-    <div className="futures2-root futures-lab-root">
+    <div className="futures-lab-root">
       <main className="fu-main">
-        <header className="fu-header">
-          <div>
+        <header className="fu-header lab-hero">
+          <div className="lab-hero-text">
             <button type="button" className="fu-back" onClick={() => navigate(returnPath || '/workspaces')}>{returnPath ? '‹ 프로젝트로 돌아가기' : '‹ 워크스페이스'}</button>
+            <span className="lab-kicker">타임 스톤</span>
             <h1>미래보기</h1>
-            <div className="fu-sub">교과의 연결에서 새로운 수업을 발견하세요. 성취기준 2~7개를 고르면, 같은 과목의 기준이 하나의 빛의 원에 모입니다.</div>
+            <div className="fu-sub">성취기준 2~7개를 고르면 교과 사이의 연결을 찾고, 그 연결에서 여덟 갈래의 수업 가능성을 엽니다. 같은 과목의 성취기준은 하나의 원에 모입니다.</div>
+            <div className="fu-models" role="radiogroup" aria-label="AI 모델">
+              {FUTURE_MODEL_OPTIONS.map((o) => (
+                <button key={o.id} type="button" role="radio" aria-checked={model === o.id} className={model === o.id ? 'on' : ''} onClick={() => setModel(o.id)}>
+                  {o.label}<small>{o.model}</small>
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="fu-models" role="radiogroup" aria-label="AI 모델">
-            {FUTURE_MODEL_OPTIONS.map((o) => (
-              <button key={o.id} type="button" role="radio" aria-checked={model === o.id} className={model === o.id ? 'on' : ''} onClick={() => setModel(o.id)}>
-                {o.label}<small>{o.model}</small>
-              </button>
-            ))}
-          </div>
+          <div className="lab-hero-art"><TimeStoneEmblem /></div>
         </header>
 
 
@@ -423,11 +426,11 @@ export default function FuturesLabPage({ get = apiGet, post = apiPost } = {}) {
         </section>
 
         <div ref={graphRef} hidden={scenePhase !== 'graph'} className="futures-root lab-keyword-map">
-          {canExplore && picked.length >= 2 && <KeywordGraph standards={graphStandards} bridges={bridges} activeLabel={activeLink} onActive={setActiveLink} onRetry={() => sceneRef.current?.retryBridges()} multiEndpoint navigable />}
+          {canExplore && picked.length >= 2 && <KeywordGraph standards={graphStandards} bridges={bridges} activeLabel={activeLink} onActive={setActiveLink} onRetry={() => sceneRef.current?.retryBridges()} multiEndpoint navigable base={GRAPH_BASE} />}
           {projectId && canExplore && bridges.status === 'ready' && <button type="button" className="lab-quiet" onClick={() => openSend()}>{EXPLORE_COPY.send.openFromBridges}</button>}
           <div className="lab-map-actions">
             <p>{picked.length < 2 ? '성취기준 2~7개를 선택해 주세요.' : ['error', 'slow'].includes(graphState.status) ? '연결 분석을 기다리거나 선택한 성취기준으로 미래를 볼 수 있습니다.' : '연결을 확인했다면, 여덟 갈래의 수업을 열어 보세요.'}</p>
-            <button type="button" className="lab-map-open" disabled={!canExplore || !graphState.canOpen} onClick={() => sceneRef.current?.open()}>미래 보기 ↗</button>
+            <button type="button" className="lab-map-open" disabled={!canExplore || !graphState.canOpen} onClick={() => sceneRef.current?.open()}>여덟 갈래의 미래 보기</button>
           </div>
         </div>
         <div ref={sceneRootRef} />
