@@ -204,17 +204,25 @@ export function nebulaLayout(standards, bridges, W, measure, { multiEndpoint = f
       p.phi = Math.atan2(vy, vx); ex += Math.cos(p.phi); ey += Math.sin(p.phi)
     }
     pills.sort((a, b) => a.phi - b.phi || (a.word < b.word ? -1 : 1))
-    for (const p of pills) {
-      let placed = null
-      for (let ring = 0; ring < 4 && !placed; ring++) for (const off of [0, 0.22, -0.22, 0.44, -0.44, 0.66, -0.66]) {
+    // 알약 한 개의 자리 찾기: 연결 방향(phi)에서 가까운 각도부터, 고리를 넓히며 시도한다.
+    // 2026-10-09: 한 원의 알약 여러 개가 같은 방향을 향하면(상대 과목이 한쪽에 몰림) ±38° 안에서는 자리가 모자라
+    // 같은 자리에 강제 배치돼 글자가 겹쳤다. 좁은 범위 → 전 방향 → (다른 과목과의 거리 조건 완화) 순으로 넓혀 찾는다.
+    const findSlot = (p, offsets, { ignoreNear = false } = {}) => {
+      for (let ring = 0; ring < 4; ring++) for (const off of offsets) {
         const f = p.phi + off
         const rx = Rn + 22 + p.w / 2 + ring * 46, ry = Rn + 14 + p.h / 2 + ring * 40
         const cx = Math.cos(f) * rx, cy = Math.sin(f) * ry, b = [cx - p.w / 2, cy - p.h / 2, cx + p.w / 2, cy + p.h / 2]
         const own = Math.hypot(cx, cy)
-        const nearer = [...pos].some(([o, q]) => o !== k && Math.hypot(center.x + cx - q.x, center.y + cy - q.y) < own + 24)
+        const nearer = !ignoreNear && [...pos].some(([o, q]) => o !== k && Math.hypot(center.x + cx - q.x, center.y + cy - q.y) < own + 24)
         if (inCenter(center, b, h, 0.16)) continue // 가운데 비움: 알약도 가운데 타원 안으로 들이지 않는다
-        if (!nearer && !boxes.some((o) => overlap(b, o.b, 8)) && spokeOk(cx, cy, b)) { placed = { f, cx, cy, b }; break }
+        if (!nearer && !boxes.some((o) => overlap(b, o.b, 8)) && spokeOk(cx, cy, b)) return { f, cx, cy, b }
       }
+      return null
+    }
+    const NEAR = [0, 0.22, -0.22, 0.44, -0.44, 0.66, -0.66]
+    const WIDE = [0.9, -0.9, 1.2, -1.2, 1.5, -1.5, 1.9, -1.9, 2.3, -2.3, 2.7, -2.7, Math.PI]
+    for (const p of pills) {
+      let placed = findSlot(p, NEAR) || findSlot(p, WIDE) || findSlot(p, [...NEAR, ...WIDE], { ignoreNear: true })
       if (!placed) {
         const f = p.phi, cx = Math.cos(f) * (Rn + 22 + p.w / 2), cy = Math.sin(f) * (Rn + 14 + p.h / 2)
         placed = { f, cx, cy, b: [cx - p.w / 2, cy - p.h / 2, cx + p.w / 2, cy + p.h / 2], forced: true }
