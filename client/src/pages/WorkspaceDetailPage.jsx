@@ -8,7 +8,7 @@ import { codeFromKey, subjectFromKey } from '../lib/standardKey'
 import { NEW_DESTINATION, readBasket, readBasketMeta, writeBasket, clearBasket } from '../lib/exploreDestination'
 import { safeSessionStorage } from '../lib/explorationDraft'
 import { EXPLORE_COPY } from '../lib/explorationCopy'
-import { PROCEDURES, PHASES, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE, resolveParticipationMode, PROJECT_GRADE_OPTIONS } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, PHASES, AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE, resolveParticipationMode, PROJECT_GRADE_OPTIONS, inferProjectGradeFromStandardKeys } from 'curriculum-weaver-shared/constants.js'
 import ParticipationModePicker from '../components/ParticipationModePicker'
 import BriefModeToggle from '../components/BriefModeToggle'
 import { saveProjectStandards, standardsSaveNotice } from '../lib/projectStandards'
@@ -183,6 +183,9 @@ export default function WorkspaceDetailPage() {
       if (groups.length > 0) {
         setProjectSubjects(prev => (prev.length > 0 ? prev : [...new Set([...prev, ...groups])]))
       }
+      // 학년도 성취기준 코드로 미리 고른다 (학교급이 하나로 정해질 때만, 이미 고른 값은 존중)
+      const inferredGrade = inferProjectGradeFromStandardKeys(keys)
+      if (inferredGrade) setProjectGrade(prev => prev || inferredGrade)
       // AI 추천 제목 미리 채우기 — 시나리오 제목 우선, 없으면 교과 기반. 사람이 손보라는 신호로 표시.
       setProjectTitle(prev => {
         if (prev) return prev // 이미 입력한 게 있으면 존중

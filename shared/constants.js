@@ -1027,6 +1027,24 @@ export const PROJECT_GRADE_OPTIONS = [
 ]
 
 /**
+ * 담아 온 성취기준 key(코드 또는 "코드|과목")로 '새 프로젝트' 학년 선택지를 추정한다.
+ * 코드 앞 숫자가 학년군이다([4…]=초3-4, [6…]=초5-6, [9…]=중, [10…]·[12…]=고).
+ * 숫자가 없는 전문교과 코드는 판단에서 뺀다. 학교급이 섞였거나 선택지에 없는 학년군([2…]=초1-2)이 있으면 ''.
+ * @param {string[]} keys
+ * @returns {string} PROJECT_GRADE_OPTIONS의 value 또는 ''
+ */
+export function inferProjectGradeFromStandardKeys(keys) {
+  const byPrefix = { 4: '초등학교 3-4학년', 6: '초등학교 5-6학년', 9: '중학교', 10: '고등학교', 12: '고등학교' }
+  const found = new Set()
+  for (const key of keys || []) {
+    const prefix = String(key).match(/^\[(\d+)/)?.[1]
+    if (!prefix) continue
+    found.add(byPrefix[prefix] || '')
+  }
+  return found.size === 1 ? [...found][0] : ''
+}
+
+/**
  * 예전 폼이 저장한 대표값 → 실제로 교사가 고른 범위.
  * 예전 폼은 "중학교"를 골라도 "중학교 1학년"을 저장했다. 이 값을 그대로 AI에 넘기면
  * 고르지도 않은 학년을 확정된 사실로 받아들이므로 학교급·학년군으로 되돌린다.
