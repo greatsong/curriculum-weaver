@@ -18,6 +18,13 @@ export const UI_COPY = {
     futures: '미래보기',
   },
 
+  // 상단 헤더의 주 입구 세 개 — 홈·탐색 화면 머리 줄에 나란히 놓인다(MainNav)
+  nav: {
+    explore: '아이디어 탐색',
+    map: '교육과정 성운',
+    futures: '미래보기',
+  },
+
   // 주요 버튼 이름
   actions: {
     open: '열기',

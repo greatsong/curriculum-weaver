@@ -30,7 +30,9 @@ function useElapsed(startedAt, active) {
   return active && startedAt ? Math.max(0, Math.round((Date.now() - startedAt) / 1000)) : 0
 }
 
-function GraphSvg({ layout, standards, activeLabel, onActive, dim }) {
+const DEFAULT_BASE = { mid: '#0B1230', deep: '#04060F' } // 과목 원 안쪽을 채우는 바탕색(기본은 미래 보기의 남색)
+
+function GraphSvg({ layout, standards, activeLabel, onActive, dim, base = DEFAULT_BASE }) {
   // 그래프의 노드 key는 과목(같은 과목 성취기준을 묶은 원)이므로 색은 그 원의 성취기준에서 가져온다
   const nodeColor = useMemo(() => new Map(layout.clusters.map((c) => [c.key, colorOf(c.s)])), [layout])
   const col = (k) => nodeColor.get(k) || FALLBACK_NODE_COLOR
@@ -43,7 +45,7 @@ function GraphSvg({ layout, standards, activeLabel, onActive, dim }) {
       <defs>
         {layout.clusters.map((c, j) => (
           <radialGradient key={`pl${j}`} id={`fu-pl-${j}`} cx="38%" cy="30%" r="75%">
-            <stop offset="0" stopColor={mix(col(c.key), '#0B1230', 0.55)} /><stop offset=".6" stopColor={mix(col(c.key), '#0B1230', 0.8)} /><stop offset="1" stopColor={mix(col(c.key), '#04060F', 0.88)} />
+            <stop offset="0" stopColor={mix(col(c.key), base.mid, 0.55)} /><stop offset=".6" stopColor={mix(col(c.key), base.mid, 0.8)} /><stop offset="1" stopColor={mix(col(c.key), base.deep, 0.88)} />
           </radialGradient>
         ))}
         {layout.clusters.map((c, j) => (
@@ -137,7 +139,7 @@ function GraphSvg({ layout, standards, activeLabel, onActive, dim }) {
  * @param {object[]} standards 고른 성취기준(2개 이상)
  * @param {{status: 'loading'|'ready'|'error', data: object|null, startedAt: number}} bridges
  */
-export default function KeywordGraph({ standards, bridges, activeLabel, onActive, onRetry, multiEndpoint = false, navigable = false }) {
+export default function KeywordGraph({ standards, bridges, activeLabel, onActive, onRetry, multiEndpoint = false, navigable = false, base = DEFAULT_BASE }) {
   const panelRef = useRef(null)
   const [width, setWidth] = useState(0)
   const [fontsTick, setFontsTick] = useState(0)
@@ -200,7 +202,7 @@ export default function KeywordGraph({ standards, bridges, activeLabel, onActive
         {navigable && shown ? (
           <GraphViewport key={`${sig}:${shown.layout.W}:${shown.layout.H}`} layout={shown.layout} width={width}>
             {prev && <span className="fu-prev-tag">{COPY.graph.previousTag}</span>}
-            <GraphSvg layout={shown.layout} standards={shown.standards} activeLabel={activeLabel} onActive={onActive} dim={!!prev} />
+            <GraphSvg layout={shown.layout} standards={shown.standards} activeLabel={activeLabel} onActive={onActive} dim={!!prev} base={base} />
           </GraphViewport>
         ) : listMode && status === 'ready' ? (
           <ConnectionList standards={standards} layout={layout} bridges={data} activeLabel={activeLabel} onActive={onActive} listMode showClassification={!multiEndpoint} />

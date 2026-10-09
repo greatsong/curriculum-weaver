@@ -12,18 +12,27 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
   const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
   let dead = false, model = initialModel, phase = 'graph', started = false, current = 0, bridgeState = standards.length >= 2 ? 'loading' : 'idle'
   let bridges = null, layout = null, active = null, revealing = false, revealTimers = [], analysisTimer = null
+  const viewed = new Set() // 내용을 실제로 읽은 미래의 번호 — 마무리 안내의 바탕
+  let finishing = false
   const futures = { fast: new Map(), precise: new Map() }, timers = new Set(), transitions = new Set()
   const later = (fn, ms) => { const id = setTimeout(() => { timers.delete(id); if (!dead) fn() }, ms); timers.add(id); return id }
   const cancel = id => { clearTimeout(id); timers.delete(id) }
   const keyboardTarget = root.ownerDocument
   const $ = s => root.querySelector(s), $$ = s => [...root.querySelectorAll(s)]
   root.innerHTML = `<section class="lab-scene" aria-label="빛의 원과 미래 탐색">
-    <div class="lab-graph-view"><div class="lab-scene-head"><div><span class="lab-kicker">TIME STONE · 빛의 원</span><h2>교과 사이에서<br>수업의 가능성을 찾다.</h2></div><button type="button" class="lab-quiet" data-act="replay">연결 다시 보기 ↗</button></div>
+    <div class="lab-graph-view"><div class="lab-scene-head"><div><span class="lab-kicker">빛의 원</span><h2>교과 사이에서<br>수업의 가능성을 찾습니다.</h2></div><button type="button" class="lab-quiet" data-act="replay">연결 다시 보기</button></div>
     <p class="lab-status" role="status"></p><div class="lab-map"><svg class="lab-lines" aria-hidden="true"></svg><div class="lab-groups"></div><div class="lab-keywords"></div><div class="lab-hubs"></div></div>
     <div class="lab-inspector" aria-live="polite"><strong>선택한 성취기준을 중심으로</strong><p>과목 안의 코드와 키워드, 빛나는 연결점을 선택해 보세요.</p></div>
-    <div class="lab-graph-actions"><button type="button" class="lab-quiet" data-act="retry-bridges">연결 다시 찾기</button><button type="button" class="lab-primary" data-act="open">미래 보기 ↗</button></div></div>
-    <div class="lab-cast" hidden><div class="lab-portal" aria-hidden="true"></div><div class="lab-cast-copy"><span class="lab-kicker">연결이 하나의 가능성으로</span><h2>아직 만나지 않은<br>수업을 엽니다.</h2><p class="lab-cast-progress" role="status">여덟 갈래의 미래를 함께 준비합니다.</p></div></div>
-    <div class="lab-future-view" hidden><button type="button" class="lab-quiet" data-act="graph">← 연결 지도</button><div class="lab-future-layout"><aside class="lab-orbit-panel"><span class="lab-kicker">가능성의 고리</span><div class="lab-orbit"><div class="lab-orbit-art" aria-hidden="true"></div><div class="lab-orbit-core"></div><div class="lab-orbit-buttons"></div></div><div class="lab-orbit-navigation"><button type="button" class="lab-round" data-go="-1" aria-label="이전 미래" aria-keyshortcuts="ArrowLeft">←</button><select class="lab-lens-select" aria-label="미래 관점">${LAB_LENSES.map((name, i) => `<option value="${i}">${name}</option>`).join('')}</select><button type="button" class="lab-round" data-go="1" aria-label="다음 미래" aria-keyshortcuts="ArrowRight">→</button></div><p class="lab-keyboard-hint">키보드 ← →로도 이동할 수 있습니다.</p><p class="lab-generation-progress" role="status"></p></aside><div class="lab-future-card" aria-live="polite"></div></div></div>
+    <div class="lab-graph-actions"><button type="button" class="lab-quiet" data-act="retry-bridges">연결 다시 찾기</button><button type="button" class="lab-primary" data-act="open">미래 보기</button></div></div>
+    <div class="lab-cast" hidden><div class="lab-portal" aria-hidden="true"><i></i><i></i><i></i><b></b></div><div class="lab-cast-copy"><span class="lab-kicker">연결이 하나의 가능성으로</span><h2>아직 만나지 않은<br>수업을 엽니다.</h2><p class="lab-cast-progress" role="status">여덟 갈래의 미래를 함께 준비합니다.</p></div></div>
+    <div class="lab-future-view" hidden>
+      <div class="lab-future-bar"><button type="button" class="lab-quiet" data-act="graph">← 연결 지도</button><p class="lab-generation-progress" role="status"></p></div>
+      <div class="lab-future-layout">
+        <aside class="lab-orbit-panel"><span class="lab-kicker">여덟 갈래의 수업</span><div class="lab-orbit"><div class="lab-orbit-art" aria-hidden="true"></div><div class="lab-orbit-core"></div><div class="lab-orbit-buttons"></div></div><div class="lab-orbit-navigation"><button type="button" class="lab-round" data-go="-1" aria-label="이전 미래" aria-keyshortcuts="ArrowLeft">←</button><select class="lab-lens-select" aria-label="미래 관점">${LAB_LENSES.map((name, i) => `<option value="${i}">${name}</option>`).join('')}</select><button type="button" class="lab-round" data-go="1" aria-label="다음 미래" aria-keyshortcuts="ArrowRight">→</button></div><p class="lab-keyboard-hint">키보드 ← →로도 이동할 수 있습니다.</p><div class="lab-finish-entry"><p class="lab-finish-hint"></p><button type="button" class="lab-quiet lab-finish-open" data-act="finish">탐색 마무리</button></div></aside>
+        <div class="lab-future-card" aria-live="polite"></div>
+        <div class="lab-finish" hidden aria-live="polite"></div>
+      </div>
+    </div>
     <p class="lab-action-status" role="status"></p><p class="lab-ai-note">AI가 제안한 수업 아이디어입니다. 실제 수업의 효과를 예측하거나 보장하지 않습니다.</p>
     </section>`
 
@@ -96,7 +105,7 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     stopTransition()
     phase = next; $('.lab-graph-view').hidden = externalGraph || next !== 'graph'; $('.lab-cast').hidden = next !== 'casting'; $('.lab-future-view').hidden = next !== 'future'
     $('.lab-ai-note').hidden = externalGraph && next === 'graph'
-    if (next === 'graph') drawGraph()
+    if (next === 'graph') { finishing = false; drawGraph() }
     if (next === 'future') renderFuture()
     onPhaseChange?.(next)
     if (!externalGraph) root.scrollIntoView?.({ block: 'start', behavior: reduced() ? 'instant' : 'smooth' })
@@ -149,21 +158,47 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
       button.title = `${LAB_LENSES[index]} · ${label}`
       button.setAttribute('aria-pressed', String(index === current))
     })
+    renderFinishEntry()
+  }
+  function renderFinishEntry() {
+    const all = viewed.size >= LAB_LENSES.length
+    $('.lab-finish-entry').dataset.complete = String(all)
+    $('.lab-finish-hint').textContent = all ? '여덟 갈래를 모두 보셨습니다.' : `지금까지 ${viewed.size} / ${LAB_LENSES.length}개를 보았습니다.`
+  }
+  function renderFinish() {
+    const states = LAB_LENSES.map((_, i) => futures[model].get(i))
+    const count = viewed.size, all = count >= LAB_LENSES.length
+    const items = LAB_LENSES.map((name, i) => {
+      const state = states[i], seen = viewed.has(i)
+      const title = state?.status === 'ready' ? esc(state.data.title) : state?.status === 'error' ? '다시 시도가 필요합니다' : '아직 생성 중입니다'
+      return `<li><button type="button" data-recap="${i}" class="${seen ? 'is-seen' : ''}"><span class="lab-recap-no">${String(i + 1).padStart(2, '0')}</span><span class="lab-recap-body"><small>${name}</small><strong>${title}</strong></span><span class="lab-recap-mark" aria-hidden="true">${seen ? '✓' : ''}</span></button></li>`
+    }).join('')
+    $('.lab-finish').innerHTML = `<span class="lab-kicker">탐색 마무리</span><h2>수고하셨습니다.</h2><p class="lab-description">${all ? '여덟 갈래의 수업 가능성을 모두 살펴보셨습니다.' : `여덟 갈래 가운데 ${count}개를 살펴보셨습니다.`} 마음에 남는 미래가 있다면 아래 목록에서 다시 열어 프로젝트로 보낼 수 있습니다. 성취기준 조합을 바꾸려면 연결 지도로 돌아갑니다.</p><ol class="lab-recap" aria-label="살펴본 미래">${items}</ol><div class="lab-card-actions"><button type="button" class="lab-primary" data-act="graph">연결 지도로 돌아가기</button>${hideBasket ? '' : '<button type="button" class="lab-quiet" data-act="basket">성취기준 담기</button>'}<button type="button" class="lab-quiet" data-act="restart">첫 갈래부터 다시 보기</button></div><p class="lab-finish-close">오늘의 탐색은 여기까지입니다. 함께 살펴 주셔서 감사합니다.</p>`
+  }
+  function openFinish() {
+    if (dead || phase !== 'future') return
+    stopTransition(); finishing = true
+    renderFinish()
+    $('.lab-future-card').hidden = true; $('.lab-finish').hidden = false
+    $$('.lab-orbit-buttons button').forEach(b => b.setAttribute('aria-pressed', 'false'))
+    $('.lab-finish h2')?.scrollIntoView?.({ block: 'nearest', behavior: reduced() ? 'instant' : 'smooth' })
   }
   function renderFuture() {
     stopTransition()
+    finishing = false; $('.lab-finish').hidden = true; $('.lab-future-card').hidden = false
     const state = futures[model].get(current), f = state?.data
+    if (f) viewed.add(current)
     $('.lab-orbit-core').innerHTML = `<span>${String(current + 1).padStart(2, '0')}<small>/ 08</small></span><strong>${LAB_LENSES[current]}</strong>`
     $('.lab-lens-select').value = String(current)
     if (!$('.lab-orbit-buttons').children.length) $('.lab-orbit-buttons').innerHTML = LAB_LENSES.map((name, i) => { const a = i * Math.PI / 4 - Math.PI / 2; return `<button type="button" data-lens="${i}" aria-label="${name}" aria-pressed="${i === current}" style="left:${50 + 38 * Math.cos(a)}%;top:${50 + 38 * Math.sin(a)}%">${i + 1}</button>` }).join('')
     renderProgress()
-    const head = `<div class="lab-card-meta">미래 ${current + 1} / 8 · ${LAB_LENSES[current]}<span>${model === 'precise' ? '정밀' : '빠른'} 모드</span></div>`
+    const head = `<div class="lab-card-meta"><span class="lab-card-no">미래 ${current + 1} / 8</span><span class="lab-card-lens">${LAB_LENSES[current]}</span><span class="lab-card-model">${model === 'precise' ? '정밀' : '빠른'} 모드</span></div>`
     if (!f) {
       $('.lab-future-card').innerHTML = `${head}<h2>${state?.status === 'error' ? '이 미래를 완성하지 못했습니다.' : '수업의 가능성을 펼치는 중입니다.'}</h2><p class="lab-description">${state?.status === 'error' ? esc(state.error) : '여덟 관점의 수업을 함께 생성하고 있습니다. 이 관점이 완성되면 바로 표시됩니다. 준비가 끝난 다른 번호는 기다리지 않고 볼 수 있습니다.'}</p>${state?.status === 'error' ? '<button type="button" class="lab-primary" data-act="retry-future">이 관점 다시 생성</button>' : '<div class="lab-wait-mark" aria-hidden="true"></div>'}`
       return
     }
     const colorFor = key => colorForStandard?.(byKey.get(key)) || layout?.groups.find(g => g.standards.some(s => s.key === key))?.color || '#b8ead3'
-    $('.lab-future-card').innerHTML = `${head}<h2>${esc(f.title)}</h2><p class="lab-description">${esc(f.situation)}</p><div class="lab-question"><small>함께 탐구할 질문</small><p>${esc(f.driving_question)}</p></div><div class="lab-roles-head"><h3>과목들이 만나는 방식</h3><button type="button" class="lab-quiet" data-act="graph">연결 보기 ↗</button></div><div class="lab-roles">${f.roles.map(r => `<div class="lab-role"><div style="color:${colorFor(r.key)}">${esc(subjectOfStandard(byKey.get(r.key) || {}))}<small>${esc(byKey.get(r.key)?.code)}</small></div><p>${esc(r.role)}</p></div>`).join('')}</div><details class="lab-details"><summary>학생들의 활동과 결과물</summary><ol>${array(f.activity_steps).map(step => `<li>${esc(step)}</li>`).join('')}</ol><h4>결과물</h4><p>${esc(f.student_output)}</p><h4>자료</h4><p>${array(f.data_sources).map(esc).join('<br>')}</p><h4>평가 아이디어</h4><p>${esc(f.assessment_idea)}</p></details>${f.honesty_note ? `<p class="lab-honesty">${esc(f.honesty_note)}</p>` : ''}<div class="lab-card-actions"><button type="button" class="lab-primary" data-act="project">${esc(projectActionLabel)}</button>${hideBasket ? '' : '<button type="button" class="lab-quiet" data-act="basket">성취기준 담기</button>'}</div>`
+    $('.lab-future-card').innerHTML = `${head}<h2>${esc(f.title)}</h2><p class="lab-description">${esc(f.situation)}</p><div class="lab-question"><small>함께 탐구할 질문</small><p>${esc(f.driving_question)}</p></div><div class="lab-roles-head"><h3>과목들이 만나는 방식</h3><button type="button" class="lab-quiet lab-quiet--sm" data-act="graph">연결 지도 보기</button></div><div class="lab-roles">${f.roles.map(r => `<div class="lab-role" style="--subject:${colorFor(r.key)}"><div class="lab-role-subject"><i aria-hidden="true"></i>${esc(subjectOfStandard(byKey.get(r.key) || {}))}<small>${esc(byKey.get(r.key)?.code)}</small></div><p>${esc(r.role)}</p></div>`).join('')}</div><details class="lab-details"><summary>학생들의 활동과 결과물</summary><ol>${array(f.activity_steps).map(step => `<li>${esc(step)}</li>`).join('')}</ol><h4>결과물</h4><p>${esc(f.student_output)}</p><h4>자료</h4><p>${array(f.data_sources).map(esc).join('<br>')}</p><h4>평가 아이디어</h4><p>${esc(f.assessment_idea)}</p></details>${f.honesty_note ? `<p class="lab-honesty">${esc(f.honesty_note)}</p>` : ''}<div class="lab-card-actions"><button type="button" class="lab-primary" data-act="project">${esc(projectActionLabel)}</button>${hideBasket ? '' : '<button type="button" class="lab-quiet" data-act="basket">성취기준 담기</button>'}</div>`
   }
   function openFuture() {
     if (standards.length < 2 || revealing || bridgeState === 'loading' || phase === 'casting') return
@@ -208,7 +243,7 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     if (button.dataset.hub !== undefined) { stopReveal(); illuminate(layout.hubs.find(h => h.id === +button.dataset.hub)); updateGraphControls() }
     if (button.dataset.word) { stopReveal(); const node = layout.nodes.get(button.dataset.word); active = { type: 'standard', key: node.key }; applyActive(); updateGraphControls() }
     if (button.dataset.standard) { stopReveal(); active = { type: 'standard', key: button.dataset.standard }; applyActive(); updateGraphControls() }
-    if (button.dataset.lens !== undefined) go(+button.dataset.lens)
+    if (button.dataset.lens !== undefined) { if (finishing && +button.dataset.lens === current) renderFuture(); else go(+button.dataset.lens) }
     if (button.dataset.go) go(current + +button.dataset.go)
     const act = button.dataset.act
     if (act === 'replay') reveal()
@@ -216,6 +251,9 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     if (act === 'graph') setPhase('graph')
     if (act === 'retry-bridges') { bridgeState = 'loading'; bridges = null; active = null; drawGraph(); armAnalysisTimeout(); onRetryBridges?.() }
     if (act === 'retry-future') { futures[model].delete(current); ensureFuture(current); renderFuture() }
+    if (act === 'finish') openFinish()
+    if (act === 'restart') { if (current === 0) renderFuture(); else go(0) }
+    if (button.dataset.recap !== undefined) { const index = +button.dataset.recap; if (index === current) renderFuture(); else go(index) }
     if (act === 'project' || act === 'basket') {
       try { if (act === 'project') onStartProject?.(futures[model].get(current)?.data); else { const changed = onBasket?.(standards.map(s => s.key)); $('.lab-action-status').textContent = changed ? '성취기준을 담았습니다.' : '선택한 성취기준이 이미 담겨 있습니다.' } }
       catch (error) { $('.lab-action-status').textContent = error.message || '저장하지 못했습니다. 다시 시도해 주세요.' }
@@ -231,7 +269,7 @@ export function createFuturesLabScene(root, { standards, model: initialModel = '
     e.preventDefault()
     go(current + (e.key === 'ArrowRight' ? 1 : -1))
   }
-  function change(e) { if (e.target.matches('.lab-lens-select')) go(+e.target.value) }
+  function change(e) { if (e.target.matches('.lab-lens-select')) { if (finishing && +e.target.value === current) renderFuture(); else go(+e.target.value) } }
   root.addEventListener('click', click); keyboardTarget.addEventListener('keydown', keydown); root.addEventListener('change', change)
   let lastWidth = Math.round($('.lab-map').clientWidth)
   const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => { const width = Math.round(entries[0].contentRect.width); if (width && width !== lastWidth) { lastWidth = width; stopReveal(); drawGraph() } }) : null

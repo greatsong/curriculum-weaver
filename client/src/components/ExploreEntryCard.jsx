@@ -3,11 +3,22 @@
  * 고르게 하고, 도구를 아는 교사를 위해 바로 열기 링크를 둔다.
  */
 import { Link } from 'react-router-dom'
-import { Lightbulb, FolderOpen, ArrowRight, ChevronRight, Globe } from 'lucide-react'
+import { Lightbulb, FolderOpen, ArrowRight, ChevronRight, Globe, Hash, Link2, BookMarked, Sparkles } from 'lucide-react'
 import Button from './ui/Button'
 import { EXPLORE_COPY } from '../lib/explorationCopy'
+import { UI_COPY } from '../lib/uiCopy'
+import { graphUrl } from '../lib/exploreDestination'
 
 const H = EXPLORE_COPY.home
+const N = UI_COPY.names
+// 바로 열기 — /explore를 거치지 않고 도구로 바로 들어가는 다섯 입구(주제·두 과목·성취기준 렌즈, 성운, 미래보기)
+const DIRECT_TOOLS = [
+  { key: 'theme', to: graphUrl({ mode: 'design', lens: 'theme' }), icon: Hash, label: N.theme },
+  { key: 'pair', to: graphUrl({ mode: 'design', lens: 'pair' }), icon: Link2, label: N.pair },
+  { key: 'neighbor', to: graphUrl({ mode: 'design', lens: 'neighbor' }), icon: BookMarked, label: N.neighbor },
+  { key: 'map', to: '/graph?mode=explore', icon: Globe, label: N.map, title: H.directMapTitle },
+  { key: 'futures', to: '/futures-lab', icon: Sparkles, label: N.futures },
+]
 
 function Choice({ to, icon: Icon, tint, title, body }) {
   return (
@@ -49,10 +60,14 @@ export default function ExploreEntryCard() {
           title={H.newChoiceTitle} body={H.newChoiceBody} />
         <Choice to="/explore?for=project" icon={FolderOpen} tint="bg-[var(--ui-tone-success-bg)] text-[var(--ui-tone-success-fg)]"
           title={H.projectChoiceTitle} body={H.projectChoiceBody} />
-        <nav aria-label={H.directLabel} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px]">
+        <nav aria-label={H.directLabel} className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5 text-[13px]">
           <span className="text-text-secondary mr-1">{H.directLabel}</span>
-          <Button variant="link" size="sm" to="/graph?mode=explore" icon={Globe} title={H.directMapTitle}>{H.directMap}</Button>
-          <Button variant="link" size="sm" to="/futures-lab">{H.directFutures}</Button>
+          {DIRECT_TOOLS.map(({ key, to, icon: Icon, label, title }) => (
+            <Link key={key} to={to} title={title}
+              className="inline-flex items-center gap-1.5 min-h-[32px] px-2.5 rounded-full border border-border bg-bg-primary text-[12.5px] font-semibold text-text-primary no-underline transition hover:border-text-secondary hover:bg-bg-secondary">
+              <Icon aria-hidden="true" size={13} strokeWidth={2} />{label}
+            </Link>
+          ))}
           <Button variant="link" size="sm" to="/guide">{H.directGuide}</Button>
         </nav>
       </div>
