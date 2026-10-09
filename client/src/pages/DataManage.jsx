@@ -1,18 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, X, GitBranch, HelpCircle } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Upload, Database, Trash2, Download, CheckCircle, AlertCircle, X, GitBranch, HelpCircle, Globe } from 'lucide-react'
 import { apiGet, apiPost, apiPatch, apiDelete } from '../lib/api'
 import { codeFromKey } from '../lib/standardKey'
 import Logo from '../components/Logo'
 import MathText from '../components/MathText'
 import LinkGuideOverlay, { resetLinkGuide } from '../components/LinkGuideOverlay'
-
-const Graph3D = lazy(() =>
-  import('../components/Graph3D').catch(() => {
-    window.location.reload()
-    return { default: () => null }
-  })
-)
 
 const InlineGraph2D = lazy(() =>
   import('../components/InlineGraph2D').catch(() => {
@@ -47,7 +40,7 @@ export default function DataManage() {
   const [jsonInput, setJsonInput] = useState('')
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState(null)
-  const [tab, setTab] = useState('browse') // 'browse' | 'graph' | 'upload' | 'reports'
+  const [tab, setTab] = useState('browse') // 'browse' | 'upload' | 'reports' — 구 '연결 그래프'(react-force-graph-3d) 탭은 교육과정 성운으로 대체(2026-10-09)
   const [showAllLinks, setShowAllLinks] = useState(false) // AI 제안 링크 포함 여부
   const [allStandards, setAllStandards] = useState([])
   const [showLinkGuide, setShowLinkGuide] = useState(false) // 가이드 강제 표시용
@@ -296,11 +289,11 @@ export default function DataManage() {
           </div>
         )}
 
-        {/* 탭 */}
-        <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-lg w-full sm:w-fit overflow-x-auto">
+        {/* 탭 + 교육과정 성운 링크(전체 연결 그래프는 성운이 맡는다) */}
+        <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-full sm:w-fit overflow-x-auto">
           {[
             { id: 'browse', label: '성취기준 보기' },
-            { id: 'graph', label: '연결 그래프' },
             { id: 'upload', label: '데이터 업로드' },
             { id: 'reports', label: '신고 검토', badge: reports?.items?.length || 0 },
           ].map((t) => (
@@ -317,6 +310,10 @@ export default function DataManage() {
               )}
             </button>
           ))}
+        </div>
+          <Link to="/graph?mode=explore" className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-md text-sm font-semibold text-link hover:text-link-hover hover:bg-gray-100 no-underline">
+            <Globe aria-hidden="true" size={16} />교육과정 성운 열기
+          </Link>
         </div>
 
         {/* 신고 검토 탭 — 3D 쇼케이스 "이상해요" 신고 큐 */}
@@ -573,21 +570,6 @@ export default function DataManage() {
           </div>
         )}
 
-        {/* 그래프 탭 — 3D 시각화 */}
-        {tab === 'graph' && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden" style={{ height: '75vh' }}>
-            <Suspense fallback={
-              <div className="flex items-center justify-center h-full text-gray-400">
-                <div className="text-center">
-                  <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                  <p className="text-sm">3D 그래프 로딩 중...</p>
-                </div>
-              </div>
-            }>
-              <Graph3D embedded />
-            </Suspense>
-          </div>
-        )}
       </main>
     </div>
   )

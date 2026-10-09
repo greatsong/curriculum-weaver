@@ -38,7 +38,7 @@ curriculum-weaver/
 
 ## 교육과정 성운 — 3D 쇼케이스 재구축 (2026-07-12)
 
-`?mode=explore`를 발표·감상 전용 "교육과정 성운"으로 전면 재구축. 구 Graph3D(1,717줄, react-force-graph-3d)는 `?mode=explore-legacy`로 검증 기간 유지 후 삭제 예정.
+`?mode=explore`를 발표·감상 전용 "교육과정 성운"으로 전면 재구축. 구 Graph3D(react-force-graph-3d)는 2026-10-09 삭제 완료(`?mode=explore-legacy`는 explore로 보냄, 데이터 관리의 '연결 그래프' 탭은 성운 링크로 대체).
 
 - **역할 선언**: 읽기 전용 프레젠테이션. AI 채팅·링크 추가·복잡 필터는 전부 제거(설계는 DesignMode 렌즈 담당). published + 교과군 간 연결 + 연결 노드만 표시(2026-09-05 현재 2,036노드/2,723링크). **전문교과 1,993건은 전부 `subject_group='산업수요전문'` 단일 그룹이라 전문↔전문 링크는 애초에 여기 안 나온다** — 전문↔전문 강등 뒤 재계산해도 좌표가 안 바뀌므로 커밋 불필요
 - **레이아웃 사전계산**: `scripts/compute-graph3d-layout.mjs` — /graph에서 published 그래프를 받아 d3-force-3d를 오프라인 실행(UMAP 임베딩 좌표 시드 + 약한 복원력으로 의미 지형 보존, 결정적), `server/data/graph3dLayout.json`(64KB) 출력. **링크 대량 변경 시 재실행 후 JSON 커밋 필요**
