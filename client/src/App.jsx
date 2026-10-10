@@ -10,6 +10,7 @@ import { RequirePrivacyConsent } from './components/PrivacyConsentGate'
 import LoginPage from './pages/LoginPage'
 import ToastContainer from './components/ToastContainer'
 import DeployWatcher from './components/DeployWatcher'
+import PolicyNoticeBanner from './components/PolicyNoticeBanner'
 import WorkspacesPage from './pages/WorkspacesPage'
 import WorkspaceDetailPage from './pages/WorkspaceDetailPage'
 import ProjectPage from './pages/ProjectPage'
@@ -227,6 +228,8 @@ export default function App() {
     >
       {/* 전역 토스트 — 라우트와 무관하게 항상 마운트 (자료 분석 완료 알림 등) */}
       <ToastContainer />
+      {/* 개인정보 처리방침 변경 안내 — 닫거나 안내 기간이 지나면 사라진다 */}
+      <PolicyNoticeBanner />
       <Routes>
         {/* 홈 */}
         <Route path="/" element={<HomeRoute />} />

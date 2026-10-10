@@ -28,7 +28,7 @@ it('절 제목이 번호와 함께 모두 보인다', () => {
 
 it('수집 항목·국외 이전(이전받는 곳 메일 포함)·구제 기관·시행일이 보인다', () => {
   const text = host.textContent
-  expect(text).toContain('시행일 2026년 10월 5일')
+  expect(text).toContain('시행일 2026년 10월 11일')
   expect(text).toContain('이름, 이메일, 소속 학교(선택)')
   for (const mail of ['privacy@anthropic.com', 'privacy@openai.com', 'privacy@supabase.com', 'privacy@railway.com', 'privacy@vercel.com']) expect(text).toContain(mail)
   for (const country of ['미국', '일본(도쿄)', '싱가포르']) expect(text).toContain(country)
