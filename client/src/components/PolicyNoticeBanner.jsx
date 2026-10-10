@@ -1,5 +1,6 @@
 /**
- * 개인정보 처리방침 변경 안내 막대 — 화면 아래 가운데에 고정(2026-10-11 OpenAI 전환).
+ * 개인정보 처리방침 변경 안내 — 화면 왼쪽 아래 구석에 작게 고정(2026-10-11 OpenAI 전환).
+ * 아래 가운데는 채팅 입력칸을, 위쪽은 절차 탭을 가려서(브라우저 확인) 보드 영역 쪽 구석에 둔다.
  *
  * 처리방침(lib/privacyPolicy.js change)은 "내용이 바뀌면 서비스 화면에서 미리 알린다"고 약속한다.
  * 닫으면 이 브라우저에서는 다시 보이지 않고, 안내 기간이 지나면 저절로 사라진다. 처리방침 화면에서는 숨긴다.
@@ -40,8 +41,8 @@ export default function PolicyNoticeBanner({ now = new Date() }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700 }}>{POLICY_NOTICE_TITLE}</div>
           <div>{POLICY_NOTICE_MESSAGE}</div>
+          <Link to="/privacy" style={linkStyle}>처리방침 보기</Link>
         </div>
-        <Link to="/privacy" style={linkStyle}>처리방침 보기</Link>
         <button type="button" onClick={dismiss} aria-label="안내 닫기" style={closeStyle}>
           <X size={16} />
         </button>
@@ -52,35 +53,30 @@ export default function PolicyNoticeBanner({ now = new Date() }) {
 
 const wrapStyle = {
   position: 'fixed',
-  bottom: 12,
-  left: 0,
-  right: 0,
+  left: 16,
+  bottom: 16,
   zIndex: 10040,
-  display: 'flex',
-  justifyContent: 'center',
-  padding: '0 16px',
-  pointerEvents: 'none',
+  maxWidth: 'min(380px, calc(100vw - 32px))',
 }
 
 const cardStyle = {
-  pointerEvents: 'auto',
-  maxWidth: 640,
   display: 'flex',
-  alignItems: 'center',
-  gap: 12,
-  padding: '10px 10px 10px 16px',
+  alignItems: 'flex-start',
+  gap: 10,
+  padding: '10px 8px 10px 14px',
   borderRadius: 12,
   background: '#1F2937',
   color: '#F9FAFB',
   boxShadow: '0 8px 24px rgba(17, 24, 39, 0.25)',
-  fontSize: 13,
+  fontSize: 12.5,
   lineHeight: 1.5,
   fontFamily: 'var(--font-sans, inherit)',
 }
 
 const linkStyle = {
-  flexShrink: 0,
-  padding: '4px 12px',
+  display: 'inline-block',
+  marginTop: 6,
+  padding: '3px 10px',
   borderRadius: 8,
   background: '#FFFFFF',
   color: '#111827',
