@@ -7,6 +7,7 @@
 import crypto from 'node:crypto'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { getMemberRole } from '../lib/supabaseService.js'
+import { findAuthUserByEmail } from '../lib/authUserLookup.js'
 
 // ── 토큰 검증 캐시 (성능) ─────────────────────────────────────────
 // auth.getUser는 Supabase Auth로의 네트워크 왕복이라 모든 보호 요청의 고정 비용이었다
@@ -107,10 +108,8 @@ async function getDevBypassUser() {
 
       let user = created?.user || null
       if (!user) {
-        // 2) 이미 존재 → listUsers로 조회
-        const { data: listData, error: listErr } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 })
-        if (listErr) throw listErr
-        user = listData?.users?.find((u) => u.email === DEV_BYPASS_EMAIL) || null
+        // 2) 이미 존재 → 이메일로 조회 (가입자가 1,000명을 넘어도 끝까지 찾는다)
+        user = await findAuthUserByEmail(DEV_BYPASS_EMAIL)
         if (!user) throw createErr || new Error(`dev 유저(${DEV_BYPASS_EMAIL}) 생성/조회 모두 실패`)
       }
 

@@ -13,6 +13,7 @@ import {
   getProjectsByWorkspace,
   createInvite,
 } from '../lib/supabaseService.js'
+import { findAuthUserByEmail } from '../lib/authUserLookup.js'
 
 const router = Router()
 
@@ -175,15 +176,12 @@ router.post('/:id/invite', requireRole('owner', 'host'), async (req, res) => {
       return res.status(400).json({ error: `유효하지 않은 역할입니다. 허용: ${validRoles.join(', ')}` })
     }
 
-    // Supabase Admin API로 이메일 조회 (가입된 사용자면 즉시 멤버로 추가)
+    // 이메일로 가입자 조회 (가입된 사용자면 즉시 멤버로 추가). 가입자 수와 상관없이 끝까지 찾는다
     let targetUser = null
     try {
-      const supabase = (await import('../lib/supabaseAdmin.js')).supabaseAdmin
-      const { data, error: listErr } = await supabase.auth.admin.listUsers()
-      if (listErr) throw listErr
-      targetUser = data.users.find((u) => u.email === normalizedEmail) || null
+      targetUser = await findAuthUserByEmail(normalizedEmail)
     } catch (err) {
-      // Supabase 미설정(로컬 개발) 환경에서는 토큰 초대로 폴백
+      // Supabase 미설정(로컬 개발)이거나 조회가 실패하면 토큰 초대로 폴백
       console.warn('[workspaces] 사용자 조회 실패, 토큰 초대로 폴백:', err.message)
     }
 
