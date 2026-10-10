@@ -9,7 +9,6 @@
  * 새 프로젝트 담기는 두 키를 같은 값으로 유지한다(호환). 읽을 때는 두 키를 합친다.
  * 저장소 접근은 모두 try/catch로 감싼다(사생활 보호 모드·차단 환경).
  */
-import { buildFuturesSearch, FUTURE_MAX, FUTURE_MIN } from './futures2'
 
 export const LEGACY_BASKET_KEY = 'cw_design_basket'
 export const BASKET_META_KEY = 'cw_design_basket_meta'
@@ -118,13 +117,6 @@ export function mergeBasketMeta(storage, entries) {
   }
 }
 
-/** 미래보기 비교 가능 여부 — 2~7개. 넘치면 임의로 자르지 않고 막는다. */
-export function compareAvailability(count) {
-  if (count < FUTURE_MIN) return { ok: false, reason: 'tooFew' }
-  if (count > FUTURE_MAX) return { ok: false, reason: 'tooMany' }
-  return { ok: true, reason: '' }
-}
-
 /** 탐색 화면 주소 모음 — 보낼 곳을 항상 함께 넘긴다 */
 export function exploreHubUrl(destination, { preferNew = false } = {}) {
   if (destination?.type === 'project' && destination.projectId) return `/explore?project=${encodeURIComponent(destination.projectId)}`
@@ -136,13 +128,6 @@ export function graphUrl({ mode = 'design', lens = '', destination } = {}) {
   params.set('mode', mode)
   if (lens) params.set('lens', lens)
   return `/graph?${withDestination(params, destination).toString()}`
-}
-
-export function futuresUrl({ keys = [], model, destination } = {}) {
-  const params = new URLSearchParams(buildFuturesSearch(keys, model))
-  const next = withDestination(params, destination)
-  const s = next.toString()
-  return `/futures-lab${s ? `?${s}` : ''}`
 }
 
 export function projectPath(project) {

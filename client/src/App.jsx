@@ -44,21 +44,19 @@ function lazyWithReload(factory, key) {
 const DataManage = lazyWithReload(() => import('./pages/DataManage'), 'DataManage')
 const GraphPage = lazyWithReload(() => import('./pages/GraphPage'), 'GraphPage')
 const IntroPage = lazyWithReload(() => import('./pages/IntroPage'), 'IntroPage')
-const DemoMode = lazyWithReload(() => import('./components/DemoMode'), 'DemoMode')
 const DemoPrepPage = lazyWithReload(() => import('./pages/DemoPrepPage'), 'DemoPrepPage')
 const GuidePage = lazyWithReload(() => import('./pages/GuidePage'), 'GuidePage')
 const PrivacyPolicyPage = lazyWithReload(() => import('./pages/PrivacyPolicyPage'), 'PrivacyPolicyPage')
 const AuthCallback = lazyWithReload(() => import('./pages/AuthCallback'), 'AuthCallback')
-const Futures2Page = lazyWithReload(() => import('./pages/Futures2Page'), 'Futures2Page')
-const FuturesLabPage = lazyWithReload(() => import('./pages/FuturesLabPage'), 'FuturesLabPage')
 const ExplorePage = lazyWithReload(() => import('./pages/ExplorePage'), 'ExplorePage')
-const FuturesPage = lazyWithReload(() => import('./pages/FuturesPage'), 'FuturesPage')
-const FutureMapPage = lazyWithReload(() => import('./pages/FutureMapPage'), 'FutureMapPage')
 
 // 레거시 호환: /session/:id 로 들어오면 워크스페이스로 돌려보냄
 function LegacySessionRedirect() {
   return <Navigate to="/workspaces" replace />
 }
+
+// 제거한 미래 보기 판(/futures-lab·/futures2·/futures·/future-map)의 옛 주소는 연결 지도로 보낸다
+const REMOVED_FUTURES_PATHS = ['/futures-lab', '/futures2', '/futures', '/future-map']
 
 /**
  * 인증 필수 라우트 래퍼
@@ -252,9 +250,6 @@ export default function App() {
         {/* 인트로 (공개) */}
         <Route path="/intro" element={<IntroPage />} />
 
-        {/* AI 시뮬레이션 (로그인 필수) */}
-        <Route path="/demo" element={<DemoMode />} />
-
         {/* 시연 모드(임용 실연 준비) 진입 — 개인 워크스페이스+demo 프로젝트 부트스트랩 */}
         <Route
           path="/demo-prep"
@@ -265,20 +260,8 @@ export default function App() {
           }
         />
 
-        <Route path="/futures-lab" element={<ProtectedRoute><FuturesLabPage /></ProtectedRoute>} />
-
         {/* 수업 아이디어 탐색 시작 화면 — 결과를 넣을 곳을 고르고 세 단계로 안내 */}
         <Route path="/explore" element={<ProtectedRoute><ExplorePage /></ProtectedRoute>} />
-
-        {/* 미래 보기 2 — 기존 설계 흐름과 별도로 성취기준 조합을 탐색 */}
-        <Route
-          path="/futures2"
-          element={
-            <ProtectedRoute>
-              <Futures2Page />
-            </ProtectedRoute>
-          }
-        />
 
         {/* 워크스페이스 */}
         <Route
@@ -318,26 +301,6 @@ export default function App() {
           }
         />
 
-        {/* 미래 보기 — 성취기준 조합으로 가능한 수업의 미래 */}
-        <Route
-          path="/futures"
-          element={
-            <ProtectedRoute>
-              <FuturesPage />
-            </ProtectedRoute>
-          }
-        />
-
-        {/* 미래 지도 — 기존 미래 보기·타임스톤과 별개의 비교용 판 */}
-        <Route
-          path="/future-map"
-          element={
-            <ProtectedRoute>
-              <FutureMapPage />
-            </ProtectedRoute>
-          }
-        />
-
         {/* 관리 (관리자) */}
         <Route
           path="/data"
@@ -354,6 +317,11 @@ export default function App() {
 
         {/* 레거시 호환: /session/:id */}
         <Route path="/session/:sessionId" element={<LegacySessionRedirect />} />
+
+        {/* 레거시 호환: 제거한 미래 보기 판의 옛 주소 → 연결 지도 */}
+        {REMOVED_FUTURES_PATHS.map((path) => (
+          <Route key={path} path={path} element={<Navigate to="/graph" replace />} />
+        ))}
 
         {/* 404 */}
         <Route path="*" element={<Navigate to="/" replace />} />

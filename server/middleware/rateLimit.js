@@ -87,44 +87,8 @@ export const aiChatLimiter = rateLimit({
   validate: { xForwardedForHeader: false, default: true },
 })
 
-// ── 미래 보기 생성: 분당 40회 (사용자당) — 넘길 때마다 다음 미래를 미리 생성하므로 채팅보다 넉넉히.
-// 같은 조합·모델·번호는 서버 캐시로 즉시 반환된다.
-export const futuresLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 40, // 조합 하나 = 꼭지 8개 요청. 모델 전환·조합 두세 번까지 1분 안에 허용
-  skip: (req) => req.method === 'GET', // 목록·연결 조회(GET)는 생성이 아니므로 일반 한도만 적용
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: userKey,
-  message: { error: '미래를 너무 빠르게 넘기고 있어요. 잠시 후 다시 넘겨 주세요.' },
-  validate: { xForwardedForHeader: false, default: true },
-})
-
-// ── 미래 보기 2: 분당 40회 (사용자당), 기존 채팅 한도와 별도 버킷 ──
-// 미래 지도(/api/future-map) — 미래 보기와 같은 정책, 버킷은 따로
-export const futureMapLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 40,
-  skip: (req) => req.method === 'GET',
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: userKey,
-  message: { error: '수업 아이디어 요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.' },
-})
-
-export const futures2Limiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 40,
-  skip: (req) => req.method === 'GET',
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: userKey,
-  message: { error: '미래를 너무 빠르게 넘기고 있어요. 잠시 후 다시 넘겨 주세요.' },
-  validate: { xForwardedForHeader: false, default: true },
-})
-
 // ── 수업 시나리오 생성: 분당 20회 (사용자당) ──
-// 카드를 열고 "다른 아이디어"를 누르는 속도보다 넉넉하게 잡는다. 캐시된 응답도 같은 한도에 포함된다.
+// 카드를 여는 속도보다 넉넉하게 잡는다. 캐시된 응답도 같은 한도에 포함된다.
 export const scenarioLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,

@@ -1,5 +1,5 @@
 /**
- * 미래보기 탐색 초안 → A-3 대화 → 제안 수락·거부 → 초안 상태 (이 브라우저에만 기록)
+ * 탐색 초안(이 브라우저에 이미 도착한 것) → A-3 대화 → 제안 수락·거부 → 초안 상태 (이 브라우저에만 기록)
  * - 입력창에 넣은 초안을 머리글째 보내면 '대화에 보냄', 그 응답의 제안에 초안 id가 붙는다
  * - 수락 저장 성공은 '보드에 반영됨', 저장 실패는 '저장 확인 필요', 거부는 '반영하지 않음'
  * - 교사가 머리글을 지우고 보내면 초안과 잇지 않는다(상태 그대로)
@@ -23,8 +23,7 @@ import { useChatStore } from '../chatStore.js'
 import { useProcedureStore } from '../procedureStore.js'
 import { useProjectStore } from '../projectStore.js'
 import { apiPut } from '../../lib/api'
-import { createDraft, saveDraft, readDraft } from '../../lib/explorationDraft'
-import { HANDOFF_HEADER } from '../../lib/futuresProjectHandoff'
+import { createDraft, saveDraft, readDraft, HANDOFF_HEADER } from '../../lib/explorationDraft'
 
 function memoryStorage() {
   const map = new Map()

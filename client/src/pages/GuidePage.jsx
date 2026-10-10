@@ -544,12 +544,6 @@ export default function GuidePage() {
           </button>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate('/demo')}
-              className="hidden sm:block px-3.5 py-1.5 text-sm text-slate-600 hover:text-slate-900 transition"
-            >
-              AI 설계 예시 체험
-            </button>
-            <button
               onClick={() => navigate('/login')}
               className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
             >
@@ -585,12 +579,6 @@ export default function GuidePage() {
               className="px-6 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition shadow-lg shadow-blue-600/20"
             >
               시작하기
-            </button>
-            <button
-              onClick={() => navigate('/demo')}
-              className="px-6 py-3 bg-white text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition border border-slate-200 shadow-sm"
-            >
-              AI 설계 예시 체험
             </button>
           </div>
         </div>
@@ -850,7 +838,7 @@ export default function GuidePage() {
                 '주제로 찾기: "기후변화"로 몇 개 교과가 연결되는지 한눈에',
                 '학년 간 연결 보기: 학년을 넘나드는 연결 / 두 과목으로 찾기: 함께할 과목의 연결',
                 '이 연결로 수업 예시 보기: 연결을 고르면 AI가 상황·데이터·핵심 질문까지 초안 생성',
-                '모든 연결에 근거·융합 주제·수업 아이디어 포함, 담아서 미래보기 비교나 프로젝트로',
+                '모든 연결에 근거·융합 주제·수업 아이디어 포함, 담아서 새 프로젝트로',
               ].map((item, i) => (
                 <li key={i} className="flex items-start gap-2.5">
                   <svg className="w-5 h-5 text-cyan-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -868,49 +856,6 @@ export default function GuidePage() {
             </button>
           </div>
           <MockLensPair />
-        </div>
-      </Section>
-
-      {/* ───── S5: AI 설계 예시 체험 ───── */}
-      <Section id="demo">
-        <div className="max-w-2xl mx-auto text-center">
-          <span className="text-xs font-semibold text-emerald-600 tracking-widest uppercase mb-3 block">Try Demo</span>
-          <h2 className="text-2xl md:text-3xl font-bold text-slate-900 mb-3">3분 만에 체험해 보세요</h2>
-          <p className="text-sm text-slate-500 mb-10">
-            학년, 교과, 주제만 입력하면 AI가 5개 과정, 18개 세부활동의 수업 설계를 자동으로 생성합니다.
-          </p>
-
-          {/* 데모 입력 폼 목업 */}
-          <BrowserFrame title="AI 설계 예시 체험" className="max-w-lg mx-auto text-left">
-            <div className="space-y-3">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-500 block mb-1">학년</label>
-                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">고등학교 1학년</div>
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold text-slate-500 block mb-1">교과</label>
-                <div className="flex gap-2">
-                  {['과학', '수학', '사회'].map((s) => (
-                    <span key={s} className="px-2.5 py-1 bg-blue-50 text-blue-700 text-[11px] rounded-full font-medium border border-blue-100">{s}</span>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-[11px] font-semibold text-slate-500 block mb-1">주제</label>
-                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">기후변화와 데이터 리터러시</div>
-              </div>
-              <button className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 transition mt-1">
-                AI 수업 설계 시작
-              </button>
-            </div>
-          </BrowserFrame>
-
-          <button
-            onClick={() => navigate('/demo')}
-            className="mt-8 px-8 py-3 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 transition shadow-lg shadow-blue-600/20"
-          >
-            데모 시작하기
-          </button>
         </div>
       </Section>
 
@@ -946,12 +891,6 @@ export default function GuidePage() {
               className="px-6 py-3 bg-white text-blue-700 rounded-xl text-sm font-semibold hover:bg-blue-50 transition shadow-lg"
             >
               시작하기
-            </button>
-            <button
-              onClick={() => navigate('/demo')}
-              className="px-6 py-3 bg-white/10 text-white rounded-xl text-sm font-semibold hover:bg-white/20 transition border border-white/20"
-            >
-              AI 설계 예시 체험
             </button>
           </div>
         </div>

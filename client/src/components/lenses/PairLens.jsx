@@ -1,13 +1,12 @@
-import { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import { useState, useMemo, useRef, useLayoutEffect, useCallback } from 'react'
 import { EXPLORE_COPY } from '../../lib/explorationCopy'
-import { Sparkles, Plus, Check, Loader2 } from 'lucide-react'
-import { apiGet, apiPost } from '../../lib/api'
+import { Sparkles, Plus, Check } from 'lucide-react'
 import { useScenario, ScenarioPanel } from './scenarioShared'
 import { LINK_TYPE_LABELS, LINK_TYPE_COLORS, getLinkId, subjectColor, linkQuality, linkPriority, isSameGrade, gradeBucket } from './lensCommon'
 import { standardKey } from '../../lib/standardKey'
 import MathText from '../MathText'
 
-// 탐색 버튼을 보여줄 연결 수 임계 — 이보다 적으면 "더 찾기"가 의미 있다
+// 연결이 적은 쌍의 기준 — 이보다 적으면 연결이 풍부한 상대 과목을 추천한다
 const SPARSE_LINK_THRESHOLD = 3
 
 /**
@@ -15,7 +14,7 @@ const SPARSE_LINK_THRESHOLD = 3
  *
  * candidate(AI 제안) 링크는 이 렌즈에서 항상 점선으로 노출한다 —
  * 2열 집중 뷰라 노이즈 부담이 적고, 빈 쌍 화면이 막다른 길이 되지 않게 한다.
- * 연결이 없거나 적은 쌍은 온디맨드 AI 탐색으로 그 자리에서 후보를 생성할 수 있다.
+ * 연결이 없거나 적은 쌍에는 연결이 풍부한 상대 과목을 추천한다.
  *
  * props:
  *  - graph: { nodes, links } (status=all — published+candidate 전체)
@@ -26,12 +25,11 @@ const SPARSE_LINK_THRESHOLD = 3
  *  - basket: Set<key>, onToggleBasket(keys: string[])
  *  - onOpenNeighbor(key)
  *  - subjectLinkCounts: Map<과목명, published 연결 수> — 드롭다운 표기용
- *  - onGraphRefresh(): AI 탐색 완료 후 그래프 재조회
  * 성취기준 식별·선택·담기는 key(standardKey), 표시는 code.
  */
-export default function PairLens({ graph, subjects, subjectGroups, pair, onPickPair, basket, onToggleBasket, onOpenNeighbor, subjectLinkCounts, onGraphRefresh }) {
+export default function PairLens({ graph, subjects, subjectGroups, pair, onPickPair, basket, onToggleBasket, onOpenNeighbor, subjectLinkCounts }) {
   const [selectedLink, setSelectedLink] = useState(null)
-  const { scenario, openScenario, closeScenario, moreIdea, setActiveIndex } = useScenario()
+  const { scenario, openScenario, closeScenario } = useScenario()
   const laneRef = useRef(null)
   const cardRefs = useRef(new Map()) // `${side}:${key}` -> element
   const [lines, setLines] = useState([])
@@ -86,65 +84,6 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
       avgQuality: links.length ? links.reduce((s, l) => s + linkQuality(l), 0) / links.length : 0,
     }
   }, [graph, subjA, subjB])
-
-  // ── 온디맨드 AI 탐색 상태 ──
-  // idle → starting → running(폴링) → done | already | error
-  const [explore, setExplore] = useState({ phase: 'idle' })
-  useEffect(() => { setExplore({ phase: 'idle' }) }, [subjA, subjB])
-
-  const startExplore = useCallback(async () => {
-    setExplore({ phase: 'starting' })
-    try {
-      const resp = await apiPost('/api/standards/pairs/explore', { subjectA: subjA, subjectB: subjB })
-      if (resp.alreadyExplored) {
-        // 다른 사용자가 이미 탐색한 쌍 — 결과가 이미 그래프에 있으므로 재조회만
-        onGraphRefresh?.()
-        setExplore({ phase: 'already', accepted: resp.alreadyExplored.accepted })
-        return
-      }
-      setExplore({ phase: 'running', jobId: resp.job.id, progress: resp.job.progress })
-    } catch (e) {
-      const message = e?.status === 401
-        ? '로그인 후 사용할 수 있는 기능이에요.'
-        : (e?.message || 'AI 탐색을 시작하지 못했습니다.')
-      setExplore({ phase: 'error', message })
-    }
-  }, [subjA, subjB, onGraphRefresh])
-
-  // 잡 상태 폴링 (3초 간격, 최대 3분 — 서버 판정은 통상 30~60초)
-  useEffect(() => {
-    if (explore.phase !== 'running' || !explore.jobId) return
-    let cancelled = false
-    let timer = null
-    let tries = 0
-    const tick = async () => {
-      if (cancelled) return
-      tries += 1
-      try {
-        const { job } = await apiGet(`/api/standards/pairs/jobs/${explore.jobId}`)
-        if (cancelled) return
-        if (job.status === 'completed') {
-          onGraphRefresh?.()
-          setExplore({ phase: 'done', result: job.result })
-          return
-        }
-        if (job.status === 'failed') {
-          setExplore({ phase: 'error', message: job.error || 'AI 탐색에 실패했습니다.' })
-          return
-        }
-        setExplore(prev => ({ ...prev, progress: job.progress }))
-      } catch {
-        // 일시적 네트워크 오류 — 다음 폴링에서 재시도
-      }
-      if (tries >= 60) {
-        setExplore({ phase: 'error', message: '탐색이 예상보다 오래 걸립니다. 잠시 후 페이지를 새로고침해 주세요.' })
-        return
-      }
-      timer = setTimeout(tick, 3000)
-    }
-    timer = setTimeout(tick, 2500)
-    return () => { cancelled = true; if (timer) clearTimeout(timer) }
-  }, [explore.phase, explore.jobId, onGraphRefresh])
 
   // ── 연결이 풍부한 상대 과목 추천 (published 링크 수 기준) ──
   // 95%의 과목쌍이 비어 있는 데이터 현실에서, 교사가 운으로 헤매지 않게 한다
@@ -240,41 +179,10 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
         )}
         {data && data.links.length === 0 && (
           <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700">
-            아직 아무도 탐색하지 않은 조합이에요
+            아직 연결이 없는 조합이에요
           </span>
         )}
-        {/* 온디맨드 AI 탐색 — 연결이 없거나 적은 쌍에서 그 자리에서 후보 생성 */}
-        {data && data.links.length < SPARSE_LINK_THRESHOLD && (explore.phase === 'idle' || explore.phase === 'error') && (
-          <button onClick={startExplore}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition">
-            <Sparkles size={13} />
-            {data.links.length === 0 ? 'AI로 이 조합 첫 탐색하기' : 'AI로 연결 더 찾기'}
-          </button>
-        )}
       </div>
-
-      {/* AI 탐색 진행/결과 배너 */}
-      {explore.phase === 'starting' && (
-        <ExploreBanner tone="progress" icon={<Loader2 size={14} className="animate-spin" />}
-          text="AI 탐색을 시작하는 중…" />
-      )}
-      {explore.phase === 'running' && (
-        <ExploreBanner tone="progress" icon={<Loader2 size={14} className="animate-spin" />}
-          text={`AI가 두 과목의 성취기준 조합을 검토하고 있어요 (${explore.progress?.done ?? 0}/${explore.progress?.total ?? '…'}쌍) — 보통 1분 안에 끝나요`} />
-      )}
-      {explore.phase === 'done' && (
-        <ExploreBanner tone={explore.result?.accepted > 0 ? 'success' : 'neutral'}
-          text={explore.result?.accepted > 0
-            ? `AI가 새 연결 제안 ${explore.result.accepted}개를 찾았어요 — 점선으로 표시됩니다. 좋은 제안은 "담기"로 수업 설계에 바로 쓸 수 있어요.`
-            : `AI가 ${explore.result?.judged ?? 0}개 조합을 검토했지만 교육적으로 확실한 연결을 찾지 못했어요. 이 조합은 '주제로 찾기'에서 다른 방식으로 찾을 수 있어요.`} />
-      )}
-      {explore.phase === 'already' && (
-        <ExploreBanner tone="neutral"
-          text={`이 조합은 최근에 이미 AI 탐색을 마쳤어요${explore.accepted > 0 ? ` (제안 ${explore.accepted}개 — 점선으로 표시)` : ' (새 제안 없음)'}.`} />
-      )}
-      {explore.phase === 'error' && (
-        <ExploreBanner tone="error" text={explore.message} />
-      )}
 
       {/* 연결이 적은 쌍 → 연결이 풍부한 상대 과목 추천 */}
       {data && data.links.length < SPARSE_LINK_THRESHOLD && partnerSuggestions
@@ -402,27 +310,11 @@ export default function PairLens({ graph, subjects, subjectGroups, pair, onPickP
 
       {/* 실생활 문제 시나리오 (연결 상세에서 생성) */}
       {scenario && (
-        <ScenarioPanel scenario={scenario} onClose={closeScenario} onMore={moreIdea} onNav={setActiveIndex}
+        <ScenarioPanel scenario={scenario} onClose={closeScenario}
           subjectOf={(key) => (selectedLink && [selectedLink.a, selectedLink.b].find(n => standardKey(n) === key)?.subject)}
           standardOf={(key) => (selectedLink && [selectedLink.a, selectedLink.b].find(n => standardKey(n) === key))}
           basket={basket} onToggleBasket={onToggleBasket} />
       )}
-    </div>
-  )
-}
-
-/* ── AI 탐색 상태 배너 ── */
-function ExploreBanner({ tone, icon, text }) {
-  const cls = {
-    progress: 'border-violet-200 bg-violet-50/70 text-violet-800',
-    success: 'border-emerald-200 bg-emerald-50/70 text-emerald-800',
-    neutral: 'border-gray-200 bg-gray-50 text-gray-600',
-    error: 'border-red-200 bg-red-50/70 text-red-700',
-  }[tone] || 'border-gray-200 bg-gray-50 text-gray-600'
-  return (
-    <div className={`flex items-center gap-2 border rounded-xl px-3.5 py-2.5 text-xs font-medium ${cls}`}>
-      {icon}
-      <span className="leading-relaxed">{text}</span>
     </div>
   )
 }

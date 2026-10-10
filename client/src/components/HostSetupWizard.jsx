@@ -13,6 +13,9 @@ import { AI_ROLE_PRESETS, AI_ROLE_PRESET_LIST, DEFAULT_AI_ROLE } from 'curriculu
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useUnsavedWork } from '../lib/unsavedWork'
 
+// 워크스페이스 ai_config.model 기본값 — 저장 형식 유지용(서버는 이 값을 읽지 않는다)
+const DEFAULT_AI_MODEL = 'claude-sonnet-5-5'
+
 export const WIZARD_STEPS = [
   { id: 'info', title: '기본 정보', icon: '1' },
   { id: 'ai', title: 'AI 설정', icon: '2' },
@@ -55,7 +58,8 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
   }
 
   // Step 2: AI 설정
-  const [aiModel, setAiModel] = useState('claude-sonnet-5-5')
+  // 모델 선택 UI는 내렸다. 서버가 ai_config.model을 읽지 않기 때문이다.
+  // 저장 형식(aiConfig: { model })은 그대로 두려고 기본값(DEFAULT_AI_MODEL)을 계속 보낸다.
   const [aiRole, setAiRole] = useState(DEFAULT_AI_ROLE)
   const [enabledAI, setEnabledAI] = useState({ ...AI_ROLE_PRESETS[DEFAULT_AI_ROLE].enabledActions })
 
@@ -92,12 +96,12 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
 
   const handleFinish = useCallback(() => {
     onComplete?.({
-      aiConfig: { model: aiModel },
+      aiConfig: { model: DEFAULT_AI_MODEL },
       enabledAI,
       aiRole,
       targetGrade,
     })
-  }, [aiModel, enabledAI, aiRole, targetGrade, onComplete])
+  }, [enabledAI, aiRole, targetGrade, onComplete])
 
   // 첫 프로젝트는 '새 프로젝트' 창에서 교사가 제목·교과를 정해 만든다. 예전에는 고른 학년만으로
   // "고1, 고2 융합수업 설계"라는 제목을 지어 바로 만들어, 같은 학년을 고른 예전 프로젝트와 제목이 똑같아졌고
@@ -245,49 +249,8 @@ export default function HostSetupWizard({ workspaceId, workspace, onComplete, on
           {currentWizardStep.id === 'ai' && (
             <div>
               <h2 style={titleStyle}>AI 설정</h2>
-              <p style={descStyle}>AI 모델과 역할을 설정합니다.</p>
+              <p style={descStyle}>AI 역할을 설정합니다.</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 20 }}>
-                <div>
-                  <label style={labelStyle}>AI 모델</label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {[
-                      { value: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', desc: '기본, 빠른 응답 속도', badge: '추천' },
-                      { value: 'claude-opus-5-5', label: 'Claude Opus 5.5', desc: '최고 품질, 응답이 느릴 수 있음', badge: null },
-                    ].map(({ value, label, desc, badge }) => (
-                      <label
-                        key={value}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 12,
-                          padding: '12px 16px',
-                          border: `2px solid ${aiModel === value ? '#3B82F6' : '#E5E7EB'}`,
-                          borderRadius: 12,
-                          cursor: 'pointer',
-                          background: aiModel === value ? '#EFF6FF' : '#fff',
-                          transition: 'all 0.15s',
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="aiModel"
-                          value={value}
-                          checked={aiModel === value}
-                          onChange={() => setAiModel(value)}
-                          style={{ accentColor: '#3B82F6' }}
-                        />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{label}</span>
-                            {badge && <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 9999, background: '#DBEAFE', color: '#2563EB', fontWeight: 600 }}>{badge}</span>}
-                          </div>
-                          <span style={{ fontSize: 12, color: '#6B7280' }}>{desc}</span>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
                 <div>
                   <label style={labelStyle}>AI 역할 프리셋</label>
                   <p style={{ fontSize: 12, color: '#9CA3AF', margin: '0 0 10px' }}>AI의 개입 수준을 선택하세요. 팀 성격에 맞게 조절할 수 있습니다.</p>

@@ -22,7 +22,6 @@ import StandardSearch from '../components/StandardSearch'
 import ReportDownload from '../components/ReportDownload'
 import MaterialUploadBar from '../components/MaterialUploadBar'
 import InteractiveTour from '../components/InteractiveTour'
-import ContinueSimulationButton from '../components/ContinueSimulationButton'
 import ExplorationDraftStrip from '../components/ExplorationDraftStrip'
 import { Compass } from 'lucide-react'
 import { EXPLORE_COPY } from '../lib/explorationCopy'
@@ -723,9 +722,6 @@ export default function ProjectPage() {
 
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
           <MemberList />
-          {!isReadOnlyProject && !isDemo && (
-            <ContinueSimulationButton projectId={projectId} workspaceId={workspaceId} skippedCount={skippedCodes.size} />
-          )}
           {[
             { onClick: () => setMaterialsOpen((v) => !v), color: '#4B5563', active: materialsOpen, icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>, label: materialsCount > 0 ? `자료 ${materialsCount}` : '자료', title: '자료 관리' },
             ...(isDesktop ? [{ onClick: () => setShowPrinciples((v) => !v), color: '#2563EB', active: showPrinciples, tour: 'principle-panel', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>, label: '원칙', title: '원칙 보기' }] : []),
@@ -873,10 +869,9 @@ export default function ProjectPage() {
         </div>
       )}
 
-      {/* 미래보기 탐색 초안 안내 줄 — 모든 절차에서 보이되 절차를 옮기지 않는다(A-3에서만 입력창에 넣기) */}
+      {/* 탐색 초안 안내 줄 — 이 브라우저에 도착한 초안이 있을 때만 보이고 절차를 옮기지 않는다(A-3에서만 입력창에 넣기) */}
       <ExplorationDraftStrip project={currentProject} procedure={currentProcedure} readOnly={isReadOnlyProject}
         onInserted={() => setActivePanel('chat')} />
-      {!isDemo && !isReadOnlyProject && skippedCodes.size > 0 && <div role="note" style={{ padding: '8px 16px', background: '#fff8e9', color: '#795619', fontSize: 12, flexShrink: 0 }}>{EXPLORE_COPY.projectHeader.skippedNote}</div>}
 
       {/* 후행 절차 재검토 안내 — 앞 절차가 이 절차보다 나중에 수정된 경우 */}
       {currentIsStale && !isReadOnlyProject && (

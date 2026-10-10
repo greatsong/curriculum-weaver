@@ -2,13 +2,14 @@
  * 수업 아이디어 탐색 시작 화면 (/explore)
  *
  * 1) 먼저 "탐색 결과를 넣을 곳"(진행 중인 프로젝트 / 새 프로젝트)을 고른다. URL에 기록: ?project=<id> | ?for=new
- * 2) 세 단계(성취기준 고르기 → 수업 아이디어 비교 → 프로젝트로 보내기)를 보여 주고, 기존 도구를 각 단계에 배치한다.
- * 3) 이 목적지로 담은 성취기준을 아래에 모아 보여 준다(저장 전).
+ * 2) 성취기준을 고르는 도구(연결 찾기의 세 보기, 교육과정 성운)를 보여 준다.
+ * 3) 이 목적지로 담은 성취기준을 아래에 모아 보여 준다(저장 전). 새 프로젝트로 담았으면 프로젝트 만들기로 잇는다.
+ * 예전의 2·3단계(미래보기로 아이디어 비교 → A-3로 보내기)는 미래보기 제거와 함께 없앴다.
  * 탐색은 팀의 진행 절차를 바꾸지 않는다(이 화면은 어떤 쓰기 요청도 보내지 않는다).
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Hash, Link2, BookMarked, Globe, ChevronRight, Check, Info, LogOut, ArrowRight } from 'lucide-react'
+import { Hash, Link2, BookMarked, Globe, ChevronRight, Info, LogOut } from 'lucide-react'
 import Logo from '../components/Logo'
 import Button from '../components/ui/Button'
 import MainNav from '../components/MainNav'
@@ -20,9 +21,9 @@ import { EXPLORE_COPY } from '../lib/explorationCopy'
 import { UI_COPY } from '../lib/uiCopy'
 import {
   parseDestination, projectDestination, NEW_DESTINATION, readBasket, clearBasket, readBasketMeta,
-  compareAvailability, futuresUrl, graphUrl, destinationAccess,
+  graphUrl, destinationAccess,
 } from '../lib/exploreDestination'
-import { readDraft, safeLocalStorage, safeSessionStorage } from '../lib/explorationDraft'
+import { safeLocalStorage, safeSessionStorage } from '../lib/explorationDraft'
 import { readRecentProjects } from '../lib/recentProjects'
 import { codeFromKey, subjectFromKey } from '../lib/standardKey'
 import { getProcedureDisplayCode } from 'curriculum-weaver-shared/constants.js'
@@ -78,20 +79,15 @@ function EntryRow({ to, icon: Icon, entry }) {
   )
 }
 
-function StepCard({ n, id, title, body, children }) {
+function StepCard({ id, title, body, children }) {
   return (
     <section aria-labelledby={id} className="bg-bg-secondary border border-border rounded-lg p-5 flex flex-col gap-3.5 min-w-0">
-      <div className="flex items-center gap-2.5">
-        <span className="inline-flex items-center justify-center w-[26px] h-[26px] rounded-full bg-[var(--color-action)] text-white text-[13px] font-bold shrink-0">{n}</span>
-        <h2 id={id} className="m-0 text-base font-bold text-text-primary">{title}</h2>
-      </div>
+      <h2 id={id} className="m-0 text-base font-bold text-text-primary">{title}</h2>
       {body && <p className="m-0 text-[13px] leading-relaxed text-text-body">{body}</p>}
       {children}
     </section>
   )
 }
-
-const LADDER_INDEX = { none: 0, arrived: 0, sent: 1, rejected: 1, unconfirmed: 1, reflected: 2 }
 
 export default function ExplorePage({ get = apiGet }) {
   const navigate = useNavigate()
@@ -123,29 +119,9 @@ export default function ExplorePage({ get = apiGet }) {
   const basket = useMemo(() => readBasket(safeSessionStorage(), destination), [destination, basketTick]) // eslint-disable-line react-hooks/exhaustive-deps
   const meta = useMemo(() => readBasketMeta(safeSessionStorage()), [basketTick])
   const [clearConfirm, setClearConfirm] = useState(false)
-  const compare = compareAvailability(basket.length)
 
-  // 진행 중인 프로젝트에 등록된 성취기준 수 (담은 것이 없을 때 미래보기가 가져오는 수)
-  const [registered, setRegistered] = useState(null)
-  useEffect(() => {
-    setRegistered(null)
-    if (!destination.projectId) return undefined
-    let alive = true
-    get(`/api/standards/project/${encodeURIComponent(destination.projectId)}`)
-      .then((rows) => {
-        const list = Array.isArray(rows) ? rows : rows?.standards
-        if (alive && Array.isArray(list)) setRegistered(list.length)
-      })
-      .catch(() => { if (alive) setRegistered(null) })
-    return () => { alive = false }
-  }, [destination.projectId, get])
-
-  const draft = destination.projectId ? readDraft(safeLocalStorage(), destination.projectId) : null
-  const ladderAt = LADDER_INDEX[draft?.status || 'none'] ?? 0
   const access = project ? destinationAccess(project) : null
   const teamCode = project?.current_procedure ? getProcedureDisplayCode(project.current_procedure) : ''
-  const subjects = new Set(basket.map((k) => meta[k] || subjectFromKey(k)).filter(Boolean))
-  const futuresHref = basket.length > 0 ? (compare.ok ? futuresUrl({ keys: basket, destination }) : '') : futuresUrl({ keys: [], destination })
   const optionList = options.items.some((p) => p.id === selectedId) || !project ? options.items : [project, ...options.items]
 
   const handleLogout = async () => { await logout(); navigate('/login', { replace: true }) }
@@ -230,65 +206,16 @@ export default function ExplorePage({ get = apiGet }) {
           </div>
         </fieldset>
 
-        {/* 2. 세 단계 */}
-        <div className="grid gap-4 items-stretch [grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))]">
-          <StepCard n={1} id="step1" title={C.step1Title} body={C.step1Body}>
-            <ul className="list-none m-0 p-0 flex flex-col">
-              <EntryRow to={graphUrl({ mode: 'design', lens: 'theme', destination })} icon={Hash} entry={C.entries.theme} />
-              <EntryRow to={graphUrl({ mode: 'design', lens: 'pair', destination })} icon={Link2} entry={C.entries.pair} />
-              <EntryRow to={graphUrl({ mode: 'design', lens: 'neighbor', destination })} icon={BookMarked} entry={C.entries.neighbor} />
-              <EntryRow to={graphUrl({ mode: 'explore', destination })} icon={Globe} entry={C.entries.map} />
-            </ul>
-            <p className="m-0 text-xs leading-relaxed text-text-secondary">{C.step1Footer}</p>
-          </StepCard>
-
-          <StepCard n={2} id="step2" title={C.step2Title} body={C.step2Body}>
-            <div className="flex flex-col gap-1.5 p-3.5 rounded-md bg-bg-primary border border-bg-tertiary">
-              <span className="text-xs text-text-secondary">{C.step2Count}</span>
-              <span className="flex items-baseline gap-1.5">
-                <strong className="text-[22px] font-bold tabular-nums">{basket.length}개</strong>
-                {subjects.size > 0 && <span className="text-[13px] text-text-body">{C.step2Subjects(subjects.size)}</span>}
-              </span>
-              {basket.length > 0 ? (
-                <span className={`flex items-center gap-1.5 text-[13px] font-medium ${compare.ok ? 'text-[var(--ui-tone-success-fg)]' : 'text-[var(--ui-tone-warning-fg)]'}`}>
-                  {compare.ok && <Check aria-hidden="true" size={14} strokeWidth={2.5} />}
-                  {compare.ok ? C.step2Ready : compare.reason === 'tooMany' ? C.step2TooMany : C.step2TooFew}
-                </span>
-              ) : destination.type === 'project' && (
-                <span className="text-[13px] leading-relaxed text-text-body">
-                  {C.step2FromProject}{registered != null && ` (${registered}개)`}
-                </span>
-              )}
-            </div>
-            <Button variant="primary" block to={futuresHref || undefined} disabled={!futuresHref} iconRight={ArrowRight}>{C.step2Open}</Button>
-            <p className="m-0 text-xs leading-relaxed text-text-secondary">{C.step2Footer}</p>
-          </StepCard>
-
-          <StepCard n={3} id="step3" title={C.step3Title} body={destination.type === 'project' ? C.step3BodyProject : C.step3BodyNew}>
-            {destination.type === 'project' ? (
-              <>
-                {draft && <StatusChip status={draft.status} className="self-start" />}
-                <ol aria-label={C.ladderLabel} className="list-none m-0 p-0 flex flex-col">
-                  {C.ladder.map((step, i) => (
-                    <li key={step.key} className={`flex gap-3 py-2.5 ${i > 0 ? 'border-t border-dashed border-border' : ''}`}
-                      aria-current={i === ladderAt ? 'step' : undefined}>
-                      <span aria-hidden="true" className={`inline-flex items-center justify-center w-[22px] h-[22px] rounded-full shrink-0 ${
-                        i < ladderAt ? 'bg-[var(--ui-tone-success-dot)]' : i === ladderAt ? 'bg-text-body' : 'border-2 border-border-strong'}`}>
-                        {i < ladderAt ? <Check size={12} strokeWidth={3} className="text-white" /> : i === ladderAt ? <span className="w-2 h-2 rounded-full bg-white" /> : null}
-                      </span>
-                      <span className="flex flex-col gap-0.5">
-                        <strong className="text-[13px] font-semibold">{step.title}{i === ladderAt && <span className="font-medium text-text-body"> {C.ladderNow}</span>}</strong>
-                        <span className="text-xs leading-relaxed text-text-body">{step.body}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </>
-            ) : (
-              <p className="m-0 text-xs leading-relaxed text-text-secondary">{EXPLORE_COPY.send.newFooterNote}</p>
-            )}
-          </StepCard>
-        </div>
+        {/* 2. 성취기준 고르기 */}
+        <StepCard id="step1" title={C.step1Title} body={C.step1Body}>
+          <ul className="list-none m-0 p-0 flex flex-col">
+            <EntryRow to={graphUrl({ mode: 'design', lens: 'theme', destination })} icon={Hash} entry={C.entries.theme} />
+            <EntryRow to={graphUrl({ mode: 'design', lens: 'pair', destination })} icon={Link2} entry={C.entries.pair} />
+            <EntryRow to={graphUrl({ mode: 'design', lens: 'neighbor', destination })} icon={BookMarked} entry={C.entries.neighbor} />
+            <EntryRow to={graphUrl({ mode: 'explore', destination })} icon={Globe} entry={C.entries.map} />
+          </ul>
+          <p className="m-0 text-xs leading-relaxed text-text-secondary">{C.step1Footer}</p>
+        </StepCard>
 
         {/* 3. 담은 성취기준 */}
         <section aria-labelledby="hub-basket" className="bg-bg-secondary border border-border rounded-lg p-5 flex flex-col gap-4 min-w-0">
@@ -313,7 +240,9 @@ export default function ExplorePage({ get = apiGet }) {
                 ) : (
                   <Button variant="ghost" onClick={() => setClearConfirm(true)}>{C.basketClear}</Button>
                 )}
-                <Button variant="primary" to={compare.ok ? futuresHref : undefined} disabled={!compare.ok}>{C.basketCompare}</Button>
+                {destination.type === 'new' && (
+                  <Button variant="primary" to="/workspaces?createProject=1">{EXPLORE_COPY.graph.startProject}</Button>
+                )}
               </div>
             )}
           </div>

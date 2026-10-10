@@ -1,15 +1,14 @@
 /**
- * MainNav — 홈·탐색 화면 상단의 주 입구 세 개(아이디어 탐색 · 교육과정 성운 · 미래보기).
+ * MainNav — 홈·탐색 화면 상단의 주 입구 두 개(아이디어 탐색 · 교육과정 성운).
  * 같은 모양의 링크를 나란히 두고, 현재 화면은 aria-current로 표시한다. 이름은 UI_COPY.nav 한 곳에서 관리한다.
  */
 import { Link } from 'react-router-dom'
-import { Compass, Globe, Sparkles } from 'lucide-react'
+import { Compass, Globe } from 'lucide-react'
 import { UI_COPY } from '../lib/uiCopy'
 
 const LINKS = [
   { key: 'explore', to: '/explore', icon: Compass },
   { key: 'map', to: '/graph?mode=explore', icon: Globe },
-  { key: 'futures', to: '/futures-lab', icon: Sparkles },
 ]
 
 export default function MainNav({ current = '', className = '' }) {
