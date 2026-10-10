@@ -270,8 +270,12 @@ export function extractProcedureAdvance(text) {
   // self-closing(<... />) 또는 블록(<...></procedure_advance>) 형태의 태그 하나를 통째로 잡는다.
   // 속성 순서에 의존하지 않고 각 속성을 개별 추출한다(엄격한 순서 요구 시 AI 출력이 조금만 달라도
   // 파싱이 실패해 "이동 버튼 제목 없음" 버그가 발생하던 문제 방지).
-  const cleanRegex = /<procedure_advance\b[\s\S]*?(?:\/>|<\/procedure_advance>)/g
-  const tag = text.match(/<procedure_advance\b[\s\S]*?(?:\/>|<\/procedure_advance>)/)
+  // 2026-10-10 루나 시험: 닫는 형식이 흔들리는 경우가 있었다(`...">`, `..."/ >`, `..."/procedure_advance>`).
+  // 속성(이름="값")을 하나씩 읽은 뒤 어떤 닫힘이든 받는 형태를 먼저 시도하고, 안 되면 종전 형태로 찾는다.
+  const tolerantRegex = /<procedure_advance\b(?:\s+[A-Za-z_]+\s*=\s*"[^"]*")*\s*\/?\s*(?:procedure_advance\s*)?>(?:\s*<\/procedure_advance>)?/g
+  const legacyRegex = /<procedure_advance\b[\s\S]*?(?:\/>|<\/procedure_advance>)/g
+  const cleanRegex = new RegExp((text.match(tolerantRegex) ? tolerantRegex : legacyRegex).source, 'g')
+  const tag = text.match(new RegExp(cleanRegex.source))
   if (!tag) return { cleanText: text, procedureAdvance: null }
 
   const raw = tag[0]

@@ -64,3 +64,23 @@ describe('extractProcedureAdvance', () => {
     expect(cleanText).not.toContain('procedure_advance')
   })
 })
+
+describe('extractProcedureAdvance — 닫는 형식이 흔들려도 읽는다(2026-10-10 루나 시험 사례)', () => {
+  const cases = [
+    ['닫는 빗금 없음', '정리했습니다.\n<procedure_advance current="prep" suggested="T-1" reason="학습자 맥락 정리">'],
+    ['빗금 뒤 공백', '정리했습니다.\n<procedure_advance current="T-4" suggested="T-5" reason="규칙 확정"/ >'],
+    ['빗금+태그 이름', '정리했습니다.\n<procedure_advance current="A-1" suggested="A-2" reason="기준 정리"/procedure_advance>'],
+    ['여는·닫는 태그 쌍', '정리했습니다.\n<procedure_advance current="A-3" suggested="A-4" reason="분석 정리"></procedure_advance>'],
+  ]
+  it.each(cases)('%s', (_label, text) => {
+    const { cleanText, procedureAdvance } = extractProcedureAdvance(text)
+    expect(procedureAdvance).not.toBeNull()
+    expect(procedureAdvance.reason.length).toBeGreaterThan(0)
+    expect(cleanText).toBe('정리했습니다.')
+  })
+  it('사유에 > 가 있어도 태그를 끝까지 읽는다', () => {
+    const { procedureAdvance, cleanText } = extractProcedureAdvance('끝.\n<procedure_advance current="prep" suggested="T-1" reason="A > B 비교 정리"/>')
+    expect(procedureAdvance.reason).toBe('A > B 비교 정리')
+    expect(cleanText).toBe('끝.')
+  })
+})
