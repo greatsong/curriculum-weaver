@@ -7,6 +7,7 @@
 import crypto from 'crypto'
 
 import { supabaseAdmin } from './supabaseAdmin.js'
+import { listWorkspaceProjectIds, collectReferencedPaths, purgeProjectStorage } from './projectStorage.js'
 import { BOARD_TYPES } from 'curriculum-weaver-shared/constants.js'
 import { normalizeBoardKeys } from 'curriculum-weaver-shared/boardKeys.js'
 
@@ -72,6 +73,24 @@ function handleResult({ data, error }, context) {
     throw new Error(`${context}: ${error.message}`)
   }
   return data
+}
+
+/**
+ * DB 삭제가 끝난 뒤 Storage 원본 파일을 지운다(lib/projectStorage.js).
+ * 실패해도 삭제 자체는 성공으로 두고 로그만 남긴다. 개별 자료 삭제(routes/materials.js)와 같은 정책이다.
+ * @returns {Promise<{ removed: number, kept: number, failed: object[] }>}
+ */
+async function purgeStorageAfterDelete(sb, projectIds, referencedPaths, context) {
+  try {
+    const result = await purgeProjectStorage(sb, projectIds, { referencedPaths })
+    if (result.failed.length) {
+      console.warn(`[supabaseService] ${context} Storage 정리 일부 실패(삭제는 완료):`, JSON.stringify(result.failed))
+    }
+    return result
+  } catch (err) {
+    console.warn(`[supabaseService] ${context} Storage 정리 실패(삭제는 완료):`, err?.message || err)
+    return { removed: 0, kept: 0, failed: [{ step: 'unexpected', error: err?.message || String(err) }] }
+  }
 }
 
 // ============================================================
@@ -256,9 +275,10 @@ export async function updateWorkspace(id, data) {
 }
 
 /**
- * 워크스페이스 삭제
+ * 워크스페이스 삭제. 프로젝트 이하 DB 행은 CASCADE로 지워지고, Storage 파일은 삭제 뒤 따로 지운다.
+ * 대상 프로젝트·파일 경로 조회가 실패하면 삭제하지 않고 throw한다(파일이 남는 삭제를 만들지 않는다).
  * @param {string} id
- * @returns {Promise<void>}
+ * @returns {Promise<{ storage: { removed: number, kept: number, failed: object[] } | null }>} 인메모리 모드면 storage는 null
  */
 export async function deleteWorkspace(id) {
   const sb = getSupabase()
@@ -267,12 +287,15 @@ export async function deleteWorkspace(id) {
     for (const key of mem.members.keys()) {
       if (key.startsWith(`${id}:`)) mem.members.delete(key)
     }
-    return
+    return { storage: null }
   }
+  const projectIds = await listWorkspaceProjectIds(sb, id)
+  const referencedPaths = await collectReferencedPaths(sb, projectIds)
   handleResult(
     await sb.from('workspaces').delete().eq('id', id),
     '워크스페이스 삭제 실패'
   )
+  return { storage: await purgeStorageAfterDelete(sb, projectIds, referencedPaths, `워크스페이스 ${id}`) }
 }
 
 // ============================================================
@@ -369,9 +392,10 @@ export async function updateProject(id, data) {
 }
 
 /**
- * 프로젝트 삭제
+ * 프로젝트 삭제. 하위 DB 행은 CASCADE로 지워지고, Storage 파일은 삭제 뒤 따로 지운다.
+ * 파일 경로 조회가 실패하면 삭제하지 않고 throw한다.
  * @param {string} id
- * @returns {Promise<void>}
+ * @returns {Promise<{ storage: { removed: number, kept: number, failed: object[] } | null }>} 인메모리 모드면 storage는 null
  */
 export async function deleteProject(id) {
   const sb = getSupabase()
@@ -383,12 +407,14 @@ export async function deleteProject(id) {
     for (const key of mem.designs.keys()) {
       if (key.startsWith(`${id}:`)) mem.designs.delete(key)
     }
-    return
+    return { storage: null }
   }
+  const referencedPaths = await collectReferencedPaths(sb, [id])
   handleResult(
     await sb.from('projects').delete().eq('id', id),
     '프로젝트 삭제 실패'
   )
+  return { storage: await purgeStorageAfterDelete(sb, [id], referencedPaths, `프로젝트 ${id}`) }
 }
 
 // ============================================================

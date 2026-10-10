@@ -1301,6 +1301,7 @@ demoRouter.post('/continue', requireAuth, async (req, res) => {
     }
 
     // ── 4. 전체 복제: 자료 행 (파일은 storage_path 공유 — 물리 복사 없음) ──
+    // 원본을 지워도 복제본이 가리키는 파일은 남고, 마지막 참조가 사라질 때 지워진다(lib/projectStorage.js)
     const materialIdMap = new Map()
     if (materialRows.length > 0) {
       try {
