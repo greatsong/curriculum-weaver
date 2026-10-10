@@ -12,6 +12,7 @@ import { isBriefProcedure, stripEmptyBoardFields } from 'curriculum-weaver-share
 import { workflowConfigForProject } from '../lib/projectWorkspace'
 import { isMoveNote } from 'curriculum-weaver-shared/procedureMove.js'
 import { stripBoardKeyMentions } from 'curriculum-weaver-shared/boardKeys.js'
+import { stripEmptyCodeFences } from 'curriculum-weaver-shared/codeFence.js'
 
 /**
  * 이 절차를 약식으로 진행하는지 — 지금 연 프로젝트의 워크스페이스 설정 기준(핵심 절차 정식 진행 반영).
@@ -150,8 +151,8 @@ function stripXmlMarkers(text) {
     .replace(/<stage_advance[\s\S]*$/g, '')
     // 짝 없는 닫는 태그(두 응답이 섞이거나 앞부분이 잘린 경우)도 지운다
     .replace(/<\/(ai_suggestion|coherence_check|procedure_advance|board_update|stage_advance)>/g, '')
-  // 본문에 괄호로 붙은 보드 영문 키("정합성 검토(alignment)")도 지운다 — 서버 저장본과 같은 기준
-  return stripBoardKeyMentions(body).trim()
+  // 블록을 감쌌던 빈 코드 울타리(```xml ```)와 본문에 괄호로 붙은 보드 영문 키("정합성 검토(alignment)")도 지운다 — 서버 저장본과 같은 기준
+  return stripBoardKeyMentions(stripEmptyCodeFences(body)).trim()
 }
 
 // ── Store ────────────────────────────────────

@@ -21,3 +21,21 @@ describe('stripLeftoverAiMarkup — 남은 제안 원문 지우기', () => {
     expect(stripLeftoverAiMarkup(undefined)).toBe('')
   })
 })
+
+describe('stripLeftoverAiMarkup — 블록을 감쌌던 빈 코드 울타리(루나, 2026-10-10 운영)', () => {
+  it('```xml로 감싼 제안 블록을 지우면 빈 울타리도 함께 지운다', () => {
+    const t = '반영하겠습니다.\n\n```xml\n<ai_suggestion type="board_update" procedure="prep" step="2">{"a":1}</ai_suggestion>\n```\n\n괜찮을까요?'
+    expect(stripLeftoverAiMarkup(t)).toBe('반영하겠습니다.\n\n괜찮을까요?')
+  })
+  it('이미 블록이 빠져 빈 울타리만 남은 본문도 정리한다(운영 저장본)', () => {
+    expect(stripLeftoverAiMarkup('수정해 주세요.\n\n```xml\n\n```\n\n성별 구성은 비워 두었습니다.')).toBe('수정해 주세요.\n\n성별 구성은 비워 두었습니다.')
+  })
+  it('끊긴 블록을 지운 뒤 끝에 홀로 남은 여는 울타리를 지운다', () => {
+    expect(stripLeftoverAiMarkup('정리했습니다.\n```xml\n<ai_suggestion type="board_update" procedure="prep">{"a":')).toBe('정리했습니다.')
+  })
+  it('내용이 있는 코드 블록과 그 닫는 울타리는 그대로 둔다', () => {
+    const code = '예시입니다.\n```python\nprint(1)\n```\n```\n둘째\n```'
+    expect(stripLeftoverAiMarkup(code)).toBe(code)
+    expect(stripLeftoverAiMarkup('끝 코드\n```js\nx()\n```')).toBe('끝 코드\n```js\nx()\n```')
+  })
+})
