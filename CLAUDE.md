@@ -140,6 +140,16 @@ curriculum-weaver/
 - 클라이언트: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 - 서버: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`
 
+## 회원 탈퇴(계정 삭제) (2026-10-10)
+
+탈퇴는 앱 화면이 아니라 관리자 스크립트로 처리한다(요청은 처리방침의 보호책임자 메일).
+
+- **정책(사용자 결정)**: 혼자 쓰던 워크스페이스·개인 워크스페이스는 전부 삭제, 다른 멤버가 남은 곳은 소유권 이관(owner→host→editor→viewer, 같은 역할이면 먼저 합류). **팀 기록(메시지 본문·`sender_name`·보드·활동 로그)은 원본 그대로** 두고 계정 연결(user_id 등)만 끊는다. 탈퇴자의 시뮬레이션 프로젝트는 삭제(created_by가 비면 팀 전원에게 보이므로)
+- **DB**: `00031_account_deletion.sql` — 계정 연결 FK 10개를 ON DELETE SET NULL로 변경 + materials.uploader_id FK 신설(운영엔 FK가 없었음), `workspaces.owner_id`는 일부러 NO ACTION(소유권 처리 누락 시 삭제가 막히는 안전장치). `delete_account_data(p_user, p_dry_run=true)` 한 트랜잭션, 시험 실행은 같은 일을 하고 롤백. service_role 전용
+- **실행**: `node scripts/delete-account.mjs --email <이메일>`(시험 실행) → `--apply`. DB → Storage(`materials/{projectId}/…`) → auth 계정 순. 관리자 계정은 `--allow-admin` 없이는 거부, Storage 일부 실패 시 `--purge-storage` 재실행 명령을 출력
+- **검증**: `node scripts/qa/verify-account-deletion-sql.mjs`(Homebrew postgresql@16 임시 클러스터에 마이그레이션 전체 적용, 36개 검사). users를 참조하는 컬럼을 새로 만들면 ON DELETE 규칙을 정하고 이 함수·검사에 반영할 것
+- 일반 워크스페이스·프로젝트 삭제(`deleteWorkspace`/`deleteProject`)는 아직 Storage 파일을 지우지 않는다(별도 과제)
+
 ## Auth 구현 상태 (2026-04-18 업데이트)
 
 **프로덕션에서 실제 동작 중.** 이메일/비밀번호 + Google OAuth 지원.
