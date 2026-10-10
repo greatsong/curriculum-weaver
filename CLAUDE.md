@@ -48,6 +48,31 @@ curriculum-weaver/
 - **기능**: 첫 진입 카메라 다이브+교과군 스태거 점등, 노드 선택(펄스 링·이웃 하이라이트·상세 카드·"다음 연결로 여행"), 자동 투어(교과군 스톱별 캡션+궤도 선회), 칩=조명 스위치(끄면 감광, 더블클릭=솔로), idle 오토로테이트. URL이 상태 기록: `?subjects=&levels=&focus=&tour=1` — DesignMode의 toExplore 이월과 호환
 - **QA 주의**: 헤드리스/백그라운드 탭은 rAF 정지 + 뷰포트 0×0(모바일 오인) — dev 한정 `window.__nebula.frame(t)` 수동 펌프로 검증(프로덕션 제외). 씬 재생성 시 sceneEpoch로 선택/필터 재주입
 
+## AI 호출 구조 — 루나 전환 (2026-10-10)
+
+메인 채팅은 공급자 계층을 거친다. 기본은 Anthropic(소넷 5.5)이고, env로 루나(OpenAI)를 켠다.
+
+- **공급자 선택** (`server/services/llmProvider.js` `resolveChatProvider`)
+  - `CHAT_PROVIDER_WORKSPACES`(쉼표 구분 워크스페이스 ID)가 있으면 그 워크스페이스만 루나(단계적 전환)
+  - 없으면 `CHAT_PROVIDER=openai`일 때 전체 루나, 아니면 Anthropic
+  - 정밀 모드(`aiModel: 'precise'`)는 항상 Anthropic, 모델은 `PRECISE_MODEL`(기본 `claude-sonnet-5-5`)
+  - `LUNA_MODEL`(기본 `gpt-6-luna`), `LUNA_REASONING_EFFORT`(비우면 모델 기본값)
+  - 루나가 첫 글자를 보내기 전에 실패하면 소넷으로 한 번 대체(`CHAT_FALLBACK=off`로 끔)
+  - 모듈 로드 때 읽는 값(`AI_STREAM_TIMEOUT_MS`, `AI_QUEUE_CONCURRENCY`, `PRECISE_MODEL`)은 로컬 `.env`가 늦게 로드되어 적용되지 않는다. 로컬 시험은 프로세스 환경 변수로 넣는다(Railway는 문제없음)
+  - 루나 전환 시 `AI_QUEUE_CONCURRENCY=30` 권장(30명 동시 첫 토큰 p95 18.1초 → 9.5초, OpenAI 한도 분당 1만 요청·1천만 토큰)
+- **시스템 프롬프트 세 부분** (`aiAgent.js` `buildSystemPromptParts`)
+  - `common`: 절차별 고정 지시(같은 팀 연속 턴에서 바이트 단위로 같아야 함)
+  - `context`: 팀·프로젝트 문맥(보드 저장·날짜 변경 때만 바뀜)
+  - `tail`: 날짜, 현재 스텝 상세, 대화 프로토콜, 약식 기록 블록, 현재 보드, 자료, 첨부 이력
+  - `buildSystemPrompt`는 세 부분을 이은 문자열(Anthropic 경로·테스트용)
+  - **새 섹션 규칙**: 자주 바뀌는 것은 tail에 둔다. 날짜·난수·요청별 값은 common·context에 넣지 않는다. 섹션 머리에서 `bucket`을 바꾸는 방식이라, 새 섹션 앞에 칸 전환을 빠뜨리면 앞 칸에 섞인다
+- **루나 메시지 순서**: `[common][context] ...이력 [현재 발화] [tail]`. GPT-5.6 이후는 마지막 사용자 메시지 끝에 캐시를 쓰고 앞 요청이 써 둔 위치에서만 읽으므로(부분 일치 없음), tail을 발화 뒤에 둬야 다음 턴에 적중한다(둘째 턴 92~95%). `prompt_cache_key`는 `cw-chat:{프로젝트}:{절차}`(없으면 적중 안 함). 캐시 쓰기는 입력 단가의 1.25배
+- **대화 이력 창** (`server/lib/historyWindow.js`): 현재 절차 메시지 20개 이하는 전부, 넘으면 시작점을 10개 단위로만 이동(20~29개). 시작점이 0일 때만 진입 직전 대화 8개. n은 절차 전체 메시지로 센다(`getProcedureMessages`)
+- **사용량 기록** (`server/lib/aiUsage.js`, `ai_usage` 00030): 모든 AI 호출(채팅·시연 인트로·자료 분석·교과 연결 시나리오·성취기준 추천)이 한 행. 기록 실패는 응답을 깨지 않는다. 관리자 조회 `GET /api/admin/ai-usage?from=&to=`(추정 비용은 `lib/aiPricing.js`)
+- **절차 이동 태그 파서**: 루나가 `/>` 대신 `>`·`/ >`·`/procedure_advance>`로 닫는 경우가 있어 관대한 형태를 먼저 시도한다(`routes/chat.js` `extractProcedureAdvance`)
+- **되돌리기**: Railway env `CHAT_PROVIDER=anthropic`(서버 재시작 4~6초, 대화 이력 형식 동일)
+- **남은 AI 기능**: 채팅(루나·소넷), 시연 모드 인트로(소넷), 자료 분석(소넷 effort low), 교과 연결 시나리오(소넷, 쌍당 1개 캐시), AI 성취기준 추천(소넷)
+
 ## 제거한 비본질 AI 기능 (2026-10-10)
 
 AI 비용과 유지 부담을 줄이려고 핵심 설계 흐름(절차·채팅·보드·자료 분석·성취기준 추천) 밖의 AI 기능을 걷어 냈다. 다시 살릴 때는 이 커밋 이전 기록을 참고한다.
