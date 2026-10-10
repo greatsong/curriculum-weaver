@@ -578,8 +578,9 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
         )}
         <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginRight: 4 }}>AI</span>
         {[
-          { key: 'fast', label: 'Sonnet', desc: '빠른' },
-          { key: 'precise', label: 'Opus', desc: '정밀' },
+          // 화면에는 desc만 보인다. 빠른 모드 모델은 서버 env(CHAT_PROVIDER·LUNA_MODEL)가 정한다.
+          { key: 'fast', label: '기본 모델', desc: '빠른' },
+          { key: 'precise', label: 'Sonnet 5.5', desc: '정밀' },
         ].map(({ key, label, desc }) => {
           const active = aiModel === key
           return (

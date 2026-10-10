@@ -17,8 +17,10 @@ import {
   getMessages, getMessage, createMessage, getRecentMessages,
   getProject, getMemberRole, getDesignsByProject,
   getStandardsByProject, upsertDesign, getProjectSkips, getWorkspaceWorkflowConfig, deleteMessage,
+  getProcedureMessages, getMessagesBefore,
 } from '../lib/supabaseService.js'
 import { excludeCurrentTeacherMessage } from '../lib/currentMessage.js'
+import { selectHistoryWindow } from '../lib/historyWindow.js'
 import { stripLeftoverAiMarkup } from '../lib/aiMarkup.js'
 import { stripBoardKeyMentions } from 'curriculum-weaver-shared/boardKeys.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
@@ -885,6 +887,22 @@ chatRouter.post('/message', async (req, res) => {
       { teacherMessageId: req.body?.teacher_message_id, content },
     )
 
+    // AI 대화 이력은 결정적 창으로 보낸다(lib/historyWindow.js). 앞부분이 턴마다 고정되어 프롬프트 캐시가
+    // 대화 구간까지 적중한다. 위 recentMessages(종전 병합 목록)는 첨부 이력 요약 등 시스템 프롬프트에만 쓴다.
+    // 조회가 실패하면 종전 목록으로 대체한다.
+    let historyMessages = recentMessages
+    try {
+      const currentRef = { teacherMessageId: req.body?.teacher_message_id, content }
+      const procPrior = excludeCurrentTeacherMessage(await getProcedureMessages(session_id, activeProcedure), currentRef)
+      const firstAt = procPrior[0]?.created_at
+      const preMessages = firstAt
+        ? await getMessagesBefore(session_id, firstAt, 16)
+        : excludeCurrentTeacherMessage(allMessages, currentRef).slice(-16)
+      historyMessages = selectHistoryWindow(procPrior, preMessages)
+    } catch (e) {
+      console.warn('[chat/message] 이력 창 조회 실패 — 종전 목록 사용:', e?.message)
+    }
+
     // 약식 기록: 이 절차에서 교사가 "개입하지 마세요"라고 한 뒤의 양식 저장 알림에는 AI를 부르지 않고
     // 바로 "저장했습니다."로 답한다. AI 지시문에만 맡기면 지시를 어기고 조언한 경우가 있었다(운영 DB 점검).
     if (
@@ -973,6 +991,8 @@ chatRouter.post('/message', async (req, res) => {
       materials,
       boards: designs,
       recentMessages,
+      historyMessages,
+      workspaceId: project?.workspace_id || null,
       userMessage: content,
       procedure: activeProcedure,
       currentStep: currentStep ? Number(currentStep) : null,
@@ -1043,6 +1063,13 @@ chatRouter.post('/message', async (req, res) => {
       onError: (error) => {
         if (clientDisconnected) return
         res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.ERROR, message: error })}\n\n`)
+      },
+      // 호출마다 공급자·모델·토큰·지연을 한 줄로 남긴다(서버 로그). DB 기록은 usage 로그 작업에서 붙인다.
+      onUsage: (usage) => {
+        console.log('[ai-usage]', JSON.stringify({
+          route: 'chat', project_id: session_id, workspace_id: project?.workspace_id || null,
+          procedure_code: activeProcedure, current_step: currentStep ? Number(currentStep) : null, ...usage,
+        }))
       },
     })
 

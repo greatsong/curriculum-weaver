@@ -12,6 +12,10 @@ import { selectMaterialExcerpts, materialCoverageMessage } from '../../shared/ma
  */
 
 import { getAnthropic } from '../lib/anthropicClient.js'
+import {
+  resolveChatProvider, isChatFallbackEnabled, buildOpenAIMessages,
+  normalizeOpenAIUsage, normalizeAnthropicUsage, streamOpenAIChat,
+} from './llmProvider.js'
 import PQueue from 'p-queue'
 import {
   PROCEDURES, PHASES, ACTION_TYPES, ACTOR_COLUMNS, BOARD_TYPES, BOARD_TYPE_LABELS,
@@ -99,11 +103,16 @@ export async function runGuardedStream(createStream, { onText, signal }) {
 }
 
 // AI 모델 매핑 (빠른 모드 / 정밀 모드) — 2026-09-05 정밀 모드 Opus 4.8 → Opus 5,
-// 2026-10-02 빠른 Sonnet 5 → Sonnet 5.5, 정밀 Opus 5 → Opus 5.5
+// 2026-10-02 빠른 Sonnet 5 → Sonnet 5.5, 정밀 Opus 5 → Opus 5.5.
+// 2026-10-10 비용 결정: 정밀 모드는 Sonnet 5.5(env PRECISE_MODEL로 바꿀 수 있음).
+// 빠른 모드는 Anthropic 경로(기본·루나 대체 호출·시연 인트로)의 모델이다. 루나 전환은 services/llmProvider.js.
 const MODEL_MAP = {
   fast: 'claude-sonnet-5-5',
-  precise: 'claude-opus-5-5',
+  precise: String(process.env.PRECISE_MODEL || '').trim() || 'claude-sonnet-5-5',
 }
+
+// 채팅 응답 최대 출력 토큰(루나는 추론 토큰 포함)
+const CHAT_MAX_TOKENS = 12000
 
 // 5.5 모델은 안전 분류기가 넓어 드물게 답변을 거절한다(stop_reason: 'refusal').
 export const REFUSAL_MESSAGE = 'AI가 이 요청에는 답할 수 없습니다. 질문 표현을 바꿔 다시 시도해 주세요.'
@@ -118,7 +127,8 @@ export const REFUSAL_MESSAGE = 'AI가 이 요청에는 답할 수 없습니다. 
 const PRECISE_MAX_TOKENS_MULTIPLIER = 3
 function modelRequestParams(aiModel, maxTokens) {
   const model = getModelId(aiModel)
-  if (model === MODEL_MAP.precise) {
+  // Opus는 thinking이 항상 켜져 상한을 넉넉히 두고 effort를 고정한다. 정밀 모드가 Sonnet이면 빠른 모드와 같은 요청.
+  if (aiModel === 'precise' && /^claude-opus-/.test(model)) {
     return {
       model,
       max_tokens: maxTokens * PRECISE_MAX_TOKENS_MULTIPLIER,
@@ -176,45 +186,36 @@ ${lines.join('\n')}`
 // ──────────────────────────────────────────
 
 /**
- * 현재 절차의 스텝 목록 텍스트 생성
- * — 시스템 프롬프트에 현재 스텝 정보를 주입
- *
- * @param {string} procedureCode - 절차 코드
- * @param {number|null} currentStep - 현재 스텝 번호 (null이면 전체 나열)
- * @returns {string}
+ * 절차 스텝 목록(현재 스텝 표시 없음). 교사마다 보는 스텝이 달라도 같은 내용이어야
+ * 프롬프트 앞부분(공통 지시)이 팀 안에서 바이트 단위로 같게 유지된다.
  */
-function buildStepContextText(procedureCode, currentStep) {
+function buildStepListText(procedureCode) {
   const steps = PROCEDURE_STEPS[procedureCode]
   if (!steps || steps.length === 0) return ''
-
   const stepLines = steps.map((s) => {
     const actionInfo = ACTION_TYPES[s.actionType] || {}
     const actorInfo = ACTOR_COLUMNS[s.actorColumn] || {}
-    const isCurrent = currentStep === s.stepNumber
-    const marker = isCurrent ? '→ ' : '  '
     const aiLabel = s.aiCapability ? ` [AI: ${s.aiCapability}]` : ''
-    return `${marker}${s.stepNumber}. [${actionInfo.name || s.actionType}] ${s.title} — ${actorInfo.name || s.actorColumn}${aiLabel}`
+    return `  ${s.stepNumber}. [${actionInfo.name || s.actionType}] ${s.title} — ${actorInfo.name || s.actorColumn}${aiLabel}`
   })
+  return `[절차 스텝 목록 — ${steps.length}개]\n${stepLines.join('\n')}`
+}
 
-  let text = `[절차 스텝 목록 — ${steps.length}개]\n${stepLines.join('\n')}`
-
-  // 현재 스텝 상세 정보
-  if (currentStep) {
-    const step = steps.find((s) => s.stepNumber === currentStep)
-    if (step) {
-      const actionInfo = ACTION_TYPES[step.actionType] || {}
-      const actorInfo = ACTOR_COLUMNS[step.actorColumn] || {}
-      text += `\n\n[현재 스텝 상세]
-스텝 ${step.stepNumber}/${steps.length}: ${step.title}
+/** 현재 스텝 상세(교사 화면의 스텝, 요청마다 달라질 수 있어 프롬프트 뒷부분에 둔다) */
+function buildCurrentStepDetailText(procedureCode, currentStep) {
+  const steps = PROCEDURE_STEPS[procedureCode]
+  if (!steps || steps.length === 0 || !currentStep) return ''
+  const step = steps.find((s) => s.stepNumber === currentStep)
+  if (!step) return ''
+  const actionInfo = ACTION_TYPES[step.actionType] || {}
+  const actorInfo = ACTOR_COLUMNS[step.actorColumn] || {}
+  return `[현재 스텝 상세]
+스텝 ${step.stepNumber}/${steps.length}: ${step.title} (위 [절차 스텝 목록]의 ${step.stepNumber}번)
   액션 타입: ${actionInfo.name || step.actionType} (${step.actionType})
   행위 주체: ${actorInfo.name || step.actorColumn}
   설명: ${step.description}
   AI 역할: ${step.aiCapability || '없음 (교사 단독 수행)'}
   보드 필드: ${step.boardField || '없음'}`
-    }
-  }
-
-  return text
 }
 
 /**
@@ -951,13 +952,37 @@ const DEMO_PROC_INFO = {
   },
 }
 
-export function buildSystemPrompt({ session, standards, materials, boards, procedure, currentStep, aiRole, participationMode, briefMode, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes, standardLinks, mode, tone, examinerLens, now, userMessage }) {
+/**
+ * 시스템 프롬프트를 하나의 문자열로 조립한다(Anthropic 경로·테스트용).
+ * 내용은 buildSystemPromptParts의 세 부분을 순서대로 이어 붙인 것과 같다.
+ */
+export function buildSystemPrompt(ctx) {
+  return joinPromptParts(buildSystemPromptParts(ctx))
+}
+
+/** { common, context, tail } → 하나의 문자열 */
+export function joinPromptParts(parts) {
+  return [parts?.common, parts?.context, parts?.tail].filter(Boolean).join('\n\n')
+}
+
+/**
+ * 시스템 프롬프트를 바뀌는 빈도에 따라 세 부분으로 나눠 조립한다(2026-10-10 비용 작업).
+ *  - common: 절차별 고정 지시. 같은 절차·같은 팀 설정이면 턴마다 바이트 단위로 같다.
+ *  - context: 팀·프로젝트 문맥. 보드를 저장하거나 날짜가 바뀔 때만 달라진다.
+ *  - tail: 매 턴 바뀔 수 있는 것(날짜, 현재 스텝, 현재 보드, 자료, 첨부 이력). 질문 바로 앞에 둔다.
+ * 앞부분이 매 턴 같아야 프롬프트 캐시가 대화 구간까지 적중한다. 새 섹션을 넣을 때는
+ * 자주 바뀌는 내용을 tail에 두고, 날짜·난수·요청별 값은 common·context에 넣지 않는다.
+ *
+ * @param {Object} ctx - buildSystemPrompt와 같은 인자 + reinforceTail(선택, 확정 사실 강조 블록)
+ * @returns {{ common: string, context: string, tail: string }}
+ */
+export function buildSystemPromptParts({ session, standards, materials, boards, procedure, currentStep, aiRole, participationMode, briefMode, mentionedMaterialIds, selectedMaterialIds, recentMessages, skippedCodes, standardLinks, mode, tone, examinerLens, now, userMessage, reinforceTail }) {
   // 시연 모드: mode==='demo' 단일 게이트. 협력 모드(기본)는 isDemo=false로 완전 불변.
   const isDemo = mode === 'demo'
   // 약식 기록(연수 모드): 팀 설정 briefMode가 켜진 협력 프로젝트에만. 아니면 지시문은 종전과 같다.
   const isBrief = !isDemo && briefMode === true
   const procInfo = PROCEDURES[procedure] || (isDemo ? DEMO_PROC_INFO[procedure] : null)
-  if (!procInfo) return '시스템 오류: 유효하지 않은 절차 코드입니다.'
+  if (!procInfo) return { common: '시스템 오류: 유효하지 않은 절차 코드입니다.', context: '', tail: '' }
 
   const phaseInfo = Object.values(PHASES).find(p => p.id === procInfo.phase)
   const guide = PROCEDURE_GUIDE[procedure]
@@ -970,7 +995,10 @@ export function buildSystemPrompt({ session, standards, materials, boards, proce
   const nextActive = getNextActiveProcedure(procedure, skippedCodes || [])
   const nextProcEntry = nextActive ? [nextActive.code, PROCEDURES[nextActive.code]] : null
 
-  const parts = []
+  // 섹션은 원래 순서대로 조립하되, 섹션 머리에서 담을 칸(bucket)을 바꾼다.
+  const buckets = { common: [], context: [], tail: [] }
+  let bucket = 'common'
+  const parts = { push: (text) => { buckets[bucket].push(text) } }
 
   // ─── 0. 프롬프트 인젝션 방어 ───
   parts.push(`[보안 규칙 — 절대 위반 불가]
@@ -1032,6 +1060,7 @@ TADDs-DIE 모형(팀 준비 → 분석 → 설계 → 개발·실행 → 성찰�
 - 응답은 간결하고 실용적으로 합니다.`)
   }
 
+  bucket = 'context'
   // ─── 1-B. AI 역할 톤 (프리셋 기반) ───
   // 시연 모드는 코치 톤(coaching)을 강제 주입한다. tone 인자가 오면 우선(향후 examinerLens 등).
   const effectiveRole = isDemo ? 'coach' : (aiRole || DEFAULT_AI_ROLE)
@@ -1053,6 +1082,7 @@ TADDs-DIE 모형(팀 준비 → 분석 → 설계 → 개발·실행 → 성찰�
 - 개인별 내용이 필요한 칸(예: 개인 비전, 교과별 목표)은 교과별로 정리해 한 번에 알려 달라고 요청하세요.`)
   }
 
+  bucket = 'tail'
   // ─── 1-C. 채점관 렌즈 (examinerLens) ───
   // 시연 모드에서 예비교사가 코치↔채점관 강도 토글을 '채점관'으로 올리면, 코치 톤 위에
   // 채점관 관점 지시 블록을 추가로 주입해 피드백 강도를 높인다. 협력 모드는 examinerLens를 무시한다.
@@ -1067,6 +1097,7 @@ TADDs-DIE 모형(팀 준비 → 분석 → 설계 → 개발·실행 → 성찰�
 - 그럼에도 최종 수정 결정은 예비교사가 합니다. 단정적으로 몰아붙이지 말고 근거를 들어 설득하세요.`)
   }
 
+  bucket = 'common'
   // ─── 2. 현재 절차 정보 ───
   // displayCode 없는 절차(prep)는 내부 코드를 노출하지 않고 이름만 표기
   const procLabel = getProcedureDisplayCode(procedure)
@@ -1107,6 +1138,7 @@ ${phaseInfo?.name || ''} > ${procLabel}
 ${procInfo.description}`)
   }
 
+  bucket = 'context'
   // ─── 2-B. 생략(스킵)된 절차 안내 ───
   // AI가 생략 절차를 "곧 할 것"처럼 언급하거나 작성을 권유하지 않게 한다.
   if (skippedCodes && skippedCodes.length > 0) {
@@ -1129,11 +1161,13 @@ ${procInfo.description}`)
   }
 
   // ─── 3. 현재 스텝 정보 + 스텝 목록 ───
-  const stepContext = buildStepContextText(procedure, currentStep)
-  if (stepContext) {
-    parts.push(stepContext)
-  }
+  // 목록은 공통 지시(현재 스텝 표시 없음), 현재 스텝 상세는 매 턴 문맥으로 보낸다.
+  const stepList = buildStepListText(procedure)
+  if (stepList) buckets.common.push(stepList)
+  const stepDetail = buildCurrentStepDetailText(procedure, currentStep)
+  if (stepDetail) buckets.tail.push(stepDetail)
 
+  bucket = 'tail'
   // ─── 4. 액션 타입별 대화 프로토콜 ───
   // 약식 기록은 스텝을 하나씩 밟지 않으므로 스텝별 대화 프로토콜(질문으로 이끌기)을 넣지 않는다.
   if (currentStepData && !isBrief) {
@@ -1143,6 +1177,7 @@ ${procInfo.description}`)
     }
   }
 
+  bucket = 'common'
   // ─── 4-B. 확정된 제약·결정 존중 ───
   parts.push(`[확정된 제약·결정 존중 — 중요]
 - 교사가 이전 대화에서 특정 도구·서비스·소재·방법을 "쓰지 않겠다/제외한다"고 했거나 어떤
@@ -1214,6 +1249,7 @@ ${schemaText}
 8. 표의 행과 목록 항목 객체의 키는 스키마에 적힌 JSON 키(영문)를 그대로 쓰세요. 한글 칸 이름을 키로 쓰거나 새 키를 만들지 마세요. 응답 본문에는 한글 칸 이름만 씁니다.`)
   }
 
+  bucket = 'tail'
   // ─── 6-B. 약식 기록(연수 모드) ───
   // 보드 규칙 바로 뒤에 두어 '모든 필드를 채우라'·'질문 먼저'·스텝 순서보다 우선하게 한다.
   if (isBrief) {
@@ -1221,10 +1257,12 @@ ${schemaText}
     if (briefBlock) parts.push(briefBlock)
   }
 
+  bucket = 'context'
   // ─── 7. 정합성 점검 컨텍스트 ───
   const coherenceContext = buildCoherenceContext(procedure, boards, skippedCodes || [], mode)
   if (coherenceContext) {
     parts.push(coherenceContext)
+    bucket = 'common' // 아래 점검 XML 형식 안내는 절차별 고정 지시
 
     // 점검 XML 형식 안내 — demo는 비교대상 절차가 없으므로 자체 정렬 축 토큰을 쓴다.
     // demo_lesson_plan은 목표-활동-평가, demo_script는 과정안↔타이밍(10~15분)을 축으로 한다.
@@ -1248,6 +1286,7 @@ ${schemaText}
 </coherence_check>`)
   }
 
+  bucket = 'common'
   // ─── 8. 총괄 원리 ───
   // 협력UP(상호의존·인지분산 등)은 팀 협력 전제라 1인 시연 모드에서는 제거한다.
   if (!isDemo) {
@@ -1278,6 +1317,7 @@ ${schemaText}
     if (byPhase.length) parts.push(`[전체 절차 목록 — 교사 화면 표기와 같음]\n${byPhase.join('\n')}`)
   }
 
+  bucket = 'context'
   // ─── 10. 세션 정보 ───
   // 프로젝트를 만들 때 교사가 고른 교과·학년(projects.subjects·grade)도 여기서 넘긴다.
   // 이게 빠지면 교사가 이미 알려 준 교과·학년을 AI가 처음 듣는 것처럼 다시 묻는다(2026-10-03 제보).
@@ -1293,10 +1333,12 @@ ${schemaText}
     parts.push(`[설계 세션]\n${sessionLines.join('\n')}`)
   }
 
+  bucket = 'tail'
   // ─── 10-B. 오늘 날짜 (한국 시간) ───
   // 날짜를 모르면 팀 일정·기간을 지난 날짜나 안내문 예시 날짜로 제안한다(2026-10-03 요청).
   parts.push(buildTodayPromptSection(now instanceof Date ? now : new Date()))
 
+  bucket = 'context'
   // ─── 11. 학습자 맥락 (prep 보드 + 프로젝트 생성 시 고른 학년) ───
   // 보드 학년은 팀이 확정한 값이라 우선한다. 보드가 비어 있으면 프로젝트를 만들 때 고른 학년을 쓴다.
   const prepBoard = boards.find(b => b.board_type === 'learner_context')
@@ -1437,6 +1479,7 @@ ${stdText}${fusionGuard}
 3. 성취기준 없이도 진행 가능한 절차(${PHASES.PREP.name} 단계, ${getProcedureLabel('T-1-1')} 등)는 정상 진행하세요.`)
   }
 
+  bucket = 'tail'
   // ─── 14. 현재 절차 보드 내용 ───
   const currentBoard = boards.find(b => b.board_type === boardType)
   if (currentBoard?.content && Object.keys(currentBoard.content).length > 0) {
@@ -1483,7 +1526,30 @@ ${boardStr}`)
   // 모델에게는 표시 코드만 보이도록 조립 완료 시점에 프롬프트 전체를 스크럽한다.
   // XML 형식 지시는 이미 표시 코드(xmlProcToken)라 치환 영향 없음.
   // 봉인 테스트: services/__tests__/vocabularyIsolation.test.js
-  return replaceInternalProcedureCodes(parts.join('\n\n'))
+
+  // ── 선택: 확정 사실 강조(루나 약점 대응 실험, 기본 끔) ──
+  // 숫자(학생 수·교과·날짜)와 이번 제안의 범위를 질문 바로 앞에서 다시 짚는다.
+  if (reinforceTail === true || String(process.env.CHAT_TAIL_REINFORCE || '').toLowerCase() === 'on') {
+    const facts = []
+    if (boardGrade) facts.push(`학년: ${boardGrade}`)
+    else if (projectGrade) facts.push(`학년: ${projectGrade.text}`)
+    if (lc.studentCount) facts.push(`학생 수: ${lc.studentCount}`)
+    if (projectSubjects.length > 0) facts.push(`교과: ${projectSubjects.join(', ')}`)
+    const lines = ['[답하기 전에 확인할 사실]']
+    if (facts.length) lines.push(...facts.map((f) => `- ${f}`))
+    lines.push('- 날짜와 일정은 위 [오늘 날짜]를 기준으로 계산한다. 다른 날짜를 오늘로 쓰지 않는다.')
+    lines.push('- 학생 수·교사 수·날짜 같은 숫자는 위 사실과 대화에 나온 값만 쓰고, 추정해서 바꾸지 않는다.')
+    if (currentStepData?.boardField && !isBrief) {
+      lines.push(`- 이번 응답에 <ai_suggestion>을 넣는다면 현재 스텝의 보드 필드(${currentStepData.boardField})만 채운다. 다른 스텝의 필드는 교사가 요청할 때만 채운다.`)
+    }
+    buckets.tail.push(lines.join('\n'))
+  }
+
+  return {
+    common: replaceInternalProcedureCodes(buckets.common.join('\n\n')),
+    context: replaceInternalProcedureCodes(buckets.context.join('\n\n')),
+    tail: replaceInternalProcedureCodes(buckets.tail.join('\n\n')),
+  }
 }
 
 // ──────────────────────────────────────────
@@ -1659,7 +1725,9 @@ export function buildMessages(recentMessages, userMessage) {
     })
   }
 
-  messages.push({ role: 'user', content: userMessage })
+  // 현재 발화도 이력과 같은 변환을 거친다. 다음 턴에 이 발화가 이력(변환본)으로 다시 들어가므로,
+  // 다르게 보내면 그 메시지부터 프롬프트 캐시가 끊긴다. DB에 저장되는 원문은 바꾸지 않는다.
+  messages.push({ role: 'user', content: replaceInternalProcedureCodes(userMessage) })
   return messages
 }
 
@@ -1682,21 +1750,97 @@ export function buildMessages(recentMessages, userMessage) {
  * @param {Object} callbacks - { onText, onError, signal? } — signal이 abort되면 스트림을 중단한다
  * @returns {Promise<{refused: true}|undefined>} 모델이 거절하면 { refused: true }
  */
-export async function buildAIResponse(context, { onText, onError, signal }) {
-  // context.mentionedMaterialIds와 context.recentMessages가 buildSystemPrompt에 전달된다.
+export async function buildAIResponse(context, { onText, onError, signal, onUsage }) {
+  // context.mentionedMaterialIds와 context.recentMessages가 buildSystemPrompt에 전달된다(첨부 이력 등).
+  // 대화 이력은 context.historyMessages(결정적 창, lib/historyWindow.js)가 있으면 그것을 쓴다.
   // buildMessages는 system 메시지를 필터링해 Claude role 오염을 방지한다.
-  const systemPrompt = buildSystemPrompt(context)
-  const messages = buildMessages(context.recentMessages || [], context.userMessage)
+  const parts = buildSystemPromptParts(context)
+  const messages = buildMessages(context.historyMessages || context.recentMessages || [], context.userMessage)
+  const route = resolveChatProvider({ aiModel: context?.aiModel, workspaceId: context?.workspaceId })
 
+  if (route.provider === 'openai') {
+    const started = Date.now()
+    let result
+    try {
+      result = await aiQueue.add(() => streamOpenAIChat({
+        model: route.model,
+        effort: route.effort,
+        messages: buildOpenAIMessages(parts, messages),
+        maxTokens: CHAT_MAX_TOKENS,
+        cacheKey: context?.session?.id ? `cw-chat:${context.session.id}:${context.procedure}` : undefined,
+        onText,
+        signal,
+        timeoutMs: AI_STREAM_TIMEOUT_MS,
+      }))
+    } catch (error) {
+      const canFallback = !error?.emittedText && !signal?.aborted && isChatFallbackEnabled()
+      reportUsage(onUsage, {
+        provider: 'openai', model: route.model, effort: route.effort || null,
+        error_code: describeError(error), latency_ms: Date.now() - started, fallback_used: canFallback,
+      })
+      if (canFallback) {
+        console.warn('⚠️ 루나 호출 실패 — 소넷으로 한 번 대체합니다:', describeError(error))
+        return runAnthropicChat({ parts, messages, aiModel: 'fast', onText, onError, signal, onUsage, fallback: true })
+      }
+      console.error('OpenAI API 오류:', error)
+      onError(clientErrorMessage(error))
+      return
+    }
+
+    reportUsage(onUsage, {
+      ...normalizeOpenAIUsage(result.usage),
+      provider: 'openai', model: route.model, effort: route.effort || null,
+      finish_reason: result.timedOut ? 'timeout' : result.aborted ? 'aborted' : result.finishReason,
+      latency_ms: result.latencyMs, first_token_ms: result.firstTokenMs, fallback_used: false,
+    })
+    if (result.aborted) return // 호출자가 중단 — 받을 사람이 없다
+    if (result.timedOut) {
+      console.warn(`⚠️ 루나 응답이 ${AI_STREAM_TIMEOUT_MS}ms 안에 끝나지 않아 스트림을 중단했습니다.`)
+      onError(STREAM_TIMEOUT_MESSAGE)
+      return
+    }
+    if (result.refused) {
+      console.warn('⚠️ 루나가 요청을 거절했습니다:', result.finishReason || 'refusal')
+      onError(REFUSAL_MESSAGE)
+      return { refused: true }
+    }
+    if (result.truncated) {
+      console.warn('⚠️ 루나 응답이 최대 출력 토큰에 도달하여 잘렸습니다. ai_suggestion이 누락되었을 수 있습니다.')
+    }
+    return
+  }
+
+  return runAnthropicChat({ parts, messages, aiModel: context?.aiModel, onText, onError, signal, onUsage })
+}
+
+/**
+ * Anthropic(소넷·정밀 모드) 채팅 호출 — 2026-10-10 이전과 같은 요청. 시스템 프롬프트는 세 부분을 이은 문자열.
+ * 루나가 첫 글자 전에 실패했을 때의 대체 호출(fallback: true)도 이 경로를 쓴다.
+ */
+async function runAnthropicChat({ parts, messages, aiModel, onText, onError, signal, onUsage, fallback = false }) {
+  const params = modelRequestParams(aiModel, CHAT_MAX_TOKENS)
+  const started = Date.now()
+  let firstTokenMs = null
+  const onTextTimed = (text) => {
+    if (firstTokenMs == null) firstTokenMs = Date.now() - started
+    onText(text)
+  }
   try {
     const { finalMessage, timedOut, aborted } = await aiQueue.add(() => runGuardedStream(
       (streamSignal) => getAnthropic().messages.stream({
-        ...modelRequestParams(context?.aiModel, 12000),
-        system: systemPrompt,
+        ...params,
+        system: joinPromptParts(parts),
         messages,
       }, { signal: streamSignal }),
-      { onText, signal },
+      { onText: onTextTimed, signal },
     ))
+
+    reportUsage(onUsage, {
+      ...normalizeAnthropicUsage(finalMessage?.usage),
+      provider: 'anthropic', model: params.model, effort: params.output_config?.effort || null,
+      finish_reason: timedOut ? 'timeout' : aborted ? 'aborted' : (finalMessage?.stop_reason || null),
+      latency_ms: Date.now() - started, first_token_ms: firstTokenMs, fallback_used: fallback,
+    })
 
     if (aborted) return // 호출자가 중단 — 받을 사람이 없다
     if (timedOut) {
@@ -1717,14 +1861,38 @@ export async function buildAIResponse(context, { onText, onError, signal }) {
       console.warn('⚠️ AI 응답이 max_tokens에 도달하여 잘렸습니다. ai_suggestion이 누락되었을 수 있습니다.')
     }
   } catch (error) {
-    // 프로덕션에서는 원본 error.message를 클라이언트에 노출하지 않는다(내부 정보·스택 유출 방지).
-    // 상세 메시지는 서버 로그에만 남기고, 클라이언트에는 일반화된 안내 문구를 전달한다.
+    reportUsage(onUsage, {
+      provider: 'anthropic', model: params.model, error_code: describeError(error),
+      latency_ms: Date.now() - started, first_token_ms: firstTokenMs, fallback_used: fallback,
+    })
     console.error('Claude API 오류:', error)
-    const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT
-    const clientMessage = isProduction
-      ? 'AI 응답 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
-      : (error.message || 'AI 응답 생성 실패')
-    onError(clientMessage)
+    onError(clientErrorMessage(error))
+  }
+}
+
+// 프로덕션에서는 원본 error.message를 클라이언트에 노출하지 않는다(내부 정보·스택 유출 방지).
+// 상세 메시지는 서버 로그에만 남기고, 클라이언트에는 일반화된 안내 문구를 전달한다.
+function clientErrorMessage(error) {
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT
+  return isProduction
+    ? 'AI 응답 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+    : (error?.message || 'AI 응답 생성 실패')
+}
+
+/** usage 기록용 오류 요약(상태 코드 또는 오류 이름) */
+function describeError(error) {
+  if (!error) return 'unknown'
+  if (error.status) return `http_${error.status}`
+  return String(error.code || error.name || 'error').slice(0, 60)
+}
+
+/** onUsage 콜백 호출 — 기록 실패가 응답 경로를 깨지 않게 감싼다 */
+function reportUsage(onUsage, record) {
+  if (typeof onUsage !== 'function') return
+  try {
+    onUsage(record)
+  } catch (error) {
+    console.warn('[ai-usage] 기록 콜백 오류(무시):', error?.message)
   }
 }
 

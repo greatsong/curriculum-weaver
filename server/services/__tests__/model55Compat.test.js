@@ -114,13 +114,16 @@ describe('채팅 응답의 거절 처리', () => {
     expect(sdk.stream.mock.calls[0][0].model).toBe('claude-sonnet-5-5')
   })
 
-  it('정밀 모드는 Opus 5.5에 adaptive thinking·effort medium으로 요청한다', async () => {
+  // 2026-10-10 비용 결정: 정밀 모드는 Sonnet 5.5(메인은 루나로 전환). Opus를 쓰려면 env PRECISE_MODEL.
+  // Sonnet 5.5는 thinking·effort를 보내지 않는다(종전 빠른 모드와 같은 요청).
+  it('정밀 모드는 Sonnet 5.5에 종전 빠른 모드와 같은 요청을 보낸다', async () => {
     sdk.stream.mockReturnValue(fakeStream([], { stop_reason: 'end_turn', content: [] }))
     const result = await buildAIResponse({ ...context, aiModel: 'precise' }, { onText: vi.fn(), onError: vi.fn() })
     expect(result).toBeUndefined()
     const params = sdk.stream.mock.calls[0][0]
-    expect(params.model).toBe('claude-opus-5-5')
-    expect(params.thinking).toEqual({ type: 'adaptive' })
-    expect(params.output_config).toEqual({ effort: 'medium' })
+    expect(params.model).toBe('claude-sonnet-5-5')
+    expect(params.thinking).toBeUndefined()
+    expect(params.output_config).toBeUndefined()
+    expect(params.max_tokens).toBe(12000)
   })
 })
