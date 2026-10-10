@@ -8,10 +8,11 @@ vi.mock('../../lib/supabaseService.js', async original => ({
   ...(await original()),
   getProject: vi.fn(async () => state.project),
   getMemberRole: vi.fn(async () => 'owner'),
-  getSimulationsBySource: vi.fn(async () => []),
   getProjectSkips: vi.fn(async () => state.skips),
   getDesign: vi.fn(async () => state.design),
   createProject: vi.fn(), updateProject: vi.fn(), upsertDesign: vi.fn(), addProjectSkip: vi.fn(),
+  ensurePersonalWorkspace: vi.fn(async () => ({ id: 'personal-ws' })),
+  getProjectsByWorkspace: vi.fn(async () => [{ id: 'demo-p', status: 'active', learner_context: { demo: true } }]),
 }))
 const { demoRouter } = await import('../demo.js')
 const { default: designsRouter } = await import('../designs.js')
@@ -24,16 +25,20 @@ beforeEach(() => {
 })
 function unchanged() { expect(createProject).not.toHaveBeenCalled(); expect(updateProject).not.toHaveBeenCalled(); expect(upsertDesign).not.toHaveBeenCalled(); expect(addProjectSkip).not.toHaveBeenCalled() }
 
-it.each(['simulation', 'generating', 'failed'])('%s 프로젝트는 A-3 저장과 이어서 시뮬레이션을 차단한다', async status => {
+it.each(['simulation', 'generating', 'failed'])('%s 프로젝트는 A-3 저장을 차단한다', async status => {
   state.project.status = status
   expect((await request(app).put('/api/projects/p1/designs/A-2-1').send({ content: { duplicateCheck: '탐색 초안' } })).status).toBe(403)
-  expect((await request(app).post('/api/demo/continue').send({ projectId: 'p1' })).status).toBe(400)
   unchanged()
 })
-it('생략 단계가 있는 프로젝트의 이어서 시뮬레이션은 복제·저장 전에 차단한다', async () => {
-  state.skips = [{ procedure_code: 'T-2-2' }]
-  const result = await request(app).post('/api/demo/continue').send({ projectId: 'p1' })
-  expect(result.status).toBe(400); expect(result.body.error).toContain('생략된 절차')
+it('AI 시뮬레이션 생성·이어서 시뮬레이션 경로는 제거되어 아무것도 만들지 않는다', async () => {
+  expect((await request(app).post('/api/demo/generate').send({ subjects: ['과학'] })).status).toBe(404)
+  expect((await request(app).post('/api/demo/continue').send({ projectId: 'p1' })).status).toBe(404)
+  unchanged()
+})
+it('시연 모드 부트스트랩은 그대로 기존 시연 프로젝트를 돌려준다', async () => {
+  const result = await request(app).post('/api/demo/bootstrap').send({})
+  expect(result.status).toBe(200)
+  expect(result.body).toEqual({ workspaceId: 'personal-ws', projectId: 'demo-p' })
   unchanged()
 })
 it('A-3는 직접 API로도 건너뛸 수 없다', async () => {

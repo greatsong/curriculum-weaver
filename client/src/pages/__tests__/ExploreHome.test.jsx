@@ -56,10 +56,10 @@ describe('탐색 시작 화면', () => {
     expect(hrefs).toContain('/graph?mode=design&lens=pair&project=p1')
     expect(hrefs).toContain('/graph?mode=design&lens=neighbor&project=p1')
     expect(hrefs).toContain('/graph?mode=explore&project=p1')
-    expect(hrefs).toContain('/futures-lab?project=p1')
+    // 미래보기는 제거했다 — 어떤 입구도 옛 주소로 가지 않는다
+    expect(hrefs.some((h) => h.startsWith('/futures'))).toBe(false)
     expect(host.textContent).toContain('팀의 현재 절차는 A-2입니다')
     expect(host.textContent).not.toContain('A-1-2')
-    expect(host.textContent).toContain('(6개)')
     // 시뮬레이션·시연 프로젝트는 보낼 곳 목록에 없다
     const options = [...host.querySelectorAll('#dest-project-select option')].map((o) => o.value)
     expect(options).toEqual(['p1'])
@@ -72,15 +72,20 @@ describe('탐색 시작 화면', () => {
     expect(host.querySelector('[data-testid="url"]').textContent).toBe('/explore?project=p1')
   })
 
-  it('새 프로젝트로 8개를 담았으면 임의로 자르지 않고 비교를 막는다', async () => {
+  it('새 프로젝트로 담았으면 프로젝트 만들기로 잇고, 미래보기 비교 경로는 없다', async () => {
     writeBasket(sessionStorage, NEW_DESTINATION, ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'k7', 'k8'])
     await mount('/explore?for=new')
-    expect(host.textContent).toContain('비교는 7개까지 합니다')
-    const compareButtons = [...host.querySelectorAll('button')].filter((b) => b.textContent.includes('미래보기'))
-    expect(compareButtons.length).toBeGreaterThan(0)
-    expect(compareButtons.every((b) => b.disabled)).toBe(true)
-    // 본문의 비교 경로만 본다 — 머리 줄의 주요 기능 링크(MainNav)는 담은 개수와 무관한 일반 입구다
-    expect([...host.querySelectorAll('main a')].map((a) => a.getAttribute('href')).some((h) => h.startsWith('/futures-lab'))).toBe(false)
+    expect(host.textContent).toContain('담은 성취기준 8개')
+    expect(links()).toContain('/workspaces?createProject=1')
+    expect(links().some((h) => h.startsWith('/futures'))).toBe(false)
+    expect(host.textContent).not.toContain('미래보기')
+  })
+
+  it('진행 중인 프로젝트로 담은 것은 새 프로젝트 만들기로 보내지 않는다', async () => {
+    writeBasket(sessionStorage, { type: 'project', projectId: 'p1' }, ['k1', 'k2'])
+    await mount('/explore?project=p1')
+    expect(host.textContent).toContain('담은 성취기준 2개')
+    expect(links()).not.toContain('/workspaces?createProject=1')
   })
 })
 

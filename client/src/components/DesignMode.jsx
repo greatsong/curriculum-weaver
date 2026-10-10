@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { X, HelpCircle } from 'lucide-react'
-import { fetchGraphData, invalidateGraphCache } from '../lib/graphDataCache'
+import { fetchGraphData } from '../lib/graphDataCache'
 import { standardKey, codeFromKey, subjectFromKey } from '../lib/standardKey'
 import Logo from './Logo'
 import { useAuthStore } from '../stores/authStore'
@@ -17,7 +17,6 @@ import { useDestinationProject } from './useDestinationProject'
 import { destinationBarModel } from '../lib/exploreBar'
 import {
   projectDestination, readBasket, writeBasket, clearBasket as clearStoredBasket, mergeBasketMeta,
-  compareAvailability, futuresUrl,
 } from '../lib/exploreDestination'
 import { safeSessionStorage } from '../lib/explorationDraft'
 import { EXPLORE_COPY } from '../lib/explorationCopy'
@@ -104,21 +103,15 @@ export default function DesignMode() {
   // 항상 status=all로 한 번만 받고 렌즈별로 클라이언트 필터링:
   // - 과목쌍 렌즈는 candidate(AI 제안)를 점선으로 항상 노출 (빈 쌍 문제 완화)
   // - 나머지 렌즈는 "AI 제안 포함" 토글을 따름 (기존 동작 유지)
-  // refreshTick은 온디맨드 AI 탐색 완료 후 재조회 트리거
-  const [refreshTick, setRefreshTick] = useState(0)
-  const refreshGraph = useCallback(() => {
-    invalidateGraphCache() // 탐색으로 링크가 추가됐으므로 공유 캐시 무효화
-    setRefreshTick(t => t + 1)
-  }, [])
   useEffect(() => {
     let cancelled = false
-    if (refreshTick === 0) setLoading(true) // 백그라운드 갱신은 로딩 화면 없이
+    setLoading(true)
     fetchGraphData('all')
       .then(data => { if (!cancelled) setGraphData(data) })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [refreshTick])
+  }, [])
 
   // published만 남긴 그래프 (계열·이웃 렌즈의 기본 뷰)
   const publishedGraph = useMemo(() => {
@@ -198,12 +191,6 @@ export default function DesignMode() {
   }
 
   const basketList = [...basket]
-  // 미래보기 비교 — 2~7개만. 넘치면 임의로 자르지 않고 버튼을 막고 이유를 보인다.
-  const compare = compareAvailability(basketList.length)
-  const openCompare = () => {
-    if (!compare.ok) return
-    navigate(futuresUrl({ keys: basketList, destination }))
-  }
   const [showCoach, setShowCoach] = useState(false)
 
   return (
@@ -295,7 +282,7 @@ export default function DesignMode() {
               <PairLens graph={graphData} subjects={subjects} subjectGroups={subjectGroups} pair={pair}
                 onPickPair={(p) => patchParams({ a: p[0], b: p[1] })}
                 basket={basket} onToggleBasket={toggleBasket} onOpenNeighbor={openNeighbor}
-                subjectLinkCounts={subjectLinkCounts} onGraphRefresh={refreshGraph} />
+                subjectLinkCounts={subjectLinkCounts} />
             )}
             {lens === 'theme' && (
               <ThemeLens graph={graphData} query={query} onQuery={(q) => patchParams({ q })} level={level}
@@ -342,20 +329,11 @@ export default function DesignMode() {
             ))}
             {basketList.length > 6 && <span className="text-[11px] text-gray-400 self-center whitespace-nowrap">외 {basketList.length - 6}</span>}
           </div>
-          <div className="ml-auto flex items-center gap-2 shrink-0">
-            {!compare.ok && (
-              <span className="hidden md:inline text-[11px] text-text-secondary whitespace-nowrap">
-                {compare.reason === 'tooMany' ? EXPLORE_COPY.graph.tooMany : EXPLORE_COPY.graph.tooFew}
-              </span>
-            )}
-            {destination.type === 'new' && (
-              <Button variant="secondary" size="sm" onClick={startProject}>{EXPLORE_COPY.graph.startProject}</Button>
-            )}
-            <Button variant="primary" size="sm" onClick={openCompare} disabled={!compare.ok}
-              title={compare.ok ? undefined : (compare.reason === 'tooMany' ? EXPLORE_COPY.graph.tooMany : EXPLORE_COPY.graph.tooFew)}>
-              {EXPLORE_COPY.graph.compare}
-            </Button>
-          </div>
+          {destination.type === 'new' && (
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+              <Button variant="primary" size="sm" onClick={startProject}>{EXPLORE_COPY.graph.startProject}</Button>
+            </div>
+          )}
         </div>
       )}
     </div>

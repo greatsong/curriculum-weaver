@@ -48,26 +48,16 @@ curriculum-weaver/
 - **기능**: 첫 진입 카메라 다이브+교과군 스태거 점등, 노드 선택(펄스 링·이웃 하이라이트·상세 카드·"다음 연결로 여행"), 자동 투어(교과군 스톱별 캡션+궤도 선회), 칩=조명 스위치(끄면 감광, 더블클릭=솔로), idle 오토로테이트. URL이 상태 기록: `?subjects=&levels=&focus=&tour=1` — DesignMode의 toExplore 이월과 호환
 - **QA 주의**: 헤드리스/백그라운드 탭은 rAF 정지 + 뷰포트 0×0(모바일 오인) — dev 한정 `window.__nebula.frame(t)` 수동 펌프로 검증(프로덕션 제외). 씬 재생성 시 sceneEpoch로 선택/필터 재주입
 
-## 미래 지도 — 비교용 세 번째 판 (2026-10-03, /future-map)
+## 제거한 비본질 AI 기능 (2026-10-10)
 
-워크스페이스 첫 화면 "미래 지도" 버튼. 기존 `/futures`(미래 보기, #133)·`/futures2`(타임스톤, 코덱스)와 **파일·API·캐시를 완전히 분리**한 비교용 판. 사용자가 셋을 보고 하나를 고른 뒤 나머지를 지운다.
+AI 비용과 유지 부담을 줄이려고 핵심 설계 흐름(절차·채팅·보드·자료 분석·성취기준 추천) 밖의 AI 기능을 걷어 냈다. 다시 살릴 때는 이 커밋 이전 기록을 참고한다.
 
-- **그래프 단위 = 과목**(사용자 손그림): 큰 원 하나 = 과목, 원 안에 과목 이름 + 그 과목에서 고른 성취기준 코드(코드마다 표식 ●◆▲■, 키워드도 같은 표식 → 소속이 늘 보임). 키워드는 원 둘레에 짧은 선. 과목 원들은 360° 바깥 링, 연결된 과목은 멀리 마주 보고 연결선(두 교과색 그라데이션·가산 혼합·강도=밝기)이 가운데를 가로지른다
-- **배치 엔진** `client/src/lib/futureMap/ringLayout.js`(순수 함수, 결정적, 테스트 `__tests__/ringLayout.test.js`는 실제 연결 찾기 출력 6종 고정 자료). 1,232px에서 표본 6종 겹침 0. 패널 폭 < 1,160이면 1,160으로 배치 후 viewBox 축소, < 720은 목록 모드
-- **서버** `server/services/futureMapGenerator.js`(미래 보기 생성기에서 갈라짐) + `routes/futureMap.js` → `/api/future-map`(catalog·bridges·카드). 추가 규칙: ① 연결은 서로 다른 과목 사이만(한 과목뿐이면 그 안에서) — 프롬프트 6-1·검토 쌍 목록·V9-1 ② 동사형 키워드 제거 V5-1(`hasVerbTail`: ~한다·받침ㄴ+다·~하는). 캐시 접두 `fmap-bridge:v1:`/`fmap-future:v1:`, 큐 env `FUTURE_MAP_QUEUE_CONCURRENCY`, limiter `futureMapLimiter`
-- 카드(3×3)·고르기·근거 목록·문구는 #133 것을 복제해 `fm-` 접두로 분리(`pages/future-map.css`, `lib/futureMap/copy.js`). 기존 두 판 파일은 건드리지 않는다
-
-## 미래 보기 — 타임스톤 (2026-10-02)
-
-`/futures` (워크스페이스 첫 화면 "미래 보기" 버튼). 성취기준 2~6개 → "타임스톤으로 수업의 미래 보기" → ① 키워드 성운 ② 미래 마방진(3×3).
-
-- **흐름**: 성취기준을 넣는 순간(0.7초 뒤) 서버가 연결을 찾는다(`POST /api/futures/bridges`, ~6초). 누르면 8개를 한꺼번에 생성(`POST /api/futures`, 연결 찾기 포함 ~9초), 카드는 준비되는 대로 채워진다
-- **① 키워드 성운** (`components/futures/KeywordNebula.jsx`, 배치는 `lib/futures.js` `nebulaLayout` — 순수 함수·테스트): 성취기준 = 교과 색 성운, 둘레 별 = 원문 키워드, 만나는 키워드는 굵은 흰 글씨 + 초록 선 + 연결 이름. 이름표는 키워드를 가리지 않는 자리를 고른다. 좁은 화면은 글씨 크기를 지키고 가로 스크롤
-- **연결 찾기** (`futuresGenerator.js` `buildBridgePrompt`/`parseBridges`): 성취기준별 원문 키워드 3~5개 + 서로 다른 성취기준 키워드 사이 연결 0~7개. **키워드는 원문 부분 문자열만**(공백·가운뎃점 무시 대조), 연결 끝은 검증된 키워드만, 엮이지 않은 성취기준은 서버가 계산. 캐시 `bridge:v2:`(모델 무관), 실패해도 미래는 생성
-- **② 미래 마방진** (`components/futures/FuturesSquare.jsx`): 가운데 타임스톤 별, 둘레 8칸 = 관점 8개(`FUTURE_LENSES`, 왼쪽 위부터 시계 방향). 꼭지 k가 자기 칸을 가리키고 준비되면 켜짐. **카드 = 제목 + 2문장(100자 이내, '~한다')** — 차시·단계·평가는 쓰지 않는다. 연결 축(만나는 키워드)은 한 줄, 솔직한 메모는 ⓘ 툴팁. 담기·"이 수업으로 시작"은 기존 `cw_design_basket` → `/workspaces?createProject=1`
-- **미래 생성** (`generateFuture`): 캐시 `future:v5:{model}:{keys}#{index}`, 빠른=Sonnet 5.5·정밀=Opus 5.5(effort medium). 설명이 길면 문장 경계에서 자름(`clampPitch`, 140자)
-- **부하 보호**: 서버 전체 동시 생성 상한 `futuresQueue`(기본 80 = 10명×8, env `FUTURES_QUEUE_CONCURRENCY`) — 채팅과 같은 API 키의 분당 출력 한도를 다 쓰지 못하게. 생성 요청 사용자당 분당 40회(`futuresLimiter`, GET 제외). 캐시는 Supabase `scenario_cache` + 메모리(600개)
-- **디자인 원칙(사용자 확정)**: 닥터 스트레인지 느낌은 살리되 깔끔하게 — 과한 입자·폭발·잔상 금지. 전체 타임스톤 초록, **별 꼭지만 엔드게임 스톤 6색**, 키워드 가독성 우선. CSS는 `.futures-root` 아래로만(`pages/futures.css`, 키프레임 `fu-` 접두)
+- **미래 보기 네 판** (`/futures-lab`·`/futures2`·`/futures`·`/future-map`): 페이지·컴포넌트·CSS·`lib/futures*`·`lib/futureMap`·`futures2Scene.js` 등 전용 모듈, 서버 `/api/futures`·`/api/futures2`·`/api/future-map` 라우터·생성기·전용 limiter 삭제. 옛 주소는 `/graph`로 보낸다(App.jsx `REMOVED_FUTURES_PATHS`). 탐색 시작 화면(/explore)의 2·3단계(아이디어 비교 → A-3로 보내기)와 담기 줄의 "미래보기로 비교" 버튼도 함께 없앴다. `scenario_cache` 테이블은 교과 연결 시나리오가 계속 사용한다
+- **탐색 초안 잔여 경로**: 미래보기가 만들던 A-3 인계 초안(localStorage `cw_exploration_draft:*`)은 새로 생기지 않는다. 이미 도착한 초안을 대화 입력창에 넣고 반영 상태를 따라가는 경로(`ExplorationDraftStrip`·`lib/explorationDraft.js`의 `A3_PROCEDURE`·`HANDOFF_HEADER`·chatStore 연동)만 남겼다
+- **AI 수업 설계 시뮬레이션**: `/demo` 화면(DemoMode), 프로젝트 헤더의 "이어서 시뮬레이션", 서버 `POST /api/demo/generate`·`/continue` 삭제. `server/routes/demo.js`에는 **시연 모드 부트스트랩(`POST /api/demo/bootstrap`)만** 남는다. 기존 시뮬레이션 프로젝트(status `simulation`)는 읽기 전용으로 계속 열리고, `simulation_runs` 테이블·`lib/simulationRuns.js`(부팅 시 중단 작업 정리)는 유지
+- **그래프 AI 채팅** `POST /api/standards/graph/chat`, **과목쌍 AI 탐색** `POST /api/standards/pairs/explore`·`GET /pairs/jobs/:id`(`services/pairExplorer.js`, PairLens의 AI 탐색 버튼) 삭제. DB의 기존 candidate 링크와 PairLens의 과목쌍 보기는 그대로
+- **교과 연결 시나리오는 한 장면만**: "다른 아이디어"(variant 1~5)를 없앴다. `POST /api/standards/links/scenario`는 variant가 없거나 0일 때만 받고 그 밖의 값은 400. 캐시 키는 예전 variant 0과 같다
+- **죽은 코드** `services/standardsExtractor.js` 삭제. **모델 선택 UI**(호스트 설정 마법사·워크스페이스 설정)는 내렸다. 서버가 `ai_config.model`을 읽지 않기 때문이며, 저장 형식(`ai_config: { model }`)은 그대로 둔다
 
 ## 자료 업로드 분석 파이프라인 (2026-07-12 성능 개선)
 
@@ -93,7 +83,6 @@ curriculum-weaver/
 - **AI**: `buildSystemPrompt({ skippedCodes })` — procedure_advance가 생략 절차를 건너뜀, [생략된 절차] 섹션 주입, 정합성 점검은 "(팀 결정으로 생략됨)" 표기, 이전 절차 요약에서 생략 절차 제외. T-2-1 생략 시 역할을 짐작하거나 '미정'으로 단정하지 말라는 안내 추가. procedure-intro는 스킵 절차 400
 - **보고서**: procedureStatus 'skipped' 분기, 진행률 분모=활성 절차 수, 본문에 "팀 합의로 생략(사유)" 블록. T-2-1이 생략되면 남은 역할표에서 '참여 선생님'·'참여 교과'를 뽑지 않음
 - **핵심 절차의 기존 생략 기록**: 코어 목록이 바뀌어도 DB의 생략 행은 지우지 않는다. 해제 버튼(`isSkipped ||` 조건)과 DELETE(코어 검사 없음)는 코어에도 동작
-- **데모**: 스킵 프로젝트는 이어서 시뮬레이션 400 차단 (잔여판정·복제·프롬프트가 스킵 미인식 — 전면 지원은 별도 작업)
 - **UI**: ProcedureCanvas 헤더 버튼(host) + 생략 배너 + 읽기전용, ProcedureNav 취소선·분모 제외, 스킵 절차 클릭=로컬 열람만(커서 PATCH 안 함). 진행률·stale 체인에서 스킵 제외
 - **명칭 규칙**: 사용자 노출 문구는 반드시 displayCode(`getProcedureLabel`/`getProcedureDisplayCode`) — 내부 코드(T-1-1)는 DB·API 전용
 - 주의: DesignBoard.jsx·StageNav.jsx는 **미사용 레거시**(import 0건)라 스킵 미반영. WorkspaceDetailPage·HostSetupWizard의 `hiddenProcedures` 설정 UI는 **소비처 없는 유령 설정**(별도 정리 필요, 스킵과 다른 개념)

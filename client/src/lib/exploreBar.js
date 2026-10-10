@@ -3,7 +3,7 @@
  */
 import { getProcedureDisplayCode } from 'curriculum-weaver-shared/constants.js'
 import { EXPLORE_COPY } from './explorationCopy'
-import { A3_PROCEDURE } from './futuresProjectHandoff'
+import { A3_PROCEDURE } from './explorationDraft'
 import { destinationAccess, exploreHubUrl } from './exploreDestination'
 
 const C = EXPLORE_COPY.common

@@ -23,7 +23,7 @@ import { verifyTokenCached } from './middleware/auth.js'
 import { hydrateLinksFromDB } from './lib/linkService.js'
 
 // ── Rate Limiter 임포트 ──
-import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter, ipBackstopLimiter, futuresLimiter, futures2Limiter, futureMapLimiter, scenarioLimiter } from './middleware/rateLimit.js'
+import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter, ipBackstopLimiter, scenarioLimiter } from './middleware/rateLimit.js'
 import { isValidRoomId, checkJoinAccess } from './lib/socketJoinGuard.js'
 
 // ── 라우트 임포트 ──
@@ -36,11 +36,8 @@ import versionsRouter from './routes/versions.js'
 import activityLogsRouter from './routes/activityLogs.js'
 import { chatRouter } from './routes/chat.js'
 import { standardsRouter } from './routes/standards.js'
-import { futuresRouter } from './routes/futures.js'
 import { materialsRouter } from './routes/materials.js'
 import { principlesRouter } from './routes/principles.js'
-import { futures2Router } from './routes/futures2.js'
-import { futureMapRouter } from './routes/futureMap.js'
 import { reportRouter } from './routes/report.js'
 import { commentsRouter } from './routes/comments.js'
 import { boardsRouter } from './routes/boards.js'
@@ -346,16 +343,9 @@ app.use('/api/chat/procedure-intro', aiChatLimiter)
 // /api/chat/stage-intro는 라우트에서 시연 모드(AI 호출)만 aiChatLimiter를 건다. 정적 안내는 일반 한도만 적용
 
 // AI 비용 큰 공개 엔드포인트 보호
-app.use('/api/demo/generate', aiChatLimiter)
-app.use('/api/standards/graph/chat', aiChatLimiter)
 app.use('/api/standards/recommend-ai', aiChatLimiter)
-// 과목쌍 탐색 시작만 제한 — 상태 폴링(/pairs/jobs)은 일반 API 한도로 충분
-app.use('/api/standards/pairs/explore', aiChatLimiter)
 // 수업 시나리오 생성 — 일반 한도(분당 240회)만 걸려 있던 AI 경로
 app.use('/api/standards/links/scenario', scenarioLimiter)
-app.use('/api/futures2', futures2Limiter)
-app.use('/api/future-map', futureMapLimiter)
-app.use('/api/futures', futuresLimiter)
 
 // 파일 업로드: 분당 5회 (사용자당)
 app.use('/api/materials/upload', uploadLimiter)
@@ -390,6 +380,7 @@ app.get('/api/keepalive', async (req, res) => {
 // ── 라우트 마운트 ──
 
 // ─ 인증 불필요 라우트 (먼저 배치) ─
+// 시연 모드(임용 실연 준비) 부트스트랩만 남아 있다 (POST /api/demo/bootstrap, 라우트에서 requireAuth)
 app.use('/api/demo', demoRouter)
 
 // 인증
@@ -398,15 +389,8 @@ app.use('/api/auth', authRouter)
 // 성취기준 (공개)
 app.use('/api/standards', standardsRouter)
 
-// 미래 보기 (성취기준 2~6개 → 수업의 미래들)
-app.use('/api/futures', futuresRouter)
-
 // 설계 원리 (공개)
 app.use('/api/principles', principlesRouter)
-
-// 미래 보기 2: 성취기준 2~6개로 수업의 미래를 그린다 (인증 필요)
-app.use('/api/futures2', futures2Router)
-app.use('/api/future-map', futureMapRouter) // 미래 지도(비교용 별개 판)
 
 // 설계 보드
 app.use('/api/boards', boardsRouter)

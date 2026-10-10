@@ -2,7 +2,7 @@
  * ExplorationContextBar — 탐색 화면 머리 줄. "보낼 곳"과 반영 상태를 한 줄에 한 번만 보여 준다.
  * (예전 ExplorationStatus를 대체. 접근성 이름 "탐색 대상과 반영 상태"는 그대로 유지)
  *
- * 모든 화면에서 기존 밝은 앱 색(index.css 토큰)으로 그린다. 교육과정 성운·미래보기에서도
+ * 모든 화면에서 기존 밝은 앱 색(index.css 토큰)으로 그린다. 교육과정 성운에서도
  * 장면 위에 겹치지 않고, 어두운 장면 영역 바로 위의 밝은 줄로 둔다(2026-10-03 사용자 결정).
  * status: 공용 상태 사전의 키(UI_COPY.status) — 예: 'exploring', 'readOnly'.
  *         사전에 없는 상태만 statusLabel·statusTone으로 직접 준다.

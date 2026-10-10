@@ -29,7 +29,7 @@ export default function NeighborLens({ graph, focusKey, onFocus, level, basket, 
   const [trail, setTrail] = useState([]) // 방문 경로 (key[])
   const [query, setQuery] = useState('')
   const [pickSubject, setPickSubject] = useState('') // 빈 상태의 "내 교과 선택" 진입로
-  const { scenario, openScenario, closeScenario, moreIdea, setActiveIndex } = useScenario()
+  const { scenario, openScenario, closeScenario } = useScenario()
   // 1:N 시나리오 — 맥락 카드 다중 선택 (최대 4, key)
   const [picked, setPicked] = useState(() => new Set())
 
@@ -270,7 +270,7 @@ export default function NeighborLens({ graph, focusKey, onFocus, level, basket, 
 
       {/* 실생활 문제 시나리오 패널 */}
       {scenario && (
-        <ScenarioPanel scenario={scenario} onClose={closeScenario} onMore={moreIdea} onNav={setActiveIndex}
+        <ScenarioPanel scenario={scenario} onClose={closeScenario}
           subjectOf={(key) => nodeByKey.get(key)?.subject}
           standardOf={(key) => nodeByKey.get(key)}
           basket={basket} onToggleBasket={onToggleBasket} />
@@ -318,7 +318,7 @@ export default function NeighborLens({ graph, focusKey, onFocus, level, basket, 
       )}
 
       {neighbors.length === 0 && (
-        <p className="text-sm text-gray-400 py-6 text-center">이 성취기준은 아직 검증된 연결이 없습니다 — AI 탐색에서 제안받아 보세요.</p>
+        <p className="text-sm text-gray-400 py-6 text-center">이 성취기준은 아직 검증된 연결이 없습니다.</p>
       )}
     </div>
   )

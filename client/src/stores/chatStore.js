@@ -6,8 +6,7 @@ import { useProjectStore } from './projectStore'
 import { useWorkspaceStore } from './workspaceStore'
 import { pushToast } from './toastStore'
 import { PROCEDURES, BOARD_TYPES, BOARD_TYPE_LABELS, normalizeProcedureCode, getProcedureLabel } from 'curriculum-weaver-shared/constants.js'
-import { HANDOFF_HEADER } from '../lib/futuresProjectHandoff'
-import { applyDraftEvent, safeLocalStorage } from '../lib/explorationDraft'
+import { HANDOFF_HEADER, applyDraftEvent, safeLocalStorage } from '../lib/explorationDraft'
 import { sameJson } from '../lib/sameJson'
 import { isBriefProcedure, stripEmptyBoardFields } from 'curriculum-weaver-shared/briefMode.js'
 import { workflowConfigForProject } from '../lib/projectWorkspace'
@@ -226,7 +225,7 @@ export const useChatStore = create((set, get) => ({
   boardSuggestions: [],
   stageAdvanceSuggestion: null,
 
-  // ── 미래보기 탐색 초안 → 대화 입력창 ──
+  // ── 탐색 초안 → 대화 입력창 ──
   // composerDraft: ChatPanel이 한 번 읽어 입력창에 넣고 비운다. 자동 전송하지 않는다.
   // explorationDraftLink: 입력창에 넣은 초안 — 교사가 그 내용을 보내면 초안 상태를 '대화에 보냄'으로 바꾸고,
   //   그 응답에서 나온 제안에 fromExploration(초안 id)을 붙여 수락·거부 결과를 초안에 기록한다.

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   parseDestination, withDestination, basketStorageKey, readBasket, writeBasket, clearBasket,
-  compareAvailability, futuresUrl, graphUrl, exploreHubUrl, projectPath, destinationAccess,
+  graphUrl, exploreHubUrl, projectPath, destinationAccess,
   NEW_BASKET_KEY, LEGACY_BASKET_KEY, NEW_DESTINATION, projectDestination, mergeBasketMeta, readBasketMeta,
 } from '../exploreDestination'
 
@@ -94,17 +94,9 @@ describe('목적지별 담기 키', () => {
   })
 })
 
-describe('비교 가능 개수와 주소', () => {
-  it('2~7개만 비교하고, 넘치면 자르지 않고 막는다', () => {
-    expect(compareAvailability(1)).toEqual({ ok: false, reason: 'tooFew' })
-    expect(compareAvailability(2).ok).toBe(true)
-    expect(compareAvailability(7).ok).toBe(true)
-    expect(compareAvailability(8)).toEqual({ ok: false, reason: 'tooMany' })
-  })
+describe('주소', () => {
   it('주소에 보낼 곳을 함께 싣는다', () => {
     const dest = projectDestination('p1')
-    expect(futuresUrl({ keys: ['k1', 'k2'], destination: dest })).toBe('/futures-lab?codes=k1%2Ck2&project=p1')
-    expect(futuresUrl({ keys: [], destination: NEW_DESTINATION })).toBe('/futures-lab')
     expect(graphUrl({ mode: 'design', lens: 'pair', destination: dest })).toBe('/graph?mode=design&lens=pair&project=p1')
     expect(graphUrl({ mode: 'explore', destination: NEW_DESTINATION })).toBe('/graph?mode=explore')
     expect(exploreHubUrl(dest)).toBe('/explore?project=p1')

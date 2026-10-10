@@ -23,10 +23,7 @@
  * - GET  /api/standards/project/:projectId              — 프로젝트 성취기준 조회
  * - POST /api/standards/upload                          — 벌크 업로드
  * - DELETE /api/standards/all                           — 전체 초기화
- * - POST /api/standards/graph/chat                      — AI 그래프 채팅 (SSE)
- * - POST /api/standards/graph/add-links                 — AI 추천 링크 추가
- * - POST /api/standards/pairs/explore                   — 과목쌍 온디맨드 AI 탐색 시작
- * - GET  /api/standards/pairs/jobs/:jobId               — 탐색 잡 상태 폴링
+ * - POST /api/standards/graph/add-links                 — 링크 추가 (관리자 전용)
  */
 import { Router } from 'express'
 import { readFileSync } from 'fs'
@@ -39,7 +36,6 @@ import { semanticSearch, isSemanticSearchAvailable, semanticUnavailableReason } 
 import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { persistLinks, persistLinkStatus } from '../lib/linkService.js'
-import { startPairExploration, getPairJob } from '../services/pairExplorer.js'
 import {
   searchStandards, getStandardsByProject,
   addStandardToProject, removeStandardFromProject, resolveStandardId,
@@ -415,6 +411,12 @@ standardsRouter.get('/links/reports', requireAuth, requireAdmin, async (req, res
   }
 })
 
+/** 시나리오 variant 값이 기본 장면(없음·0)인지 판정한다. 숫자 0과 문자열 '0'만 허용한다. */
+export function isDefaultScenarioVariant(value) {
+  if (value === undefined || value === null || value === '') return true
+  return value === 0 || value === '0'
+}
+
 // 시나리오 단일 비행: 같은 키의 동시 요청은 첫 생성을 함께 기다린다
 // (중복 클릭이 병렬 생성 2개를 만들고, 진 쪽 실패가 클라이언트의 성공 화면을 덮던 버그)
 const scenarioInflight = new Map() // key → Promise<scenario>
@@ -424,7 +426,8 @@ const scenarioInflight = new Map() // key → Promise<scenario>
  * 실생활 문제 시나리오 — 개념 성취기준 1개 × 맥락 성취기준 1~4개를 연결해
  * "그 개념 없이는 답할 수 없는" 진짜 문제 상황을 생성한다.
  * 코드 집합당 1개 캐시(scenario_cache) — 같은 조합의 재요청은 즉시 반환.
- * body: { concept_code, context_codes: string[] }
+ * 조합마다 기본 한 장면(variant 0)만 만든다. variant에 0이 아닌 값이 오면 400.
+ * body: { concept_code, context_codes: string[], angle? }
  *       (구버전 호환: { source_code, target_code, focus_code } — 1:1로 매핑)
  */
 standardsRouter.post('/links/scenario', requireAuth, async (req, res) => {
@@ -453,13 +456,16 @@ standardsRouter.post('/links/scenario', requireAuth, async (req, res) => {
     }
     if (contexts.length === 0) return res.status(400).json({ error: '맥락 성취기준이 1개 이상 필요합니다.' })
 
-    // variant: '다른 아이디어' — 같은 조합의 대안 시나리오. 0=기본, 1~5=대안(캐시키 분리)
-    const variant = Math.max(0, Math.min(5, parseInt(body.variant, 10) || 0))
+    // 시나리오는 조합마다 기본 한 장면(variant 0)만 제공한다. 예전의 '다른 아이디어'(variant 1~5)는 제거했다.
+    // 값을 보내지 않거나 0이면 기본 장면, 그 밖의 값은 거절한다 (캐시된 variant 0은 그대로 사용).
+    if (!isDefaultScenarioVariant(body.variant)) {
+      return res.status(400).json({ error: '시나리오는 기본 한 장면만 제공합니다. 다른 아이디어 요청은 지원하지 않습니다.' })
+    }
     // angle: 선택적 맥락 힌트(넛지 프리셋 등) — 상황을 특정 방향으로 유도. 캐시키에 반영.
     const angle = typeof body.angle === 'string' ? body.angle.trim().slice(0, 120) : ''
-    // 1. 캐시 조회 — 같은 조합+variant+angle은 같은 시나리오 (팀 간 공유, 비용 1회)
+    // 1. 캐시 조회 — 같은 조합+angle은 같은 시나리오 (팀 간 공유, 비용 1회)
     const angleTag = angle ? '@' + Buffer.from(angle).toString('base64').slice(0, 12) : ''
-    const key = [concept.code, ...contexts.map(c => c.code)].sort().join('|') + (variant ? `#${variant}` : '') + angleTag
+    const key = [concept.code, ...contexts.map(c => c.code)].sort().join('|') + angleTag
     const { data: cached } = await supabaseAdmin
       .from('scenario_cache').select('scenario')
       .eq('key', key).maybeSingle()
@@ -484,11 +490,8 @@ standardsRouter.post('/links/scenario', requireAuth, async (req, res) => {
     }).join('\n')
 
     const multi = contexts.length > 1
-    const variantDirective = variant > 0
-      ? `\n## ⚠️ 대안 아이디어 (${variant}번째)\n앞서 만든 시나리오와 **뚜렷이 다른 문제 상황·소재·데이터**로 접근하세요. 같은 성취기준을 엮되, 배경(장소·사건·데이터 종류)과 활동 방식을 새롭게 잡아 브레인스토밍처럼 다른 각도를 제시합니다. 진부한 반복 금지.\n`
-      : ''
     const angleDirective = angle ? `\n## 맥락 힌트\n문제 상황을 다음 방향으로 잡으세요: ${angle}\n` : ''
-    const prompt = `당신은 융합 수업 설계 전문가입니다. 아래 성취기준들을 연결하는 "실생활 문제 시나리오" 하나를 만드세요.${variantDirective}${angleDirective}
+    const prompt = `당신은 융합 수업 설계 전문가입니다. 아래 성취기준들을 연결하는 "실생활 문제 시나리오" 하나를 만드세요.${angleDirective}
 
 ## 개념 성취기준 (학생이 배워야 할 도구·개념)
 ${concept.code} [${concept.subject}] ${concept.content}
@@ -644,49 +647,6 @@ standardsRouter.patch('/links/:linkId/status', requireAuth, requireAdmin, async 
     console.warn('[standards] 링크 상태 DB 영속화 실패:', persistResult.error)
   }
   res.json({ ok: true, link, persisted: persistResult.persisted })
-})
-
-// ============================================================
-// 과목쌍 온디맨드 AI 탐색 (설계 모드 PairLens)
-// ============================================================
-
-/**
- * POST /api/standards/pairs/explore
- * 두 과목 사이의 링크 후보를 즉석 생성 (임베딩 순위 상위 후보 → LLM 판정 → candidate 적재).
- *
- * 인증 필수. requireAdmin이 아닌 이유: 결과가 항상 candidate라 published 그래프를
- * 오염시키지 않고, 사용자 일일 쿼터·전역 동시 실행 상한으로 비용이 방어된다.
- * (published 승격은 기존 관리자 검토 경로 유지)
- *
- * @body {{ subjectA: string, subjectB: string }}
- * @returns 202 { job } — 잡 시작(또는 진행 중 잡에 합류)
- * @returns 200 { alreadyExplored } — 최근 탐색 쿨다운 (재판정 불필요)
- */
-standardsRouter.post('/pairs/explore', requireAuth, async (req, res) => {
-  try {
-    const { subjectA, subjectB } = req.body || {}
-    const result = startPairExploration({ subjectA, subjectB, userId: req.user.id })
-    if (result.alreadyExplored) {
-      return res.json({ alreadyExplored: result.alreadyExplored })
-    }
-    res.status(202).json({ job: result.job, joined: result.joined || false })
-  } catch (err) {
-    if (err.status) {
-      return res.status(err.status).json({ error: err.message, code: err.code })
-    }
-    console.error('[standards] 과목쌍 탐색 시작 오류:', err.message)
-    res.status(500).json({ error: 'AI 탐색을 시작하지 못했습니다.' })
-  }
-})
-
-/**
- * GET /api/standards/pairs/jobs/:jobId
- * 탐색 잡 상태 폴링. 완료 시 클라이언트가 그래프를 다시 불러온다.
- */
-standardsRouter.get('/pairs/jobs/:jobId', requireAuth, async (req, res) => {
-  const job = getPairJob(req.params.jobId)
-  if (!job) return res.status(404).json({ error: '탐색 작업을 찾을 수 없습니다. (만료되었을 수 있습니다)' })
-  res.json({ job })
 })
 
 // 특정 성취기준의 연결 조회
@@ -1203,206 +1163,7 @@ ${candidateText}
   }
 })
 
-// ============================================================
-// AI 그래프 채팅 (SSE 스트리밍, 기존 유지)
-// ============================================================
-
-/**
- * POST /api/standards/graph/chat
- * 그래프 탐색 AI 채팅 (SSE 스트리밍)
- *
- * AI가 전체 성취기준과 연결 데이터를 읽고, 새로운 교과 간 연결을 추천.
- */
-standardsRouter.post('/graph/chat', requireAuth, async (req, res) => {
-  const { message, history = [], context = {} } = req.body
-  if (!message?.trim()) {
-    return res.status(400).json({ error: '메시지가 필요합니다.' })
-  }
-
-  // 사용자 입력 길이 제한 (프롬프트 인젝션 방어)
-  if (message.length > 5000) {
-    return res.status(400).json({ error: '메시지가 너무 깁니다. (최대 5,000자)' })
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream')
-  res.setHeader('Cache-Control', 'no-cache')
-  res.setHeader('Connection', 'keep-alive')
-  res.setHeader('X-Accel-Buffering', 'no')
-  res.flushHeaders()
-
-  // 클라이언트 disconnect 감지 — AI 토큰 낭비 방지
-  let clientDisconnected = false
-  req.on('close', () => {
-    clientDisconnected = true
-  })
-
-  try {
-    const allStandards = Standards.list()
-    const graph = StandardLinks.getGraph()
-
-    // 토큰 예산 제한: 시스템 프롬프트를 ~50K 문자 이내로
-    const MAX_PROMPT_CHARS = 50000
-
-    // ===== 1. 현재 그래프에 표시된 노드/연결 (최우선 컨텍스트) =====
-    let visibleSection = ''
-    if (context.visibleNodes?.length > 0) {
-      const visibleNodesSummary = context.visibleNodes.map(n => {
-        let line = `  ${n.code} [${n.subject}/${n.grade_group}/${n.area}]`
-        if (n.school_level) line += ` {${n.school_level}}`
-        line += ` — ${n.content}`
-        return line
-      }).join('\n')
-
-      let visibleLinksSummary = ''
-      if (context.visibleLinks?.length > 0) {
-        visibleLinksSummary = context.visibleLinks.map(l =>
-          `  ${l.source} ↔ ${l.target} [${l.link_type}] ${l.rationale || ''}`
-        ).join('\n')
-      }
-
-      visibleSection = `
-★★★ [현재 그래프에 표시된 노드 — ${context.visibleNodes.length}개] ★★★
-교사가 지금 화면에서 보고 있는 성취기준입니다. 이 노드들을 우선적으로 참조하세요.
-${visibleNodesSummary}
-${visibleLinksSummary ? `
-[현재 보이는 연결 — ${context.visibleLinks.length}개]
-${visibleLinksSummary}` : '[현재 보이는 연결 없음]'}
-`
-    }
-
-    // ===== 2. 포커스 교과군의 추가 성취기준 (보이지 않는 것 포함) =====
-    const focusSubjectGroups = new Set()
-    if (context.selectedNode) {
-      focusSubjectGroups.add(context.selectedNode.subject_group || context.selectedNode.subject)
-    }
-    if (context.filterSubjects?.length > 0) {
-      context.filterSubjects.forEach(s => focusSubjectGroups.add(s))
-    }
-
-    // 보이는 노드의 코드 세트 (중복 제외용)
-    const visibleCodes = new Set((context.visibleNodes || []).map(n => n.code))
-
-    let additionalStandardsSection = ''
-    if (focusSubjectGroups.size > 0) {
-      const additional = allStandards.filter(s =>
-        focusSubjectGroups.has(s.subject_group || s.subject) && !visibleCodes.has(s.code)
-      )
-      if (additional.length > 0) {
-        const schoolLevels = context.schoolLevel || []
-        const filtered = schoolLevels.length > 0
-          ? additional.filter(s => schoolLevels.includes(s.school_level))
-          : additional
-        const summary = filtered.slice(0, 100).map(s =>
-          `${s.code} [${s.subject}] ${s.content}`
-        ).join('\n')
-        additionalStandardsSection = `
-[같은 교과군의 추가 성취기준 — ${filtered.length}개${filtered.length > 100 ? ' (상위 100개)' : ''}]
-그래프에 표시되지 않았지만 새 연결 제안 시 참고할 수 있는 성취기준입니다.
-${summary}`
-      }
-    }
-
-    // ===== 3. 전체 교과군 요약 (간략) =====
-    const groupCounts = new Map()
-    allStandards.forEach(s => {
-      const g = s.subject_group || s.subject
-      groupCounts.set(g, (groupCounts.get(g) || 0) + 1)
-    })
-    const overviewSection = `[전체 교과군 요약 — 총 ${allStandards.length}개 성취기준]\n` +
-      [...groupCounts.entries()].map(([g, cnt]) => `${g}: ${cnt}개`).join(', ')
-
-    // ===== 4. 시스템 프롬프트 조립 =====
-    let systemPrompt = `당신은 2022 개정 교육과정의 교과 간 연결 탐색 전문 AI입니다.
-
-교사가 성취기준 그래프를 탐색하고 있습니다. 교사의 질문에 대해:
-1. 현재 그래프에 표시된 성취기준과 연결을 분석하고 설명합니다.
-2. 아직 발견되지 않은 새로운 교과 간 연결 가능성을 제안합니다.
-3. 특정 주제나 역량 중심의 융합 수업 아이디어를 제시합니다.
-
-한국어로 응답하며, 존댓말을 사용합니다. 성취기준 코드를 반드시 포함해서 답변하세요.
-
-새로운 연결을 제안할 때는 다음 JSON 형식을 사용하세요:
-<new_links>
-[{"source":"[코드]","target":"[코드]","link_type":"cross_subject","rationale":"연결 근거","integration_theme":"두 성취기준을 묶는 융합 주제(예: 에너지와 환경)","lesson_hook":"이 연결로 만들 수 있는 수업 아이디어 한 줄"}]
-</new_links>
-
-- integration_theme: 두 성취기준을 관통하는 융합 주제(명사구, 10자 내외).
-- lesson_hook: 학생이 두 교과를 함께 다루며 수행할 구체적 활동 한 줄.
-  표면적 키워드 일치가 아니라, 과정·기능을 공유하거나 한 교과 산출물이 다른 교과 입력이 되는 실제 융합만 제안하세요.
-
-link_type 종류: cross_subject(교과연계), same_concept(동일개념), prerequisite(선수학습), application(적용), extension(확장)
-같은 교과군 내 연결은 제안하지 마세요. 교과군 간 융합만 다룹니다.
-${visibleSection}${context.selectedNode ? `
-[교사가 선택한 노드]
-${context.selectedNode.code} [${context.selectedNode.subject}/${context.selectedNode.area}] — ${context.selectedNode.content}${context.neighborCodes?.length > 0 ? `\n현재 연결: ${context.neighborCodes.join(', ')}` : ''}
-→ 이 성취기준을 중심으로 답변해주세요.` : ''}${context.filterSubjects ? `
-[교사의 교과 필터] ${context.filterSubjects.join(' × ')}${context.schoolLevel ? ` / 학교급: ${context.schoolLevel.join(', ')}` : ''}` : ''}
-${additionalStandardsSection}
-${overviewSection}`
-
-    // 프롬프트 크기 초과 시 잘라내기 (안전장치)
-    if (systemPrompt.length > MAX_PROMPT_CHARS) {
-      console.warn(`시스템 프롬프트 크기 초과: ${systemPrompt.length}자 → ${MAX_PROMPT_CHARS}자로 잘라냄`)
-      systemPrompt = systemPrompt.slice(0, MAX_PROMPT_CHARS) + '\n\n[컨텍스트가 길어 일부 생략됨]'
-    }
-
-    console.log(`[graph/chat] 프롬프트 크기: ${systemPrompt.length}자, 포커스: ${[...focusSubjectGroups].join(',') || '전체'}, 연결: ${graph.links.length}개`)
-
-    const messages = []
-    // history 각 항목의 content를 5000자로 캡 (최근 6개 × 5000자 상한)
-    for (const msg of history.slice(-6)) {
-      messages.push({
-        role: msg.role === 'user' ? 'user' : 'assistant',
-        content: String(msg.content || '').slice(0, 5000),
-      })
-    }
-    messages.push({ role: 'user', content: message })
-
-    let fullResponse = ''
-    const stream = getAnthropic().messages.stream({
-      model: 'claude-sonnet-5-5',
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages,
-    })
-
-    for await (const event of stream) {
-      if (clientDisconnected) {
-        stream.controller?.abort()
-        break
-      }
-      if (event.type === 'content_block_delta' && event.delta?.text) {
-        fullResponse += event.delta.text
-        res.write(`data: ${JSON.stringify({ type: 'text', content: event.delta.text })}\n\n`)
-      }
-    }
-
-    // <new_links> 추출
-    const linkMatch = fullResponse.match(/<new_links>\s*([\s\S]*?)\s*<\/new_links>/)
-    if (linkMatch) {
-      try {
-        const newLinks = JSON.parse(linkMatch[1])
-        res.write(`data: ${JSON.stringify({ type: 'new_links', links: newLinks })}\n\n`)
-      } catch (e) {
-        console.warn('새 링크 JSON 파싱 실패:', e.message)
-      }
-    }
-
-    res.write(`data: [DONE]\n\n`)
-    res.end()
-  } catch (error) {
-    console.error('그래프 AI 채팅 오류:', error?.message || error)
-    const errMsg = error?.status === 401 ? 'API 키가 유효하지 않습니다.'
-      : error?.status === 429 ? 'API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.'
-      : error?.status === 400 ? 'AI 요청 처리 중 오류가 발생했습니다.'
-      : '응답 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
-    res.write(`data: ${JSON.stringify({ type: 'error', message: errMsg })}\n\n`)
-    res.write(`data: [DONE]\n\n`)
-    res.end()
-  }
-})
-
-// AI가 추천한 링크를 실제로 추가하는 엔드포인트 (관리자 전용)
+// 링크를 실제로 추가하는 엔드포인트 (관리자 전용)
 standardsRouter.post('/graph/add-links', requireAuth, requireAdmin, async (req, res) => {
   const { links } = req.body
   if (!Array.isArray(links) || links.length === 0) {

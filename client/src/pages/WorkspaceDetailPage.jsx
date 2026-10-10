@@ -828,22 +828,7 @@ export default function WorkspaceDetailPage() {
               </div>
             </SettingsSection>
 
-            {/* 1-A: AI 모델 설정 */}
-            <SettingsSection title="AI 모델 설정" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a4 4 0 014 4v1a4 4 0 01-8 0V6a4 4 0 014-4z"/><path d="M16 14H8a4 4 0 00-4 4v2h16v-2a4 4 0 00-4-4z"/></svg>}>
-              <div>
-                <label style={labelStyle}>모델 선택</label>
-                <select
-                  value={aiConfig.model}
-                  onChange={(e) => setAiConfig({ ...aiConfig, model: e.target.value })}
-                  style={inputStyle}
-                >
-                  <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (기본, 빠름)</option>
-                  <option value="claude-opus-5-5">Claude Opus 5.5 (최고 품질, 느림)</option>
-                </select>
-                <p style={hintStyle}>모든 프로젝트에 동일하게 적용됩니다</p>
-              </div>
-            </SettingsSection>
-
+            {/* AI 모델 설정은 내렸다 — 서버가 ai_config.model을 읽지 않는다. 저장값(aiConfig)은 그대로 읽고 되돌려 보낸다 */}
             {/* 1-B: 팀 진행 방식 (1인 기록 / 팀 채팅) */}
             <SettingsSection title="진행 방식" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>}>
               <p style={{ ...hintStyle, marginBottom: 12, marginTop: 0 }}>팀이 채팅에 참여하는 방식을 선택하세요. AI가 질문하는 방식이 달라집니다.</p>

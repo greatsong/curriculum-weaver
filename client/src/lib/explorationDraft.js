@@ -1,6 +1,9 @@
 /**
- * 미래보기 탐색 초안 — 프로젝트별로 이 브라우저의 localStorage에 하나씩 둔다.
+ * 탐색 초안 — 프로젝트별로 이 브라우저의 localStorage에 하나씩 둔다.
  * 키: cw_exploration_draft:<projectId>
+ *
+ * 초안을 만들던 미래보기 화면은 제거했다. 이미 이 브라우저에 도착한 초안을
+ * A-3 대화에 넣고 반영 상태를 따라가는 경로만 남아 있다(새 초안은 생기지 않는다).
  *
  * 상태(저장되는 값):
  *   arrived      초안 도착 — 보내기를 눌렀고 아직 대화에 보내지 않았다
@@ -13,6 +16,14 @@
  *
  * 이 상태는 교사 한 사람의 브라우저에만 있다(서버에 저장하지 않음).
  */
+
+import { EXPLORE_COPY } from './explorationCopy'
+
+/** 탐색 초안을 넣는 절차 — A-3 성취기준 분석(내부 코드 A-2-1, 화면에는 표시 코드만 쓴다) */
+export const A3_PROCEDURE = 'A-2-1'
+
+/** 인계 초안의 첫 줄 — 대화로 보낸 메시지가 초안인지 알아보는 표식 */
+export const HANDOFF_HEADER = EXPLORE_COPY.handoff.header
 
 export const DRAFT_VERSION = 1
 const PREFIX = 'cw_exploration_draft:'

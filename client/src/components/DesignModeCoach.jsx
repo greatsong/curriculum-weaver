@@ -42,7 +42,7 @@ const STEPS = [
   {
     title: '담아서 프로젝트로',
     subtitle: '탐색 → 설계',
-    content: '마음에 드는 성취기준을 담으면(＋) 하단에 트레이가 생깁니다. "미래보기로 비교"를 누르면 담은 성취기준으로 수업 아이디어를 비교하고, 새 프로젝트로 탐색할 때는 "이 조합으로 프로젝트 시작"으로 만들기 화면을 엽니다. 만들기를 마쳐야 저장됩니다. 전체 그림은 우상단 "교육과정 성운"에서 볼 수 있습니다.',
+    content: '마음에 드는 성취기준을 담으면(＋) 하단에 트레이가 생깁니다. 새 프로젝트로 탐색할 때는 "이 조합으로 프로젝트 시작"으로 만들기 화면을 엽니다. 만들기를 마쳐야 저장됩니다. 전체 그림은 우상단 "교육과정 성운"에서 볼 수 있습니다.',
     visual: (
       <div className="flex items-center justify-center gap-2 py-2 text-[11px] text-gray-600">
         <span className="px-2 py-1 bg-gray-100 rounded-lg font-mono">🧺 담기</span>

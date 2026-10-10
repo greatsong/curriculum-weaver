@@ -1,6 +1,6 @@
 /**
  * 프로젝트 화면 탐색 초안 안내 줄 (예전 A3ExplorationEntry 테스트의 단언을 옮김)
- * - 진입은 같은 탭(새 탭 아님), 시연 모드·A-3 밖(초안 없음)에는 입구가 없다
+ * - 초안이 없으면 아무것도 그리지 않는다(미래보기 제거로 탐색 입구·다시 열기 링크 없음)
  * - A-3 밖에서는 안내만, 절차 이동 요청 없음. A-3에서만 대화 입력창에 넣기
  */
 import React, { act } from 'react'
@@ -37,13 +37,12 @@ beforeEach(() => {
 })
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals() })
 
-it('초안이 없으면 A-3에서만 같은 탭 탐색 입구를 보이고, 다른 절차·시연 모드에는 없다', async () => {
+it('초안이 없으면 A-3를 포함한 어느 절차·시연 모드에서도 아무것도 그리지 않는다', async () => {
   await render()
-  const link = host.querySelector('a')
-  expect(link.getAttribute('href')).toBe('/futures-lab?project=p1')
-  expect(link.target).toBe('')
-  await render({ procedure: 'A-2-2' })
+  expect(host.textContent).toBe('')
   expect(host.querySelector('a')).toBeNull()
+  await render({ procedure: 'A-2-2' })
+  expect(host.textContent).toBe('')
   await render({ project: { ...project, learner_context: { demo: true } } })
   expect(host.textContent).toBe('')
 })

@@ -1,6 +1,9 @@
 /**
  * ExplorationDraftStrip — 프로젝트 화면의 탐색 초안 안내 줄 (예전 A3ExplorationEntry를 대체).
  *
+ * 초안을 만들던 미래보기 화면은 제거했다. 이 브라우저에 이미 도착한 초안이 있을 때만 그린다
+ * (초안이 없으면 아무것도 그리지 않는다. 예전의 탐색 입구·다시 열기 링크는 없앴다).
+ *
  * - 모든 절차에서 보인다. A-3가 아닌 절차에서는 안내만 하고, 절차를 옮기지 않는다
  *   (팀 커서 PATCH·소켓·인트로 요청 없음 — 이 부품은 절차 변경 함수를 받지도 않는다).
  * - A-3에서는 "대화 입력창에 넣기"로 초안을 채팅 입력창에 넣는다. 자동으로 보내지 않는다.
@@ -16,9 +19,7 @@ import { useChatStore } from '../stores/chatStore'
 import { apiGet } from '../lib/api'
 import { EXPLORE_COPY } from '../lib/explorationCopy'
 import { UI_COPY } from '../lib/uiCopy'
-import { A3_PROCEDURE } from '../lib/futuresProjectHandoff'
-import { readDraft, removeDraft, applyDraftEvent, subscribeDraft, viewStatus, safeLocalStorage } from '../lib/explorationDraft'
-import { futuresUrl, projectDestination } from '../lib/exploreDestination'
+import { A3_PROCEDURE, readDraft, removeDraft, applyDraftEvent, subscribeDraft, viewStatus, safeLocalStorage } from '../lib/explorationDraft'
 
 const T = EXPLORE_COPY.strip
 
@@ -50,7 +51,6 @@ export default function ExplorationDraftStrip({ project, procedure, readOnly = f
 
   const atA3 = procedure === A3_PROCEDURE
   const canWrite = !readOnly && project?.my_role !== 'viewer'
-  const reopenHref = futuresUrl({ keys: [], destination: projectDestination(projectId) })
 
   const insert = useCallback(() => {
     if (!draft || !canWrite) return
@@ -73,17 +73,7 @@ export default function ExplorationDraftStrip({ project, procedure, readOnly = f
   }
 
   if (!project || project.learner_context?.demo === true) return null
-
-  // 초안이 없을 때: A-3에서만 탐색 입구를 짧게 보인다(다른 절차는 헤더의 아이디어 탐색 버튼으로 충분)
-  if (!draft) {
-    if (!atA3 || !canWrite) return null
-    return (
-      <Notice flush tone="neutral" icon={Compass} title={T.entryTitle} aria-label={T.regionLabel}
-        actions={<Button variant="secondary" size="sm" to={reopenHref}>{T.entryAction}</Button>}>
-        {T.entryBody}
-      </Notice>
-    )
-  }
+  if (!draft) return null
 
   const view = viewStatus(draft, pendingSuggestions)
   const viewButton = (
@@ -113,7 +103,7 @@ export default function ExplorationDraftStrip({ project, procedure, readOnly = f
   } else if (view === 'sent' || view === 'reviewing') {
     notice = (
       <Notice flush tone="info" icon={Compass} title={T.sentTitle} aria-label={T.regionLabel}
-        actions={<>{viewButton}<Button variant="secondary" size="sm" to={reopenHref}>{T.reopen}</Button></>}>
+        actions={viewButton}>
         <ol aria-label={T.stepsLabel} className="list-none m-0 mt-1 p-0 flex flex-wrap items-center gap-1.5">
           <li><StatusChip status="sent" label={`${T.steps.sent} ${timeOf(draft.sentAt)}`.trim()} live={false} /></li>
           <li aria-hidden="true"><ChevronRight size={14} className="text-text-secondary" /></li>

@@ -20,23 +20,23 @@ export const scenarioPairKey = (conceptKey, contextKeys, angle = '') =>
   pairId(conceptKey, ...(Array.isArray(contextKeys) ? contextKeys : [contextKeys])) + (angle ? '@' + angle : '')
 
 export function useScenario() {
-  // state: { pairKey, conceptCode(key), contexts(key[]), items:[{data,cached}|{error}], activeIndex, loading }
+  // state: { pairKey, conceptCode(key), contexts(key[]), angle, result: {data,cached}|{error}|null, loading }
+  // 조합마다 기본 한 장면만 보여 준다(예전의 '다른 아이디어'는 제거했다).
   const [state, _setState] = useState(null)
   const stateRef = useRef(null)
   const setState = useCallback((v) => { stateRef.current = v; _setState(v) }, [])
-  const inflightRef = useRef(new Set()) // `${pairKey}#${variant}` (중복 클릭 차단)
+  const inflightRef = useRef(new Set()) // pairKey (중복 클릭 차단)
 
-  // 특정 variant 생성 — items[variant]에 채운다. 서버는 끊겨도 생성을 이어가 캐시에 넣으므로 재요청 안전.
-  const fetchVariant = useCallback(async (pairKey, conceptCode, contexts, variant, angle = '') => {
-    const flightKey = `${pairKey}#${variant}`
-    if (inflightRef.current.has(flightKey)) return
-    inflightRef.current.add(flightKey)
+  // 시나리오 생성 — result에 채운다. 서버는 끊겨도 생성을 이어가 캐시에 넣으므로 재요청 안전.
+  const fetchScenario = useCallback(async (pairKey, conceptCode, contexts, angle = '') => {
+    if (inflightRef.current.has(pairKey)) return
+    inflightRef.current.add(pairKey)
     try {
       let data, cached
       for (let attempt = 0; ; attempt++) {
         try {
           ;({ scenario: data, cached } = await apiPost('/api/standards/links/scenario', {
-            concept_code: conceptCode, context_codes: contexts, variant, angle,
+            concept_code: conceptCode, context_codes: contexts, angle,
           }, { timeoutMs: 180_000 }))
           break
         } catch (err) {
@@ -47,19 +47,17 @@ export function useScenario() {
       }
       const s = stateRef.current
       if (s?.pairKey !== pairKey) return // 그 사이 다른 조합을 열었으면 버림
-      const items = [...s.items]; items[variant] = { data, cached }
-      setState({ ...s, items, activeIndex: variant, loading: false })
+      setState({ ...s, result: { data, cached }, loading: false })
     } catch (err) {
       const s = stateRef.current
       if (s?.pairKey !== pairKey) return
       const isTimeout = /초과/.test(err.message || '')
-      const items = [...s.items]
-      items[variant] = { error: isTimeout
+      const result = { error: isTimeout
         ? '생성이 오래 걸리고 있어요 — 잠시 후 다시 누르면 완성된 시나리오가 바로 열립니다.'
         : (err.message || '생성에 실패했습니다') }
-      setState({ ...s, items, activeIndex: variant, loading: false })
+      setState({ ...s, result, loading: false })
     } finally {
-      inflightRef.current.delete(flightKey)
+      inflightRef.current.delete(pairKey)
     }
   }, [setState])
 
@@ -67,29 +65,13 @@ export function useScenario() {
     const contexts = Array.isArray(contextKeys) ? contextKeys : [contextKeys]
     const angle = opts.angle || ''
     const pairKey = scenarioPairKey(conceptKey, contexts, angle)
-    if (stateRef.current?.pairKey === pairKey && stateRef.current.items[0]?.data) return
-    setState({ pairKey, conceptCode: conceptKey, contexts, angle, items: [], activeIndex: 0, loading: true })
-    fetchVariant(pairKey, conceptKey, contexts, 0, angle)
-  }, [setState, fetchVariant])
-
-  // 다른 아이디어 — 다음 variant 생성(최대 6개: 0~5)
-  const moreIdea = useCallback(() => {
-    const s = stateRef.current
-    if (!s || s.loading) return
-    const variant = s.items.length
-    if (variant > 5) return
-    setState({ ...s, loading: true, activeIndex: variant })
-    fetchVariant(s.pairKey, s.conceptCode, s.contexts, variant, s.angle || '')
-  }, [setState, fetchVariant])
-
-  const setActiveIndex = useCallback((i) => {
-    const s = stateRef.current
-    if (!s || i < 0 || i >= s.items.length) return
-    setState({ ...s, activeIndex: i })
-  }, [setState])
+    if (stateRef.current?.pairKey === pairKey && stateRef.current.result?.data) return
+    setState({ pairKey, conceptCode: conceptKey, contexts, angle, result: null, loading: true })
+    fetchScenario(pairKey, conceptKey, contexts, angle)
+  }, [setState, fetchScenario])
 
   const closeScenario = useCallback(() => setState(null), [setState])
-  return { scenario: state, openScenario, closeScenario, moreIdea, setActiveIndex }
+  return { scenario: state, openScenario, closeScenario }
 }
 
 // 로딩 안내 — 별자리가 그려지듯 단계가 바뀌는 메시지 (생성 ~30초, 마지막 단계에서 유지)
@@ -149,22 +131,19 @@ export function ScenarioButton({ onClick, isOpen, className = '' }) {
  *  - subjectOf(key): 성취기준 key → 과목명 (푸터 안내용, 없으면 '상대 교과')
  *  - standardOf(key): 성취기준 key → { code, subject, content, grade_group } (엮인 성취기준 표시용)
  *  - basket: Set<key>, onToggleBasket(keys[])
- *  - onMore(): 다른 아이디어(다음 variant) 생성 / onNav(i): variant 이동
  */
-export function ScenarioPanel({ scenario, onClose, subjectOf, standardOf, basket, onToggleBasket, onMore, onNav }) {
+export function ScenarioPanel({ scenario, onClose, subjectOf, standardOf, basket, onToggleBasket }) {
   const navigate = useNavigate()
   // 보낼 곳이 진행 중인 프로젝트(?project=)면 새 프로젝트 시작을 권하지 않는다(중복 프로젝트 방지).
-  // 담기는 그대로 되고, 담은 성취기준은 미래보기 비교를 거쳐 그 프로젝트의 A-3로 보낸다.
+  // 담기는 그대로 된다.
   const [searchParams] = useSearchParams()
   const toExistingProject = !!searchParams.get('project')
   if (!scenario) return null
-  const items = scenario.items || []
-  const cur = items[scenario.activeIndex]
+  const cur = scenario.result
   const isLoading = scenario.loading && !cur
   const sc = cur?.data
   const curError = cur?.error
   const cached = cur?.cached
-  const total = items.length
   // 엮인 성취기준의 식별자는 요청 시점의 key(useScenario 상태)를 정본으로 쓴다 —
   // 서버 응답의 concept_code/context_codes는 표시용 코드일 수 있어 충돌 코드를 구분하지 못한다.
   const contextKeys = sc
@@ -202,18 +181,7 @@ export function ScenarioPanel({ scenario, onClose, subjectOf, standardOf, basket
         <div className="space-y-2.5">
           <div className="flex items-start justify-between gap-2">
             <h3 className="text-sm font-bold text-violet-900">🌍 {sc.title}</h3>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {total > 1 && (
-                <span className="flex items-center gap-1 text-[11px] text-violet-400">
-                  <button onClick={() => onNav?.(scenario.activeIndex - 1)} disabled={scenario.activeIndex === 0}
-                    className="px-1 disabled:opacity-30 hover:text-violet-700">‹</button>
-                  아이디어 {scenario.activeIndex + 1}/{total}
-                  <button onClick={() => onNav?.(scenario.activeIndex + 1)} disabled={scenario.activeIndex >= total - 1}
-                    className="px-1 disabled:opacity-30 hover:text-violet-700">›</button>
-                </span>
-              )}
-              <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600"><X size={14} /></button>
-            </div>
+            <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 shrink-0"><X size={14} /></button>
           </div>
           <p className="text-[13px] text-gray-700 leading-relaxed">{sc.situation}</p>
           {/* 엮는 성취기준 — 각 과목의 실제 성취기준을 코드·교과·내용으로 명시(신뢰) */}
@@ -263,13 +231,6 @@ export function ScenarioPanel({ scenario, onClose, subjectOf, standardOf, basket
                 onClick={startProject}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 transition">
                 이 시나리오로 프로젝트 시작 <ArrowRight size={12} />
-              </button>
-            )}
-            {onMore && total <= 5 && (
-              <button
-                onClick={onMore}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-violet-600 bg-white border border-violet-200 hover:border-violet-400 transition">
-                <Sparkles size={12} /> 다른 아이디어
               </button>
             )}
             <span className="basis-full sm:basis-auto sm:ml-auto text-[10.5px] text-gray-400">

@@ -1,6 +1,6 @@
 /**
  * Modal — document.body 포털 대화상자. Esc로 닫고, Tab 초점을 상자 안에 가두며, 닫히면 열기 전 초점으로 돌아간다.
- * 어두운 화면(미래보기 등) 위에 띄워도 바깥 화면의 CSS를 물려받지 않도록 포털로 그린다.
+ * 어두운 화면(교육과정 성운 등) 위에 띄워도 바깥 화면의 CSS를 물려받지 않도록 포털로 그린다.
  */
 import { useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'

@@ -15,14 +15,12 @@ export const UI_COPY = {
     series: '학년 간 연결 보기',
     map: '교육과정 성운',
     mapDesc: '3D 전체 지도',
-    futures: '미래보기',
   },
 
-  // 상단 헤더의 주 입구 세 개 — 홈·탐색 화면 머리 줄에 나란히 놓인다(MainNav)
+  // 상단 헤더의 주 입구 두 개 — 홈·탐색 화면 머리 줄에 나란히 놓인다(MainNav)
   nav: {
     explore: '아이디어 탐색',
     map: '교육과정 성운',
-    futures: '미래보기',
   },
 
   // 주요 버튼 이름
@@ -51,9 +49,8 @@ export const UI_COPY = {
     // 보조 상태 (탐색 화면 머리 줄)
     loading: { label: '프로젝트 확인 중', meaning: '보낼 곳 프로젝트 정보를 불러오는 중입니다.', tone: 'neutral', icon: 'dot' },
     loadFailed: { label: '프로젝트 확인 실패', meaning: '보낼 곳 프로젝트 정보를 확인하지 못했습니다.', tone: 'warning', icon: 'alert' },
-    readOnly: { label: '읽기 전용 · 보낼 수 없음', meaning: '비교용으로 초안을 복사할 수 있습니다.', tone: 'warning', icon: 'lock' },
+    readOnly: { label: '읽기 전용', meaning: '이 프로젝트는 읽기 전용입니다.', tone: 'warning', icon: 'lock' },
     blocked: { label: '탐색 제한', meaning: '이 프로젝트는 지금 탐색 결과를 받을 수 없습니다.', tone: 'warning', icon: 'lock' },
-    copied: { label: '초안 복사함 · 반영 전', meaning: '복사만으로는 보드가 바뀌지 않습니다.', tone: 'info', icon: 'dot' },
   },
 }
 

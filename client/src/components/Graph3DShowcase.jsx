@@ -24,14 +24,14 @@ import ExplorationContextBar from './ExplorationContextBar'
 import Button from './ui/Button'
 import { useDestinationProject } from './useDestinationProject'
 import { destinationBarModel } from '../lib/exploreBar'
-import { projectDestination, withDestination, readBasket, writeBasket, compareAvailability, futuresUrl } from '../lib/exploreDestination'
+import { projectDestination, withDestination, readBasket, writeBasket } from '../lib/exploreDestination'
 import { safeSessionStorage } from '../lib/explorationDraft'
 import { EXPLORE_COPY } from '../lib/explorationCopy'
 
 const groupColor = (g) => SUBJECT_COLORS_DARK[g] || FALLBACK_NODE_COLOR
 
 // 담기 — 성취기준 연결 찾기(DesignMode)와 같은 목적지별 저장소를 쓴다(lib/exploreDestination.js).
-// 새 프로젝트 담기는 프로젝트 만들기 모달에, 프로젝트 담기는 미래보기 비교에 이어진다.
+// 새 프로젝트 담기는 프로젝트 만들기 모달에 이어진다.
 
 // 연결수 로그 스케일 노드 크기 (스펙 §6-1)
 function nodeSize(degree, maxDegree) {
@@ -123,8 +123,6 @@ export default function Graph3DShowcase() {
       return next
     })
   }, [destination])
-  const compare = compareAvailability(basket.size)
-  const openCompare = () => { if (compare.ok) navigate(futuresUrl({ keys: [...basket], destination })) }
   // 링크 신고 상태 (pairId(a, b) → 요청됨/완료)
   const [reportedLinks, setReportedLinks] = useState(() => new Set())
   const [reportingKey, setReportingKey] = useState(null)
@@ -694,14 +692,10 @@ export default function Graph3DShowcase() {
           <>
             <span className="hidden md:inline text-xs text-text-secondary whitespace-nowrap tabular-nums">{EXPLORE_COPY.graph.basketCount(basket.size)}</span>
             {destination.type === 'new' && (
-              <Button variant="secondary" size="sm" onClick={() => navigate('/workspaces?createProject=1')}>
+              <Button variant="primary" size="sm" onClick={() => navigate('/workspaces?createProject=1')}>
                 {EXPLORE_COPY.graph.startProject}
               </Button>
             )}
-            <Button variant="primary" size="sm" onClick={openCompare} disabled={!compare.ok}
-              title={compare.ok ? undefined : (compare.reason === 'tooMany' ? EXPLORE_COPY.graph.tooMany : EXPLORE_COPY.graph.tooFew)}>
-              {EXPLORE_COPY.graph.compare}
-            </Button>
           </>
         ) : null} />
     <div className="relative flex-1 min-h-0 w-full overflow-hidden select-none"
@@ -830,7 +824,7 @@ export default function Graph3DShowcase() {
               <div>
                 <p className="text-[11px] font-semibold text-slate-400/80 uppercase tracking-wide mb-2">별 상세 카드</p>
                 <ul className="space-y-1.5 text-[13px] text-slate-300/90 leading-relaxed">
-                  <li>· 🧺 담기: 담은 성취기준은 미래보기 비교나 프로젝트 만들기에 사용합니다. 보내기 전까지 어느 프로젝트에도 저장되지 않습니다.</li>
+                  <li>· 🧺 담기: 담은 성취기준은 프로젝트 만들기에 사용합니다. 프로젝트를 만들기 전까지 어디에도 저장되지 않습니다.</li>
                   <li>· 연결 찾기에서 열기: 이 별을 성취기준 연결 찾기의 성취기준에서 찾기로 이어서 보기</li>
                   <li>· 이상해요: 억지스러운 연결을 발견하면 검토 요청</li>
                 </ul>
