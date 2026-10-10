@@ -26,6 +26,7 @@
  * - POST /api/standards/graph/add-links                 — 링크 추가 (관리자 전용)
  */
 import { Router } from 'express'
+import { recordUsage, anthropicUsageFields } from '../lib/aiUsage.js'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { getAnthropic } from '../lib/anthropicClient.js'
@@ -532,11 +533,13 @@ ${multi ? '5' : '4'}. "철수가 사과를…" 식 가짜 인물·가짜 수치 
         // JSON 추출 실패는 모델 편차일 수 있어 1회 재시도
         let lastErr
         for (let attempt = 0; attempt < 2; attempt++) {
+          const scenarioStarted = Date.now()
           const response = await getAnthropic().messages.create({
             model: 'claude-sonnet-5-5',
             max_tokens: 5000,
             messages: [{ role: 'user', content: prompt }],
           })
+          recordUsage({ ...anthropicUsageFields(response.usage), route: 'link_scenario', provider: 'anthropic', model: 'claude-sonnet-5-5', finish_reason: response.stop_reason || null, latency_ms: Date.now() - scenarioStarted, user_id: req.user?.id })
           const text = response.content?.find(bl => bl.type === 'text')?.text || ''
           const jsonMatch = text.match(/\{[\s\S]*\}/)
           if (!jsonMatch) {
@@ -1118,11 +1121,13 @@ ${candidateText}
 }
 \`\`\``
 
+    const recommendStarted = Date.now()
     const response = await getAnthropic().messages.create({
       model: 'claude-sonnet-5-5',
       max_tokens: 4096,
       messages: [{ role: 'user', content: aiPrompt }],
     })
+    recordUsage({ ...anthropicUsageFields(response.usage), route: 'recommend_ai', provider: 'anthropic', model: 'claude-sonnet-5-5', finish_reason: response.stop_reason || null, latency_ms: Date.now() - recommendStarted, user_id: req.user?.id })
 
     const aiText = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('') // thinking 블록 대비
 

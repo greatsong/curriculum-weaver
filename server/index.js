@@ -35,6 +35,7 @@ import designsRouter from './routes/designs.js'
 import versionsRouter from './routes/versions.js'
 import activityLogsRouter from './routes/activityLogs.js'
 import { chatRouter } from './routes/chat.js'
+import { adminUsageRouter } from './routes/adminUsage.js'
 import { standardsRouter } from './routes/standards.js'
 import { materialsRouter } from './routes/materials.js'
 import { principlesRouter } from './routes/principles.js'
@@ -400,6 +401,9 @@ app.use('/api/sessions', sessionsRouter)
 
 // AI 채팅
 app.use('/api/chat', chatRouter)
+
+// AI 사용량 조회 (관리자 전용, 00030 ai_usage)
+app.use('/api/admin/ai-usage', adminUsageRouter)
 
 // 자료
 app.use('/api/materials', materialsRouter)
