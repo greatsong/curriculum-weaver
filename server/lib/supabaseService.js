@@ -753,6 +753,58 @@ export async function getMessages(projectId, limit = 200, offset = 0) {
 }
 
 /**
+ * 한 절차의 메시지 전부를 시간순으로 반환(AI 이력 창 계산용, lib/historyWindow.js).
+ * 이력 창의 시작점은 절차 메시지 수로 정하므로, 최근 N개 안에서 세면 오래된 메시지가 밀려날 때
+ * 시작점이 흔들린다. 그래서 절차 단위로 따로 조회한다.
+ * @param {string} projectId
+ * @param {string} procedureCode
+ * @param {number} [limit=1000]
+ * @returns {Promise<object[]>}
+ */
+export async function getProcedureMessages(projectId, procedureCode, limit = 1000) {
+  const sb = getSupabase()
+  if (!sb) {
+    const all = mem.messages.get(projectId) || []
+    return all.filter((m) => m.procedure_context === procedureCode).slice(0, limit)
+  }
+  return handleResult(
+    await sb.from('messages')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('procedure_context', procedureCode)
+      .order('created_at', { ascending: true })
+      .range(0, limit - 1),
+    '절차 메시지 조회 실패'
+  ) || []
+}
+
+/**
+ * 기준 시각 직전의 메시지 N개를 시간순으로 반환(절차 진입 직전 대화, AI 이력 창 계산용).
+ * @param {string} projectId
+ * @param {string} beforeCreatedAt - 이 시각보다 앞선 메시지만
+ * @param {number} [limit=8]
+ * @returns {Promise<object[]>}
+ */
+export async function getMessagesBefore(projectId, beforeCreatedAt, limit = 8) {
+  const sb = getSupabase()
+  if (!sb) {
+    const all = mem.messages.get(projectId) || []
+    const t = new Date(beforeCreatedAt).getTime()
+    return all.filter((m) => new Date(m.created_at).getTime() < t).slice(-limit)
+  }
+  const rows = handleResult(
+    await sb.from('messages')
+      .select('*')
+      .eq('project_id', projectId)
+      .lt('created_at', beforeCreatedAt)
+      .order('created_at', { ascending: false })
+      .range(0, limit - 1),
+    '직전 메시지 조회 실패'
+  )
+  return (rows || []).slice().reverse()
+}
+
+/**
  * 프로젝트의 '최근' 메시지 N개를 시간순(오름차순)으로 반환.
  *
  * getMessages는 created_at 오름차순 + range(0, limit-1)라 메시지가 limit개를 넘는
