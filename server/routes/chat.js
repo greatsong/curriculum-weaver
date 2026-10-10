@@ -21,6 +21,7 @@ import {
 } from '../lib/supabaseService.js'
 import { excludeCurrentTeacherMessage } from '../lib/currentMessage.js'
 import { selectHistoryWindow } from '../lib/historyWindow.js'
+import { recordUsage } from '../lib/aiUsage.js'
 import { stripLeftoverAiMarkup } from '../lib/aiMarkup.js'
 import { stripBoardKeyMentions } from 'curriculum-weaver-shared/boardKeys.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
@@ -671,6 +672,10 @@ chatRouter.post('/stage-intro', limitAiIntroOnly, async (req, res) => {
             res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.TEXT, content: text })}\n\n`)
           },
           onError: (msg) => res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.ERROR, message: msg })}\n\n`),
+          onUsage: (usage) => recordUsage({
+            ...usage, route: 'demo_intro', project_id: session_id, workspace_id: introProject?.workspace_id || null,
+            procedure_code: procedure, user_id: req.user?.id,
+          }),
         }
       )
       if (introText.trim()) {
@@ -1068,12 +1073,12 @@ chatRouter.post('/message', async (req, res) => {
         if (clientDisconnected) return
         res.write(`data: ${JSON.stringify({ type: SSE_EVENTS.ERROR, message: error })}\n\n`)
       },
-      // 호출마다 공급자·모델·토큰·지연을 한 줄로 남긴다(서버 로그). DB 기록은 usage 로그 작업에서 붙인다.
+      // 호출마다 공급자·모델·토큰·지연을 ai_usage에 남긴다(lib/aiUsage.js, 실패해도 응답에 영향 없음).
       onUsage: (usage) => {
-        console.log('[ai-usage]', JSON.stringify({
-          route: 'chat', project_id: session_id, workspace_id: project?.workspace_id || null,
-          procedure_code: activeProcedure, current_step: currentStep ? Number(currentStep) : null, ...usage,
-        }))
+        recordUsage({
+          ...usage, route: 'chat', project_id: session_id, workspace_id: project?.workspace_id || null,
+          procedure_code: activeProcedure, current_step: currentStep ? Number(currentStep) : null, user_id: req.user?.id,
+        })
       },
     })
 

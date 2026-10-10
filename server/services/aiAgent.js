@@ -1563,7 +1563,7 @@ ${boardStr}`)
  * @param {Object} context - { procedure, sessionTitle, boards }
  * @param {Object} callbacks - { onText, onError, signal? } — signal이 abort되면 스트림을 중단한다
  */
-export async function buildProcedureIntroResponse(context, { onText, onError, signal }) {
+export async function buildProcedureIntroResponse(context, { onText, onError, signal, onUsage }) {
   const { procedure, sessionTitle, boards, mode, tone } = context
   const isDemo = mode === 'demo'
   const procInfo = PROCEDURES[procedure] || (isDemo ? DEMO_PROC_INFO[procedure] : null)
@@ -1593,15 +1593,21 @@ ${toneInstruction}
 ${sessionTitle ? `프로젝트: ${sessionTitle}` : ''}
 
 이 단계를 코치 톤으로 안내하고, 첫 질문으로 대화를 시작해주세요.`
+    const introParams = modelRequestParams(context?.aiModel, 1200)
+    const introStarted = Date.now()
     try {
       const { finalMessage, timedOut } = await aiQueue.add(() => runGuardedStream(
         (streamSignal) => getAnthropic().messages.stream({
-          ...modelRequestParams(context?.aiModel, 1200),
+          ...introParams,
           system: demoSystem,
           messages: [{ role: 'user', content: demoUser }],
         }, { signal: streamSignal }),
         { onText, signal },
       ))
+      reportUsage(onUsage, {
+        ...normalizeAnthropicUsage(finalMessage?.usage), provider: 'anthropic', model: introParams.model,
+        finish_reason: timedOut ? 'timeout' : (finalMessage?.stop_reason || null), latency_ms: Date.now() - introStarted,
+      })
       if (timedOut) onError(STREAM_TIMEOUT_MESSAGE)
       else if (finalMessage?.stop_reason === 'refusal') onError(REFUSAL_MESSAGE)
     } catch (error) {

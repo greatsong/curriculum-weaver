@@ -13,6 +13,7 @@
  * 참고: _workspace/design/file-upload-redesign.md §3, §5
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { recordUsage, anthropicUsageFields } from '../lib/aiUsage.js'
 import PQueue from 'p-queue'
 import { MAX_MATERIAL_TEXT_CHARS, MATERIAL_ANALYSIS_CHARS, selectMaterialExcerpts } from '../../shared/materialText.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
@@ -637,7 +638,7 @@ async function extractText(buffer, ext) {
  *   - imageBuffer + imageMediaType: 이미지 자료 → Vision(image 블록)으로 직접 분석
  * @param {{intent?: string, intentNote?: string|null}} [options]
  */
-async function callClaudeAnalysis(source, { intent = DEFAULT_MATERIAL_INTENT, intentNote = null } = {}) {
+async function callClaudeAnalysis(source, { intent = DEFAULT_MATERIAL_INTENT, intentNote = null, usageMeta = null } = {}) {
   const instruction = '위 자료를 분석하여 submit_material_analysis 도구로 결과를 제출해주세요. 설명 문장 없이 도구를 한 번만 호출하세요.'
   let content
   let timeoutMs = AI_TIMEOUT_MS
@@ -683,7 +684,16 @@ async function callClaudeAnalysis(source, { intent = DEFAULT_MATERIAL_INTENT, in
   const timeout = new Promise((_, reject) =>
     setTimeout(() => reject(new Error('AI_TIMEOUT')), timeoutMs)
   )
-  const response = await Promise.race([aiCall, timeout])
+  const started = Date.now()
+  let response
+  try {
+    response = await Promise.race([aiCall, timeout])
+  } catch (error) {
+    recordUsage({ ...usageMeta, route: 'material_analysis', provider: 'anthropic', model: ANALYZER_MODEL, effort: 'low', latency_ms: Date.now() - started, error_code: String(error?.status || error?.message || 'error').slice(0, 60) })
+    throw error
+  }
+  // 사용량 기록(실패해도 분석 흐름에 영향 없음, lib/aiUsage.js)
+  recordUsage({ ...usageMeta, ...anthropicUsageFields(response?.usage), route: 'material_analysis', provider: 'anthropic', model: ANALYZER_MODEL, effort: 'low', finish_reason: response?.stop_reason || null, latency_ms: Date.now() - started })
 
   if (response?.stop_reason === 'refusal') throw new Error('AI_REFUSAL')
 
@@ -947,7 +957,7 @@ async function analyzeSource(materialId, source, { intent, intentNote, projectId
     const scope = excerpt.complete ? '' : `[분석 범위: 추출된 전체 ${fullText.length}자 중 ${excerpt.includedChars}자를 여러 구간에서 발췌했습니다. 보이지 않는 내용은 추측하지 마세요.]\n`
     const aiRaw = await callClaudeAnalysis(
       isVision ? source : { text: scope + excerpt.text },
-      { intent, intentNote }
+      { intent, intentNote, usageMeta: { project_id: projectId } }
     )
 
     // ── 3. 할루시네이션 필터 ──
