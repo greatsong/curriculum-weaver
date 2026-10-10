@@ -78,7 +78,8 @@ describe('buildAIResponse — 루나 경로', () => {
     expect(usages[0]).toMatchObject({ provider: 'openai', model: 'gpt-6-luna', input_tokens: 900, cache_read_tokens: 700, output_tokens: 50, reasoning_tokens: 20, finish_reason: 'stop', fallback_used: false })
     const params = client.create.mock.calls[0][0]
     expect(params.prompt_cache_key).toBe('cw-chat:p1:T-1-1')
-    expect(params.messages.at(-1)).toEqual({ role: 'user', content: '질문' })
+    expect(params.messages.at(-2)).toEqual({ role: 'user', content: '질문' })
+    expect(params.messages.at(-1).role).toBe('system') // 매 턴 문맥은 발화 뒤
     expect(params.messages[0].role).toBe('system')
   })
 

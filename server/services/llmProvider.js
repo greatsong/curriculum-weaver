@@ -61,22 +61,23 @@ export function isChatFallbackEnabled(env = process.env) {
 
 /**
  * 프롬프트 세 부분 + Anthropic 형식 메시지 → OpenAI 메시지.
- * 순서: [공통 지시] [팀·절차 문맥] ...이력 [매 턴 문맥] [현재 교사 발화]
- * 앞부분(공통·문맥·이력)이 매 턴 같아야 OpenAI 자동 프롬프트 캐시가 적중한다.
+ * 순서: [공통 지시] [팀·절차 문맥] ...이력 [현재 교사 발화] [매 턴 문맥]
+ *
+ * 매 턴 문맥(tail)을 현재 발화 "뒤"에 두는 이유(2026-10-10 실측): GPT-5.6 이후 모델은 캐시를
+ * 마지막 사용자 메시지 끝에 자동으로 쓰고, 다음 요청은 앞 요청이 써 둔 위치에서만 읽는다(부분 일치 없음).
+ * tail이 발화 앞에 있으면 다음 턴에서 그 발화 앞에 tail이 사라져 써 둔 위치와 어긋나 매번 캐시를 놓친다.
+ * 발화 뒤에 두면 다음 턴의 [공통][문맥][이력…발화]가 앞 요청이 써 둔 내용과 그대로 이어져 적중한다.
  *
  * @param {{ common: string, context: string, tail: string }} parts
  * @param {{ role: 'user'|'assistant', content: string }[]} messages - buildMessages 결과(마지막이 현재 발화)
  */
 export function buildOpenAIMessages(parts, messages) {
   const list = Array.isArray(messages) ? messages : []
-  const history = list.slice(0, -1)
-  const current = list[list.length - 1]
   const out = []
   if (parts?.common) out.push({ role: 'system', content: parts.common })
   if (parts?.context) out.push({ role: 'system', content: parts.context })
-  for (const m of history) out.push({ role: m.role, content: m.content })
+  for (const m of list) out.push({ role: m.role, content: m.content })
   if (parts?.tail) out.push({ role: 'system', content: parts.tail })
-  if (current) out.push({ role: current.role, content: current.content })
   return out
 }
 
@@ -86,7 +87,8 @@ export function normalizeOpenAIUsage(usage) {
   return {
     input_tokens: usage.prompt_tokens ?? null,
     cache_read_tokens: usage.prompt_tokens_details?.cached_tokens ?? 0,
-    cache_write_tokens: 0,
+    // GPT-5.6 이후는 캐시 쓰기를 따로 알리고 입력 단가의 1.25배로 과금한다(SDK 6.33 타입에는 아직 없음)
+    cache_write_tokens: usage.prompt_tokens_details?.cache_write_tokens ?? 0,
     output_tokens: usage.completion_tokens ?? null,
     reasoning_tokens: usage.completion_tokens_details?.reasoning_tokens ?? null,
   }

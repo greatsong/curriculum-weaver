@@ -33,7 +33,7 @@ describe('resolveChatProvider', () => {
 })
 
 describe('buildOpenAIMessages', () => {
-  it('순서: 공통 → 문맥 → 이력 → 매 턴 문맥 → 현재 발화', () => {
+  it('순서: 공통 → 문맥 → 이력 → 현재 발화 → 매 턴 문맥(캐시가 다음 턴에 이어지도록)', () => {
     const out = buildOpenAIMessages(
       { common: 'C', context: 'X', tail: 'T' },
       [{ role: 'user', content: 'u1' }, { role: 'assistant', content: 'a1' }, { role: 'user', content: '지금' }],
@@ -41,8 +41,17 @@ describe('buildOpenAIMessages', () => {
     expect(out).toEqual([
       { role: 'system', content: 'C' }, { role: 'system', content: 'X' },
       { role: 'user', content: 'u1' }, { role: 'assistant', content: 'a1' },
-      { role: 'system', content: 'T' }, { role: 'user', content: '지금' },
+      { role: 'user', content: '지금' }, { role: 'system', content: 'T' },
     ])
+  })
+
+  it('다음 턴 요청은 앞 턴 요청의 [공통·문맥·이력·발화]를 그대로 앞부분으로 가진다', () => {
+    const parts1 = { common: 'C', context: 'X', tail: 'T1' }
+    const parts2 = { common: 'C', context: 'X', tail: 'T2' }
+    const turn1 = buildOpenAIMessages(parts1, [{ role: 'user', content: 'q1' }])
+    const turn2 = buildOpenAIMessages(parts2, [{ role: 'user', content: 'q1' }, { role: 'assistant', content: 'a1' }, { role: 'user', content: 'q2' }])
+    const written = turn1.slice(0, -1) // 캐시는 마지막 사용자 메시지 끝까지 쓰인다
+    expect(turn2.slice(0, written.length)).toEqual(written)
   })
   it('빈 부분은 넣지 않는다', () => {
     expect(buildOpenAIMessages({ common: 'C', context: '', tail: '' }, [{ role: 'user', content: 'q' }]))
@@ -54,8 +63,8 @@ describe('usage 정규화', () => {
   it('OpenAI: 캐시·추론 토큰', () => {
     expect(normalizeOpenAIUsage({
       prompt_tokens: 1000, completion_tokens: 300,
-      prompt_tokens_details: { cached_tokens: 800 }, completion_tokens_details: { reasoning_tokens: 120 },
-    })).toEqual({ input_tokens: 1000, cache_read_tokens: 800, cache_write_tokens: 0, output_tokens: 300, reasoning_tokens: 120 })
+      prompt_tokens_details: { cached_tokens: 800, cache_write_tokens: 197 }, completion_tokens_details: { reasoning_tokens: 120 },
+    })).toEqual({ input_tokens: 1000, cache_read_tokens: 800, cache_write_tokens: 197, output_tokens: 300, reasoning_tokens: 120 })
   })
   it('Anthropic: 입력은 캐시 포함 합계', () => {
     expect(normalizeAnthropicUsage({ input_tokens: 100, cache_read_input_tokens: 900, cache_creation_input_tokens: 50, output_tokens: 40 }))
