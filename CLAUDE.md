@@ -81,6 +81,15 @@ curriculum-weaver/
 - **실시간 상태**: analyzer가 parsing/analyzing/completed/failed 전이마다 `material_updated` 소켓 브로드캐스트(`transitionMaterial` 헬퍼) → procedureStore `applyMaterialUpdate`가 즉시 반영+폴링 조기 종료. 3초 폴링은 소켓 유실 대비 안전망으로 유지
 - E2E(업로드→소켓 감지→completed) 13.1s 실측. 검증 기법: 자체 서버 4207 + 테스트 유저/JWT + socket.io-client, 데이터 완전 정리
 
+## 삭제 시 Storage 정리 (2026-10-10)
+
+워크스페이스·프로젝트 삭제는 DB 행을 CASCADE로 지운 뒤 materials 버킷 파일을 따로 지운다. 처리방침의 "삭제한 설계 데이터의 전자 파일은 복구할 수 없게 지운다"와 맞추기 위해서다. 로직은 `server/lib/projectStorage.js`, 호출은 `supabaseService.js`의 `deleteWorkspace`·`deleteProject`.
+
+- **순서**: 삭제 전에 프로젝트 ID와 자료 파일 경로를 모은다(실패하면 삭제하지 않고 500) → DB 삭제 → 프로젝트 접두 경로 파일과 모은 경로 중 **남은 자료 행이 가리키지 않는 것만** 지운다. Storage 실패는 로그만 남기고 200(개별 자료 삭제와 같은 정책). 인메모리 모드는 건너뛴다
+- **시뮬레이션 공유 파일**: "이어서" 복제본은 원본 파일 경로를 공유한다(demo.js). 원본을 지워도 복제본이 가리키는 파일은 남고, 마지막 참조가 사라질 때 지워진다
+- **쪽 나누기**: DB·Storage 목록은 빈 쪽이 나올 때까지 읽는다. 서버 상한이 요청보다 작아도 참조를 놓치지 않기 위해서다
+- **이미 남은 고아 파일**: `node scripts/cleanup-orphan-material-files.mjs` (시험 실행이 기본, `--apply`로 삭제, 24시간 이내 파일 제외, 지우기 직전 참조 재확인)
+
 ## 절차 스킵(건너뛰기) 시스템 (2026-07-11)
 
 팀이 불필요한 절차를 생략 표시하는 기능. **보드 내용은 절대 건드리지 않는다** — 스킵은 표시일 뿐, 해제하면 원상복구.
