@@ -1611,8 +1611,8 @@ ${sessionTitle ? `프로젝트: ${sessionTitle}` : ''}
       if (timedOut) onError(STREAM_TIMEOUT_MESSAGE)
       else if (finalMessage?.stop_reason === 'refusal') onError(REFUSAL_MESSAGE)
     } catch (error) {
-      console.error('시연 인트로 생성 오류:', error)
-      onError(error.message || '인트로 생성 실패')
+      console.error(`시연 인트로 생성 오류: ${summarizeError(error)}`)
+      onError(introErrorMessage(error))
     }
     return
   }
@@ -1699,14 +1699,35 @@ ${sessionTitle ? `세션: ${sessionTitle}` : ''}
     if (timedOut) onError(STREAM_TIMEOUT_MESSAGE)
     else if (finalMessage?.stop_reason === 'refusal') onError(REFUSAL_MESSAGE)
   } catch (error) {
-    console.error('절차 인트로 생성 오류:', error)
-    onError(error.message || '인트로 생성 실패')
+    console.error(`절차 인트로 생성 오류: ${summarizeError(error)}`)
+    onError(introErrorMessage(error))
   }
 }
 
 // ──────────────────────────────────────────
 // 대화 이력 변환
 // ──────────────────────────────────────────
+
+/** AI 입력에 넣는 이력 메시지 하나의 최대 길이(문자) */
+export const HISTORY_MESSAGE_MAX_CHARS = 8000
+const HISTORY_TRUNCATION_SUFFIX = '\n(이하 생략)'
+
+/**
+ * 이력 메시지 길이 상한 — 넘으면 뒤를 자르고 "(이하 생략)"을 붙인다.
+ * 같은 원문은 언제나 같은 결과가 되도록(결정적) 앞에서부터 고정 길이로 자른다.
+ * 이력 앞부분이 턴마다 같아야 프롬프트 캐시가 유지된다.
+ * @param {string} content
+ * @param {number} [max]
+ * @returns {string}
+ */
+export function capHistoryContent(content, max = HISTORY_MESSAGE_MAX_CHARS) {
+  if (typeof content !== 'string' || content.length <= max) return content
+  let end = max
+  // 서로게이트 쌍(이모지 등) 가운데를 자르지 않는다
+  const code = content.charCodeAt(end - 1)
+  if (code >= 0xd800 && code <= 0xdbff) end -= 1
+  return content.slice(0, end) + HISTORY_TRUNCATION_SUFFIX
+}
 
 /**
  * 대화 이력을 Claude 메시지 형식으로 변환
@@ -1726,14 +1747,14 @@ export function buildMessages(recentMessages, userMessage) {
     messages.push({
       role: msg.sender_type === 'teacher' ? 'user' : 'assistant',
       // 가드 도입 전에 저장된 옛 메시지의 내부 절차 코드(T-1-2 등)가 모델 어휘로
-      // 재유입되지 않도록 이력도 표시 코드로 스크럽한다.
-      content: replaceInternalProcedureCodes(msg.content),
+      // 재유입되지 않도록 이력도 표시 코드로 스크럽한다. 길이 상한을 먼저 적용한다.
+      content: replaceInternalProcedureCodes(capHistoryContent(msg.content)),
     })
   }
 
   // 현재 발화도 이력과 같은 변환을 거친다. 다음 턴에 이 발화가 이력(변환본)으로 다시 들어가므로,
   // 다르게 보내면 그 메시지부터 프롬프트 캐시가 끊긴다. DB에 저장되는 원문은 바꾸지 않는다.
-  messages.push({ role: 'user', content: replaceInternalProcedureCodes(userMessage) })
+  messages.push({ role: 'user', content: replaceInternalProcedureCodes(capHistoryContent(userMessage)) })
   return messages
 }
 
@@ -1788,7 +1809,7 @@ export async function buildAIResponse(context, { onText, onError, signal, onUsag
         console.warn('⚠️ 루나 호출 실패 — 소넷으로 한 번 대체합니다:', describeError(error))
         return runAnthropicChat({ parts, messages, aiModel: 'fast', onText, onError, signal, onUsage, fallback: true })
       }
-      console.error('OpenAI API 오류:', error)
+      console.error(`OpenAI API 오류: ${summarizeError(error)}`)
       onError(clientErrorMessage(error))
       return
     }
@@ -1871,18 +1892,45 @@ async function runAnthropicChat({ parts, messages, aiModel, onText, onError, sig
       provider: 'anthropic', model: params.model, error_code: describeError(error),
       latency_ms: Date.now() - started, first_token_ms: firstTokenMs, fallback_used: fallback,
     })
-    console.error('Claude API 오류:', error)
+    console.error(`Claude API 오류: ${summarizeError(error)}`)
     onError(clientErrorMessage(error))
   }
 }
 
+function isProductionEnv() {
+  return process.env.NODE_ENV === 'production' || Boolean(process.env.RAILWAY_ENVIRONMENT)
+}
+
 // 프로덕션에서는 원본 error.message를 클라이언트에 노출하지 않는다(내부 정보·스택 유출 방지).
-// 상세 메시지는 서버 로그에만 남기고, 클라이언트에는 일반화된 안내 문구를 전달한다.
+// 클라이언트에는 일반화된 안내 문구를 전달한다.
 function clientErrorMessage(error) {
-  const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT
-  return isProduction
+  return isProductionEnv()
     ? 'AI 응답 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
     : (error?.message || 'AI 응답 생성 실패')
+}
+
+// 절차 안내(인트로) 오류 문구 — 운영에서는 원본 메시지 대신 일반 문구
+function introErrorMessage(error) {
+  return isProductionEnv()
+    ? '절차 안내를 만들지 못했습니다. 잠시 후 다시 시도해주세요.'
+    : (error?.message || '인트로 생성 실패')
+}
+
+/**
+ * 서버 로그용 오류 요약 — 상태 코드·오류 종류·요청 번호만 남긴다.
+ * 공급자 오류 메시지·요청 본문에는 키 일부나 사용자 입력이 섞일 수 있어 기록하지 않는다.
+ */
+function summarizeError(error) {
+  if (!error) return 'unknown'
+  const pick = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v).slice(0, 80) : null)
+  const fields = [
+    ['status', pick(error.status)],
+    ['type', pick(error.error?.error?.type) || pick(error.error?.type) || pick(error.type)],
+    ['code', pick(error.code)],
+    ['name', pick(error.name) || 'Error'],
+    ['request_id', pick(error.requestID) || pick(error.request_id)],
+  ]
+  return fields.filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join(' ')
 }
 
 /** usage 기록용 오류 요약(상태 코드 또는 오류 이름) */
