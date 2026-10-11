@@ -12,6 +12,12 @@
  *
  * 참고: _workspace/design/file-upload-redesign.md §3, §5
  */
+import net from 'node:net'
+import dns from 'node:dns'
+import http from 'node:http'
+import https from 'node:https'
+import zlib from 'node:zlib'
+import { Readable } from 'node:stream'
 import Anthropic from '@anthropic-ai/sdk'
 import { recordUsage, anthropicUsageFields } from '../lib/aiUsage.js'
 import PQueue from 'p-queue'
@@ -278,10 +284,107 @@ const URL_FETCH_TIMEOUT_MS = 15_000
 /** URL 응답 본문 최대 크기 (바이트) — 과도한 페이지/파일 방어 */
 const MAX_URL_FETCH_BYTES = 8 * 1024 * 1024 // 8MB
 
+const INTERNAL_ADDRESS_MESSAGE = '내부 주소는 가져올 수 없습니다.'
+
+// 공개 인터넷이 아닌 IPv4 대역 (IANA 특수 목적 주소 등록부 기준)
+const BLOCKED_IPV4 = new net.BlockList()
+for (const [prefix, bits] of [
+  ['0.0.0.0', 8], // "이 네트워크"
+  ['10.0.0.0', 8], // 사설
+  ['100.64.0.0', 10], // 통신사 NAT(CGNAT)
+  ['127.0.0.0', 8], // 루프백
+  ['169.254.0.0', 16], // 링크 로컬(클라우드 메타데이터 포함)
+  ['172.16.0.0', 12], // 사설
+  ['192.0.0.0', 24], // IETF 프로토콜 할당
+  ['192.0.2.0', 24], // 문서용
+  ['192.88.99.0', 24], // 6to4 중계(폐지)
+  ['192.168.0.0', 16], // 사설
+  ['198.18.0.0', 15], // 벤치마크
+  ['198.51.100.0', 24], // 문서용
+  ['203.0.113.0', 24], // 문서용
+  ['224.0.0.0', 4], // 멀티캐스트
+  ['240.0.0.0', 4], // 예약·브로드캐스트
+]) BLOCKED_IPV4.addSubnet(prefix, bits, 'ipv4')
+
+// 공개 인터넷이 아닌 IPv6 대역. IPv4를 품은 주소(::ffff:0:0/96, 64:ff9b::/96)는 따로 꺼내 IPv4 목록으로 검사한다.
+const BLOCKED_IPV6 = new net.BlockList()
+for (const [prefix, bits] of [
+  ['::', 96], // 미지정·루프백·IPv4 호환(폐지)
+  ['64:ff9b:1::', 48], // 로컬 NAT64
+  ['100::', 64], // 폐기용
+  ['2001::', 23], // IETF 프로토콜 할당(Teredo 등)
+  ['2001:db8::', 32], // 문서용
+  ['2002::', 16], // 6to4
+  ['3fff::', 20], // 문서용
+  ['5f00::', 16], // SRv6
+  ['fc00::', 7], // 고유 로컬(ULA)
+  ['fe80::', 10], // 링크 로컬
+  ['fec0::', 10], // 사이트 로컬(폐지)
+  ['ff00::', 8], // 멀티캐스트
+]) BLOCKED_IPV6.addSubnet(prefix, bits, 'ipv6')
+
+/** IPv6 주소를 16비트 8칸으로 펼친다. 형식이 틀리면 null */
+function expandIPv6(address) {
+  let addr = String(address).toLowerCase().split('%')[0]
+  if (!net.isIPv6(addr)) return null
+  // 끝의 점 표기 IPv4(::ffff:1.2.3.4)를 16진 두 칸으로 바꾼다
+  const dotted = addr.match(/(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (dotted) {
+    const [a, b, c, d] = dotted.slice(1).map(Number)
+    addr = addr.slice(0, dotted.index) + `${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`
+  }
+  const [headRaw, tailRaw] = addr.split('::')
+  const head = headRaw ? headRaw.split(':') : []
+  const tail = tailRaw !== undefined && tailRaw !== '' ? tailRaw.split(':') : []
+  const fill = addr.includes('::') ? 8 - head.length - tail.length : 0
+  const parts = [...head, ...Array(Math.max(fill, 0)).fill('0'), ...tail].map((h) => parseInt(h, 16))
+  return parts.length === 8 && parts.every((n) => Number.isInteger(n) && n >= 0 && n <= 0xffff) ? parts : null
+}
+
+/** IPv4를 품은 IPv6(매핑 ::ffff:a.b.c.d, NAT64 64:ff9b::a.b.c.d)면 안의 IPv4를 돌려준다 */
+function embeddedIPv4(address) {
+  const h = expandIPv6(address)
+  if (!h) return null
+  const isMapped = h[0] === 0 && h[1] === 0 && h[2] === 0 && h[3] === 0 && h[4] === 0 && h[5] === 0xffff
+  const isNat64 = h[0] === 0x64 && h[1] === 0xff9b && h[2] === 0 && h[3] === 0 && h[4] === 0 && h[5] === 0
+  if (!isMapped && !isNat64) return null
+  return `${h[6] >> 8}.${h[6] & 0xff}.${h[7] >> 8}.${h[7] & 0xff}`
+}
+
 /**
- * SSRF 방어 — 내부망/메타데이터 엔드포인트로의 요청을 차단.
- * best-effort(문자열 기반)이며 DNS rebinding까지는 막지 못한다.
- * @returns {{ok: true} | {ok: false, message: string}}
+ * 연결해서는 안 되는 IP인지 — 사설·루프백·링크 로컬·예약 대역. IP가 아니면 차단(안전 쪽).
+ * @param {string} address
+ */
+function isBlockedAddress(address) {
+  const addr = String(address || '').split('%')[0]
+  const family = net.isIP(addr)
+  if (family === 4) return BLOCKED_IPV4.check(addr, 'ipv4')
+  if (family === 6) {
+    const v4 = embeddedIPv4(addr)
+    if (v4) return BLOCKED_IPV4.check(v4, 'ipv4')
+    return BLOCKED_IPV6.check(addr, 'ipv6')
+  }
+  return true
+}
+
+/** 내부용으로 쓰이는 이름 — DNS 조회 전에 거른다 */
+function isInternalHostname(host) {
+  return (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal') ||
+    host.endsWith('.home.arpa') ||
+    host.endsWith('.localdomain') ||
+    // 점이 없는 한 단어 이름은 검색 도메인을 타고 내부 서비스로 풀릴 수 있다
+    !host.includes('.')
+  )
+}
+
+/**
+ * SSRF 1차 검사(문자열) — 형식·프로토콜·주소 표기를 확인한다.
+ * 이름의 실제 IP 검사는 resolvePublicTarget이 DNS 조회 결과로 한다.
+ * @returns {{ok: true, url: URL, host: string} | {ok: false, message: string}}
  */
 function assertPublicUrl(rawUrl) {
   let u
@@ -293,35 +396,126 @@ function assertPublicUrl(rawUrl) {
   if (u.protocol !== 'http:' && u.protocol !== 'https:') {
     return { ok: false, message: 'http/https URL만 지원합니다.' }
   }
-  const host = u.hostname.toLowerCase()
-  // 로컬/내부 도메인
-  if (
-    host === 'localhost' ||
-    host.endsWith('.local') ||
-    host.endsWith('.internal') ||
-    host.endsWith('.localhost')
-  ) {
-    return { ok: false, message: '내부 주소는 가져올 수 없습니다.' }
+  // IPv6 대괄호를 벗기고, 끝의 점(localhost.)을 지워 정규화한다
+  let host = u.hostname.toLowerCase()
+  if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1)
+  host = host.replace(/\.+$/, '')
+  if (!host) return { ok: false, message: 'URL 형식이 올바르지 않습니다.' }
+
+  if (net.isIP(host)) {
+    if (isBlockedAddress(host)) return { ok: false, message: INTERNAL_ADDRESS_MESSAGE }
+    return { ok: true, url: u, host }
   }
-  // IPv6 루프백/링크로컬/ULA
-  if (host === '::1' || host.startsWith('fe80') || host.startsWith('fc') || host.startsWith('fd')) {
-    return { ok: false, message: '내부 주소는 가져올 수 없습니다.' }
+  if (isInternalHostname(host)) return { ok: false, message: INTERNAL_ADDRESS_MESSAGE }
+  return { ok: true, url: u, host }
+}
+
+/** 기본 DNS 조회 — 호출 시점에 읽어 테스트에서 바꿀 수 있게 한다 */
+function defaultLookup(host, options) {
+  return dns.promises.lookup(host, options)
+}
+
+/**
+ * SSRF 2차 검사 — 이름이 풀리는 IP 전부를 같은 차단 목록으로 검사하고, 연결에 쓸 IP를 돌려준다.
+ * 검사한 IP로만 연결하므로(requestPinned) 검사와 연결 사이에 DNS 응답이 바뀌어도 내부로 가지 않는다.
+ * @returns {Promise<{ok: true, url: URL, host: string, addresses: {address: string, family: 4|6}[]} | {ok: false, message: string}>}
+ */
+async function resolvePublicTarget(rawUrl, { lookup = defaultLookup } = {}) {
+  const guard = assertPublicUrl(rawUrl)
+  if (!guard.ok) return guard
+  const { url, host } = guard
+
+  const literal = net.isIP(host)
+  if (literal) return { ok: true, url, host, addresses: [{ address: host, family: literal }] }
+
+  let records
+  try {
+    records = await lookup(host, { all: true, verbatim: true })
+  } catch {
+    return { ok: false, message: '주소를 찾을 수 없습니다.' }
   }
-  // IPv4 사설/루프백/링크로컬 대역
-  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
-  if (m) {
-    const [a, b] = [Number(m[1]), Number(m[2])]
-    const isPrivate =
-      a === 0 ||
-      a === 127 ||
-      a === 10 ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 169 && b === 254) ||
-      a >= 224 // 멀티캐스트/예약
-    if (isPrivate) return { ok: false, message: '내부 주소는 가져올 수 없습니다.' }
+  const list = (Array.isArray(records) ? records : [records]).filter((r) => r && typeof r.address === 'string')
+  if (list.length === 0) return { ok: false, message: '주소를 찾을 수 없습니다.' }
+  // 하나라도 내부 대역이면 거절한다(공개 IP와 내부 IP를 섞어 돌려주는 이름 대비)
+  if (list.some((r) => isBlockedAddress(r.address))) return { ok: false, message: INTERNAL_ADDRESS_MESSAGE }
+  return {
+    ok: true,
+    url,
+    host,
+    addresses: list.map((r) => ({ address: r.address.split('%')[0], family: net.isIP(r.address.split('%')[0]) })),
   }
-  return { ok: true }
+}
+
+/**
+ * 검사를 통과한 IP 목록만 돌려주는 lookup — net.connect가 이름을 다시 조회하지 않게 한다.
+ * Node 20+의 autoSelectFamily는 { all: true }로 부르므로 두 호출 방식을 모두 지원한다.
+ */
+function pinnedLookup(addresses) {
+  return (hostname, options, callback) => {
+    if (typeof options === 'function') {
+      callback = options
+      options = {}
+    }
+    const family = options?.family === 4 || options?.family === 6 ? options.family : 0
+    const list = family ? addresses.filter((a) => a.family === family) : addresses
+    if (list.length === 0) {
+      const err = new Error('검사한 주소 중 연결할 수 있는 주소가 없습니다.')
+      err.code = 'ENOTFOUND'
+      callback(err)
+      return
+    }
+    if (options?.all) callback(null, list.map((a) => ({ address: a.address, family: a.family })))
+    else callback(null, list[0].address, list[0].family)
+  }
+}
+
+function headerValue(headers, name) {
+  const v = headers[String(name).toLowerCase()]
+  if (v == null) return null
+  return Array.isArray(v) ? v.join(', ') : String(v)
+}
+
+/**
+ * 검사한 IP로 고정해 GET 요청을 보낸다. 리디렉션은 따라가지 않는다(호출부가 홉마다 다시 검사).
+ * 반환값은 fetch Response와 같은 모양의 최소 객체(status·ok·headers.get·body 웹 스트림)다.
+ * 압축 응답(gzip·deflate·br)은 풀어서 돌려준다 — 크기 상한은 풀린 바이트에 적용된다.
+ */
+function requestPinned(target, { signal, headers = URL_FETCH_HEADERS } = {}) {
+  const { url, host, addresses } = target
+  const mod = url.protocol === 'https:' ? https : http
+  return new Promise((resolve, reject) => {
+    const req = mod.request({
+      protocol: url.protocol,
+      hostname: host,
+      port: url.port || undefined,
+      path: `${url.pathname || '/'}${url.search || ''}`,
+      method: 'GET',
+      headers: { ...headers, 'Accept-Encoding': 'gzip, deflate, br' },
+      agent: false, // 연결 재사용 없음 — 매 요청이 검사한 IP로 새로 연결
+      lookup: pinnedLookup(addresses),
+      signal,
+    })
+    req.on('error', reject)
+    req.on('response', (res) => {
+      const status = res.statusCode || 0
+      const encoding = String(res.headers['content-encoding'] || '').trim().toLowerCase()
+      let stream = res
+      if (encoding === 'gzip' || encoding === 'x-gzip') stream = res.pipe(zlib.createGunzip())
+      else if (encoding === 'deflate') stream = res.pipe(zlib.createInflate())
+      else if (encoding === 'br') stream = res.pipe(zlib.createBrotliDecompress())
+      if (stream !== res) {
+        res.on('error', (err) => stream.destroy(err))
+        stream.on('close', () => res.destroy())
+      }
+      resolve({
+        status,
+        ok: status >= 200 && status < 300,
+        headers: { get: (name) => headerValue(res.headers, name) },
+        body: Readable.toWeb(stream),
+      })
+    })
+    req.end()
+  })
 }
 
 /** 자주 쓰는 HTML 엔티티 디코드 (경량) */
@@ -407,12 +601,18 @@ async function readBodyCapped(res, maxBytes) {
 /**
  * 참고사이트 URL을 가져와 분석용 평문을 추출한다.
  * - 입력한 단일 페이지만 가져온다(페이지 내부 링크 크롤링 없음).
- * - 리다이렉트를 수동으로 따라가며 매 홉마다 SSRF 가드를 재검증한다.
+ * - 리다이렉트를 수동으로 따라가며 매 홉마다 SSRF 가드(주소 표기 + DNS 조회 결과)를 재검증한다.
+ * - 검사한 IP로만 연결한다(DNS 응답이 검사 뒤에 바뀌어도 내부로 가지 않게).
  * - 본문은 스트리밍으로 읽으며 크기 상한을 강제한다.
  * HTML은 본문 텍스트로, PDF는 pdf-parse로 처리한다.
+ * @param {string} rawUrl
+ * @param {{lookup?: Function, request?: Function}} [deps] - 테스트용 주입(DNS 조회·요청 함수)
  * @returns {Promise<{text?: string, unsupported?: boolean, error?: string}>}
  */
-async function fetchUrlContent(rawUrl) {
+// DNS 조회·요청 함수 — 테스트에서 바꿔 끼울 수 있게 한 곳에 둔다(_internal.setUrlFetchDeps)
+const urlFetchDeps = { lookup: defaultLookup, request: requestPinned }
+
+async function fetchUrlContent(rawUrl, { lookup = urlFetchDeps.lookup, request = urlFetchDeps.request } = {}) {
   // 전체 작업(리다이렉트 + 본문 읽기)에 단일 타임아웃 예산 부여
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS)
@@ -422,16 +622,12 @@ async function fetchUrlContent(rawUrl) {
 
     for (let hop = 0; hop <= MAX_URL_REDIRECTS; hop += 1) {
       // 매 홉마다 SSRF 재검증 — 공개 URL이 내부망으로 리다이렉트하는 우회를 차단
-      const guard = assertPublicUrl(currentUrl)
-      if (!guard.ok) return { error: guard.message }
+      const target = await resolvePublicTarget(currentUrl, { lookup })
+      if (!target.ok) return { error: target.message }
 
       let r
       try {
-        r = await fetch(currentUrl, {
-          redirect: 'manual',
-          signal: controller.signal,
-          headers: URL_FETCH_HEADERS,
-        })
+        r = await request(target, { signal: controller.signal, headers: URL_FETCH_HEADERS })
       } catch (err) {
         const aborted = err?.name === 'AbortError'
         return {
@@ -459,7 +655,10 @@ async function fetchUrlContent(rawUrl) {
     }
 
     if (!res) return { error: '리다이렉트가 너무 많습니다.' }
-    if (!res.ok) return { error: `페이지 응답 오류 (HTTP ${res.status})` }
+    if (!res.ok) {
+      try { await res.body?.cancel?.() } catch { /* ignore */ }
+      return { error: `페이지 응답 오류 (HTTP ${res.status})` }
+    }
 
     // content-length 힌트가 상한을 넘으면 바로 거절(다운로드 회피)
     const contentLength = Number(res.headers.get('content-length') || 0)
@@ -469,7 +668,18 @@ async function fetchUrlContent(rawUrl) {
     }
 
     const contentType = (res.headers.get('content-type') || '').toLowerCase()
-    const { buffer, tooLarge } = await readBodyCapped(res, MAX_URL_FETCH_BYTES)
+    let body
+    try {
+      body = await readBodyCapped(res, MAX_URL_FETCH_BYTES)
+    } catch (err) {
+      // 본문을 읽는 중 시간 초과·연결 끊김·압축 해제 실패 — 예외 대신 실패 결과로 돌려준다
+      return {
+        error: err?.name === 'AbortError'
+          ? `페이지 응답 시간 초과 (${URL_FETCH_TIMEOUT_MS / 1000}s)`
+          : '페이지 본문을 읽지 못했습니다.',
+      }
+    }
+    const { buffer, tooLarge } = body
     if (tooLarge) {
       return { error: `페이지가 너무 큽니다 (${Math.round(MAX_URL_FETCH_BYTES / 1024 / 1024)}MB 초과).` }
     }
@@ -1032,6 +1242,15 @@ export const _internal = {
   buildAnalyzeTool,
   INTENT_PROMPT_FRAGMENTS,
   assertPublicUrl,
+  resolvePublicTarget,
+  isBlockedAddress,
+  requestPinned,
   htmlToText,
   fetchUrlContent,
+  /** 테스트 전용: URL 가져오기의 DNS 조회·요청 함수를 바꾼다. 되돌리는 함수를 반환 */
+  setUrlFetchDeps(deps) {
+    const prev = { ...urlFetchDeps }
+    Object.assign(urlFetchDeps, deps)
+    return () => Object.assign(urlFetchDeps, prev)
+  },
 }

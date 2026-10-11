@@ -104,9 +104,22 @@ it('[정상] 모두 제외를 지정하면 일반 자료 컨텍스트를 보내�
 })
 
 it('빈 웹페이지는 AI를 호출하지 않고 실패 이유를 저장한다', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => new Response('<html><body></body></html>', { status: 200, headers: { 'Content-Type': 'text/html' } })))
+  // 실제 네트워크 대신 DNS 조회·요청 함수를 바꿔 끼운다(검사한 IP로 연결하는 요청 함수)
+  const restore = _internal.setUrlFetchDeps({
+    lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async () => ({
+      status: 200,
+      ok: true,
+      headers: { get: (name) => (name.toLowerCase() === 'content-type' ? 'text/html' : null) },
+      body: new Response('<html><body></body></html>').body,
+    }),
+  })
   const row = Materials.add('ux-audit', { processing_status: 'pending', file_type: 'url' })
-  await analyzeUrlMaterial(row.id, 'https://example.com/empty')
+  try {
+    await analyzeUrlMaterial(row.id, 'https://example.com/empty')
+  } finally {
+    restore()
+  }
   expect(Materials.findById(row.id).processing_status).toBe('failed')
   expect(Materials.findById(row.id).processing_error).toContain('본문이 비어')
   expect(mocks.create).not.toHaveBeenCalled()
