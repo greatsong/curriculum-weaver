@@ -9,7 +9,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import express from 'express'
 import request from 'supertest'
 
-const verifyMock = vi.hoisted(() => vi.fn())
+const verifyMock = vi.hoisted(() => {
+  // 검증 대기 상한을 짧게(모듈 로드 시 읽는다)
+  process.env.RATE_LIMIT_VERIFY_WAIT_MS = '200'
+  return vi.fn()
+})
 vi.mock('../auth.js', () => ({ verifyTokenCached: (...a) => verifyMock(...a) }))
 
 const { apiLimiter, _internal } = await import('../rateLimit.js')
@@ -81,6 +85,14 @@ describe('userKey — 검증된 사용자 id만 사용자 버킷', () => {
     const token = makeJwt({ sub: 'teacher-7', exp: future() })
     verifyMock.mockRejectedValue(new Error('network down'))
     expect(await _internal.userKey(reqWith(token))).toBe('s:teacher-7')
+  })
+
+  it('인증 서버가 응답하지 않으면 대기 상한 뒤 임시 키로 진행한다(공개 라우트가 붙잡히지 않게)', async () => {
+    const token = makeJwt({ sub: 'teacher-slow', exp: future() })
+    verifyMock.mockImplementation(() => new Promise(() => {}))
+    const started = Date.now()
+    expect(await _internal.userKey(reqWith(token))).toBe('s:teacher-slow')
+    expect(Date.now() - started).toBeLessThan(2000)
   })
 
   it('Supabase 미설정(로컬 placeholder)에서는 검증하지 않고 IP 키', async () => {

@@ -7,9 +7,9 @@
  *   실행되어 req.user가 없으므로, limiter 안에서 verifyTokenCached(60초 캐시)로 토큰을
  *   검증한다. 같은 캐시를 requireAuth가 이어 쓰므로 인증 서버 왕복은 늘지 않는다.
  *   토큰이 없거나 무효(만료 포함)면 IP 키로 둔다.
- * - 인증 서버 장애로 검증 자체가 예외를 던지면, 학급 전체가 IP 버킷 하나를 나눠 쓰지 않도록
- *   토큰의 sub를 별도 이름공간(s:)의 임시 키로 쓴다. 이때 보호 라우트는 requireAuth가 어차피
- *   거절하므로, 이 임시 키가 영향을 주는 곳은 공개 라우트뿐이다.
+ * - 인증 서버 장애로 검증 자체가 예외를 던지거나 5초 안에 끝나지 않으면, 학급 전체가 IP 버킷
+ *   하나를 나눠 쓰지 않도록 토큰의 sub를 별도 이름공간(s:)의 임시 키로 쓴다. 장애 중 보호 라우트는
+ *   requireAuth가 어차피 거절하므로, 이 임시 키가 실제로 쓰이는 곳은 공개 라우트뿐이다.
  * - IP 백스톱: 단일 IP의 비정상 폭주를 사용자 키와 무관하게 차단
  */
 
@@ -33,6 +33,9 @@ const INVALID_TOKEN_MAX = 2_000
 const invalidTokens = new Map() // sha256(token) → expiresAt
 // 같은 토큰의 동시 요청(페이지 첫 진입 버스트)은 검증 한 번을 함께 기다린다
 const inflightVerifications = new Map() // sha256(token) → Promise<user|null>
+// 검증을 기다리는 최대 시간(ms) — 넘기면 임시 키(s:)로 진행
+const VERIFY_WAIT_MS = Number(process.env.RATE_LIMIT_VERIFY_WAIT_MS) || 5_000
+const VERIFY_TIMED_OUT = Symbol('verify-timed-out')
 
 function rememberInvalid(hash) {
   invalidTokens.set(hash, Date.now() + INVALID_TOKEN_TTL_MS)
@@ -109,14 +112,23 @@ async function resolveIdentity(req) {
     pending.then(() => inflightVerifications.delete(hash), () => inflightVerifications.delete(hash))
   }
 
+  // 인증 서버가 응답하지 않을 때 공개 라우트까지 붙잡히지 않도록 기다리는 시간에 상한을 둔다.
+  // 시간이 지나면 임시 키로 진행하고, 검증은 뒤에서 마저 끝나 캐시를 채운다.
+  let timer
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(VERIFY_TIMED_OUT), VERIFY_WAIT_MS)
+  })
   try {
-    const user = await pending
+    const user = await Promise.race([pending, timeout])
+    if (user === VERIFY_TIMED_OUT) return { kind: 'degraded', id: sub }
     if (user?.id) return { kind: 'user', id: String(user.id) }
     rememberInvalid(hash)
     return { kind: 'ip' }
   } catch {
     // 인증 서버 장애 — 학급 전체가 IP 버킷 하나로 몰리지 않게 임시 키를 쓴다
     return { kind: 'degraded', id: sub }
+  } finally {
+    clearTimeout(timer)
   }
 }
 
