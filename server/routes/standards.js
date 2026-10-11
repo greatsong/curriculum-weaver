@@ -26,6 +26,7 @@
  * - POST /api/standards/graph/add-links                 — 링크 추가 (관리자 전용)
  */
 import { Router } from 'express'
+import crypto from 'node:crypto'
 import { recordUsage, anthropicUsageFields } from '../lib/aiUsage.js'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
@@ -91,14 +92,24 @@ function logSemanticUnavailable(code) {
   console.warn(`[standards] 시맨틱 검색 사용 불가: ${code}`)
 }
 
+/** 의미 검색어 최대 길이(문자) — 임베딩 API 비용 보호 */
+export const SEMANTIC_QUERY_MAX_CHARS = 200
+
 /**
  * GET /api/standards/semantic-search
  * 시맨틱 검색 — OpenAI 임베딩 기반 의미적 유사도 검색
+ * 검색마다 유료 임베딩 API를 부르므로 로그인 사용자만 쓴다(화면은 실패 시 일반 검색으로 이어 간다).
  */
-standardsRouter.get('/semantic-search', async (req, res) => {
+standardsRouter.get('/semantic-search', requireAuth, async (req, res) => {
   try {
     const { q } = req.query
+    if (q !== undefined && typeof q !== 'string') {
+      return res.status(400).json({ error: '검색어 형식이 올바르지 않습니다.', code: 'invalid_query' })
+    }
     if (!q || !q.trim()) return res.json([])
+    if (q.trim().length > SEMANTIC_QUERY_MAX_CHARS) {
+      return res.status(400).json({ error: `검색어는 ${SEMANTIC_QUERY_MAX_CHARS}자 이내로 입력해 주세요.`, code: 'query_too_long' })
+    }
 
     // semanticSearch가 내부에서 로드 완료를 대기하므로(비동기 로드 도입),
     // 가용성 판정은 호출 결과로 한다 — 부팅 직후 로드 창에서 오탐 503 방지.
@@ -423,6 +434,20 @@ export function isDefaultScenarioVariant(value) {
 const scenarioInflight = new Map() // key → Promise<scenario>
 
 /**
+ * 시나리오 캐시 키 — 코드 집합(정렬) + angle 전체의 해시.
+ * angle은 화면 프리셋 문구가 오지만 자유 문자열도 받으므로, 앞부분만 쓰면 다른 angle이 같은 키를
+ * 공유하게 된다. 전체 문자열의 sha256 앞 16자를 붙여 angle마다 키를 나눈다.
+ * angle이 없으면 예전 키와 같다(기존 캐시 유지).
+ * @param {string[]} codes
+ * @param {string} angle - 이미 trim·길이 제한된 값
+ */
+export function scenarioCacheKey(codes, angle = '') {
+  const base = [...codes].sort().join('|')
+  if (!angle) return base
+  return `${base}@${crypto.createHash('sha256').update(angle, 'utf8').digest('hex').slice(0, 16)}`
+}
+
+/**
  * POST /api/standards/links/scenario
  * 실생활 문제 시나리오 — 개념 성취기준 1개 × 맥락 성취기준 1~4개를 연결해
  * "그 개념 없이는 답할 수 없는" 진짜 문제 상황을 생성한다.
@@ -465,8 +490,7 @@ standardsRouter.post('/links/scenario', requireAuth, async (req, res) => {
     // angle: 선택적 맥락 힌트(넛지 프리셋 등) — 상황을 특정 방향으로 유도. 캐시키에 반영.
     const angle = typeof body.angle === 'string' ? body.angle.trim().slice(0, 120) : ''
     // 1. 캐시 조회 — 같은 조합+angle은 같은 시나리오 (팀 간 공유, 비용 1회)
-    const angleTag = angle ? '@' + Buffer.from(angle).toString('base64').slice(0, 12) : ''
-    const key = [concept.code, ...contexts.map(c => c.code)].sort().join('|') + angleTag
+    const key = scenarioCacheKey([concept.code, ...contexts.map(c => c.code)], angle)
     const { data: cached } = await supabaseAdmin
       .from('scenario_cache').select('scenario')
       .eq('key', key).maybeSingle()
@@ -721,6 +745,16 @@ standardsRouter.get('/project/:projectId/companions', requireAuth, async (req, r
   try {
     const { projectId } = req.params
     const limit = Math.min(Number(req.query.limit) || 12, 30)
+
+    // 프로젝트 존재 + 멤버십 확인 (다른 프로젝트 라우트와 같은 기준)
+    const project = await getProject(projectId)
+    if (!project) {
+      return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
+    }
+    const role = await getMemberRole(project.workspace_id, req.user.id)
+    if (!role) {
+      return res.status(403).json({ error: '이 프로젝트에 접근 권한이 없습니다.' })
+    }
 
     const projectStandards = await getStandardsByProject(projectId).catch(() => [])
     const stds = projectStandards.map((s) => s.curriculum_standards || s).filter((s) => s?.code)
@@ -1044,6 +1078,85 @@ standardsRouter.delete('/all', requireAuth, requireAdmin, async (req, res) => {
 // AI 기반 성취기준 추천 (프로젝트 컨텍스트 기반)
 // ============================================================
 
+// AI 추천 입력 상한 — 프롬프트에 들어가는 값의 길이와 개수를 제한한다
+export const RECOMMEND_AI_LIMITS = Object.freeze({
+  maxSubjects: 6,
+  maxSubjectChars: 50,
+  maxSubjectsAccepted: 30, // 이보다 많으면 형식 오류로 본다(화면은 프로젝트 교과 + 담은 기준 교과군)
+  maxTextChars: 500,
+  maxGradeChars: 50,
+})
+
+const isPlainObject = (v) => v != null && typeof v === 'object' && !Array.isArray(v)
+
+/**
+ * POST /recommend-ai 입력 검증·정리.
+ * 형식이 틀리면(배열·문자열·객체가 아님, 교과명이 비었거나 너무 김) 400,
+ * 긴 문자열은 앞에서부터 상한까지만 쓴다(화면이 보내는 비전 등은 상한보다 길 수 있다).
+ * 교과는 중복을 빼고 앞에서부터 최대 6개(화면은 프로젝트 교과를 먼저 보낸다).
+ * @returns {{ok: true, value: {subjects: string[], grade: string, topic: string, boardContext: object}} | {ok: false, error: string}}
+ */
+export function parseRecommendAiInput(body) {
+  const L = RECOMMEND_AI_LIMITS
+  const src = isPlainObject(body) ? body : {}
+  const { subjects, grade, topic, boardContext } = src
+
+  if (!Array.isArray(subjects) || subjects.length < 1) {
+    return { ok: false, error: '교과(subjects) 배열이 필요합니다.' }
+  }
+  if (subjects.length > L.maxSubjectsAccepted) {
+    return { ok: false, error: '교과(subjects) 항목이 너무 많습니다.' }
+  }
+  const cleanSubjects = []
+  for (const s of subjects) {
+    if (typeof s !== 'string' || !s.trim()) {
+      return { ok: false, error: '교과(subjects)는 비어 있지 않은 문자열이어야 합니다.' }
+    }
+    const name = s.trim()
+    if (name.length > L.maxSubjectChars) {
+      return { ok: false, error: `교과명은 ${L.maxSubjectChars}자 이내여야 합니다.` }
+    }
+    if (!cleanSubjects.includes(name)) cleanSubjects.push(name)
+  }
+
+  const clip = (v, max) => v.trim().slice(0, max)
+  if (grade !== undefined && grade !== null && typeof grade !== 'string') {
+    return { ok: false, error: '학년(grade) 형식이 올바르지 않습니다.' }
+  }
+  if (topic !== undefined && topic !== null && typeof topic !== 'string') {
+    return { ok: false, error: '주제(topic) 형식이 올바르지 않습니다.' }
+  }
+  if (boardContext !== undefined && boardContext !== null && !isPlainObject(boardContext)) {
+    return { ok: false, error: '보드 맥락(boardContext) 형식이 올바르지 않습니다.' }
+  }
+
+  const ctx = {}
+  if (isPlainObject(boardContext)) {
+    for (const field of ['vision', 'selectedTopic']) {
+      const v = boardContext[field]
+      if (v === undefined || v === null || v === '') continue
+      if (typeof v !== 'string') return { ok: false, error: `보드 맥락(${field}) 형식이 올바르지 않습니다.` }
+      const t = clip(v, L.maxTextChars)
+      if (t) ctx[field] = t
+    }
+    const prep = boardContext.prep
+    if (prep !== undefined && prep !== null) {
+      if (!isPlainObject(prep)) return { ok: false, error: '보드 맥락(prep) 형식이 올바르지 않습니다.' }
+      ctx.prep = prep
+    }
+  }
+
+  return {
+    ok: true,
+    value: {
+      subjects: cleanSubjects.slice(0, L.maxSubjects),
+      grade: typeof grade === 'string' ? clip(grade, L.maxGradeChars) : '',
+      topic: typeof topic === 'string' ? clip(topic, L.maxTextChars) : '',
+      boardContext: ctx,
+    },
+  }
+}
+
 /**
  * POST /api/standards/recommend-ai
  * AI가 프로젝트 컨텍스트를 분석하여 적합한 성취기준을 추천
@@ -1051,11 +1164,11 @@ standardsRouter.delete('/all', requireAuth, requireAdmin, async (req, res) => {
  * 사용 시점: A-2-1 진입 시, 또는 교사가 "AI 추천" 버튼 클릭 시
  */
 standardsRouter.post('/recommend-ai', requireAuth, async (req, res) => {
-  const { projectId, subjects, grade, topic, boardContext } = req.body
-
-  if (!subjects || !Array.isArray(subjects) || subjects.length < 1) {
-    return res.status(400).json({ error: '교과(subjects) 배열이 필요합니다.' })
+  const parsed = parseRecommendAiInput(req.body)
+  if (!parsed.ok) {
+    return res.status(400).json({ error: parsed.error })
   }
+  const { subjects, grade, topic, boardContext } = parsed.value
 
   try {
     // 1. 교과+학년으로 후보군 필터링
