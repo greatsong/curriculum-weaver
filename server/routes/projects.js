@@ -26,6 +26,40 @@ const router = Router()
 // 모든 라우트에 인증 적용
 router.use(requireAuth)
 
+// ── 입력 검증 ──
+// 사용자가 PUT으로 바꿀 수 있는 프로젝트 상태 (DB 제약 00014의 값 중 일부)
+export const USER_PROJECT_STATUSES = Object.freeze(['active', 'completed', 'archived'])
+// 서버만 쓰는 상태 — 시뮬레이션 결과물(simulation)·AI 생성 중(generating)·생성 실패(failed)
+export const SYSTEM_PROJECT_STATUSES = Object.freeze(['simulation', 'generating', 'failed'])
+// learner_context 안에서 서버만 정하는 표식 — 시연 모드(demo, routes/demo.js)·시뮬레이션 정보(simulation_meta)
+export const SYSTEM_LEARNER_CONTEXT_KEYS = Object.freeze(['demo', 'simulation_meta'])
+
+const isPlainObject = (v) => v != null && typeof v === 'object' && !Array.isArray(v)
+
+// '[시뮬레이션]'으로 시작하는 제목은 읽기 전용 판정(lib/projectGuards.js)에 쓰인다.
+// 사용자가 이 제목을 붙이면 되돌릴 수 없게 잠기므로 일반 경로에서는 받지 않는다.
+const RESERVED_TITLE_PREFIX = '[시뮬레이션]'
+
+/**
+ * 사용자가 보낸 learner_context에서 서버 전용 표식을 빼고, 기존 값의 표식은 그대로 유지한다.
+ * 일반 생성·수정 경로로 시연 모드 표식을 켜거나 끄지 못하게 한다.
+ * @param {object|null|undefined} existing - 현재 저장된 learner_context
+ * @param {object} incoming - 사용자가 보낸 learner_context (plain object)
+ * @returns {object}
+ */
+export function sanitizeLearnerContext(existing, incoming) {
+  const next = {}
+  for (const [k, v] of Object.entries(incoming || {})) {
+    if (!SYSTEM_LEARNER_CONTEXT_KEYS.includes(k)) next[k] = v
+  }
+  if (isPlainObject(existing)) {
+    for (const k of SYSTEM_LEARNER_CONTEXT_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(existing, k)) next[k] = existing[k]
+    }
+  }
+  return next
+}
+
 // ── 프로젝트 목록 캐시 (워크스페이스별, 10초 TTL) ──
 // 수업 시작에 학급 전원(30명)이 같은 워크스페이스 목록을 동시에 열면
 // 요청마다 목록 조회 + 프로젝트별 메시지 count(N+1)가 반복된다.
@@ -133,8 +167,14 @@ router.post('/workspaces/:workspaceId/projects', async (req, res) => {
 
     const { title, description, grade, subjects, learner_context } = req.body
 
-    if (!title?.trim()) {
+    if (typeof title !== 'string' || !title.trim()) {
       return res.status(400).json({ error: '프로젝트 제목은 필수입니다.' })
+    }
+    if (title.trim().startsWith(RESERVED_TITLE_PREFIX)) {
+      return res.status(400).json({ error: `제목은 ${RESERVED_TITLE_PREFIX}로 시작할 수 없습니다.` })
+    }
+    if (learner_context !== undefined && learner_context !== null && !isPlainObject(learner_context)) {
+      return res.status(400).json({ error: 'learner_context 형식이 올바르지 않습니다.' })
     }
 
     const cleanTitle = title.trim()
@@ -162,7 +202,8 @@ router.post('/workspaces/:workspaceId/projects', async (req, res) => {
       description: description?.trim() || null,
       grade: grade || null,
       subjects: subjects || [],
-      learner_context: learner_context || {},
+      // 시연 모드 표식은 /api/demo/bootstrap만 붙인다 — 일반 생성 경로에서는 뺀다
+      learner_context: sanitizeLearnerContext(null, learner_context || {}),
     })
     bustProjectListCache(workspaceId)
 
@@ -258,10 +299,38 @@ router.put('/projects/:id', checkProjectAccess, requireWritableProject, async (r
     const { title, description, current_procedure, status, learner_context } = req.body
     const updateData = {}
 
-    if (title !== undefined) updateData.title = title.trim()
-    if (description !== undefined) updateData.description = description
-    if (status !== undefined) updateData.status = status
-    if (learner_context !== undefined) updateData.learner_context = learner_context
+    if (title !== undefined) {
+      if (typeof title !== 'string' || !title.trim()) {
+        return res.status(400).json({ error: '프로젝트 제목은 비어 있지 않은 문자열이어야 합니다.' })
+      }
+      if (title.trim().startsWith(RESERVED_TITLE_PREFIX)) {
+        return res.status(400).json({ error: `제목은 ${RESERVED_TITLE_PREFIX}로 시작할 수 없습니다.` })
+      }
+      updateData.title = title.trim()
+    }
+    if (description !== undefined) {
+      if (description !== null && typeof description !== 'string') {
+        return res.status(400).json({ error: 'description 형식이 올바르지 않습니다.' })
+      }
+      updateData.description = description
+    }
+    if (status !== undefined) {
+      // 시스템 전용 상태(simulation 등)로는 바꿀 수 없다 — 읽기 전용 판정·시뮬레이션 복구와 얽힌 값
+      if (SYSTEM_PROJECT_STATUSES.includes(status)) {
+        return res.status(403).json({ error: '이 상태는 시스템만 설정할 수 있습니다.' })
+      }
+      if (!USER_PROJECT_STATUSES.includes(status)) {
+        return res.status(400).json({ error: `유효하지 않은 상태입니다. 허용: ${USER_PROJECT_STATUSES.join(', ')}` })
+      }
+      updateData.status = status
+    }
+    if (learner_context !== undefined) {
+      if (!isPlainObject(learner_context)) {
+        return res.status(400).json({ error: 'learner_context 형식이 올바르지 않습니다.' })
+      }
+      // 시연 모드 표식 등 서버 전용 키는 기존 값을 유지한다
+      updateData.learner_context = sanitizeLearnerContext(req.project?.learner_context, learner_context)
+    }
 
     // current_procedure 유효성 검증
     if (current_procedure !== undefined) {
