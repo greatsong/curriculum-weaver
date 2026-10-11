@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   resolveChatProvider, isChatFallbackEnabled, buildOpenAIMessages,
   normalizeOpenAIUsage, normalizeAnthropicUsage, streamOpenAIChat, DEFAULT_LUNA_MODEL,
+  normalizeAiModel, isPreciseModeEnabled,
 } from '../llmProvider.js'
 
 describe('resolveChatProvider', () => {
@@ -16,8 +17,20 @@ describe('resolveChatProvider', () => {
     expect(resolveChatProvider({ env: { CHAT_PROVIDER: 'openai', LUNA_MODEL: 'gpt-5.6-luna', LUNA_REASONING_EFFORT: 'low' } }))
       .toEqual({ provider: 'openai', model: 'gpt-5.6-luna', effort: 'low' })
   })
-  it('정밀 모드는 언제나 Anthropic', () => {
-    expect(resolveChatProvider({ aiModel: 'precise', env: { CHAT_PROVIDER: 'openai' } })).toEqual({ provider: 'anthropic' })
+  it('정밀 모드가 켜져 있으면(PRECISE_MODE_ENABLED=true) 언제나 Anthropic', () => {
+    expect(resolveChatProvider({ aiModel: 'precise', env: { CHAT_PROVIDER: 'openai', PRECISE_MODE_ENABLED: 'true' } })).toEqual({ provider: 'anthropic' })
+  })
+  it('정밀 모드가 꺼져 있으면 precise 요청도 기본 경로(공급자 선택)를 따른다', () => {
+    expect(resolveChatProvider({ aiModel: 'precise', env: { CHAT_PROVIDER: 'openai' } })).toEqual({ provider: 'openai', model: DEFAULT_LUNA_MODEL })
+    expect(resolveChatProvider({ aiModel: 'precise', env: { CHAT_PROVIDER: 'openai', PRECISE_MODE_ENABLED: 'false' } }).provider).toBe('openai')
+    expect(resolveChatProvider({ aiModel: 'precise', env: {} })).toEqual({ provider: 'anthropic' })
+  })
+  it('normalizeAiModel: 정밀 모드가 꺼져 있으면 precise → fast, 켜져 있으면 그대로', () => {
+    expect(normalizeAiModel('precise', {})).toBe('fast')
+    expect(normalizeAiModel('precise', { PRECISE_MODE_ENABLED: 'true' })).toBe('precise')
+    expect(normalizeAiModel('fast', {})).toBe('fast')
+    expect(normalizeAiModel(undefined, {})).toBeUndefined()
+    expect(isPreciseModeEnabled({ PRECISE_MODE_ENABLED: 'TRUE' })).toBe(false)
   })
   it('CHAT_PROVIDER_WORKSPACES가 있으면 그 워크스페이스만 루나(CHAT_PROVIDER와 무관)', () => {
     const env = { CHAT_PROVIDER_WORKSPACES: 'w1, w2', CHAT_PROVIDER: 'anthropic' }

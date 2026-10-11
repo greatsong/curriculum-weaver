@@ -4,11 +4,13 @@
  * ai_usage(00030)를 기간으로 읽어 일자(한국 시간)·공급자·모델·경로별로 합산한다.
  * 비용은 lib/aiPricing.js 단가표로 계산한 추정치이며, 실제 청구액의 정본은 각 사 콘솔이다.
  * 기간은 최대 31일, 행은 최대 50,000개까지 읽는다.
+ * 응답의 budget에는 오늘(한국 시간) 비용·하루 한도·초과 여부를 담는다(middleware/aiBudget.js).
  */
 import { Router } from 'express'
 import { requireAuth, requireAdmin } from '../middleware/auth.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { estimateCost } from '../lib/aiPricing.js'
+import { getAiBudgetStatus } from '../middleware/aiBudget.js'
 
 export const adminUsageRouter = Router()
 
@@ -74,7 +76,9 @@ adminUsageRouter.get('/', requireAuth, requireAdmin, async (req, res) => {
       rows.push(...(data || []))
       if (!data || data.length < 1000) break
     }
-    res.json({ from: from.toISOString(), to: to.toISOString(), rows: rows.length, truncated: rows.length >= MAX_ROWS, summary: summarizeUsage(rows) })
+    // 오늘 비용·한도 상태 — 조회 실패해도 사용량 응답은 보낸다
+    const budget = await getAiBudgetStatus({ force: true }).catch(() => null)
+    res.json({ from: from.toISOString(), to: to.toISOString(), rows: rows.length, truncated: rows.length >= MAX_ROWS, summary: summarizeUsage(rows), budget })
   } catch (error) {
     console.error('[admin/ai-usage] 조회 실패:', error?.message || error)
     res.status(500).json({ error: '사용량을 불러오지 못했습니다.' })

@@ -15,6 +15,7 @@ import { saveProjectStandards, standardsSaveNotice } from '../lib/projectStandar
 import { resolveBriefMode, resolveCoreFormal } from 'curriculum-weaver-shared/briefMode.js'
 import Logo from '../components/Logo'
 import HostSetupWizard from '../components/HostSetupWizard'
+import JoinRequestList from '../components/JoinRequestList'
 
 // 최근 활동 상대시간 (동일 제목 프로젝트 구분용)
 function formatRelativeTime(iso) {
@@ -720,6 +721,10 @@ export default function WorkspaceDetailPage() {
                 멤버 초대
               </button>
             </div>
+            {/* 참여 요청(초대 이메일과 다른 계정) — host·owner만 보고 처리한다 */}
+            {isHostOrOwner && (
+              <JoinRequestList workspaceId={workspaceId} onAccepted={() => fetchWorkspace(workspaceId).catch(() => {})} />
+            )}
             <div style={{
               background: 'var(--color-bg-secondary)',
               borderRadius: 'var(--radius-xl)',

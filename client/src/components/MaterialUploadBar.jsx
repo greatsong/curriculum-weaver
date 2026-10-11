@@ -43,8 +43,10 @@ const { PENDING, PARSING, ANALYZING, COMPLETED, FAILED } = MATERIAL_PROCESSING_S
  * @param {(open: boolean) => void} [props.onOpenChange] — 펼침 상태가 바뀔 때 알림
  * @param {boolean} [props.hideToggle] — 접힌 요약 줄을 그리지 않는다(작업 화면 세로 공간 확보, 2026-10-03)
  */
-export default function MaterialUploadBar({ projectId: projectIdProp, sessionId, open, onOpenChange, hideToggle = false }) {
+export default function MaterialUploadBar({ projectId: projectIdProp, sessionId, open, onOpenChange, hideToggle = false, memberRole }) {
   const projectId = projectIdProp || sessionId
+  // 열람 전용 멤버(viewer)는 자료를 보기만 한다 — 올리기·URL·재분석·삭제 버튼을 감춘다(서버도 403)
+  const viewOnly = memberRole === 'viewer'
 
   const {
     materials,
@@ -410,8 +412,15 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId,
             ))}
           </div>
 
+          {viewOnly && (
+            <div className="flex items-start gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600" role="note">
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              <span>열람 전용 멤버입니다. 자료를 볼 수 있지만 올리거나 바꿀 수는 없습니다.</span>
+            </div>
+          )}
+
           {/* 드래그&드롭 존 — 참고사이트(website) 카테고리에서는 숨김 (URL 입력이 주) */}
-          {!urlIsPrimary && (
+          {!viewOnly && !urlIsPrimary && (
             <div
               ref={dropRef}
               role="button"
@@ -453,7 +462,7 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId,
           )}
 
           {/* 업로드 대기 (pending) — intent 선택 UI */}
-          {pendingUploads.length > 0 && (
+          {!viewOnly && pendingUploads.length > 0 && (
             <PendingUploadsPanel
               items={pendingUploads}
               bulkIntent={bulkIntent}
@@ -469,7 +478,7 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId,
           )}
 
           {/* 참고사이트 카테고리: URL 입력 안내 */}
-          {urlIsPrimary && (
+          {!viewOnly && urlIsPrimary && (
             <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50/60 px-3 py-2 text-[11px] text-green-800">
               <Globe size={14} className="mt-0.5 shrink-0" />
               <span>
@@ -480,7 +489,7 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId,
           )}
 
           {/* URL 추가 버튼 — 참고사이트 카테고리에서는 폼이 항상 보이므로 숨김 */}
-          {!urlIsPrimary && (
+          {!viewOnly && !urlIsPrimary && (
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -493,7 +502,7 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId,
             </div>
           )}
 
-          {(showUrlForm || urlIsPrimary) && (
+          {!viewOnly && (showUrlForm || urlIsPrimary) && (
             <form onSubmit={handleUrlSubmit} className="flex flex-col sm:flex-row gap-2">
               <input
                 value={urlTitle}
@@ -559,8 +568,8 @@ export default function MaterialUploadBar({ projectId: projectIdProp, sessionId,
                     material={m}
                     included={!excludedMaterialIds.has(m.id)}
                     onToggleIncluded={setMaterialContextIncluded}
-                    onReanalyze={handleReanalyze}
-                    onDelete={handleDelete}
+                    onReanalyze={viewOnly ? null : handleReanalyze}
+                    onDelete={viewOnly ? null : handleDelete}
                     onOpenDetail={setDetailMaterialId}
                     onCheckStatus={startMaterialPolling}
                   />
@@ -823,7 +832,7 @@ function MaterialRow({ material: m, included = true, onToggleIncluded, onReanaly
         {/* 상태 확인은 기존 분석을 다시 실행하지 않는다. */}
         {m._statusUnavailable && <button type="button" onClick={() => onCheckStatus(m.id)} className="text-orange-700 underline">상태 확인</button>}
         {/* 액션 버튼들 */}
-        {(status === FAILED || status === COMPLETED) && !isUploading && (
+        {onReanalyze && (status === FAILED || status === COMPLETED) && !isUploading && (
           <button
             type="button"
             onClick={() => onReanalyze(m.id)}
@@ -847,7 +856,7 @@ function MaterialRow({ material: m, included = true, onToggleIncluded, onReanaly
             상세
           </button>
         )}
-        {!isUploading && (
+        {onDelete && !isUploading && (
           <button
             type="button"
             onClick={() => onDelete(m.id)}

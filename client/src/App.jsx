@@ -1,10 +1,11 @@
 // Pretendard Variable 폰트 로드
 import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css'
 
-import { lazy, Suspense, useEffect, useState } from 'react'
-import { Routes, Route, Navigate, useLocation, useParams, useNavigate } from 'react-router-dom'
+import { lazy, Suspense, useEffect } from 'react'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
-import { RequirePrivacyConsent } from './components/PrivacyConsentGate'
+import ProtectedRoute from './components/ProtectedRoute'
+import InviteAcceptPage from './pages/InviteAcceptPage'
 
 // 즉시 로드 (핵심 페이지)
 import LoginPage from './pages/LoginPage'
@@ -60,32 +61,6 @@ function LegacySessionRedirect() {
 const REMOVED_FUTURES_PATHS = ['/futures-lab', '/futures2', '/futures', '/future-map']
 
 /**
- * 인증 필수 라우트 래퍼
- */
-function ProtectedRoute({ children }) {
-  const { user, loading } = useAuthStore()
-  const location = useLocation()
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 28, height: 28, border: '3px solid var(--color-border)', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-          <p style={{ fontSize: 13, color: 'var(--color-text-tertiary)', margin: 0 }}>로딩 중...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />
-  }
-
-  // 현재 버전의 개인정보 동의 기록이 없으면(Google 첫 로그인·기록 없던 기존 회원) 한 번 묻는다
-  return <RequirePrivacyConsent user={user}>{children}</RequirePrivacyConsent>
-}
-
-/**
  * 루트 경로 핸들러
  */
 function HomeRoute() {
@@ -125,85 +100,6 @@ function AuthRoute({ children }) {
   }
 
   return children
-}
-
-/**
- * 초대 수락 페이지
- */
-function InviteAcceptPage() {
-  const { token } = useParams()
-  const navigate = useNavigate()
-  const [status, setStatus] = useState('loading')
-  const [error, setError] = useState('')
-  const [workspace, setWorkspace] = useState(null)
-
-  useEffect(() => {
-    async function accept() {
-      try {
-        const { useWorkspaceStore } = await import('./stores/workspaceStore')
-        const ws = await useWorkspaceStore.getState().acceptInvite(token)
-        setWorkspace(ws)
-        setStatus('success')
-        setTimeout(() => navigate(`/workspaces/${ws.id}`), 3000)
-      } catch (err) {
-        setError(err.message)
-        setStatus('error')
-      }
-    }
-    accept()
-  }, [token, navigate])
-
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-gray-500">초대를 처리 중입니다...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (status === 'error') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center max-w-sm mx-4">
-          <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3">
-            <span className="text-red-600 text-xl">!</span>
-          </div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">초대 수락 실패</h2>
-          <p className="text-sm text-gray-500 mb-4">{error}</p>
-          <button
-            onClick={() => navigate('/workspaces')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
-          >
-            워크스페이스 목록으로
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center max-w-sm mx-4">
-        <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#16A34A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-        </div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">참여 완료</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          {workspace?.name || '워크스페이스'}에 참여했습니다.
-          <br />잠시 후 자동으로 이동합니다.
-        </p>
-        <button
-          onClick={() => navigate(`/workspaces/${workspace?.id}`)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
-        >
-          바로 이동
-        </button>
-      </div>
-    </div>
-  )
 }
 
 export default function App() {
@@ -294,11 +190,11 @@ export default function App() {
           }
         />
 
-        {/* 초대 수락 */}
+        {/* 초대 수락 — 가입 승인 대기 계정도 열 수 있다(초대 링크가 승인 경로) */}
         <Route
           path="/invite/:token"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute allowPending>
               <InviteAcceptPage />
             </ProtectedRoute>
           }

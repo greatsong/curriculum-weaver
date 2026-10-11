@@ -14,6 +14,9 @@ import { isMoveNote } from 'curriculum-weaver-shared/procedureMove.js'
 import { stripBoardKeyMentions } from 'curriculum-weaver-shared/boardKeys.js'
 import { stripEmptyCodeFences } from 'curriculum-weaver-shared/codeFence.js'
 
+/** 서버 문구를 그대로 보여 줄 오류 코드 — AI 사용 상한(429)·가입 승인 대기 */
+const SERVER_NOTICE_CODES = new Set(['ai_daily_limit', 'ai_budget_exceeded', 'approval_pending'])
+
 /**
  * 이 절차를 약식으로 진행하는지 — 지금 연 프로젝트의 워크스페이스 설정 기준(핵심 절차 정식 진행 반영).
  * 기존 팀·핵심 절차(정식)는 false
@@ -448,7 +451,8 @@ export const useChatStore = create((set, get) => ({
     // 다른 작업 공간의 설정이 남아 있으면 쓰지 않는다(서버가 기본 역할로 처리)
     const wsAiRole = currentWorkflowConfig()?.aiRole
 
-    const aiModel = localStorage.getItem('cw_ai_model') || 'fast'
+    // 정밀 모드 선택은 화면에서 뺐다(2026-10-11). 예전에 고른 값(localStorage cw_ai_model)은 보내지 않는다.
+    const aiModel = 'fast'
     // 서버가 저장한 이 답의 번호(message_saved). 화면 메시지를 이 번호로 붙인다.
     let savedMessageId = null
 
@@ -582,13 +586,19 @@ export const useChatStore = create((set, get) => ({
 
         set(newState)
       },
-      onError: (error) => {
+      onError: (error, meta) => {
         console.error('AI 응답 오류:', error)
         // 늦게 실패한 이전 요청은 지금 요청의 잠금·글자를 지우지 않는다(알림도 띄우지 않는다)
         if (!isCurrent()) return
         set({ streaming: false, streamingText: '' })
-        // 조용히 실패하면 "AI가 무시했다"로 오해한다 — 원인을 바로 알린다
-        pushToast({ kind: 'error', message: `AI 응답을 받지 못했습니다. ${error || ''}`.trim(), duration: 8_000 })
+        // 조용히 실패하면 "AI가 무시했다"로 오해한다 — 원인을 바로 알린다.
+        // AI 사용 상한(429)·권한 안내는 서버 문구를 그대로 보여 준다.
+        const verbatim = SERVER_NOTICE_CODES.has(meta?.code)
+        pushToast({
+          kind: 'error',
+          message: verbatim && error ? error : `AI 응답을 받지 못했습니다. ${error || ''}`.trim(),
+          duration: verbatim ? 12_000 : 8_000,
+        })
       },
     }), isCurrent)
   },
@@ -609,6 +619,8 @@ export const useChatStore = create((set, get) => ({
     }
     const project = useProjectStore.getState().currentProject
     if (isReadOnlyProject(project)) return
+    // 열람 전용 멤버는 안내를 대화에 저장할 수 없다(서버도 403) — 이미 있는 안내만 본다
+    if (project?.id === projectId && project?.my_role === 'viewer') return
 
     // sendMessage와 같은 요청 번호를 쓴다. 예전에는 번호 없이 잠가, 늦게 끝난 이전 요청이나 다른 요청의
     // 글자가 인트로에 붙거나 인트로의 마무리가 다른 요청의 상태를 지울 수 있었다.
@@ -616,7 +628,7 @@ export const useChatStore = create((set, get) => ({
     set({ streaming: true, streamingText: '', _streamSeq: seq })
     const isCurrent = () => get()._streamSeq === seq
 
-    const aiModel = localStorage.getItem('cw_ai_model') || 'fast'
+    const aiModel = 'fast'
     let savedMessageId = null
 
     await guardStreaming(set, get, apiStreamPost('/api/chat/stage-intro', {

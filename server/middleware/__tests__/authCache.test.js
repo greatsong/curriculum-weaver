@@ -24,7 +24,8 @@ vi.mock('../../lib/supabaseService.js', () => ({ getMemberRole: vi.fn() }))
 const { verifyTokenCached, requireAuth } = await import('../auth.js')
 
 function makeUser(id, meta = {}) {
-  return { id, email: `${id}@test.local`, user_metadata: meta }
+  // 가입 승인 기준 시각(2026-10-11 15:00 KST) 이전 계정 = 기존 가입자(승인)
+  return { id, email: `${id}@test.local`, user_metadata: meta, created_at: '2026-09-01T00:00:00Z' }
 }
 
 function mockReqRes(token) {

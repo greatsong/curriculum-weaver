@@ -20,6 +20,7 @@ import { loadSemanticIndex, ensureEmbeddingsCache } from './services/semanticSea
 import { startSimulationRecovery } from './lib/simulationRuns.js'
 import { supabaseAdmin } from './lib/supabaseAdmin.js'
 import { verifyTokenCached } from './middleware/auth.js'
+import { resolveApproval } from './lib/approval.js'
 import { hydrateLinksFromDB } from './lib/linkService.js'
 
 // ── Rate Limiter 임포트 ──
@@ -38,6 +39,8 @@ import versionsRouter from './routes/versions.js'
 import activityLogsRouter from './routes/activityLogs.js'
 import { chatRouter } from './routes/chat.js'
 import { adminUsageRouter } from './routes/adminUsage.js'
+import { adminUsersRouter } from './routes/adminUsers.js'
+import { aiBudget } from './middleware/aiBudget.js'
 import { standardsRouter } from './routes/standards.js'
 import { materialsRouter } from './routes/materials.js'
 import { principlesRouter } from './routes/principles.js'
@@ -116,6 +119,11 @@ io.use(async (socket, next) => {
     const user = await verifyTokenCached(token)
     if (!user) {
       return next(new Error('유효하지 않은 토큰입니다.'))
+    }
+    // 가입 승인 대기·거절 사용자는 실시간 연결도 받지 않는다 (HTTP requireAuth와 같은 판정)
+    const approval = await resolveApproval(user).catch(() => ({ approved: false }))
+    if (!approval.approved) {
+      return next(new Error('관리자 승인을 기다리고 있습니다.'))
     }
     socket.user = user
     next()
@@ -358,9 +366,7 @@ app.use(compression({
 // 사용자별 한도(JWT sub 키) + IP 백스톱 2중 구조 — 학교 NAT(전원 동일 IP) 대응.
 app.use('/api', ipBackstopLimiter)    // IP 백스톱: 분당 3,000회 (IP당, 플러딩 차단)
 app.use('/api', apiLimiter)           // 일반 API: 분당 240회 (사용자당)
-// 로그인/가입만 brute force 제한 (IP+이메일당) — /me·/logout은 일반 한도로 충분
-app.use('/api/auth/login', authLimiter)
-app.use('/api/auth/signup', authLimiter)
+// 서버 경유 로그인·가입 경로는 삭제했다(2026-10-11, 클라이언트가 Supabase Auth를 직접 쓴다)
 
 // AI 채팅 스트리밍 라우트: 분당 10회 (사용자당)
 app.use('/api/chat/message', aiChatLimiter)
@@ -374,6 +380,10 @@ app.use('/api/standards/links/scenario', scenarioLimiter)
 
 // 파일 업로드: 분당 5회 (사용자당)
 app.use('/api/materials/upload', uploadLimiter)
+
+// AI 사용 상한 (사용자별 하루 호출 수 + 서비스 전체 하루 비용) — 대상 경로는 middleware/aiBudget.js
+// 분당 한도(위 limiter)를 통과한 요청만 센다
+app.use('/api', aiBudget)
 
 // ── 헬스 체크 ──
 app.get('/api/health', (req, res) => {
@@ -428,6 +438,9 @@ app.use('/api/chat', chatRouter)
 
 // AI 사용량 조회 (관리자 전용, 00030 ai_usage)
 app.use('/api/admin/ai-usage', adminUsageRouter)
+
+// 가입 승인 관리 (관리자 전용)
+app.use('/api/admin/users', adminUsersRouter)
 
 // 자료
 app.use('/api/materials', materialsRouter)

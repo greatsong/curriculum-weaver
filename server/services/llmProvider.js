@@ -4,7 +4,8 @@
  * - 기본 공급자는 Anthropic이다(지금과 같다). 머지만으로는 트래픽이 바뀌지 않고, env로 켠다.
  *   - CHAT_PROVIDER_WORKSPACES(쉼표 구분)가 비어 있지 않으면 그 워크스페이스만 루나(단계적 전환)
  *   - 비어 있으면 CHAT_PROVIDER=openai일 때 전체 루나
- * - 정밀 모드는 항상 Anthropic이다(PRECISE_MODEL, aiAgent.js).
+ * - 정밀 모드는 PRECISE_MODE_ENABLED=true일 때만 쓴다(2026-10-11 화면에서 숨김). 켜져 있으면 항상
+ *   Anthropic(PRECISE_MODEL, aiAgent.js), 꺼져 있으면 'precise' 요청도 기본(fast) 경로로 처리한다.
  * - 루나 호출이 첫 글자를 보내기 전에 실패하면 호출자(aiAgent.buildAIResponse)가 소넷으로 한 번 대체한다.
  *
  * 파라미터 이름은 openai SDK 6.33 타입 정의로 확인했다(max_completion_tokens, reasoning_effort,
@@ -34,13 +35,30 @@ function parseList(value) {
   return String(value || '').split(',').map((s) => s.trim()).filter(Boolean)
 }
 
+/** 정밀 모드 사용 여부 (env PRECISE_MODE_ENABLED === 'true'일 때만) */
+export function isPreciseModeEnabled(env = process.env) {
+  return String(env.PRECISE_MODE_ENABLED || '').trim() === 'true'
+}
+
+/**
+ * 요청의 aiModel을 서버 정책에 맞게 고친다. 정밀 모드가 꺼져 있으면 'precise'를 'fast'로 바꾼다.
+ * 채팅 라우트가 aiAgent에 넘기기 전에 부른다(aiAgent는 'precise'면 PRECISE_MODEL을 쓰기 때문).
+ * @param {string|undefined} aiModel
+ * @returns {string|undefined}
+ */
+export function normalizeAiModel(aiModel, env = process.env) {
+  if (aiModel === 'precise' && !isPreciseModeEnabled(env)) return 'fast'
+  return aiModel
+}
+
 /**
  * 이번 채팅 요청의 공급자를 정한다.
  * @param {{ aiModel?: string, workspaceId?: string|null, env?: object }} opts
  * @returns {{ provider: 'anthropic' } | { provider: 'openai', model: string, effort?: string }}
  */
 export function resolveChatProvider({ aiModel, workspaceId, env = process.env } = {}) {
-  if (aiModel === 'precise') return { provider: 'anthropic' }
+  // 정밀 모드가 꺼져 있으면 'precise' 요청도 기본 경로(아래 공급자 선택)를 따른다
+  if (aiModel === 'precise' && isPreciseModeEnabled(env)) return { provider: 'anthropic' }
   const allow = parseList(env.CHAT_PROVIDER_WORKSPACES)
   const useOpenAI = allow.length > 0
     ? workspaceId != null && allow.includes(String(workspaceId))

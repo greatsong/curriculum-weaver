@@ -7,6 +7,7 @@ import { useChatStore } from '../stores/chatStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useAuthStore } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
+import { pushToast } from '../stores/toastStore'
 import { socket, joinSession, leaveSession } from '../lib/socket'
 import { PROCEDURES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
 import { isMoveNote } from 'curriculum-weaver-shared/procedureMove.js'
@@ -447,8 +448,15 @@ export default function ProjectPage() {
       ))
       setProcedure(stage)
     }
+    // 워크스페이스에서 빠졌다(서버가 이 프로젝트 방에서 내보냄) — 알리고 목록으로 돌아간다
+    const handleAccessRevoked = (payload) => {
+      if (payload?.projectId && payload.projectId !== projectId) return
+      pushToast({ kind: 'error', message: '이 워크스페이스의 멤버에서 빠져 프로젝트를 닫았습니다.', duration: 8_000 })
+      navigate('/workspaces', { replace: true })
+    }
     socket.on('members_updated', handleMembersUpdated)
     socket.on('stage_updated', handleStageUpdated)
+    socket.on('workspace_access_revoked', handleAccessRevoked)
 
     joinedRef.cleanup = () => {
       leaveSession(projectId)
@@ -456,6 +464,7 @@ export default function ProjectPage() {
       unsubscribeBoardUpdates()
       socket.off('members_updated', handleMembersUpdated)
       socket.off('stage_updated', handleStageUpdated)
+      socket.off('workspace_access_revoked', handleAccessRevoked)
       reset()
       joinedRef.current = false
       introRequestedRef.current = false
@@ -848,7 +857,7 @@ export default function ProjectPage() {
       )}
 
       {/* 자료 관리 바 */}
-      <MaterialUploadBar projectId={projectId} open={materialsOpen} onOpenChange={setMaterialsOpen} hideToggle />
+      <MaterialUploadBar projectId={projectId} open={materialsOpen} onOpenChange={setMaterialsOpen} hideToggle memberRole={currentProject?.my_role} />
 
       {/* 절차 네비게이션 — 시연 모드에서는 19절차 트랙 대신 얕은 스텝 네비를 노출(단일 차시 준비) */}
       {isDemo ? (
@@ -963,6 +972,7 @@ export default function ProjectPage() {
               readOnly={isReadOnlyProject}
               loading={isReadOnlyLoading}
               onOpenReport={() => setShowReport(true)}
+              memberRole={currentProject?.my_role}
             />
           </ErrorBoundary>
         </div>

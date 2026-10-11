@@ -135,7 +135,11 @@ export const useWorkspaceStore = create((set, get) => ({
   acceptInvite: async (token) => {
     try {
       const result = await apiPost(`/api/invites/${token}/accept`, {})
-      // 서버 응답: { message, workspace_id, role }
+      // 서버 응답: { kind: 'joined'|'requested', message, workspace_id, role }
+      // 초대 이메일과 로그인 계정이 달라 참여 요청이 된 경우 — 아직 멤버가 아니므로 목록을 다시 읽지 않는다
+      if (result?.kind === 'requested') {
+        return { kind: 'requested', id: result.workspace_id, role: result.role, message: result.message }
+      }
       await get().fetchWorkspaces()
       // 방금 합류한 워크스페이스 상세 조회 (이름·멤버 포함)
       let workspace = null
@@ -145,6 +149,7 @@ export const useWorkspaceStore = create((set, get) => ({
         // 상세 조회 실패해도 id는 확보되므로 무시
       }
       return {
+        kind: 'joined',
         id: result.workspace_id,
         name: workspace?.name,
         role: result.role,
