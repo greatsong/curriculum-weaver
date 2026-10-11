@@ -9,7 +9,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js'
 import {
   createWorkspace, getWorkspace, getWorkspacesByUser,
   updateWorkspace, deleteWorkspace,
-  addMember, removeMember, updateMemberRole, getMemberRole,
+  addMember, ensureUserProfile, removeMember, updateMemberRole, getMemberRole,
   getProjectsByWorkspace,
   createInvite,
   listJoinRequests, resolveJoinRequest, reopenJoinRequest,
@@ -219,6 +219,7 @@ router.post('/:id/invite', requireRole('owner', 'host'), async (req, res) => {
       if (existingRole) {
         return res.status(409).json({ error: '이미 이 워크스페이스의 멤버입니다.' })
       }
+      await ensureUserProfile(targetUser)
       const member = await addMember(workspaceId, targetUser.id, mappedRole)
       // host가 직접 추가한 기존 가입자가 승인 대기 중이면 승인한다
       try {

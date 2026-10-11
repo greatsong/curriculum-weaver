@@ -1193,6 +1193,26 @@ export async function getActivityLogs(projectId, limit = 50) {
 // ============================================================
 
 /**
+ * 멤버로 추가하기 전에 public.users 프로필 행을 보장한다.
+ * 가입만 하고 앱에 아직 접속하지 않은 사용자는 프로필 행이 없어 members 외래 키가 실패한다.
+ * 이미 있으면 덮어쓰지 않는다(이름·학교·과목은 사용자가 접속할 때 인증 미들웨어가 갱신한다).
+ * @param {{ id: string, email?: string, user_metadata?: object }} authUser
+ */
+export async function ensureUserProfile(authUser) {
+  const sb = getSupabase()
+  if (!sb || !authUser?.id) return
+  const meta = authUser.user_metadata || {}
+  const { error } = await sb.from('users').upsert({
+    id: authUser.id,
+    email: authUser.email,
+    display_name: meta.display_name || meta.full_name || authUser.email?.split('@')[0] || '교사',
+    school_name: meta.school_name || '',
+    subject: meta.subject || '',
+  }, { onConflict: 'id', ignoreDuplicates: true })
+  if (error) throw new Error(`프로필 준비 실패: ${error.message}`)
+}
+
+/**
  * 멤버 추가
  * @param {string} workspaceId
  * @param {string} userId
@@ -1812,7 +1832,7 @@ const supabaseService = {
   // 활동 로그
   logActivity, getActivityLogs,
   // 멤버
-  addMember, removeMember, getMemberRole, updateMemberRole,
+  addMember, ensureUserProfile, removeMember, getMemberRole, updateMemberRole,
   // 초대
   createInvite, getInviteByToken, claimInvite, releaseInvite,
   // 참여 요청

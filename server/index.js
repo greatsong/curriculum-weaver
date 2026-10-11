@@ -363,7 +363,7 @@ app.use(compression({
 }))
 
 // ── Rate Limiter 적용 ──
-// 사용자별 한도(JWT sub 키) + IP 백스톱 2중 구조 — 학교 NAT(전원 동일 IP) 대응.
+// 사용자별 한도(검증된 사용자 id 키, rateLimit.js) + IP 백스톱 2중 구조 — 학교 NAT(전원 동일 IP) 대응.
 app.use('/api', ipBackstopLimiter)    // IP 백스톱: 분당 3,000회 (IP당, 플러딩 차단)
 app.use('/api', apiLimiter)           // 일반 API: 분당 240회 (사용자당)
 // 서버 경유 로그인·가입 경로는 삭제했다(2026-10-11, 클라이언트가 Supabase Auth를 직접 쓴다)

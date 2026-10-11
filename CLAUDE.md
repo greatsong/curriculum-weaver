@@ -252,11 +252,22 @@ node scripts/promoteLinks.mjs --no-vocational-pairs  # 전문↔전문은 승격
 SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/migrateLinksToDB.js
 ```
 
+## 가입 승인·AI 사용 상한·권한 (2026-10-11)
+
+- **가입 승인** (`server/lib/approval.js` 단일 소스): `APPROVAL_REQUIRED_SINCE`(기본 2026-10-11 15:00 KST) 이전 가입자와 `users.role='admin'`은 승인, 그 뒤 가입자는 auth `app_metadata.approved`가 있어야 한다(user_metadata·public.users는 판정에 쓰지 않음). 미승인은 `requireAuth`·소켓에서 403 `approval_pending`. 예외 경로는 `requireAuthAllowPending`(`/api/auth/me`·로그아웃·초대 수락)만. 승인 경로: 초대 이메일 일치 수락(`invite`), 이메일로 직접 추가(`member_add`), 참여 요청 수락(`join_request`), 관리자 화면 "가입 승인" 탭(`admin`, `/api/admin/users`). 거절 계정은 다시 승인되지 않는다. 관리자 판정은 60초 캐시라 역할을 바꾼 직후 1분까지 늦게 반영된다.
+- **초대**: 확인된 이메일(구글 또는 email_confirmed_at)이 초대 이메일과 같으면 바로 참여, 다르면 `workspace_join_requests`(00031)로 참여 요청 → host·owner가 멤버 탭에서 수락. 링크 사용은 `used_at IS NULL` 조건부 갱신(한 번만). 이메일로 직접 추가할 때 프로필 행이 없으면 먼저 만든다(`ensureUserProfile`). 이메일 확인은 Supabase `mailer_autoconfirm=false`(기본 메일은 시간당 발송 수 제한이 작다).
+- **AI 사용 상한** (`server/middleware/aiBudget.js`, index.js에서 `/api`에 마운트하고 경로 목록으로 거른다): 사용자별 하루 `AI_DAILY_USER_LIMIT`(기본 400회, ai_usage 성공 행 기준·KST 자정 초기화) + 전체 하루 `AI_DAILY_BUDGET_USD`(기본 $10, aiPricing 추정). 관리자 제외, 조회 실패는 통과(비용 안전망). 관리자 화면에 오늘 비용·한도 표시. **AI를 부르는 새 경로를 만들면 `AI_BUDGET_ROUTES`에 추가할 것.**
+- **정밀 모드 숨김**: 화면 선택 제거, 서버는 `PRECISE_MODE_ENABLED !== 'true'`이면 `precise`를 기본 경로로 처리(`llmProvider.js`). 루나 실패 시 소넷 대체는 유지.
+- **열람자(viewer) 읽기 전용**: 채팅·교사 메시지·제안 수락·자료 쓰기 전부 403, 화면은 "열람 전용 멤버입니다". 제안 수락 경로는 designs.js와 같은 기준(읽기 전용·생략·잠금 423) + 메시지의 project_id 일치 확인.
+- **그 밖**: `/api/auth/signup`·`/login`·`/api/chat/seed` 삭제, 교사 메시지 보낸 사람 이름은 서버 프로필, 의미 검색은 로그인 필요, URL 자료는 DNS 해석 결과까지 사설·예약 대역 검사 후 그 IP로 연결 고정, 소켓 중계는 크기·형식 검사와 보낸 사람 서버 값 덮어쓰기, CORS는 이 프로젝트의 Vercel 미리보기 주소만, 화면 보안 헤더(`vercel.json`, CSP 전체 정책은 Report-Only).
+- **운영 DB 권한 정리**(00031에 기록): 파일 저장소 직접 접근 정책 삭제(서버만 service_role로 사용), RLS 도우미 함수 실행 권한 회수, public 스키마 새 객체에 anon·authenticated 기본 권한 없음. **새 테이블 마이그레이션에도 RLS 켬 + REVOKE를 넣는다.**
+- **키 교체**: OpenAI 키는 GitHub secret `OPENAI_API_KEY`를 바꾼다. `deploy-railway.yml`이 main 머지마다 이 값을 Railway에 다시 쓰므로 Railway에서만 바꾸면 되돌아간다.
+
 ## 동시 30명(3인×10팀) 하드닝 (2026-07-12)
 
 학교 NAT(전원 동일 공인 IP) + 수업 동시 사용 시나리오 대응. PR #42(인증 캐시·채팅 병렬화)·#45(그래프 메모이즈)·#46(임베딩 바이너리)에 이어 나머지 5건 적용.
 
-- **Rate limit 사용자 키** (`server/middleware/rateLimit.js`): limiter가 requireAuth보다 먼저 실행돼 IP 키로만 동작하던 문제(학급 전체가 분당 120/AI 10을 공유 → 수업 시작 429 폭탄) 수정. JWT sub를 서명 검증 없이 디코드해 버킷 키로 사용(`userKey`) + IP 백스톱 분당 3,000회(위조 sub 회전 방어). **새 limiter를 추가할 때 이 함정 주의 — `req.user`는 limiter 시점에 항상 비어 있다.**
+- **Rate limit 사용자 키** (`server/middleware/rateLimit.js`): limiter가 requireAuth보다 먼저 실행돼 IP 키로만 동작하던 문제(학급 전체가 분당 120/AI 10을 공유 → 수업 시작 429 폭탄) 수정. limiter 안에서 토큰을 `verifyTokenCached`로 검증해 사용자 id를 버킷 키로 사용(2026-10-11부터, 무효 토큰은 IP 키) + IP 백스톱 분당 3,000회. **새 limiter를 추가할 때 주의 — `req.user`는 limiter 시점에 항상 비어 있다.**
 - **로그인 제한 완화**: 종전 IP당 5회/분이 `/api/auth` 전체에 걸려 30명 동시 로그인이 불가능했음 → IP+이메일 키 10회/분, `/api/auth/login`·`signup`에만 마운트
 - **AI 큐** (`aiAgent.js`): concurrency 5→12 (env `AI_QUEUE_CONCURRENCY`). "다음 절차로" 동시 전환 시 10팀 인트로+채팅 대응. 타임아웃은 2026-09-05부터 p-queue timeout이 아니라 `runGuardedStream`의 AbortSignal(기본 300s, env `AI_STREAM_TIMEOUT_MS`, 구 `AI_QUEUE_TIMEOUT_MS`도 인식)이 담당 — 아래 40명 섹션 참조
 - **자료 분석 큐** (`materialAnalyzer.js`): analyzeMaterial/analyzeUrlMaterial이 동시성 3의 `analysisQueue`(p-queue) 경유 — 종전 무제한 fire-and-forget은 동시 업로드 수만큼 20MB 버퍼+파싱+Vision 호출이 겹쳐 OOM 위험. 대기 중 상태는 pending/parsing으로 기존 폴링·소켓 UI에 노출. env `MATERIAL_ANALYSIS_CONCURRENCY`
