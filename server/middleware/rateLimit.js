@@ -3,54 +3,137 @@
  *
  * 학교 환경은 전원이 NAT 뒤 같은 공인 IP를 공유하므로 IP 키만 쓰면
  * 학급 전체가 한도를 함께 소진한다(수업 시작 429 폭탄). 그래서:
- * - 사용자별 한도: JWT의 sub 클레임으로 키 (limiter가 requireAuth보다 먼저
- *   실행되어 req.user가 없으므로, 서명 검증 없이 sub만 디코드해 버킷 키로 사용.
- *   위조 sub는 자기 버킷만 만들 뿐이고, 실제 인증은 requireAuth가 담당)
- * - IP 백스톱: 위조 sub 회전으로 사용자별 한도를 우회하는 단일 IP 폭주 차단
+ * - 사용자별 한도: 검증된 사용자 id로 키를 만든다. limiter는 requireAuth보다 먼저
+ *   실행되어 req.user가 없으므로, limiter 안에서 verifyTokenCached(60초 캐시)로 토큰을
+ *   검증한다. 같은 캐시를 requireAuth가 이어 쓰므로 인증 서버 왕복은 늘지 않는다.
+ *   토큰이 없거나 무효(만료 포함)면 IP 키로 둔다.
+ * - 인증 서버 장애로 검증 자체가 예외를 던지면, 학급 전체가 IP 버킷 하나를 나눠 쓰지 않도록
+ *   토큰의 sub를 별도 이름공간(s:)의 임시 키로 쓴다. 이때 보호 라우트는 requireAuth가 어차피
+ *   거절하므로, 이 임시 키가 영향을 주는 곳은 공개 라우트뿐이다.
+ * - IP 백스톱: 단일 IP의 비정상 폭주를 사용자 키와 무관하게 차단
  */
 
-import rateLimit from 'express-rate-limit'
+import crypto from 'node:crypto'
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
+import { verifyTokenCached } from './auth.js'
 
 // IPv6 안전 IP 추출 헬퍼
+// IPv4는 주소 그대로, IPv6는 /56 대역으로 묶는다(주소를 바꿔 가며 한도를 피하지 못하게).
 function safeIp(req) {
   const ip = req.ip || '0.0.0.0'
   // IPv6-mapped IPv4 (::ffff:1.2.3.4) → IPv4로 정규화
-  return ip.startsWith('::ffff:') ? ip.slice(7) : ip
+  const normalized = ip.startsWith('::ffff:') ? ip.slice(7) : ip
+  return ipKeyGenerator(normalized)
 }
 
-/**
- * Bearer JWT에서 sub 클레임 추출 (서명 검증 없음 — rate limit 버킷 키 전용).
- * 파싱 실패 시 null. 요청당 1회만 파싱하도록 req에 캐시.
- */
-function jwtSub(req) {
-  if (req._rlJwtSub !== undefined) return req._rlJwtSub
-  let sub = null
-  try {
-    const authHeader = req.headers.authorization
-    if (authHeader?.startsWith('Bearer ')) {
-      const parts = authHeader.slice(7).split('.')
-      if (parts.length === 3) {
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf-8'))
-        if (typeof payload?.sub === 'string' && payload.sub.length <= 64) sub = payload.sub
-      }
+const MAX_TOKEN_LENGTH = 8192
+// 무효 토큰을 짧게 기억해, 같은 토큰을 반복해 보낼 때 인증 서버를 다시 부르지 않는다
+const INVALID_TOKEN_TTL_MS = 30_000
+const INVALID_TOKEN_MAX = 2_000
+const invalidTokens = new Map() // sha256(token) → expiresAt
+// 같은 토큰의 동시 요청(페이지 첫 진입 버스트)은 검증 한 번을 함께 기다린다
+const inflightVerifications = new Map() // sha256(token) → Promise<user|null>
+
+function rememberInvalid(hash) {
+  invalidTokens.set(hash, Date.now() + INVALID_TOKEN_TTL_MS)
+  if (invalidTokens.size > INVALID_TOKEN_MAX) {
+    const now = Date.now()
+    for (const [k, exp] of invalidTokens) {
+      if (exp <= now) invalidTokens.delete(k)
     }
-  } catch {
-    sub = null
+    while (invalidTokens.size > INVALID_TOKEN_MAX) {
+      invalidTokens.delete(invalidTokens.keys().next().value)
+    }
   }
-  req._rlJwtSub = sub
-  return sub
+}
+
+function isRememberedInvalid(hash) {
+  const exp = invalidTokens.get(hash)
+  if (!exp) return false
+  if (exp <= Date.now()) {
+    invalidTokens.delete(hash)
+    return false
+  }
+  return true
 }
 
 /**
- * 사용자 단위 키: 검증된 req.user → JWT sub → IP 순.
- * (같은 학교 IP를 공유해도 사용자별로 독립 버킷)
+ * JWT 페이로드를 서명 검증 없이 읽는다 — 형식 사전 거름과 장애 시 임시 키 전용.
+ * 이 값만으로 사용자를 식별하지 않는다.
  */
-function userKey(req) {
-  const id = req.user?.id || jwtSub(req)
-  return id ? `u:${id}` : `ip:${safeIp(req)}`
+function decodeJwtPayload(token) {
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf-8'))
+    return payload && typeof payload === 'object' ? payload : null
+  } catch {
+    return null
+  }
 }
 
-// ── IP 백스톱: 분당 3,000회 (IP당) — 위조 sub 회전·플러딩 방지 ──
+function isSupabaseConfigured() {
+  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
+}
+
+/**
+ * 요청의 Bearer 토큰을 검증해 rate limit 키에 쓸 식별자를 정한다.
+ * @returns {Promise<{ kind: 'user'|'degraded'|'ip', id?: string }>}
+ */
+async function resolveIdentity(req) {
+  // 앞 단계에서 이미 인증된 경우(라우트 안쪽에 마운트된 limiter)
+  if (req.user?.id) return { kind: 'user', id: String(req.user.id) }
+
+  const authHeader = req.headers?.authorization
+  if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) return { kind: 'ip' }
+  const token = authHeader.slice(7).trim()
+  if (!token || token.length > MAX_TOKEN_LENGTH) return { kind: 'ip' }
+
+  // 형식 사전 거름: JWT 모양이 아니거나 sub가 없거나 이미 만료된 토큰은 인증 서버를 부르지 않는다
+  const payload = decodeJwtPayload(token)
+  const sub = typeof payload?.sub === 'string' && payload.sub.length > 0 && payload.sub.length <= 64 ? payload.sub : null
+  if (!sub) return { kind: 'ip' }
+  if (typeof payload.exp === 'number' && payload.exp * 1000 <= Date.now()) return { kind: 'ip' }
+
+  // Supabase 미설정(로컬 placeholder 모드)에서는 검증할 수 없으므로 IP 키
+  if (!isSupabaseConfigured()) return { kind: 'ip' }
+
+  const hash = crypto.createHash('sha256').update(token).digest('base64')
+  if (isRememberedInvalid(hash)) return { kind: 'ip' }
+
+  let pending = inflightVerifications.get(hash)
+  if (!pending) {
+    pending = verifyTokenCached(token)
+    inflightVerifications.set(hash, pending)
+    // 성공·실패와 관계없이 끝나면 지운다(성공 결과는 verifyTokenCached 캐시에 남는다)
+    pending.then(() => inflightVerifications.delete(hash), () => inflightVerifications.delete(hash))
+  }
+
+  try {
+    const user = await pending
+    if (user?.id) return { kind: 'user', id: String(user.id) }
+    rememberInvalid(hash)
+    return { kind: 'ip' }
+  } catch {
+    // 인증 서버 장애 — 학급 전체가 IP 버킷 하나로 몰리지 않게 임시 키를 쓴다
+    return { kind: 'degraded', id: sub }
+  }
+}
+
+/**
+ * 사용자 단위 키: 검증된 사용자 id → (장애 시) 임시 sub 키 → IP 순.
+ * 같은 학교 IP를 공유해도 사용자별로 독립 버킷을 쓴다.
+ * 한 요청에 limiter가 여러 개 걸려도 검증은 한 번만 한다.
+ */
+async function userKey(req) {
+  if (!req._rlIdentityPromise) req._rlIdentityPromise = resolveIdentity(req)
+  const identity = await req._rlIdentityPromise
+  if (identity.kind === 'user') return `u:${identity.id}`
+  if (identity.kind === 'degraded') return `s:${identity.id}`
+  return `ip:${safeIp(req)}`
+}
+
+// ── IP 백스톱: 분당 3,000회 (IP당) — 플러딩 방지 ──
 // 30인 학급의 정상 피크(진입 버스트 + 자료 폴링 + 일반 사용)를 넉넉히 수용하면서
 // 단일 IP의 비정상 폭주만 차단한다.
 export const ipBackstopLimiter = rateLimit({
@@ -127,3 +210,14 @@ export const uploadLimiter = rateLimit({
   message: { error: '파일 업로드가 너무 많습니다. 잠시 후 다시 시도해주세요.' },
   validate: { xForwardedForHeader: false, default: true },
 })
+
+// 내부 테스트용 export
+export const _internal = {
+  userKey,
+  resolveIdentity,
+  safeIp,
+  resetCaches() {
+    invalidTokens.clear()
+    inflightVerifications.clear()
+  },
+}
