@@ -55,6 +55,7 @@ const mem = {
   standards: new Map(),
   projectStandards: new Map(), // projectId -> [{ standard_id, is_primary, added_by, added_at }]
   skips: new Map(),       // projectId -> [{ procedure_code, reason, skipped_by, created_at }]
+  joinRequests: new Map(), // id -> workspace_join_requests 행
 }
 
 function uuid() { return crypto.randomUUID() }
@@ -1192,6 +1193,26 @@ export async function getActivityLogs(projectId, limit = 50) {
 // ============================================================
 
 /**
+ * 멤버로 추가하기 전에 public.users 프로필 행을 보장한다.
+ * 가입만 하고 앱에 아직 접속하지 않은 사용자는 프로필 행이 없어 members 외래 키가 실패한다.
+ * 이미 있으면 덮어쓰지 않는다(이름·학교·과목은 사용자가 접속할 때 인증 미들웨어가 갱신한다).
+ * @param {{ id: string, email?: string, user_metadata?: object }} authUser
+ */
+export async function ensureUserProfile(authUser) {
+  const sb = getSupabase()
+  if (!sb || !authUser?.id) return
+  const meta = authUser.user_metadata || {}
+  const { error } = await sb.from('users').upsert({
+    id: authUser.id,
+    email: authUser.email,
+    display_name: meta.display_name || meta.full_name || authUser.email?.split('@')[0] || '교사',
+    school_name: meta.school_name || '',
+    subject: meta.subject || '',
+  }, { onConflict: 'id', ignoreDuplicates: true })
+  if (error) throw new Error(`프로필 준비 실패: ${error.message}`)
+}
+
+/**
  * 멤버 추가
  * @param {string} workspaceId
  * @param {string} userId
@@ -1335,42 +1356,156 @@ export async function getInviteByToken(token) {
 }
 
 /**
- * 초대 사용 처리 (수락)
+ * 초대 링크를 원자적으로 사용 처리한다.
+ * used_at IS NULL이고 만료 전인 행만 갱신하므로, 동시에 두 번 수락해도 한 번만 성공한다.
  * @param {string} token
- * @param {string} userId - 수락한 사용자 ID
- * @returns {Promise<void>}
+ * @returns {Promise<object|null>} 사용 처리한 초대 행. 이미 사용됐거나 만료됐으면 null
  */
-export async function useInvite(token, userId) {
+export async function claimInvite(token) {
+  const usedAt = now()
   const sb = getSupabase()
   if (!sb) {
     const invite = mem.invites.get(token)
-    if (!invite) throw new Error('초대를 찾을 수 없습니다.')
-    if (invite.used_at) throw new Error('이미 사용된 초대입니다.')
-    if (new Date(invite.expires_at) < new Date()) throw new Error('만료된 초대입니다.')
-    invite.used_at = now()
-    // 멤버로 추가
-    await addMember(invite.workspace_id, userId, invite.role)
+    if (!invite || invite.used_at || new Date(invite.expires_at) < new Date()) return null
+    invite.used_at = usedAt
+    return { ...invite }
+  }
+  const { data, error } = await sb.from('invites')
+    .update({ used_at: usedAt })
+    .eq('token', token)
+    .is('used_at', null)
+    .gt('expires_at', usedAt)
+    .select()
+  if (error) throw new Error(`초대 사용 처리 실패: ${error.message}`)
+  return Array.isArray(data) && data.length > 0 ? data[0] : null
+}
+
+/**
+ * 사용 처리를 되돌린다(멤버 추가·참여 요청 저장이 실패했을 때의 보상).
+ * @param {string} token
+ */
+export async function releaseInvite(token) {
+  const sb = getSupabase()
+  if (!sb) {
+    const invite = mem.invites.get(token)
+    if (invite) invite.used_at = null
     return
   }
-  // 초대 유효성 확인
-  const invite = await getInviteByToken(token)
-  if (!invite) throw new Error('초대를 찾을 수 없습니다.')
-  if (invite.used_at) throw new Error('이미 사용된 초대입니다.')
-  if (new Date(invite.expires_at) < new Date()) throw new Error('만료된 초대입니다.')
+  const { error } = await sb.from('invites').update({ used_at: null }).eq('token', token)
+  if (error) console.error('[supabaseService] 초대 사용 처리 되돌리기 실패:', error.message)
+}
 
-  // 초대 사용 처리 + 멤버 추가 (실패 시 보상 롤백)
-  handleResult(
-    await sb.from('invites').update({ used_at: now() }).eq('token', token),
-    '초대 사용 처리 실패'
-  )
-  try {
-    await addMember(invite.workspace_id, userId, invite.role)
-  } catch (memberErr) {
-    // 멤버 추가 실패 → 초대 사용 상태 롤백
-    console.error('[supabaseService] 멤버 추가 실패, 초대 롤백:', memberErr.message)
-    await sb.from('invites').update({ used_at: null }).eq('token', token)
-    throw new Error('초대 수락 중 멤버 추가 실패')
+// ============================================================
+// 워크스페이스 참여 요청 (workspace_join_requests, 00031)
+// 초대 링크를 받은 이메일과 로그인한 계정의 이메일이 다를 때 만든다.
+// 워크스페이스 host·owner가 수락하면 멤버가 된다.
+// ============================================================
+
+/**
+ * 참여 요청 생성. 같은 사용자의 대기 중 요청이 이미 있으면 그 행을 돌려준다.
+ * @param {{ workspace_id: string, user_id: string, invite_id?: string|null, requested_role: string,
+ *   invited_email?: string|null, user_email?: string|null, user_name?: string|null }} data
+ * @returns {Promise<{ request: object, existing: boolean }>}
+ */
+export async function createJoinRequest(data) {
+  const row = {
+    workspace_id: data.workspace_id,
+    user_id: data.user_id,
+    invite_id: data.invite_id || null,
+    requested_role: data.requested_role,
+    invited_email: data.invited_email || null,
+    user_email: data.user_email || null,
+    user_name: data.user_name || null,
+    status: 'pending',
   }
+  const sb = getSupabase()
+  if (!sb) {
+    for (const r of mem.joinRequests.values()) {
+      if (r.workspace_id === row.workspace_id && r.user_id === row.user_id && r.status === 'pending') {
+        return { request: { ...r }, existing: true }
+      }
+    }
+    const request = { id: uuid(), ...row, created_at: now(), resolved_at: null, resolved_by: null }
+    mem.joinRequests.set(request.id, request)
+    return { request: { ...request }, existing: false }
+  }
+  const { data: inserted, error } = await sb.from('workspace_join_requests').insert(row).select().single()
+  if (!error) return { request: inserted, existing: false }
+  // 23505: 대기 중 요청 유일 인덱스 충돌 — 기존 요청을 그대로 쓴다
+  if (error.code === '23505') {
+    const { data: existing } = await sb.from('workspace_join_requests')
+      .select('*')
+      .eq('workspace_id', row.workspace_id)
+      .eq('user_id', row.user_id)
+      .eq('status', 'pending')
+      .maybeSingle()
+    if (existing) return { request: existing, existing: true }
+  }
+  throw new Error(`참여 요청 저장 실패: ${error.message}`)
+}
+
+/**
+ * 워크스페이스의 참여 요청 목록 (기본: 대기 중만, 오래된 순)
+ * @param {string} workspaceId
+ * @param {{ status?: string }} [opts]
+ */
+export async function listJoinRequests(workspaceId, { status = 'pending' } = {}) {
+  const sb = getSupabase()
+  if (!sb) {
+    return [...mem.joinRequests.values()]
+      .filter((r) => r.workspace_id === workspaceId && (!status || r.status === status))
+      .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+      .map((r) => ({ ...r }))
+  }
+  let query = sb.from('workspace_join_requests').select('*').eq('workspace_id', workspaceId)
+  if (status) query = query.eq('status', status)
+  return handleResult(await query.order('created_at', { ascending: true }), '참여 요청 목록 조회 실패') || []
+}
+
+/**
+ * 대기 중인 참여 요청을 원자적으로 처리한다(status='pending'인 행만 바꾼다).
+ * @param {string} workspaceId
+ * @param {string} requestId
+ * @param {{ status: 'accepted'|'rejected', resolvedBy: string }} opts
+ * @returns {Promise<object|null>} 처리한 행. 이미 처리됐거나 없으면 null
+ */
+export async function resolveJoinRequest(workspaceId, requestId, { status, resolvedBy }) {
+  const patch = { status, resolved_at: now(), resolved_by: resolvedBy || null }
+  const sb = getSupabase()
+  if (!sb) {
+    const r = mem.joinRequests.get(requestId)
+    if (!r || r.workspace_id !== workspaceId || r.status !== 'pending') return null
+    Object.assign(r, patch)
+    return { ...r }
+  }
+  const { data, error } = await sb.from('workspace_join_requests')
+    .update(patch)
+    .eq('id', requestId)
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'pending')
+    .select()
+  if (error) {
+    if (error.code === '22P02') return null
+    throw new Error(`참여 요청 처리 실패: ${error.message}`)
+  }
+  return Array.isArray(data) && data.length > 0 ? data[0] : null
+}
+
+/**
+ * 처리한 참여 요청을 대기 중으로 되돌린다(멤버 추가 실패 시 보상).
+ * @param {string} requestId
+ */
+export async function reopenJoinRequest(requestId) {
+  const sb = getSupabase()
+  if (!sb) {
+    const r = mem.joinRequests.get(requestId)
+    if (r) Object.assign(r, { status: 'pending', resolved_at: null, resolved_by: null })
+    return
+  }
+  const { error } = await sb.from('workspace_join_requests')
+    .update({ status: 'pending', resolved_at: null, resolved_by: null })
+    .eq('id', requestId)
+  if (error) console.error('[supabaseService] 참여 요청 되돌리기 실패:', error.message)
 }
 
 // ============================================================
@@ -1697,9 +1832,11 @@ const supabaseService = {
   // 활동 로그
   logActivity, getActivityLogs,
   // 멤버
-  addMember, removeMember, getMemberRole, updateMemberRole,
+  addMember, ensureUserProfile, removeMember, getMemberRole, updateMemberRole,
   // 초대
-  createInvite, getInviteByToken, useInvite,
+  createInvite, getInviteByToken, claimInvite, releaseInvite,
+  // 참여 요청
+  createJoinRequest, listJoinRequests, resolveJoinRequest, reopenJoinRequest,
   // 성취기준
   searchStandards, getStandardsByProject, addStandardToProject, removeStandardFromProject, resolveStandardId,
   // 사용자

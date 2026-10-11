@@ -20,11 +20,14 @@ import { loadSemanticIndex, ensureEmbeddingsCache } from './services/semanticSea
 import { startSimulationRecovery } from './lib/simulationRuns.js'
 import { supabaseAdmin } from './lib/supabaseAdmin.js'
 import { verifyTokenCached } from './middleware/auth.js'
+import { resolveApproval } from './lib/approval.js'
 import { hydrateLinksFromDB } from './lib/linkService.js'
 
 // ── Rate Limiter 임포트 ──
 import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter, ipBackstopLimiter, scenarioLimiter } from './middleware/rateLimit.js'
 import { isValidRoomId, checkJoinAccess } from './lib/socketJoinGuard.js'
+import { buildMemberInfo, sanitizeRelayMessage, isValidRelayPayload } from './lib/socketRelay.js'
+import { parseAllowedOrigins, createOriginChecker } from './lib/corsOrigin.js'
 
 // ── 라우트 임포트 ──
 import authRouter from './routes/auth.js'
@@ -36,6 +39,8 @@ import versionsRouter from './routes/versions.js'
 import activityLogsRouter from './routes/activityLogs.js'
 import { chatRouter } from './routes/chat.js'
 import { adminUsageRouter } from './routes/adminUsage.js'
+import { adminUsersRouter } from './routes/adminUsers.js'
+import { aiBudget } from './middleware/aiBudget.js'
 import { standardsRouter } from './routes/standards.js'
 import { materialsRouter } from './routes/materials.js'
 import { principlesRouter } from './routes/principles.js'
@@ -69,16 +74,9 @@ app.set('trust proxy', 1)
 const server = createServer(app)
 const PORT = process.env.PORT || 4007
 
-// CORS 허용 origin 목록
-const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:4006')
-  .split(',')
-  .map((o) => o.trim())
-
-function checkOrigin(origin) {
-  // Vercel preview는 프로젝트 prefix로 제한
-  const isVercelPreview = origin && /^https:\/\/curriculum-weaver(-.*)?\.vercel\.app$/.test(origin)
-  return !origin || allowedOrigins.includes(origin) || isVercelPreview
-}
+// CORS 허용 origin — CLIENT_URL + 운영 프런트 + 이 프로젝트의 Vercel 미리보기만 (lib/corsOrigin.js)
+// Express와 Socket.IO가 같은 판정 함수를 쓴다.
+const checkOrigin = createOriginChecker(parseAllowedOrigins(process.env.CLIENT_URL))
 
 // ── Socket.IO 설정 (100명 동시 사용자 최적화) ──
 const io = new Server(server, {
@@ -122,6 +120,11 @@ io.use(async (socket, next) => {
     if (!user) {
       return next(new Error('유효하지 않은 토큰입니다.'))
     }
+    // 가입 승인 대기·거절 사용자는 실시간 연결도 받지 않는다 (HTTP requireAuth와 같은 판정)
+    const approval = await resolveApproval(user).catch(() => ({ approved: false }))
+    if (!approval.approved) {
+      return next(new Error('관리자 승인을 기다리고 있습니다.'))
+    }
     socket.user = user
     next()
   } catch (err) {
@@ -132,6 +135,10 @@ io.use(async (socket, next) => {
 
 // 프로젝트별 접속자 관리 (projectId -> Map<socketId, user>)
 const projectMembers = new Map()
+
+// 소켓 이벤트 페이로드는 객체만 받는다 — 빈 값·null·배열·문자열로 핸들러가 예외를 던지면
+// 프로세스가 종료되므로(uncaughtException 처리) 구조 분해 전에 거른다
+const asObject = (payload) => (payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {})
 
 io.on('connection', (socket) => {
   let currentProjectId = null
@@ -168,7 +175,8 @@ io.on('connection', (socket) => {
       projectMembers.set(projectId, new Map())
     }
     const isHost = projectMembers.get(projectId).size === 0
-    const userInfo = { ...user, socketId: socket.id, isHost }
+    // 클라이언트가 보낸 user 객체를 펼치지 않는다 — 검증된 socket.user의 id와 허용 필드(이름·교과, 각 50자)만
+    const userInfo = buildMemberInfo(socket.user, user, { socketId: socket.id, isHost })
     projectMembers.get(projectId).set(socket.id, userInfo)
 
     // 현재 접속자 목록을 룸 전체에 전송
@@ -177,13 +185,15 @@ io.on('connection', (socket) => {
     socket.to(projectId).emit('member_joined', userInfo)
   }
 
-  // 내용 없는 이벤트로 핸들러가 예외를 던지면 프로세스가 종료되므로 인자 기본값을 둔다
-  socket.on('join_project', ({ projectId, user } = {}) => {
+  // 내용 없는 이벤트로 핸들러가 예외를 던지면 프로세스가 종료되므로 객체만 받는다(asObject)
+  socket.on('join_project', (payload) => {
+    const { projectId, user } = asObject(payload)
     handleJoinProject(projectId, user).catch((err) => console.error('[socket.io] 참여 처리 오류:', err.message))
   })
 
   // 프로젝트 퇴장
-  socket.on('leave_project', ({ projectId } = {}) => {
+  socket.on('leave_project', (payload) => {
+    const { projectId } = asObject(payload)
     if (!isValidRoomId(projectId)) return
     socket.leave(projectId)
     if (projectMembers.has(projectId)) {
@@ -200,11 +210,13 @@ io.on('connection', (socket) => {
   })
 
   // 하위 호환성: 기존 session 기반 이벤트도 지원
-  socket.on('join_session', ({ sessionId, user } = {}) => {
+  socket.on('join_session', (payload) => {
+    const { sessionId, user } = asObject(payload)
     handleJoinProject(sessionId, user).catch((err) => console.error('[socket.io] 참여 처리 오류:', err.message))
   })
 
-  socket.on('leave_session', ({ sessionId } = {}) => {
+  socket.on('leave_session', (payload) => {
+    const { sessionId } = asObject(payload)
     if (!isValidRoomId(sessionId)) return
     socket.leave(sessionId)
     if (projectMembers.has(sessionId)) {
@@ -225,10 +237,18 @@ io.on('connection', (socket) => {
     return isValidRoomId(roomId) && socket.rooms.has(roomId)
   }
 
-  // 새 메시지 브로드캐스트
-  socket.on('new_message', ({ projectId, sessionId, message } = {}) => {
+  // 이 소켓이 방에 등록한 접속자 정보(중계 메시지의 보낸 사람 기본값)
+  function memberIn(roomId) {
+    return projectMembers.get(roomId)?.get(socket.id) || null
+  }
+
+  // 새 메시지 브로드캐스트 — 크기·형식 검사 후 보낸 사람을 서버 기준으로 덮어써 중계
+  socket.on('new_message', (payload) => {
+    const { projectId, sessionId, message } = asObject(payload)
     const roomId = projectId || sessionId
-    if (isInRoom(roomId)) socket.to(roomId).emit('message_added', message)
+    if (!isInRoom(roomId)) return
+    const safe = sanitizeRelayMessage(message, { kind: 'teacher', roomId, socketUser: socket.user, member: memberIn(roomId) })
+    if (safe) socket.to(roomId).emit('message_added', safe)
   })
 
   // AI 응답 완료 브로드캐스트 — 옛 탭 호환 전용(2026-10-05).
@@ -236,29 +256,41 @@ io.on('connection', (socket) => {
   // routes/chat.js가 직접 방송한다(lib/messageBroadcast.js). 배포 전에 열린 옛 탭은 socket_id 없이
   // 요청하므로 서버가 방송하지 않고, 대신 이 중계로 팀원에게 전달된다. 한 응답은 둘 중 한 경로로만
   // 가므로 중복이 생기지 않는다. 옛 탭이 모두 사라지면(배포 뒤 며칠) 이 중계를 지워도 된다.
-  socket.on('ai_response_done', ({ projectId, sessionId, message } = {}) => {
+  socket.on('ai_response_done', (payload) => {
+    const { projectId, sessionId, message } = asObject(payload)
     const roomId = projectId || sessionId
-    if (isInRoom(roomId)) socket.to(roomId).emit('message_added', message)
+    if (!isInRoom(roomId)) return
+    const safe = sanitizeRelayMessage(message, { kind: 'ai', roomId, socketUser: socket.user, member: memberIn(roomId) })
+    if (safe) socket.to(roomId).emit('message_added', safe)
   })
 
   // 설계 캔버스 업데이트 브로드캐스트 (절차 기반)
-  socket.on('design_updated', ({ projectId, procedureCode, design } = {}) => {
-    if (isInRoom(projectId)) socket.to(projectId).emit('design_changed', { procedureCode, design })
+  // 같은 저장을 REST 라우트(routes/designs.js)도 방송하므로, 형식이 틀린 중계는 버려도 동기화가 끊기지 않는다.
+  socket.on('design_updated', (payload) => {
+    const data = asObject(payload)
+    if (!isInRoom(data.projectId) || !isValidRelayPayload('design', data)) return
+    socket.to(data.projectId).emit('design_changed', { procedureCode: data.procedureCode, design: data.design })
   })
 
   // 절차 변경 브로드캐스트
-  socket.on('procedure_changed', ({ projectId, procedureCode } = {}) => {
-    if (isInRoom(projectId)) socket.to(projectId).emit('procedure_updated', procedureCode)
+  socket.on('procedure_changed', (payload) => {
+    const data = asObject(payload)
+    if (!isInRoom(data.projectId) || !isValidRelayPayload('procedure', data)) return
+    socket.to(data.projectId).emit('procedure_updated', data.procedureCode)
   })
 
   // 절차 이동 중계 — 클라이언트(ProjectPage)는 지금 이 이벤트명을 쓴다.
   // 다른 이벤트처럼 참여 중인 방에만 보낼 수 있게 막는다(남의 프로젝트 화면을 넘기지 못하게).
-  socket.on('stage_changed', ({ sessionId, stage } = {}) => {
-    if (isInRoom(sessionId)) socket.to(sessionId).emit('stage_updated', stage)
+  socket.on('stage_changed', (payload) => {
+    const data = asObject(payload)
+    if (!isInRoom(data.sessionId) || !isValidRelayPayload('procedure', data)) return
+    socket.to(data.sessionId).emit('stage_updated', data.stage)
   })
 
-  socket.on('board_updated', ({ sessionId, board } = {}) => {
-    if (isInRoom(sessionId)) socket.to(sessionId).emit('board_changed', board)
+  socket.on('board_updated', (payload) => {
+    const data = asObject(payload)
+    if (!isInRoom(data.sessionId) || !isValidRelayPayload('board', data)) return
+    socket.to(data.sessionId).emit('board_changed', data.board)
   })
 
   // 연결 해제
@@ -331,12 +363,10 @@ app.use(compression({
 }))
 
 // ── Rate Limiter 적용 ──
-// 사용자별 한도(JWT sub 키) + IP 백스톱 2중 구조 — 학교 NAT(전원 동일 IP) 대응.
+// 사용자별 한도(검증된 사용자 id 키, rateLimit.js) + IP 백스톱 2중 구조 — 학교 NAT(전원 동일 IP) 대응.
 app.use('/api', ipBackstopLimiter)    // IP 백스톱: 분당 3,000회 (IP당, 플러딩 차단)
 app.use('/api', apiLimiter)           // 일반 API: 분당 240회 (사용자당)
-// 로그인/가입만 brute force 제한 (IP+이메일당) — /me·/logout은 일반 한도로 충분
-app.use('/api/auth/login', authLimiter)
-app.use('/api/auth/signup', authLimiter)
+// 서버 경유 로그인·가입 경로는 삭제했다(2026-10-11, 클라이언트가 Supabase Auth를 직접 쓴다)
 
 // AI 채팅 스트리밍 라우트: 분당 10회 (사용자당)
 app.use('/api/chat/message', aiChatLimiter)
@@ -350,6 +380,10 @@ app.use('/api/standards/links/scenario', scenarioLimiter)
 
 // 파일 업로드: 분당 5회 (사용자당)
 app.use('/api/materials/upload', uploadLimiter)
+
+// AI 사용 상한 (사용자별 하루 호출 수 + 서비스 전체 하루 비용) — 대상 경로는 middleware/aiBudget.js
+// 분당 한도(위 limiter)를 통과한 요청만 센다
+app.use('/api', aiBudget)
 
 // ── 헬스 체크 ──
 app.get('/api/health', (req, res) => {
@@ -404,6 +438,9 @@ app.use('/api/chat', chatRouter)
 
 // AI 사용량 조회 (관리자 전용, 00030 ai_usage)
 app.use('/api/admin/ai-usage', adminUsageRouter)
+
+// 가입 승인 관리 (관리자 전용)
+app.use('/api/admin/users', adminUsersRouter)
 
 // 자료
 app.use('/api/materials', materialsRouter)

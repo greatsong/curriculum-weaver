@@ -87,10 +87,18 @@ describe('apiStreamPost', () => {
     expect(cb.onDone).not.toHaveBeenCalled()
   })
 
-  it('HTTP 오류 응답은 서버 메시지로 onError', async () => {
+  it('HTTP 오류 응답은 서버 메시지로 onError (상태·코드를 두 번째 인자로)', async () => {
     globalThis.fetch.mockResolvedValue({ ok: false, status: 429, json: async () => ({ error: '너무 많음' }) })
     const cb = callbacks()
     await apiStreamPost('/api/chat/message', {}, cb)
-    expect(cb.onError).toHaveBeenCalledWith('너무 많음')
+    expect(cb.onError).toHaveBeenCalledWith('너무 많음', { status: 429, code: null })
+  })
+
+  it('AI 사용 상한(429 ai_daily_limit)은 서버 문구와 코드를 그대로 넘긴다', async () => {
+    const body = { code: 'ai_daily_limit', error: '오늘 AI 사용량(400회)을 모두 사용했습니다. 내일 다시 이용해 주세요.' }
+    globalThis.fetch.mockResolvedValue({ ok: false, status: 429, json: async () => body })
+    const cb = callbacks()
+    await apiStreamPost('/api/chat/message', {}, cb)
+    expect(cb.onError).toHaveBeenCalledWith(body.error, { status: 429, code: 'ai_daily_limit' })
   })
 })

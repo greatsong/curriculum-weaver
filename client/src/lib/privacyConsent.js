@@ -69,10 +69,10 @@ export const COLLECTION_ROWS = [
  * 연락처는 각 사 개인정보 처리방침의 개인정보 문의 메일(2026-10-05 확인).
  * Vercel(화면 호스팅)은 2026-10-05 추가 — 화면 요청의 접속 기록을 처리한다. 안내 방식이라 동의 버전은 그대로.
  * 2026-10-11: 메인 AI 채팅을 OpenAI(루나)로 전환하며 OpenAI 행의 항목·목적을 넓히고, Anthropic 행은 남은 용도로 고쳤다
- *   (server/services/llmProvider.js·aiAgent.js 정밀 모드·대체 호출, materialAnalyzer.js, routes/standards.js). 안내 방식이라 동의 버전은 그대로.
+ *   (server/services/llmProvider.js·aiAgent.js 대체 호출(정밀 모드는 2026-10-11부터 숨김), materialAnalyzer.js, routes/standards.js). 안내 방식이라 동의 버전은 그대로.
  */
 export const TRANSFER_ROWS = [
-  { to: 'Anthropic', contact: 'privacy@anthropic.com', country: '미국', items: '채팅, 설계 보드, 업로드 자료 내용(안에 적힌 이름 포함)', purpose: 'AI 응답 생성(정밀 모드, OpenAI 장애 시 대체), 자료 분석, 교과 연결 시나리오와 성취기준 추천' },
+  { to: 'Anthropic', contact: 'privacy@anthropic.com', country: '미국', items: '채팅, 설계 보드, 업로드 자료 내용(안에 적힌 이름 포함)', purpose: 'AI 응답 생성(OpenAI 장애 시 대체), 자료 분석, 교과 연결 시나리오와 성취기준 추천' },
   { to: 'OpenAI', contact: 'privacy@openai.com', country: '미국', items: '채팅, 설계 보드, 업로드 자료 내용(안에 적힌 이름 포함), 성취기준 검색어', purpose: 'AI 응답 생성, 성취기준 의미 검색' },
   { to: 'Supabase', contact: 'privacy@supabase.com', country: '일본(도쿄)', items: '계정 정보와 설계 데이터 전체', purpose: '데이터 저장, 로그인' },
   { to: 'Railway', contact: 'privacy@railway.com', country: '싱가포르', items: '서비스 이용 중 주고받는 정보', purpose: '서버 운영' },

@@ -7,6 +7,10 @@
 import crypto from 'node:crypto'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { getMemberRole } from '../lib/supabaseService.js'
+import { resolveApproval, onApprovalChange } from '../lib/approval.js'
+
+/** 승인 대기·거절 사용자에게 돌려주는 응답 본문 (클라이언트가 code로 승인 대기 화면을 띄운다) */
+export const APPROVAL_PENDING_BODY = Object.freeze({ code: 'approval_pending', error: '관리자 승인을 기다리고 있습니다.' })
 
 // ── 토큰 검증 캐시 (성능) ─────────────────────────────────────────
 // auth.getUser는 Supabase Auth로의 네트워크 왕복이라 모든 보호 요청의 고정 비용이었다
@@ -30,8 +34,29 @@ function pruneTokenCache() {
 }
 
 /**
+ * 한 사용자의 토큰 캐시를 비운다. 승인·거절 직후 다음 요청이 새 app_metadata로 판정되게 한다.
+ * @param {string} userId
+ * @returns {number} 지운 항목 수
+ */
+export function invalidateUserTokenCache(userId) {
+  if (!userId) return 0
+  let removed = 0
+  for (const [k, v] of tokenCache) {
+    if (v.user?.id === userId) {
+      tokenCache.delete(k)
+      removed++
+    }
+  }
+  return removed
+}
+
+// 승인 상태가 바뀌면(lib/approval.js) 그 사용자의 캐시를 비운다
+onApprovalChange((userId) => invalidateUserTokenCache(userId))
+
+/**
  * 토큰을 검증하고 사용자 반환 (60초 캐시). 무효 토큰이면 null, 네트워크 예외는 throw.
  * requireAuth/optionalAuth/Socket.IO 인증이 공유한다.
+ * 캐시하는 user는 auth.getUser 결과 그대로라 app_metadata·created_at이 들어 있다(승인 판정에 쓴다).
  * @param {string} token
  * @returns {Promise<object|null>}
  */
@@ -152,76 +177,99 @@ async function tryDevBypass(req) {
   if (!devUser) return false
   req.user = devUser
   req.token = null
+  req.approval = { approved: true, status: 'approved' } // 로컬 dev 전용 유저는 승인 판정 대상이 아니다
   return true
 }
 
 /**
- * JWT 인증 필수 미들웨어
+ * JWT 인증 미들웨어 팩토리
  *
  * Authorization: Bearer <token> 헤더에서 JWT 추출 후 Supabase로 검증.
- * 성공 시 req.user에 사용자 정보 설정.
+ * 성공 시 req.user(사용자), req.approval(승인 판정)을 설정한다.
+ * allowPending=false(기본)이면 승인 대기·거절 사용자를 403 approval_pending으로 막는다.
  *
- * @param {import('express').Request} req
- * @param {import('express').Response} res
- * @param {import('express').NextFunction} next
+ * @param {{ allowPending?: boolean }} [opts]
+ * @returns {import('express').RequestHandler}
  */
-export async function requireAuth(req, res, next) {
-  // 개발 모드: Supabase 미설정 시 더미 사용자로 바이패스
-  // 프로덕션/스테이징에서는 반드시 환경변수가 설정되어야 함
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    const isDeployment = process.env.NODE_ENV === 'production'
-      || process.env.RAILWAY_ENVIRONMENT
-      || process.env.VERCEL
-      || process.env.RENDER
-      || process.env.FLY_APP_NAME
-      || process.env.HEROKU_APP_NAME
-    if (isDeployment) {
-      console.error('[auth] CRITICAL: Supabase 환경변수 미설정 (배포 환경)')
-      return res.status(500).json({ error: '서버 인증 설정 오류. 관리자에게 문의하세요.' })
+function createRequireAuth({ allowPending = false } = {}) {
+  return async function requireAuthMiddleware(req, res, next) {
+    // 개발 모드: Supabase 미설정 시 더미 사용자로 바이패스
+    // 프로덕션/스테이징에서는 반드시 환경변수가 설정되어야 함
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      const isDeployment = process.env.NODE_ENV === 'production'
+        || process.env.RAILWAY_ENVIRONMENT
+        || process.env.VERCEL
+        || process.env.RENDER
+        || process.env.FLY_APP_NAME
+        || process.env.HEROKU_APP_NAME
+      if (isDeployment) {
+        console.error('[auth] CRITICAL: Supabase 환경변수 미설정 (배포 환경)')
+        return res.status(500).json({ error: '서버 인증 설정 오류. 관리자에게 문의하세요.' })
+      }
+      // NODE_ENV가 명시적으로 development이거나 미설정인 로컬에서만 바이패스
+      if (process.env.NODE_ENV && process.env.NODE_ENV !== 'development') {
+        console.error('[auth] CRITICAL: Supabase 미설정 + NODE_ENV가 development가 아님')
+        return res.status(500).json({ error: '서버 인증 설정 오류. 관리자에게 문의하세요.' })
+      }
+      req.user = {
+        id: 'dev-user-001',
+        email: 'dev@curriculum-weaver.local',
+        user_metadata: { display_name: '개발자' },
+      }
+      req.token = 'dev-token'
+      req.approval = { approved: true, status: 'approved' }
+      return next()
     }
-    // NODE_ENV가 명시적으로 development이거나 미설정인 로컬에서만 바이패스
-    if (process.env.NODE_ENV && process.env.NODE_ENV !== 'development') {
-      console.error('[auth] CRITICAL: Supabase 미설정 + NODE_ENV가 development가 아님')
-      return res.status(500).json({ error: '서버 인증 설정 오류. 관리자에게 문의하세요.' })
-    }
-    req.user = {
-      id: 'dev-user-001',
-      email: 'dev@curriculum-weaver.local',
-      user_metadata: { display_name: '개발자' },
-    }
-    req.token = 'dev-token'
-    return next()
-  }
 
-  const authHeader = req.headers.authorization
-  if (!authHeader?.startsWith('Bearer ')) {
-    // 로컬 dev 바이패스: 토큰 없는 요청을 dev 유저로 처리
-    if (await tryDevBypass(req)) return next()
-    return res.status(401).json({ error: '인증 토큰이 필요합니다.' })
-  }
-
-  const token = authHeader.slice(7)
-
-  try {
-    const user = await verifyTokenCached(token)
-    if (!user) {
-      // 로컬 dev 바이패스: 더미/만료 토큰도 dev 유저로 처리
+    const authHeader = req.headers.authorization
+    if (!authHeader?.startsWith('Bearer ')) {
+      // 로컬 dev 바이패스: 토큰 없는 요청을 dev 유저로 처리
       if (await tryDevBypass(req)) return next()
-      return res.status(401).json({ error: '유효하지 않은 토큰입니다.' })
+      return res.status(401).json({ error: '인증 토큰이 필요합니다.' })
     }
 
-    // users 테이블에 프로필 자동 생성 — 내용이 같으면 10분 스로틀
-    await upsertProfileThrottled(user)
+    const token = authHeader.slice(7)
 
+    let user
+    try {
+      user = await verifyTokenCached(token)
+      if (!user) {
+        // 로컬 dev 바이패스: 더미/만료 토큰도 dev 유저로 처리
+        if (await tryDevBypass(req)) return next()
+        return res.status(401).json({ error: '유효하지 않은 토큰입니다.' })
+      }
+
+      // users 테이블에 프로필 자동 생성 — 내용이 같으면 10분 스로틀
+      await upsertProfileThrottled(user)
+    } catch (err) {
+      console.error('[auth] 토큰 검증 오류:', err.message)
+      if (await tryDevBypass(req)) return next()
+      return res.status(401).json({ error: '인증 처리 중 오류가 발생했습니다.' })
+    }
+
+    // 가입 승인 판정 (lib/approval.js) — 관리자 역할 조회가 실패하면 승인 대기로 본다(안전 쪽)
+    const approval = await resolveApproval(user).catch(() => ({ approved: false, status: 'pending' }))
     req.user = user
     req.token = token
+    req.approval = approval
+    if (!approval.approved && !allowPending) {
+      return res.status(403).json({ ...APPROVAL_PENDING_BODY, approval_status: approval.status })
+    }
     next()
-  } catch (err) {
-    console.error('[auth] 토큰 검증 오류:', err.message)
-    if (await tryDevBypass(req)) return next()
-    return res.status(401).json({ error: '인증 처리 중 오류가 발생했습니다.' })
   }
 }
+
+/**
+ * JWT 인증 필수 + 가입 승인 필수 미들웨어 (기본)
+ */
+export const requireAuth = createRequireAuth()
+
+/**
+ * JWT 인증 필수, 승인 대기 사용자도 통과 — 예외 경로 전용.
+ * GET /api/auth/me(승인 상태 확인), 로그아웃, 초대 수락(/api/invites/:token/accept)에서만 쓴다.
+ * 라우트는 req.approval로 승인 여부를 직접 확인해야 한다.
+ */
+export const requireAuthAllowPending = createRequireAuth({ allowPending: true })
 
 /**
  * 선택적 인증 미들웨어
@@ -247,8 +295,12 @@ export async function optionalAuth(req, res, next) {
   try {
     const user = await verifyTokenCached(token)
     if (!user && await tryDevBypass(req)) return next()
-    req.user = user
-    req.token = user ? token : null
+    // 승인 대기·거절 사용자는 익명으로 취급한다
+    const approval = user ? await resolveApproval(user).catch(() => ({ approved: false, status: 'pending' })) : null
+    const usable = user && approval?.approved
+    req.user = usable ? user : null
+    req.token = usable ? token : null
+    req.approval = approval
   } catch {
     if (await tryDevBypass(req)) return next()
     req.user = null

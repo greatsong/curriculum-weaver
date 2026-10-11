@@ -92,8 +92,12 @@ function PreBlock({ node, children, ...props }) {
 
 const markdownComponents = { pre: PreBlock }
 
-export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, onStageChange, readOnly = false, loading = false, onOpenReport }) {
+export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, onStageChange, readOnly: projectReadOnly = false, loading = false, onOpenReport, memberRole }) {
   const projectId = projectIdProp || sessionId
+  // 열람 전용 멤버(viewer)는 대화를 읽기만 한다 — 입력창·올리기·제안 처리 대신 안내를 보여 준다.
+  // 서버도 viewer의 쓰기 요청을 403으로 막는다(routes/chat.js·materials.js).
+  const isViewer = memberRole === 'viewer'
+  const readOnly = projectReadOnly || isViewer
   // ── 성능: 슬라이스별 셀렉터 구독 ──
   // 과거엔 useChatStore()로 스토어 전체를 구독해, streamingText가 토큰마다 갱신될 때마다
   // ChatPanel 전체(=누적 N개 메시지 목록)가 리렌더+마크다운 재파싱되어 오래 쓸수록 느려졌다.
@@ -123,7 +127,6 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
   // 미래보기 탐색 초안 — 프로젝트 화면 안내 줄의 "대화 입력창에 넣기"로 들어온다. 입력창에만 넣고 보내지 않는다.
   const composerDraft = useChatStore((s) => s.composerDraft)
   const consumeComposerDraft = useChatStore((s) => s.consumeComposerDraft)
-  const [aiModel, setAiModel] = useState(() => localStorage.getItem('cw_ai_model') || 'fast')
   const scrollRef = useRef(null)
   const textareaRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -545,7 +548,8 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
         />
       )}
 
-      {/* AI 모델 토글 */}
+      {/* 절차 안내 다시 보기 — 정밀 모드 선택은 2026-10-11에 화면에서 뺐다(서버 PRECISE_MODE_ENABLED로만 켠다) */}
+      {introCache[stage] && (
       <div style={{
         padding: '6px 16px',
         borderBottom: '1px solid var(--color-border-subtle)',
@@ -556,7 +560,6 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
         gap: 4,
         flexShrink: 0,
       }}>
-        {introCache[stage] && (
           <button
             onClick={() => openIntroModal(stage)}
             style={{
@@ -575,39 +578,8 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
           >
             절차 안내 보기
           </button>
-        )}
-        <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)', marginRight: 4 }}>AI</span>
-        {[
-          // 화면에는 desc만 보인다. 빠른 모드 모델은 서버 env(CHAT_PROVIDER·LUNA_MODEL)가 정한다.
-          { key: 'fast', label: '기본 모델', desc: '빠른' },
-          { key: 'precise', label: 'Sonnet 5.5', desc: '정밀' },
-        ].map(({ key, label, desc }) => {
-          const active = aiModel === key
-          return (
-            <button
-              key={key}
-              onClick={() => {
-                setAiModel(key)
-                localStorage.setItem('cw_ai_model', key)
-              }}
-              style={{
-                padding: '3px 10px',
-                fontSize: 11,
-                fontWeight: active ? 600 : 400,
-                color: active ? '#fff' : 'var(--color-text-secondary)',
-                background: active ? (key === 'fast' ? '#6B7280' : '#3B82F6') : 'transparent',
-                border: active ? 'none' : '1px solid var(--color-border)',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontFamily: 'var(--font-sans)',
-                transition: 'all 0.15s',
-              }}
-            >
-              {desc}
-            </button>
-          )
-        })}
       </div>
+      )}
       {/* 스텝 컨텍스트 바 */}
       {currentStepInfo && (
         <div style={{
@@ -728,7 +700,7 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
           <StreamingBubble scrollRef={scrollRef} />
 
           {/* AI 인라인 제안 카드 */}
-          {!streaming && pendingSuggestions.filter((s) => s.status === 'pending').map((suggestion) => (
+          {!streaming && !readOnly && pendingSuggestions.filter((s) => s.status === 'pending').map((suggestion) => (
             <InlineSuggestionCard
               key={suggestion.id}
               suggestion={suggestion}
@@ -797,7 +769,9 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }}>
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
           </svg>
-          <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>시뮬레이션 프로젝트는 읽기 전용입니다</span>
+          <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
+            {projectReadOnly ? '시뮬레이션 프로젝트는 읽기 전용입니다' : '열람 전용 멤버입니다. 대화와 보드를 볼 수 있지만 글을 쓰거나 자료를 올릴 수는 없습니다.'}
+          </span>
         </div>
       ) : (
         <>

@@ -6,6 +6,8 @@ import { codeFromKey } from '../lib/standardKey'
 import Logo from '../components/Logo'
 import MathText from '../components/MathText'
 import LinkGuideOverlay, { resetLinkGuide } from '../components/LinkGuideOverlay'
+import ApprovalQueue from '../components/ApprovalQueue'
+import AiBudgetStatus from '../components/AiBudgetStatus'
 
 const InlineGraph2D = lazy(() =>
   import('../components/InlineGraph2D').catch(() => {
@@ -40,7 +42,14 @@ export default function DataManage() {
   const [jsonInput, setJsonInput] = useState('')
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState(null)
-  const [tab, setTab] = useState('browse') // 'browse' | 'upload' | 'reports' — 구 '연결 그래프'(react-force-graph-3d) 탭은 교육과정 성운으로 대체(2026-10-09)
+  const [tab, setTab] = useState('browse') // 'browse' | 'upload' | 'reports' | 'approvals' — 구 '연결 그래프'(react-force-graph-3d) 탭은 교육과정 성운으로 대체(2026-10-09)
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0) // 가입 승인 대기 수(탭 배지)
+  // 배지 수는 탭을 열지 않아도 보이게 미리 읽는다(관리자가 아니면 403 → 0)
+  useEffect(() => {
+    apiGet('/api/admin/users/pending')
+      .then((res) => setPendingApprovalCount(res?.pending?.length || 0))
+      .catch(() => setPendingApprovalCount(0))
+  }, [])
   const [showAllLinks, setShowAllLinks] = useState(false) // AI 제안 링크 포함 여부
   const [allStandards, setAllStandards] = useState([])
   const [showLinkGuide, setShowLinkGuide] = useState(false) // 가이드 강제 표시용
@@ -178,6 +187,9 @@ export default function DataManage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        {/* 오늘 AI 사용(비용·한도) — 관리자에게만 보인다 */}
+        <AiBudgetStatus />
+
         {/* 통계 */}
         {stats && (
           <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
@@ -296,6 +308,7 @@ export default function DataManage() {
             { id: 'browse', label: '성취기준 보기' },
             { id: 'upload', label: '데이터 업로드' },
             { id: 'reports', label: '신고 검토', badge: reports?.items?.length || 0 },
+            { id: 'approvals', label: '가입 승인', badge: pendingApprovalCount },
           ].map((t) => (
             <button
               key={t.id}
@@ -315,6 +328,9 @@ export default function DataManage() {
             <Globe aria-hidden="true" size={16} />교육과정 성운 열기
           </Link>
         </div>
+
+        {/* 가입 승인 탭 — 기준 시각 이후 가입한 계정의 승인·거절 */}
+        {tab === 'approvals' && <ApprovalQueue onCountChange={setPendingApprovalCount} />}
 
         {/* 신고 검토 탭 — 3D 쇼케이스 "이상해요" 신고 큐 */}
         {tab === 'reports' && (

@@ -6,6 +6,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import express from 'express'
 import request from 'supertest'
 
+// 의미 검색은 로그인 사용자 전용(requireAuth) — 여기서는 인증을 통과시킨 상태로 오류 구분만 본다
+vi.mock('../../middleware/auth.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  requireAuth: (req, _res, next) => { req.user = { id: 'teacher' }; next() },
+}))
+
 const state = vi.hoisted(() => ({ mode: 'null', reason: 'no_api_key' }))
 vi.mock('../../services/semanticSearch.js', async (importOriginal) => ({
   ...(await importOriginal()),
