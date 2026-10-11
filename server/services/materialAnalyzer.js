@@ -609,7 +609,10 @@ async function readBodyCapped(res, maxBytes) {
  * @param {{lookup?: Function, request?: Function}} [deps] - 테스트용 주입(DNS 조회·요청 함수)
  * @returns {Promise<{text?: string, unsupported?: boolean, error?: string}>}
  */
-async function fetchUrlContent(rawUrl, { lookup = defaultLookup, request = requestPinned } = {}) {
+// DNS 조회·요청 함수 — 테스트에서 바꿔 끼울 수 있게 한 곳에 둔다(_internal.setUrlFetchDeps)
+const urlFetchDeps = { lookup: defaultLookup, request: requestPinned }
+
+async function fetchUrlContent(rawUrl, { lookup = urlFetchDeps.lookup, request = urlFetchDeps.request } = {}) {
   // 전체 작업(리다이렉트 + 본문 읽기)에 단일 타임아웃 예산 부여
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS)
@@ -1244,4 +1247,10 @@ export const _internal = {
   requestPinned,
   htmlToText,
   fetchUrlContent,
+  /** 테스트 전용: URL 가져오기의 DNS 조회·요청 함수를 바꾼다. 되돌리는 함수를 반환 */
+  setUrlFetchDeps(deps) {
+    const prev = { ...urlFetchDeps }
+    Object.assign(urlFetchDeps, deps)
+    return () => Object.assign(urlFetchDeps, prev)
+  },
 }
