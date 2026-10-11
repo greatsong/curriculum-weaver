@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { useAuthStore } from '../stores/authStore'
+import { useAuthStore, SIGNUP_CONFIRM_EMAIL_MESSAGE } from '../stores/authStore'
 import Logo from '../components/Logo'
 import PrivacyConsentFields, { isConsentComplete } from '../components/PrivacyConsentFields'
 import { CONSENT_TEXT } from '../lib/privacyConsent'
@@ -78,8 +78,11 @@ export default function LoginPage() {
           subject: subject.trim(),
           privacyConsent: true,
         })
-        if (data.user && !data.session) {
-          setSuccessMessage('인증 이메일이 발송되었습니다. 이메일을 확인해주세요.')
+        if (data?.needsEmailConfirmation || (data?.user && !data?.session)) {
+          // 이메일 확인 대기 — 로그인 화면으로 돌려 두고 안내만 남긴다(확인 뒤 같은 화면에서 로그인)
+          setMode('login')
+          setPassword('')
+          setSuccessMessage(SIGNUP_CONFIRM_EMAIL_MESSAGE)
         } else {
           navigate(nextPath, { replace: true })
         }

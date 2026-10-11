@@ -16,17 +16,30 @@ export class ApiError extends Error {
   }
 }
 
+// ── 가입 승인 대기 감지 ──
+// 서버가 403 { code: 'approval_pending' }을 주면 window 이벤트로 알린다. authStore가 받아 승인 대기 화면으로 바꾼다.
+// (authStore가 이 파일을 import하므로 이벤트로 느슨하게 잇는다. 이벤트 이름은 authStore와 같아야 한다)
+export const APPROVAL_PENDING_EVENT = 'cw:approval-pending'
+
+function notifyApprovalPending(body) {
+  if (body?.code !== 'approval_pending' || typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return
+  try {
+    window.dispatchEvent(new CustomEvent(APPROVAL_PENDING_EVENT, { detail: { status: body.approval_status || 'pending' } }))
+  } catch { /* 화면 전환 실패는 무시 */ }
+}
+
 /**
- * 서버 에러 응답 body({ error: { code, message, field } } 또는 레거시 { error: '...' })를
- * ApiError로 변환한다.
+ * 서버 에러 응답 body({ error: { code, message, field } } 또는 레거시 { error: '...', code? })를
+ * ApiError로 변환한다. 레거시 형식의 맨 위 code(예: ai_daily_limit, approval_pending)도 담는다.
  */
 function parseApiErrorBody(body, status) {
+  notifyApprovalPending(body)
   if (body && typeof body.error === 'object' && body.error !== null) {
     const { code = null, message = '요청에 실패했습니다.', field = null } = body.error
     return new ApiError(message, status, false, code, field)
   }
   if (body && typeof body.error === 'string') {
-    return new ApiError(body.error, status)
+    return new ApiError(body.error, status, false, typeof body.code === 'string' ? body.code : null)
   }
   return new ApiError(`API 오류: ${status}`, status)
 }
@@ -266,7 +279,9 @@ async function streamPost(path, body, { onText, onPrinciples, onBoardSuggestions
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
-    onError?.(err.error || '알 수 없는 오류')
+    notifyApprovalPending(err)
+    // 두 번째 인자로 상태·코드를 넘긴다 — AI 사용 상한(429) 등은 화면이 서버 문구를 그대로 보여 준다
+    onError?.(typeof err.error === 'string' ? err.error : (err.error?.message || '알 수 없는 오류'), { status: res.status, code: err.code || err.error?.code || null })
     return
   }
 

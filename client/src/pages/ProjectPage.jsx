@@ -848,7 +848,7 @@ export default function ProjectPage() {
       )}
 
       {/* 자료 관리 바 */}
-      <MaterialUploadBar projectId={projectId} open={materialsOpen} onOpenChange={setMaterialsOpen} hideToggle />
+      <MaterialUploadBar projectId={projectId} open={materialsOpen} onOpenChange={setMaterialsOpen} hideToggle memberRole={currentProject?.my_role} />
 
       {/* 절차 네비게이션 — 시연 모드에서는 19절차 트랙 대신 얕은 스텝 네비를 노출(단일 차시 준비) */}
       {isDemo ? (
@@ -963,6 +963,7 @@ export default function ProjectPage() {
               readOnly={isReadOnlyProject}
               loading={isReadOnlyLoading}
               onOpenReport={() => setShowReport(true)}
+              memberRole={currentProject?.my_role}
             />
           </ErrorBoundary>
         </div>

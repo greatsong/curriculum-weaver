@@ -3,12 +3,61 @@ import { supabase } from '../lib/supabase'
 import { apiGet, apiPut } from '../lib/api'
 import { privacyConsentMetadata } from '../lib/privacyConsent'
 
+/** 이메일 가입 직후 확인 메일 안내 (가입 화면이 보여 준다) */
+export const SIGNUP_CONFIRM_EMAIL_MESSAGE = '확인 메일을 보냈습니다. 메일의 링크를 누른 뒤 로그인해 주세요.'
+
+/** Supabase 로그인 오류 중 사용자에게 한국어로 알려 줄 것 */
+function localizeAuthError(err) {
+  const message = String(err?.message || '')
+  if (/email not confirmed/i.test(message)) return '이메일 확인이 아직 끝나지 않았습니다. 받은 편지함의 확인 메일 링크를 누른 뒤 로그인해 주세요.'
+  return message
+}
+
+let approvalSeq = 0
+
 export const useAuthStore = create((set, get) => ({
   user: null,
   session: null,
   loading: true,
   initialized: false,
   error: null,
+  /**
+   * 가입 승인 상태 (GET /api/auth/me의 approval_status)
+   * 'unknown'(아직 확인 전) | 'loading' | 'approved' | 'pending' | 'rejected' | 'error'(확인 실패 — 서버가 판단)
+   */
+  approvalStatus: 'unknown',
+
+  /**
+   * 서버에 승인 상태를 묻는다. 로그인·세션 복원·초대 수락 뒤에 부른다.
+   * 확인에 실패하면 'error'로 두고 화면을 막지 않는다(서버가 요청마다 판단하고, 승인 대기면 403으로 알린다).
+   */
+  refreshApproval: async () => {
+    if (!get().user) {
+      set({ approvalStatus: 'unknown' })
+      return 'unknown'
+    }
+    const seq = ++approvalSeq
+    if (get().approvalStatus === 'unknown') set({ approvalStatus: 'loading' })
+    try {
+      const me = await apiGet('/api/auth/me')
+      if (seq !== approvalSeq) return get().approvalStatus
+      const status = me?.approved === true ? 'approved' : (me?.approval_status === 'rejected' ? 'rejected' : (me?.approved === false ? 'pending' : 'approved'))
+      set({ approvalStatus: status })
+      return status
+    } catch (err) {
+      if (seq !== approvalSeq) return get().approvalStatus
+      // 401 등은 세션 문제라 승인 판단과 무관 — 화면은 막지 않는다
+      set({ approvalStatus: 'error' })
+      console.warn('[Auth] 승인 상태 확인 실패:', err?.message || err)
+      return 'error'
+    }
+  },
+
+  /** 서버가 요청 중에 승인 대기(403 approval_pending)를 알렸을 때 */
+  _markApprovalBlocked: (status = 'pending') => {
+    if (!get().user) return
+    set({ approvalStatus: status === 'rejected' ? 'rejected' : 'pending' })
+  },
 
   /**
    * 앱 시작 시 기존 세션을 확인하고 Auth state 변경을 구독한다
@@ -48,7 +97,8 @@ export const useAuthStore = create((set, get) => ({
         // 서버 미기동이거나 DEV_AUTH_BYPASS가 꺼져 있으면 더미 id로 진행
         console.info('[Auth] 개발 모드: 서버 dev 유저 조회 실패 → 더미 id 사용')
       }
-      set({ user: devUser, session: { access_token: 'dev-token', user: devUser }, loading: false, initialized: true })
+      // 로컬 개발 모드는 승인 판정 대상이 아니다
+      set({ user: devUser, session: { access_token: 'dev-token', user: devUser }, loading: false, initialized: true, approvalStatus: 'approved' })
       return
     }
 
@@ -58,8 +108,9 @@ export const useAuthStore = create((set, get) => ({
 
       if (session?.user) {
         set({ user: session.user, session, loading: false, initialized: true })
+        get().refreshApproval()
       } else {
-        set({ user: null, session: null, loading: false, initialized: true })
+        set({ user: null, session: null, loading: false, initialized: true, approvalStatus: 'unknown' })
       }
 
       // Auth 상태 변경 구독
@@ -75,10 +126,11 @@ export const useAuthStore = create((set, get) => ({
             if (prevUser && nextUser && prevUser.id === nextUser.id) {
               set({ session: session ?? null })
             } else {
-              set({ user: nextUser, session: session ?? null })
+              set({ user: nextUser, session: session ?? null, approvalStatus: 'unknown' })
+              if (nextUser) get().refreshApproval()
             }
           } else if (event === 'SIGNED_OUT') {
-            set({ user: null, session: null })
+            set({ user: null, session: null, approvalStatus: 'unknown' })
           }
         }
       )
@@ -102,16 +154,20 @@ export const useAuthStore = create((set, get) => ({
         password,
       })
       if (error) throw error
-      set({ user: data.user, session: data.session })
+      const sameUser = get().user?.id === data.user?.id
+      set({ user: data.user, session: data.session, ...(sameUser ? {} : { approvalStatus: 'unknown' }) })
+      get().refreshApproval()
       return data
     } catch (err) {
-      set({ error: err.message })
+      set({ error: localizeAuthError(err) })
       throw err
     }
   },
 
   /**
    * 이메일/비밀번호 회원가입
+   * 이메일 확인을 켜 두면 세션 없이 user만 돌아온다 — 그때는 로그인 상태로 두지 않고
+   * needsEmailConfirmation=true를 돌려준다(가입 화면이 확인 메일 안내를 보여 준다).
    */
   signup: async (email, password, displayName, extra = {}) => {
     set({ error: null })
@@ -120,6 +176,8 @@ export const useAuthStore = create((set, get) => ({
         email,
         password,
         options: {
+          // 확인 메일의 링크를 누르면 이 화면으로 돌아와 로그인된다
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
           data: {
             display_name: displayName,
             school_name: extra.school_name || '',
@@ -130,8 +188,13 @@ export const useAuthStore = create((set, get) => ({
         },
       })
       if (error) throw error
-      set({ user: data.user, session: data.session })
-      return data
+      if (!data?.session) {
+        // 확인 메일 대기 — 세션이 없으므로 로그인 상태로 두지 않는다
+        return { ...data, needsEmailConfirmation: true }
+      }
+      set({ user: data.user, session: data.session, approvalStatus: 'unknown' })
+      get().refreshApproval()
+      return { ...data, needsEmailConfirmation: false }
     } catch (err) {
       set({ error: err.message })
       throw err
@@ -167,11 +230,11 @@ export const useAuthStore = create((set, get) => ({
     try {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
-      set({ user: null, session: null })
+      set({ user: null, session: null, approvalStatus: 'unknown' })
     } catch (err) {
       console.error('[Auth] 로그아웃 실패:', err)
       // 강제로 상태 초기화
-      set({ user: null, session: null })
+      set({ user: null, session: null, approvalStatus: 'unknown' })
     }
   },
 
@@ -261,3 +324,10 @@ export const useAuthStore = create((set, get) => ({
     set({ _authSubscription: null })
   },
 }))
+
+// 서버가 요청 중에 승인 대기를 알리면(403 approval_pending, lib/api.js의 APPROVAL_PENDING_EVENT) 승인 대기 화면으로 바꾼다
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('cw:approval-pending', (event) => {
+    useAuthStore.getState()._markApprovalBlocked(event?.detail?.status)
+  })
+}
