@@ -248,8 +248,17 @@ router.put('/projects/:projectId/designs/:procedureCode/status', checkDesignAcce
     }
 
     // locked 설정은 host/owner만 가능
-    if (save_status === 'locked' && !['owner', 'host'].includes(req.memberRole)) {
+    const canManageLock = ['owner', 'host'].includes(req.memberRole)
+    if (save_status === 'locked' && !canManageLock) {
       return res.status(403).json({ error: '잠금 설정은 host 또는 owner만 가능합니다.' })
+    }
+
+    // 잠금 해제(locked → 다른 상태)도 host/owner만 — 상태 변경으로 잠금을 우회하지 못하게
+    if (!canManageLock) {
+      const existing = await getDesign(projectId, procedureCode)
+      if (existing?.save_status === 'locked') {
+        return res.status(403).json({ error: '잠금 해제는 host 또는 owner만 가능합니다.' })
+      }
     }
 
     const design = await updateDesignStatus(projectId, procedureCode, save_status)
