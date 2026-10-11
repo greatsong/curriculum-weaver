@@ -309,6 +309,7 @@ export function isAnalysisInProgress(row, nowMs = Date.now()) {
 }
 
 const ANALYSIS_IN_PROGRESS_MESSAGE = '이미 분석 중인 자료입니다. 분석이 끝난 뒤 다시 시도해 주세요.'
+const reanalyzeInFlight = new Set() // 재분석 요청을 처리 중인 materialId (상태 갱신 전 동시 요청 차단)
 
 // ── multer 설정 ──
 const upload = multer({
@@ -734,11 +735,21 @@ materialsRouter.post('/:id/reanalyze', async (req, res) => {
   const access = await assertProjectAccess(row.project_id, req.user.id, { write: true })
   if (!access.ok) return errorResponse(res, access.status, access.code, access.message)
 
-  // 이미 분석 중이면 겹쳐 돌리지 않는다
-  if (isAnalysisInProgress(row)) {
+  // 이미 분석 중이거나 같은 자료의 재분석 요청이 처리 중이면 겹쳐 돌리지 않는다
+  if (isAnalysisInProgress(row) || reanalyzeInFlight.has(id)) {
     return errorResponse(res, 409, 'ANALYSIS_IN_PROGRESS', ANALYSIS_IN_PROGRESS_MESSAGE)
   }
+  // 상태를 parsing으로 바꿀 때까지(아래 await 구간) 동시에 들어온 같은 요청을 막는다
+  reanalyzeInFlight.add(id)
+  try {
+    return await startReanalysis(req, res, id, row)
+  } finally {
+    reanalyzeInFlight.delete(id)
+  }
+})
 
+/** 재분석 시작 — 권한·진행 중 검사를 통과한 뒤 부른다 */
+async function startReanalysis(req, res, id, row) {
   // ── URL 자료: Storage 다운로드 대신 원본 URL을 재fetch ──
   if (row.file_type === 'url') {
     if (!row.storage_path) {
@@ -794,7 +805,7 @@ materialsRouter.post('/:id/reanalyze', async (req, res) => {
   return res.status(202).json({
     material: { id, processing_status: 'parsing' },
   })
-})
+}
 
 // ============================================================
 // DELETE /api/materials/:id

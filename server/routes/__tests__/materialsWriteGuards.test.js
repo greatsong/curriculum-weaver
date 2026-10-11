@@ -34,7 +34,7 @@ vi.mock('../../lib/supabaseAdmin.js', () => {
       _insert: null,
       select() { return q },
       insert(row) { q._insert = row; return q },
-      update() { return q },
+      update(patch) { q._update = patch; return q },
       delete() { return q },
       eq() { return q },
       order() { return q },
@@ -42,7 +42,11 @@ vi.mock('../../lib/supabaseAdmin.js', () => {
         if (q._insert) return { data: { ...q._insert }, error: null }
         return state.row ? { data: state.row, error: null } : { data: null, error: { message: 'not found' } }
       },
-      then(onFulfilled) { return Promise.resolve({ data: null, error: null }).then(onFulfilled) },
+      then(onFulfilled) {
+        // 재분석 준비(update)는 DB 상태를 바꾼다 — 다음 요청이 바뀐 상태를 읽게 한다
+        if (q._update && state.row) state.row = { ...state.row, ...q._update }
+        return Promise.resolve({ data: null, error: null }).then(onFulfilled)
+      },
     }
     return q
   }
@@ -127,6 +131,15 @@ describe('재분석 중복 방지', () => {
     expect((await request(app).post('/api/materials/mat-2/reanalyze')).status).toBe(202)
     state.row = row({ id: 'mat-2', processing_status: 'parsing' }) // 첫 재분석이 진행 중
     expect((await request(app).post('/api/materials/mat-2/reanalyze')).status).toBe(409)
+  })
+  it('같은 자료의 재분석 요청이 겹쳐 들어오면 하나만 시작한다', async () => {
+    state.row = row({ id: 'mat-3', processing_status: 'failed' })
+    const [a, b] = await Promise.all([
+      request(app).post('/api/materials/mat-3/reanalyze'),
+      request(app).post('/api/materials/mat-3/reanalyze'),
+    ])
+    expect([a.status, b.status].sort()).toEqual([202, 409])
+    expect(analyzeMaterial).toHaveBeenCalledTimes(1)
   })
   it('isAnalysisInProgress: 15분 넘게 멈춘 상태는 진행 중으로 보지 않는다', () => {
     expect(isAnalysisInProgress(row({ id: 'x1', processing_status: 'analyzing', created_at: minutesAgo(3) }))).toBe(true)
