@@ -15,7 +15,7 @@ import { requireAuth } from '../middleware/auth.js'
 import { buildAIResponse, buildProcedureIntroResponse } from '../services/aiAgent.js'
 import {
   getMessages, getMessage, createMessage, getRecentMessages,
-  getProject, getMemberRole, getDesignsByProject,
+  getProject, getMemberRole, getDesignsByProject, getDesign, getUser,
   getStandardsByProject, upsertDesign, getProjectSkips, getWorkspaceWorkflowConfig, deleteMessage,
   getProcedureMessages, getMessagesBefore,
 } from '../lib/supabaseService.js'
@@ -26,7 +26,7 @@ import { stripLeftoverAiMarkup } from '../lib/aiMarkup.js'
 import { stripBoardKeyMentions } from 'curriculum-weaver-shared/boardKeys.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { Materials, StandardLinks, resolveSchoolLevel } from '../lib/store.js'
-import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode, isDemoBoardCode, resolveParticipationMode } from 'curriculum-weaver-shared/constants.js'
+import { SSE_EVENTS, BOARD_TYPES, PROCEDURES, ACTION_TYPES, PHASES, replaceInternalProcedureCodes, normalizeProcedureCode, isDemoBoardCode, resolveParticipationMode, getProcedureLabel } from 'curriculum-weaver-shared/constants.js'
 import { isBriefProcedure, buildBriefIntro, BRIEF_SAVED_MARK, BRIEF_SAVED_SILENT_REPLY, isNoInterventionActive } from 'curriculum-weaver-shared/briefMode.js'
 import { PROCEDURE_STEPS } from 'curriculum-weaver-shared/procedureSteps.js'
 import { planProcedureMove, encodeMoveMeta, MOVE_NOTE_SENDER } from 'curriculum-weaver-shared/procedureMove.js'
@@ -37,6 +37,18 @@ import { aiChatLimiter } from '../middleware/rateLimit.js'
 import { PROCEDURE_GUIDE } from '../data/procedureGuide.js'
 import { resolveSelectedMaterialIds } from '../lib/materialSelection.js'
 import { broadcastSavedAiMessage, readRequesterSocketId } from '../lib/messageBroadcast.js'
+import { normalizeAiModel } from '../services/llmProvider.js'
+import { checkAiBudgetForUser } from '../middleware/aiBudget.js'
+
+/** 열람자(viewer)가 쓰기를 시도할 때의 응답 문구 */
+const VIEWER_READ_ONLY_ERROR = '열람 전용 멤버는 대화·자료·제안을 바꿀 수 없습니다.'
+
+/** 열람자면 403을 보내고 true를 돌려준다 (역할은 checkProjectAccess가 getMemberRole로 채운 req.projectRole) */
+function rejectViewer(req, res) {
+  if (req.projectRole !== 'viewer') return false
+  res.status(403).json({ error: VIEWER_READ_ONLY_ERROR })
+  return true
+}
 
 /**
  * 저장한 AI 메시지를 팀원 탭에 보낸다(요청한 탭 제외, 옛 탭 요청은 보내지 않음 — lib/messageBroadcast.js).
@@ -178,7 +190,9 @@ async function checkProjectAccess(req, res, next) {
   if (!projectId) return next() // 프로젝트 ID 없으면 개별 라우트에서 처리
   try {
     const project = await getProject(projectId)
-    if (!project) return next() // 레거시 세션/데모일 수 있으므로 통과
+    // 없는 프로젝트는 통과시키지 않는다. 채팅은 프로젝트 id만 쓰고(레거시 세션 id는 채팅에 쓰지 않음),
+    // 인메모리 개발 모드의 프로젝트도 getProject가 찾아 준다.
+    if (!project) return res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' })
     if (project.workspace_id && req.user?.id) {
       const role = await getMemberRole(project.workspace_id, req.user.id)
       if (!role) {
@@ -356,7 +370,26 @@ chatRouter.get('/:sessionId', checkProjectAccess, async (req, res) => {
 
 // 저장 길이 상한 — 채팅 기록은 자르지 않고 AI 입력에 들어가므로 저장 단계에서 막는다
 const MAX_TEACHER_MESSAGE_LENGTH = 5000
-const MAX_SEED_MESSAGE_LENGTH = 12000
+// 교사 메시지의 보낸 사람 표시 상한 — 프로필이 없을 때만 화면이 보낸 이름을 쓴다
+const MAX_SENDER_NAME_LENGTH = 50
+const MAX_SENDER_SUBJECT_LENGTH = 100
+
+/**
+ * 교사 메시지에 남길 보낸 사람 이름. 서버의 사용자 프로필(users.display_name)을 쓰고,
+ * 프로필이 없거나 이름이 비어 있을 때만 화면이 보낸 값(최대 50자)을 쓴다.
+ */
+export async function resolveSenderName(userId, clientName) {
+  let profileName = ''
+  if (userId) {
+    try {
+      const profile = await getUser(userId)
+      profileName = String(profile?.display_name || '').trim()
+    } catch { /* 프로필 조회 실패 → 화면 값 사용 */ }
+  }
+  if (profileName) return profileName.slice(0, MAX_SENDER_NAME_LENGTH)
+  const fallback = typeof clientName === 'string' ? clientName.trim() : ''
+  return (fallback || '교사').slice(0, MAX_SENDER_NAME_LENGTH)
+}
 
 // ─── 교사 메시지 저장 ───
 chatRouter.post('/teacher', async (req, res) => {
@@ -370,6 +403,8 @@ chatRouter.post('/teacher', async (req, res) => {
     return res.status(400).json({ error: '메시지가 너무 깁니다. (최대 5,000자)' })
   }
 
+  if (rejectViewer(req, res)) return
+
   const project = req.project || await getProject(session_id).catch(() => null)
   if (isReadOnlyProject(project)) {
     return res.status(403).json({ error: '시뮬레이션 프로젝트는 읽기 전용입니다.' })
@@ -377,7 +412,10 @@ chatRouter.post('/teacher', async (req, res) => {
 
   try {
     // @멘션 교차 검증 — 해당 프로젝트 자료만 유효
-    const { validIds } = await resolveMentionedMaterials(mentionedRaw, session_id)
+    const [{ validIds }, senderName] = await Promise.all([
+      resolveMentionedMaterials(mentionedRaw, session_id),
+      resolveSenderName(req.user?.id, sender_name),
+    ])
 
     const msg = await createMessage({
       project_id: session_id,
@@ -385,47 +423,14 @@ chatRouter.post('/teacher', async (req, res) => {
       sender_type: 'teacher',
       content: content.trim(),
       procedure_context: procedure || req.body.stage || null,
-      sender_name: sender_name || '교사',
-      sender_subject: sender_subject || '',
+      sender_name: senderName,
+      sender_subject: typeof sender_subject === 'string' ? sender_subject.slice(0, MAX_SENDER_SUBJECT_LENGTH) : '',
       mentioned_material_ids: validIds,
     })
     // 클라이언트 호환: stage_context 필드도 포함
     res.status(201).json({ ...msg, stage_context: msg.procedure_context, session_id })
   } catch (err) {
     console.error('교사 메시지 저장 오류:', err.message)
-    res.status(500).json({ error: '메시지 저장에 실패했습니다.' })
-  }
-})
-
-// ─── 시드 데이터용: 일반 메시지 직접 추가 ───
-chatRouter.post('/seed', async (req, res) => {
-  const { session_id, sender_type, content, procedure, sender_name, sender_subject, principles_used } = req.body
-  if (!session_id || !content?.trim() || !sender_type) {
-    return res.status(400).json({ error: '필수 필드: session_id, sender_type, content' })
-  }
-  if (typeof content !== 'string' || content.length > MAX_SEED_MESSAGE_LENGTH) {
-    return res.status(400).json({ error: '메시지가 너무 깁니다.' })
-  }
-
-  // sender_type 값 검증
-  const VALID_SENDER_TYPES = ['teacher', 'ai', 'system']
-  if (!VALID_SENDER_TYPES.includes(sender_type)) {
-    return res.status(400).json({ error: `유효하지 않은 sender_type: ${sender_type}. 허용: ${VALID_SENDER_TYPES.join(', ')}` })
-  }
-
-  try {
-    const msg = await createMessage({
-      project_id: session_id,
-      sender_type,
-      content: content.trim(),
-      procedure_context: procedure || req.body.stage || null,
-      principles_used: principles_used || [],
-      sender_name: sender_name || null,
-      sender_subject: sender_subject || null,
-    })
-    res.status(201).json({ ...msg, stage_context: msg.procedure_context, session_id })
-  } catch (err) {
-    console.error('시드 메시지 저장 오류:', err.message)
     res.status(500).json({ error: '메시지 저장에 실패했습니다.' })
   }
 })
@@ -442,6 +447,9 @@ chatRouter.post('/procedure-intro', async (req, res) => {
   if (!PROCEDURES[procedure]) {
     return res.status(400).json({ error: `유효하지 않은 절차 코드: ${procedure}` })
   }
+
+  // 안내를 대화에 저장하는 경로라 열람자는 막는다
+  if (rejectViewer(req, res)) return
 
   const project = req.project || await getProject(session_id).catch(() => null)
   if (isReadOnlyProject(project)) {
@@ -639,6 +647,9 @@ chatRouter.post('/stage-intro', limitAiIntroOnly, async (req, res) => {
     return res.status(400).json({ error: 'stage-intro는 deprecated입니다. procedure-intro를 사용하세요.' })
   }
 
+  // 안내를 대화에 저장하는 경로라 열람자는 막는다
+  if (rejectViewer(req, res)) return
+
   const introProject = req.project || await getProject(session_id).catch(() => null)
   // 시연 모드 프로젝트에는 협력 절차 인트로(T-1 팀준비 등)를 절대 서빙하지 않는다.
   // 클라 경쟁 상태(currentProject 로드 전 기본 커서 T-1-1)로 협력 코드가 들어와도
@@ -656,6 +667,9 @@ chatRouter.post('/stage-intro', limitAiIntroOnly, async (req, res) => {
     if (isReadOnlyProject(introProject)) {
       return res.status(403).json({ error: '읽기 전용 프로젝트에서는 새 AI 안내를 생성하지 않습니다.' })
     }
+    // 시연 모드 안내만 AI를 부른다 — AI 사용 상한을 여기서 건다(정적 안내는 상한 대상이 아니다)
+    const budget = await checkAiBudgetForUser(req.user?.id).catch(() => ({ ok: true }))
+    if (!budget.ok) return res.status(budget.status).json(budget.body)
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache')
     res.setHeader('Connection', 'keep-alive')
@@ -665,7 +679,7 @@ chatRouter.post('/stage-intro', limitAiIntroOnly, async (req, res) => {
       const designs = await getDesignsByProject(session_id).catch(() => [])
       let introText = ''
       await buildProcedureIntroResponse(
-        { procedure, sessionTitle: introProject?.title, boards: designs, mode: 'demo', tone: 'coaching', aiModel },
+        { procedure, sessionTitle: introProject?.title, boards: designs, mode: 'demo', tone: 'coaching', aiModel: normalizeAiModel(aiModel) },
         {
           onText: (text) => {
             introText += text
@@ -811,6 +825,8 @@ chatRouter.post('/message', async (req, res) => {
   if (content.length > 5000) {
     return res.status(400).json({ error: '메시지가 너무 깁니다. (최대 5,000자)' })
   }
+
+  if (rejectViewer(req, res)) return
 
   const project = req.project || await getProject(session_id).catch(() => null)
   if (isReadOnlyProject(project)) {
@@ -1009,7 +1025,8 @@ chatRouter.post('/message', async (req, res) => {
       participationMode: isDemo ? undefined : resolveParticipationMode(workflowConfig),
       // 약식 기록(연수 모드) — 팀 설정에서 켠 팀의 약식 절차만(핵심 절차 정식 진행 설정 반영). 조회 실패·미설정은 종전 동작
       briefMode: isDemo ? false : isBriefProcedure(workflowConfig, activeProcedure),
-      aiModel: aiModel || undefined,
+      // 정밀 모드가 꺼져 있으면(PRECISE_MODE_ENABLED) 'precise' 요청도 기본 경로로 처리한다
+      aiModel: normalizeAiModel(aiModel) || undefined,
       mentionedMaterialIds: mentionedIds,
       mentionedMaterials,
       selectedMaterialIds,
@@ -1196,24 +1213,76 @@ chatRouter.post('/message', async (req, res) => {
 
 // ──────────────────────────────────────────
 // AI 제안 수락/편집수락/거부 엔드포인트
+//
+// 쓰기 가드(2026-10-11): 메시지가 요청한 프로젝트(session_id)의 것인지 확인하고, 저장된 메시지의
+// 제안만 쓴다(요청 본문의 suggestions로 대체하지 않는다. 편집 수락의 편집 내용은 그대로 쓴다).
+// 열람자·읽기 전용 프로젝트·생략된 절차·잠긴 보드는 routes/designs.js의 보드 저장과 같은 기준으로 막는다.
+// (현재 화면은 보드 저장 경로(PUT /designs)를 쓰고 이 두 경로는 부르지 않지만, 직접 호출에 대비한다.)
 // ──────────────────────────────────────────
 
 /**
+ * 메시지를 읽어 요청한 프로젝트의 것일 때만 돌려준다.
+ * @returns {Promise<object|null>}
+ */
+async function loadProjectMessage(messageId, projectId) {
+  const message = await getMessage(messageId).catch(() => null)
+  if (!message) return null
+  const owner = message.project_id || message.session_id
+  return owner === projectId ? message : null
+}
+
+/**
+ * 보드 쓰기 가드 — designs.js PUT /projects/:projectId/designs/:procedureCode와 같은 기준.
+ * 막았으면 응답을 보내고 false를 돌려준다.
+ */
+export async function guardSuggestionWrite(req, res, projectId, procedure) {
+  if (rejectViewer(req, res)) return false
+  if (isReadOnlyProject(req.project)) {
+    res.status(403).json({ error: '읽기 전용 프로젝트(시뮬레이션/생성 중/실패)는 수정할 수 없습니다.' })
+    return false
+  }
+  const skips = await getProjectSkips(projectId)
+  if ((skips || []).some((sk) => sk.procedure_code === procedure)) {
+    res.status(403).json({
+      error: `${getProcedureLabel(procedure)} 절차는 팀 결정으로 생략되어 열람만 가능합니다. 건너뛰기를 해제한 뒤 저장하세요.`,
+    })
+    return false
+  }
+  const existing = await getDesign(projectId, procedure)
+  if (existing?.save_status === 'locked') {
+    res.status(423).json({ error: '이 설계 캔버스는 잠금 상태입니다. 잠금을 해제한 후 수정하세요.' })
+    return false
+  }
+  return true
+}
+
+/** 요청 본문의 제안 번호 — 0 이상의 정수만 */
+function parseSuggestionIndex(value) {
+  const n = Number(value ?? 0)
+  return Number.isInteger(n) && n >= 0 ? n : null
+}
+
+/**
  * POST /api/chat/suggestion/:messageId/accept
- * — AI 제안을 수락하여 보드에 적용
+ * — 저장된 AI 제안을 수락하여 보드에 적용
  */
 chatRouter.post('/suggestion/:messageId/accept', async (req, res) => {
   const { messageId } = req.params
-  const { session_id, procedure, suggestionIndex = 0 } = req.body
+  const { session_id, procedure } = req.body
 
   if (!session_id || !procedure) {
     return res.status(400).json({ error: '세션 ID와 절차 코드가 필요합니다.' })
   }
+  if (rejectViewer(req, res)) return
+  const suggestionIndex = parseSuggestionIndex(req.body.suggestionIndex)
+  if (suggestionIndex === null) {
+    return res.status(400).json({ error: '제안 번호가 올바르지 않습니다.' })
+  }
 
   try {
-    // 메시지에서 제안 데이터 조회
-    const message = await getMessage(messageId)
-    const suggestions = message?.ai_suggestions || req.body.suggestions || []
+    // 요청한 프로젝트의 저장된 메시지에서만 제안을 읽는다
+    const message = await loadProjectMessage(messageId, session_id)
+    const suggestions = Array.isArray(message?.ai_suggestions) ? message.ai_suggestions : []
     const suggestion = suggestions[suggestionIndex]
 
     if (!suggestion) {
@@ -1222,9 +1291,11 @@ chatRouter.post('/suggestion/:messageId/accept', async (req, res) => {
 
     // 보드에 적용
     const boardType = suggestion._legacyBoardType || BOARD_TYPES[procedure]
-    if (!boardType) {
+    if (!boardType || !BOARD_TYPES[procedure]) {
       return res.status(400).json({ error: `절차 ${procedure}에 대응하는 보드 타입이 없습니다.` })
     }
+
+    if (!await guardSuggestionWrite(req, res, session_id, procedure)) return
 
     // Supabase에 설계 저장 (성취기준 검증은 upsertDesign 게이트키퍼가 처리)
     const contentToSave = suggestion.content
@@ -1234,9 +1305,6 @@ chatRouter.post('/suggestion/:messageId/accept', async (req, res) => {
     } catch (err) {
       console.warn(`[제안 수락] Supabase 저장 실패, 계속 진행:`, err.message)
     }
-
-    // 제안 상태 업데이트
-    suggestion.status = 'accepted'
 
     console.log(`[활동] 제안 수락 — 프로젝트: ${session_id}, 절차: ${procedure}, 보드: ${boardType}`)
 
@@ -1254,22 +1322,36 @@ chatRouter.post('/suggestion/:messageId/accept', async (req, res) => {
 
 /**
  * POST /api/chat/suggestion/:messageId/edit-accept
- * — AI 제안을 교사가 수정한 후 수락
+ * — AI 제안을 교사가 수정한 후 수락 (저장되는 내용은 교사가 고친 editedContent)
  */
 chatRouter.post('/suggestion/:messageId/edit-accept', async (req, res) => {
   const { messageId } = req.params
-  const { session_id, procedure, suggestionIndex = 0, editedContent } = req.body
+  const { session_id, procedure, editedContent } = req.body
 
   if (!session_id || !procedure || !editedContent) {
     return res.status(400).json({ error: '세션 ID, 절차 코드, 수정된 내용이 필요합니다.' })
   }
+  if (rejectViewer(req, res)) return
+  const suggestionIndex = parseSuggestionIndex(req.body.suggestionIndex)
+  if (suggestionIndex === null) {
+    return res.status(400).json({ error: '제안 번호가 올바르지 않습니다.' })
+  }
 
   try {
+    // 고친 내용을 저장하더라도, 이 프로젝트에 실제로 저장된 제안을 수락하는 경우에만 받는다
+    const message = await loadProjectMessage(messageId, session_id)
+    const suggestions = Array.isArray(message?.ai_suggestions) ? message.ai_suggestions : []
+    if (!suggestions[suggestionIndex]) {
+      return res.status(404).json({ error: '해당 제안을 찾을 수 없습니다.' })
+    }
+
     // 보드에 수정된 내용 적용
     const boardType = BOARD_TYPES[procedure]
     if (!boardType) {
       return res.status(400).json({ error: `절차 ${procedure}에 대응하는 보드 타입이 없습니다.` })
     }
+
+    if (!await guardSuggestionWrite(req, res, session_id, procedure)) return
 
     // Supabase에 설계 저장 (성취기준 검증은 upsertDesign 게이트키퍼가 처리)
     let updatedDesign = null
@@ -1295,19 +1377,19 @@ chatRouter.post('/suggestion/:messageId/edit-accept', async (req, res) => {
 
 /**
  * POST /api/chat/suggestion/:messageId/reject
- * — AI 제안을 거부
+ * — AI 제안을 거부 (활동 로그만 남긴다)
  */
 chatRouter.post('/suggestion/:messageId/reject', async (req, res) => {
-  const { messageId } = req.params
-  const { session_id, procedure, suggestionIndex = 0, reason = '' } = req.body
+  const { session_id, procedure, reason = '' } = req.body
 
   if (!session_id) {
     return res.status(400).json({ error: '세션 ID가 필요합니다.' })
   }
+  if (rejectViewer(req, res)) return
 
   try {
     // 활동 로그
-    console.log(`[활동] 제안 거부 — 세션: ${session_id}, 절차: ${procedure || '?'}, 사유: ${reason || '없음'}`)
+    console.log(`[활동] 제안 거부 — 세션: ${session_id}, 절차: ${procedure || '?'}, 사유: ${String(reason || '없음').slice(0, 200)}`)
 
     res.json({
       success: true,

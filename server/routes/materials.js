@@ -9,6 +9,9 @@
  *   POST   /api/materials/:id/reanalyze 재분석 트리거 (fire-and-forget)
  *   DELETE /api/materials/:id          Storage + DB 삭제
  *
+ * 쓰기(올리기·URL·재분석·삭제)는 열람자(viewer)에게 403이다(2026-10-11).
+ * 자료 선택(AI에 넣을 자료 고르기)은 서버에 저장하지 않고 채팅 요청에 실어 보내므로 별도 쓰기 경로가 없다.
+ *
  * 에러 포맷: { error: { code, message, field? } }
  * 참고: _workspace/design/file-upload-redesign.md §2
  */
@@ -241,23 +244,31 @@ function extractProjectId(req) {
   )
 }
 
+/** 열람자가 자료를 바꾸려 할 때의 안내 */
+const VIEWER_WRITE_MESSAGE = '열람 전용 멤버는 자료를 올리거나 바꿀 수 없습니다.'
+
 /**
  * 프로젝트 접근 권한 검증. 인메모리 폴백 모드에서는 느슨하게 통과한다.
- * 반환: { ok: boolean, project?: object, status?: number, code?: string, message?: string }
+ * write=true면 열람자(viewer)를 403으로 막는다(역할 조회는 getMemberRole).
+ * 반환: { ok: boolean, project?: object, role?: string, status?: number, code?: string, message?: string }
  */
-async function assertProjectAccess(projectId, userId) {
+async function assertProjectAccess(projectId, userId, { write = false } = {}) {
   try {
     const project = await getProject(projectId)
     if (!project) {
       return { ok: false, status: 404, code: E.PROJECT_NOT_FOUND, message: '프로젝트를 찾을 수 없습니다.' }
     }
+    let role = null
     if (project.workspace_id) {
-      const role = await getMemberRole(project.workspace_id, userId)
+      role = await getMemberRole(project.workspace_id, userId)
       if (!role) {
         return { ok: false, status: 403, code: E.FORBIDDEN, message: '이 프로젝트에 접근 권한이 없습니다.' }
       }
+      if (write && role === 'viewer') {
+        return { ok: false, status: 403, code: E.FORBIDDEN, message: VIEWER_WRITE_MESSAGE }
+      }
     }
-    return { ok: true, project }
+    return { ok: true, project, role }
   } catch {
     // Supabase 미설정(로컬 dev) 시에만 바이패스로 통과.
     // 프로덕션/스테이징에서 DB 조회가 예외를 던진 경우엔 fail-closed(503)로 접근을 막는다.
@@ -272,6 +283,32 @@ async function assertProjectAccess(projectId, userId) {
     }
   }
 }
+
+// ── 분석 진행 중 판정 (재분석 중복 방지) ──
+// materials에는 갱신 시각 열이 없어 DB 상태만으로는 "지금 분석 중"과 "서버 재시작으로 멈춘 상태"를
+// 구분할 수 없다. 이 프로세스가 분석을 시작한 시각(또는 업로드 시각)이 15분 안이면 진행 중으로 보고,
+// 그보다 오래 멈춘 자료는 다시 분석할 수 있게 둔다.
+const ANALYSIS_IN_PROGRESS_STATUSES = new Set(['pending', 'parsing', 'analyzing', 'processing'])
+const ANALYSIS_STALE_MS = 15 * 60_000
+const analysisStartedAt = new Map() // materialId → 이 프로세스가 분석을 시작한 시각(ms)
+
+function markAnalysisStarted(materialId, nowMs = Date.now()) {
+  analysisStartedAt.set(materialId, nowMs)
+  if (analysisStartedAt.size > 2_000) {
+    for (const [id, at] of analysisStartedAt) if (nowMs - at > ANALYSIS_STALE_MS) analysisStartedAt.delete(id)
+  }
+}
+
+/** 이 자료의 분석이 아직 진행 중인지 (재분석 409 판정) */
+export function isAnalysisInProgress(row, nowMs = Date.now()) {
+  if (!row || !ANALYSIS_IN_PROGRESS_STATUSES.has(row.processing_status)) return false
+  const started = analysisStartedAt.get(row.id)
+  if (started && nowMs - started < ANALYSIS_STALE_MS) return true
+  const created = Date.parse(row.created_at || '')
+  return Number.isFinite(created) && nowMs - created < ANALYSIS_STALE_MS
+}
+
+const ANALYSIS_IN_PROGRESS_MESSAGE = '이미 분석 중인 자료입니다. 분석이 끝난 뒤 다시 시도해 주세요.'
 
 // ── multer 설정 ──
 const upload = multer({
@@ -325,8 +362,8 @@ materialsRouter.post(
     }
     const { intent, intentNote } = intentResult
 
-    // 프로젝트 접근 권한
-    const access = await assertProjectAccess(projectId, req.user.id)
+    // 프로젝트 접근 권한 (열람자는 올릴 수 없다)
+    const access = await assertProjectAccess(projectId, req.user.id, { write: true })
     if (!access.ok) {
       return errorResponse(res, access.status, access.code, access.message)
     }
@@ -471,6 +508,7 @@ materialsRouter.post(
 
     // ── 원본과 DB 저장 완료 후 비동기 분석 ──
     // 첨부 시스템 메시지 생성 이후여야 한다 (빠른 실패 시 메시지가 parsing으로 남는 레이스 방지).
+    markAnalysisStarted(materialId)
     analyzeMaterial(materialId, bufferForAnalysis, ext, { intent, intentNote, projectId })
       .catch((err) => console.error('[materials] analyzeMaterial 오류:', err?.message || err))
 
@@ -502,7 +540,7 @@ materialsRouter.post('/url', async (req, res) => {
     return errorResponse(res, 400, E.URL_FETCH_FAILED, 'http/https 형식의 URL을 입력해주세요.', 'url')
   }
 
-  const access = await assertProjectAccess(projectId, req.user.id)
+  const access = await assertProjectAccess(projectId, req.user.id, { write: true })
   if (!access.ok) return errorResponse(res, access.status, access.code, access.message)
 
   // intent 파싱 (URL 폼은 intent 미선택 → 기본 general)
@@ -545,6 +583,7 @@ materialsRouter.post('/url', async (req, res) => {
 
   globalThis.__cwIo?.to(projectId).emit('material_updated', normalizeMaterialFileName(material))
   // ── fire-and-forget 분석 ── (파일 업로드와 동일한 패턴)
+  markAnalysisStarted(materialId)
   analyzeUrlMaterial(materialId, normalizedUrl, { intent: safeIntent, intentNote, projectId })
     .catch((err) => console.error('[materials/url] analyzeUrlMaterial 오류:', err?.message || err))
 
@@ -691,15 +730,23 @@ materialsRouter.post('/:id/reanalyze', async (req, res) => {
     return errorResponse(res, 400, E.UPLOAD_FAILED, '재분석에 필요한 자료 정보가 없습니다.')
   }
 
+  // 권한 먼저 확인한다(열람자 차단) — 진행 상태는 권한이 있는 사람에게만 알린다
+  const access = await assertProjectAccess(row.project_id, req.user.id, { write: true })
+  if (!access.ok) return errorResponse(res, access.status, access.code, access.message)
+
+  // 이미 분석 중이면 겹쳐 돌리지 않는다
+  if (isAnalysisInProgress(row)) {
+    return errorResponse(res, 409, 'ANALYSIS_IN_PROGRESS', ANALYSIS_IN_PROGRESS_MESSAGE)
+  }
+
   // ── URL 자료: Storage 다운로드 대신 원본 URL을 재fetch ──
   if (row.file_type === 'url') {
     if (!row.storage_path) {
       return errorResponse(res, 400, E.URL_FETCH_FAILED, '원본 URL이 없어 재분석할 수 없습니다.')
     }
-    const accessUrl = await assertProjectAccess(row.project_id, req.user.id)
-    if (!accessUrl.ok) return errorResponse(res, accessUrl.status, accessUrl.code, accessUrl.message)
 
     if (!await prepareReanalysis(id, row.project_id, res)) return
+    markAnalysisStarted(id)
 
     analyzeUrlMaterial(id, row.storage_path, {
       intent: row.intent || DEFAULT_MATERIAL_INTENT,
@@ -720,9 +767,6 @@ materialsRouter.post('/:id/reanalyze', async (req, res) => {
     )
   }
 
-  const access = await assertProjectAccess(row.project_id, req.user.id)
-  if (!access.ok) return errorResponse(res, access.status, access.code, access.message)
-
   // Storage에서 파일 재다운로드
   let buffer = null
   try {
@@ -739,6 +783,7 @@ materialsRouter.post('/:id/reanalyze', async (req, res) => {
   }
 
   if (!await prepareReanalysis(id, row.project_id, res)) return
+  markAnalysisStarted(id)
 
   analyzeMaterial(id, buffer, row.file_type, {
     intent: row.intent || DEFAULT_MATERIAL_INTENT,
@@ -773,7 +818,7 @@ materialsRouter.delete('/:id', async (req, res) => {
     return res.json({ success: true })
   }
 
-  const access = await assertProjectAccess(row.project_id, req.user.id)
+  const access = await assertProjectAccess(row.project_id, req.user.id, { write: true })
   if (!access.ok) return errorResponse(res, access.status, access.code, access.message)
 
   // Storage 삭제 시도 (실패해도 DB 삭제는 진행)

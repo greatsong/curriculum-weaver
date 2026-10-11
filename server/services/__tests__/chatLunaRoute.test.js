@@ -124,13 +124,34 @@ describe('buildAIResponse — 루나 경로', () => {
     expect(anthropicStream).not.toHaveBeenCalled()
   })
 
-  it('정밀 모드는 CHAT_PROVIDER=openai여도 소넷', async () => {
-    const client = fakeOpenAI({ chunks: [text('x'), stop()] })
-    provider._setOpenAIClientForTest(client)
-    anthropicStream.mockReturnValue(fakeAnthropic('정밀'))
-    await agent.buildAIResponse({ ...baseContext, aiModel: 'precise' }, { onText: vi.fn(), onError: vi.fn() })
-    expect(client.create).not.toHaveBeenCalled()
-    expect(anthropicStream.mock.calls[0][0].model).toBe('claude-sonnet-5-5')
+  it('정밀 모드가 켜져 있으면(PRECISE_MODE_ENABLED=true) CHAT_PROVIDER=openai여도 소넷', async () => {
+    const prev = process.env.PRECISE_MODE_ENABLED
+    process.env.PRECISE_MODE_ENABLED = 'true'
+    try {
+      const client = fakeOpenAI({ chunks: [text('x'), stop()] })
+      provider._setOpenAIClientForTest(client)
+      anthropicStream.mockReturnValue(fakeAnthropic('정밀'))
+      await agent.buildAIResponse({ ...baseContext, aiModel: 'precise' }, { onText: vi.fn(), onError: vi.fn() })
+      expect(client.create).not.toHaveBeenCalled()
+      expect(anthropicStream.mock.calls[0][0].model).toBe('claude-sonnet-5-5')
+    } finally {
+      if (prev === undefined) delete process.env.PRECISE_MODE_ENABLED
+      else process.env.PRECISE_MODE_ENABLED = prev
+    }
+  })
+
+  it('정밀 모드가 꺼져 있으면 precise 요청도 기본 경로(루나)로 간다', async () => {
+    const prev = process.env.PRECISE_MODE_ENABLED
+    delete process.env.PRECISE_MODE_ENABLED
+    try {
+      const client = fakeOpenAI({ chunks: [text('x'), stop()] })
+      provider._setOpenAIClientForTest(client)
+      await agent.buildAIResponse({ ...baseContext, aiModel: 'precise' }, { onText: vi.fn(), onError: vi.fn() })
+      expect(client.create).toHaveBeenCalledTimes(1)
+      expect(anthropicStream).not.toHaveBeenCalled()
+    } finally {
+      if (prev !== undefined) process.env.PRECISE_MODE_ENABLED = prev
+    }
   })
 
   it('워크스페이스 목록이 있으면 목록 밖 워크스페이스는 소넷', async () => {
