@@ -39,7 +39,7 @@ it('열기만 하면 신고하지 않고, 고치면 board-edit을 신고하며, 
   await act(async () => root.render(<BoardEditor schema={schema} content={content} onSave={() => {}} onCancel={() => {}} />))
   expect(listUnsavedWork()).toEqual([])
 
-  const memo = host.querySelector('textarea')
+  const memo = host.querySelector('textarea[aria-label="메모"]')
   await act(async () => typeValue(memo, '2차시 활동 초안'))
   expect(listUnsavedWork()).toEqual(['board-edit'])
 

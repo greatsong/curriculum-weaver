@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import ReadableValue, { labelize } from './ReadableValue'
+import AutoGrowTextarea from './AutoGrowTextarea'
 import { normalizeListItem, listItemFields, emptyListItem, isPlainObject } from '../lib/boardContent'
 import { useUnsavedWork } from '../lib/unsavedWork'
 
@@ -110,19 +111,23 @@ export default function BoardEditor({
             <p style={{ fontSize: 11, color: 'var(--color-text-tertiary)', margin: '0 0 6px' }}>{field.description}</p>
           )}
 
+          {/* 글 칸은 모두 내용에 맞춰 높이가 늘어난다 — 칸보다 긴 글이 가려지지 않게 */}
           {field.type === 'text' && (
-            <input
+            <AutoGrowTextarea
+              singleLine
+              aria-label={field.label}
               value={draft[field.name] || ''}
               onChange={(e) => updateField(field.name, e.target.value)}
               style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: 'var(--color-bg-primary)', boxSizing: 'border-box' }}
             />
           )}
           {field.type === 'textarea' && (
-            <textarea
+            <AutoGrowTextarea
+              minRows={3}
+              aria-label={field.label}
               value={draft[field.name] || ''}
               onChange={(e) => updateField(field.name, e.target.value)}
-              rows={3}
-              style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: 'var(--color-bg-primary)', resize: 'vertical', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '8px 12px', fontSize: 13, background: 'var(--color-bg-primary)', boxSizing: 'border-box' }}
             />
           )}
           {field.type === 'number' && (
@@ -203,15 +208,18 @@ export default function BoardEditor({
                     {(draft[field.name] || []).map((row, rowIdx) => (
                       <tr key={rowIdx} style={{ borderTop: '1px solid var(--color-border-subtle)' }}>
                         {field.columns.map((col) => (
-                          <td key={col.name} style={{ padding: '4px 4px' }}>
-                            <input
+                          <td key={col.name} style={{ padding: '4px 4px', verticalAlign: 'top' }}>
+                            {/* 열이 많은 표(8열)에서 칸이 몇 글자 폭으로 좁아지지 않게 최소 너비를 두고, 넘치면 표가 옆으로 스크롤된다 */}
+                            <AutoGrowTextarea
+                              singleLine
+                              aria-label={col.label}
                               value={row[col.name] || row[col.label] || ''}
                               onChange={(e) => updateTableRow(field.name, rowIdx, col.name, e.target.value)}
-                              style={{ width: '100%', padding: '4px 8px', fontSize: 12, border: '1px solid var(--color-border-subtle)', borderRadius: 'var(--radius-sm)', boxSizing: 'border-box' }}
+                              style={{ width: '100%', minWidth: 140, padding: '4px 8px', fontSize: 12, lineHeight: 1.5, border: '1px solid var(--color-border-subtle)', borderRadius: 'var(--radius-sm)', boxSizing: 'border-box' }}
                             />
                           </td>
                         ))}
-                        <td style={{ padding: '4px' }}>
+                        <td style={{ padding: '4px', verticalAlign: 'top' }}>
                           <button
                             onClick={() => removeTableRow(field.name, rowIdx)}
                             style={{ background: 'none', border: 'none', color: 'var(--color-text-tertiary)', cursor: 'pointer', padding: 2, display: 'flex' }}
@@ -251,7 +259,7 @@ export default function BoardEditor({
 }
 
 // ── 목록 필드 편집 ──
-// 글자 항목은 한 줄 입력, 객체 항목(예: 개인 비전 {교사명, 개인 비전})은 하위 칸별 입력.
+// 글자 항목은 한 줄 글 입력, 객체 항목(예: 개인 비전 {교사명, 개인 비전})은 하위 칸별 입력.
 // 예전에는 객체를 JSON 한 줄로 보여 주고 고치면 문자열로 바꿔 저장해 보드가 깨졌다.
 function ListFieldEditor({ field, items, onChange }) {
   const list = Array.isArray(items) ? items : []
@@ -273,20 +281,13 @@ function ListFieldEditor({ field, items, onChange }) {
                 {listItemFields(item, field.itemSchema).map((sub) => (
                   <label key={sub.key} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-tertiary)' }}>{sub.label || labelize(sub.key)}</span>
-                    {sub.type === 'textarea' ? (
-                      <textarea
-                        value={item[sub.key] ?? ''}
-                        onChange={(e) => setItem(i, { ...item, [sub.key]: e.target.value })}
-                        rows={2}
-                        style={{ ...inputStyle, resize: 'vertical' }}
-                      />
-                    ) : (
-                      <input
-                        value={item[sub.key] ?? ''}
-                        onChange={(e) => setItem(i, { ...item, [sub.key]: e.target.value })}
-                        style={inputStyle}
-                      />
-                    )}
+                    <AutoGrowTextarea
+                      singleLine={sub.type !== 'textarea'}
+                      minRows={sub.type === 'textarea' ? 2 : 1}
+                      value={item[sub.key] ?? ''}
+                      onChange={(e) => setItem(i, { ...item, [sub.key]: e.target.value })}
+                      style={inputStyle}
+                    />
                   </label>
                 ))}
               </div>
@@ -294,10 +295,12 @@ function ListFieldEditor({ field, items, onChange }) {
               // 중첩 배열은 AI가 만든 예외 구조 — 보존만 하고 읽기 전용으로 보여 준다
               <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}><ReadableValue value={item} /></div>
             ) : (
-              <input
+              <AutoGrowTextarea
+                singleLine
+                aria-label={`${field.label} ${i + 1}`}
                 value={item == null ? '' : String(item)}
                 onChange={(e) => setItem(i, e.target.value)}
-                style={{ ...inputStyle, flex: 1 }}
+                style={{ ...inputStyle, flex: 1, minWidth: 0 }}
               />
             )}
             <button
