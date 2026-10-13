@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import ReadableValue, { labelize } from './ReadableValue'
 import AutoGrowTextarea from './AutoGrowTextarea'
+import TableScrollFrame from './TableScrollFrame'
 import { normalizeListItem, listItemFields, emptyListItem, isPlainObject } from '../lib/boardContent'
 import { useUnsavedWork } from '../lib/unsavedWork'
 
@@ -192,7 +193,7 @@ export default function BoardEditor({
           )}
           {field.type === 'table' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+              <TableScrollFrame style={{ borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
                 <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: 'var(--color-bg-primary)' }}>
@@ -233,7 +234,7 @@ export default function BoardEditor({
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableScrollFrame>
               <button
                 onClick={() => addTableRow(field)}
                 style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#3B82F6', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)', padding: '4px 0' }}
