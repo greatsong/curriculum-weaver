@@ -14,6 +14,7 @@ import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
 import ReadableValue, { labelize } from './ReadableValue'
 import BoardEditor from './BoardEditor'
+import BoardTable from './BoardTable'
 import SuggestionEditForm, { canEditSuggestion } from './SuggestionEditForm'
 import { normalizeListItem } from '../lib/boardContent'
 import BriefBoardForm from './BriefBoardForm'
@@ -904,7 +905,7 @@ function BoardRenderer({ schema, content: rawContent }) {
             </div>
             <div style={{ padding: 16 }}>
               {field.type === 'table' ? (
-                <TableRenderer columns={field.columns} data={value} />
+                <BoardTable columns={field.columns} data={value} />
               ) : field.type === 'list' ? (
                 <ListRenderer items={value} itemSchema={field.itemSchema} />
               ) : field.type === 'tags' ? (
@@ -1113,50 +1114,6 @@ function ClusterMapRenderer({ value }) {
   )
 }
 
-function TableRenderer({ columns, data }) {
-  if (!Array.isArray(data) || data.length === 0) return null
-  return (
-    <div style={{ overflowX: 'auto', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
-      <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ background: '#F1F5F9' }}>
-            <th style={{ textAlign: 'center', padding: '10px 8px', fontSize: 10, fontWeight: 700, color: '#64748B', borderBottom: '2px solid #CBD5E1', width: 32 }}>#</th>
-            {columns.map((col) => (
-              <th key={col.name} style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: '#334155', whiteSpace: 'nowrap', borderBottom: '2px solid #CBD5E1' }}>
-                {col.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((row, i) => (
-            <tr key={i} style={{
-              background: i % 2 === 0 ? '#fff' : '#F8FAFC',
-              borderBottom: i < data.length - 1 ? '1px solid #E2E8F0' : 'none',
-              transition: 'background 0.15s',
-            }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#EFF6FF'}
-              onMouseLeave={(e) => e.currentTarget.style.background = i % 2 === 0 ? '#fff' : '#F8FAFC'}
-            >
-              {/* 위쪽 정렬 — 긴 행에서 가운데 정렬이면 짧은 칸(날짜 등)이 행 중간에 떠서 비어 보였다 */}
-              <td style={{ textAlign: 'center', padding: '10px 8px', fontSize: 11, color: '#94A3B8', fontWeight: 600, verticalAlign: 'top' }}>{i + 1}</td>
-              {columns.map((col) => {
-                const text = String(row[col.name] ?? row[col.label] ?? '')
-                // 교과명·이름처럼 짧은 칸은 줄바꿈하지 않는다 — 좁은 화면에서 긴 칸에 밀려 한 글자씩 세로로 쪼개지던 것 방지
-                return (
-                  <td key={col.name} style={{ padding: '10px 12px', color: 'var(--color-text-primary)', lineHeight: 1.5, verticalAlign: 'top', whiteSpace: text.length <= 8 ? 'nowrap' : 'normal' }}>
-                    {text}
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
 function ListRenderer({ items, itemSchema }) {
   if (!Array.isArray(items) || items.length === 0) return null
   // 항목 틀(itemSchema)이 두 칸 이상인 목록(교과별 수업목표·개인 비전·주제 후보 등)은 보고서와
@@ -1167,7 +1124,7 @@ function ListRenderer({ items, itemSchema }) {
     const rows = items.map(normalizeListItem)
     if (rows.every((r) => r && typeof r === 'object')) {
       const columns = schemaKeys.map((name) => ({ name, label: itemSchema[name]?.label || name }))
-      return <TableRenderer columns={columns} data={rows} />
+      return <BoardTable columns={columns} data={rows} />
     }
   }
   const toText = (raw) => {
