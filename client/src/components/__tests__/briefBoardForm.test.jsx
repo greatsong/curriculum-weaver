@@ -61,7 +61,7 @@ it('필수 칸에는 *, 선택 칸에는 "선택"을 붙이고 나머지 칸은 
 it('저장하면 적은 문장 그대로 보드에 저장하고, 조언이 켜져 있으면 AI에게 짧은 조언을 청한다', async () => {
   const updateBoard = vi.fn(async () => ({}))
   await render(updateBoard)
-  const input = host.querySelector('[data-testid="brief-board-form"] input:not([type="checkbox"])')
+  const input = host.querySelector('[data-testid="brief-board-form"] textarea[aria-label="최종 선정 주제"]')
   await act(async () => setInput(input, '시와 노랫말 속 감정을 근거로 해석하기'))
   const save = [...host.querySelectorAll('button')].find((b) => b.textContent.includes('저장'))
   await act(async () => save.click())
