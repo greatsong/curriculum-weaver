@@ -8,6 +8,13 @@ export function providerLabel(provider) {
   return PROVIDER_LABELS[provider] || provider || '이메일'
 }
 
+/** 목록을 못 읽었을 때 안내 — 원인(ApiError.status)에 따라 나눈다. 0은 연결 실패·시간 초과 */
+export function loadErrorMessage(status) {
+  if (status === 403) return '관리자 권한이 필요합니다.'
+  if (!status) return '서버에 연결하지 못했습니다. 잠시 후 다시 불러와 주세요.'
+  return '승인 대기 목록을 불러오지 못했습니다. 잠시 후 다시 불러와 주세요.'
+}
+
 /**
  * 관리자 가입 승인 대기 목록 (DataManage "가입 승인" 탭)
  * GET /api/admin/users/pending, POST /api/admin/users/:id/approve|reject
@@ -15,7 +22,7 @@ export function providerLabel(provider) {
  * @param {{ onCountChange?: (n: number) => void }} props
  */
 export default function ApprovalQueue({ onCountChange }) {
-  const [data, setData] = useState(null) // null=로딩 전, { pending, since } | { error }
+  const [data, setData] = useState(null) // null=로딩 전, { pending, since, without_profile } | { error, status }
   const [busyId, setBusyId] = useState(null)
 
   const load = useCallback(async () => {
@@ -24,7 +31,7 @@ export default function ApprovalQueue({ onCountChange }) {
       setData(res)
       onCountChange?.(res?.pending?.length || 0)
     } catch (err) {
-      setData({ error: err?.message || '불러오지 못했습니다.', pending: [] })
+      setData({ error: err?.message || '불러오지 못했습니다.', status: err?.status || 0, pending: [] })
     }
   }, [onCountChange])
 
@@ -46,7 +53,16 @@ export default function ApprovalQueue({ onCountChange }) {
 
   if (!data) return <div className="py-16 text-center text-sm text-gray-400">불러오는 중…</div>
   if (data.error) {
-    return <div className="py-16 text-center text-sm text-red-500">승인 대기 목록을 불러오지 못했습니다 (관리자 권한 필요)</div>
+    return (
+      <div className="py-16 text-center text-sm space-y-3">
+        <p className="text-red-500">{loadErrorMessage(data.status)}</p>
+        {data.status !== 403 && (
+          <button onClick={load} className="px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:bg-gray-100 border border-gray-200">
+            다시 불러오기
+          </button>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -60,6 +76,12 @@ export default function ApprovalQueue({ onCountChange }) {
           새로고침
         </button>
       </div>
+      {data.without_profile > 0 && (
+        <p className="text-xs text-gray-400">
+          커리큘럼 위버에 로그인한 적이 없는 계정 {data.without_profile}개는 표시하지 않습니다.
+          이 계정으로 커리큘럼 위버에 로그인하면 목록에 나타납니다.
+        </p>
+      )}
       {data.pending.length === 0 ? (
         <div className="py-16 text-center text-sm text-gray-500 bg-white rounded-xl border border-gray-200">승인을 기다리는 계정이 없습니다</div>
       ) : (

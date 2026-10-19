@@ -9,7 +9,7 @@ import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 vi.mock('../../lib/api', () => ({ apiGet: vi.fn(), apiPost: vi.fn() }))
 
 import { apiGet, apiPost } from '../../lib/api'
-import ApprovalQueue, { providerLabel } from '../ApprovalQueue'
+import ApprovalQueue, { providerLabel, loadErrorMessage } from '../ApprovalQueue'
 import JoinRequestList from '../JoinRequestList'
 import AiBudgetStatus from '../AiBudgetStatus'
 
@@ -61,10 +61,50 @@ describe('가입 승인 탭', () => {
     expect(apiPost).toHaveBeenCalledWith('/api/admin/users/u-2/reject', {})
   })
 
-  it('관리자가 아니면(403) 안내만', async () => {
-    vi.mocked(apiGet).mockRejectedValue(new Error('관리자 전용 기능입니다.'))
+  it('커리큘럼 위버에 로그인한 적 없는 계정 수가 있으면 안내하고, 0이면 숨긴다', async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce({ pending, without_profile: 62 })
     await act(async () => root.render(<ApprovalQueue />))
-    expect(host.textContent).toContain('관리자 권한 필요')
+    expect(host.textContent).toContain('로그인한 적이 없는 계정 62개')
+    vi.mocked(apiGet).mockResolvedValueOnce({ pending, without_profile: 0 })
+    await act(async () => button('새로고침').click())
+    await vi.waitFor(() => expect(host.textContent).not.toContain('로그인한 적이 없는 계정'))
+  })
+
+  // ApiError처럼 status를 가진 오류 (lib/api는 모킹되어 있다)
+  const apiError = (message, status) => Object.assign(new Error(message), { status })
+
+  it('관리자가 아니면(403) 권한 안내만 하고 다시 불러오기 버튼은 없다', async () => {
+    vi.mocked(apiGet).mockRejectedValue(apiError('관리자 전용 기능입니다.', 403))
+    await act(async () => root.render(<ApprovalQueue />))
+    expect(host.textContent).toContain('관리자 권한이 필요합니다.')
+    expect(host.textContent).not.toContain('서버에 연결하지 못했습니다')
+    expect(button('다시 불러오기')).toBeUndefined()
+  })
+
+  it('서버에 닿지 못하면(status 0) 연결 실패로 안내하고, 다시 불러오면 목록이 나온다', async () => {
+    vi.mocked(apiGet)
+      .mockRejectedValueOnce(apiError('네트워크 연결을 확인해주세요.', 0))
+      .mockResolvedValueOnce({ pending })
+    await act(async () => root.render(<ApprovalQueue />))
+    expect(host.textContent).toContain('서버에 연결하지 못했습니다.')
+    expect(host.textContent).not.toContain('관리자 권한')
+    await act(async () => button('다시 불러오기').click())
+    await vi.waitFor(() => expect(host.querySelectorAll('tbody tr')).toHaveLength(2))
+  })
+
+  it('서버 오류(500)는 연결 실패와 구분해 안내한다', async () => {
+    vi.mocked(apiGet).mockRejectedValue(apiError('승인 대기 목록을 불러오지 못했습니다.', 500))
+    await act(async () => root.render(<ApprovalQueue />))
+    expect(host.textContent).toContain('승인 대기 목록을 불러오지 못했습니다.')
+    expect(host.textContent).not.toContain('관리자 권한')
+    expect(host.textContent).not.toContain('서버에 연결하지 못했습니다')
+  })
+
+  it('실패 안내 문구 — status가 없으면 연결 실패로 본다', () => {
+    expect(loadErrorMessage(403)).toBe('관리자 권한이 필요합니다.')
+    expect(loadErrorMessage(0)).toContain('서버에 연결하지 못했습니다')
+    expect(loadErrorMessage(undefined)).toContain('서버에 연결하지 못했습니다')
+    expect(loadErrorMessage(500)).toContain('불러오지 못했습니다')
   })
 
   it('가입 방식 표시', () => {

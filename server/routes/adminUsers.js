@@ -1,7 +1,7 @@
 /**
  * 관리자 가입 승인 API (2026-10-11) — 관리자(users.role='admin') 전용
  *
- *   GET  /api/admin/users/pending          승인 대기 목록 (기준 시각 이후 가입 + 미승인 + 미거절)
+ *   GET  /api/admin/users/pending          승인 대기 목록 (기준 시각 이후 가입 + 미승인 + 미거절 + users 행 있음)
  *   POST /api/admin/users/:userId/approve  승인 (app_metadata.approved, approved_via='admin')
  *   POST /api/admin/users/:userId/reject   거절 (app_metadata.rejected — 거절 사용자는 계속 이용 불가)
  *
@@ -33,12 +33,23 @@ export function toPendingRow(user) {
   }
 }
 
-/** 관리자 역할 사용자 id 집합 (관리자는 대기 목록에서 뺀다) */
-async function loadAdminIds(ids) {
-  if (ids.length === 0) return new Set()
-  const { data, error } = await supabaseAdmin.from('users').select('id, role').in('id', ids)
-  if (error) throw error
-  return new Set((data || []).filter((r) => r.role === 'admin').map((r) => r.id))
+/** in() 한 번에 넣는 id 수 — id 목록이 주소에 실리므로 길이를 제한한다 */
+export const PROFILE_LOOKUP_CHUNK = 200
+
+/**
+ * users 행이 있는 id → role 맵.
+ * auth에는 이 서비스를 연 적 없는 계정도 있을 수 있다. users 행은 커리큘럼 위버에
+ * 로그인할 때 인증 미들웨어가 만들므로, 행이 없는 계정은 대기 목록에 넣지 않는다.
+ */
+async function loadProfileRoles(ids) {
+  const roles = new Map()
+  for (let i = 0; i < ids.length; i += PROFILE_LOOKUP_CHUNK) {
+    const chunk = ids.slice(i, i + PROFILE_LOOKUP_CHUNK)
+    const { data, error } = await supabaseAdmin.from('users').select('id, role').in('id', chunk)
+    if (error) throw error
+    for (const row of data || []) roles.set(row.id, row.role)
+  }
+  return roles
 }
 
 adminUsersRouter.get('/pending', async (req, res) => {
@@ -46,12 +57,18 @@ adminUsersRouter.get('/pending', async (req, res) => {
     const since = getApprovalRequiredSince()
     const users = await listAllAuthUsers()
     const candidates = users.filter((u) => isPendingCandidate(u, { since }))
-    const adminIds = await loadAdminIds(candidates.map((u) => u.id))
+    const roles = await loadProfileRoles(candidates.map((u) => u.id))
+    // users 행이 없는 계정(커리큘럼 위버를 연 적 없음)과 관리자는 뺀다
     const pending = candidates
-      .filter((u) => !adminIds.has(u.id))
+      .filter((u) => roles.has(u.id) && roles.get(u.id) !== 'admin')
       .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
       .map(toPendingRow)
-    res.json({ since: new Date(since).toISOString(), total_users: users.length, pending })
+    res.json({
+      since: new Date(since).toISOString(),
+      total_users: users.length, // 공유 auth 전체 계정 수(두 서비스 합)
+      without_profile: candidates.filter((u) => !roles.has(u.id)).length,
+      pending,
+    })
   } catch (err) {
     console.error('[admin/users] 승인 대기 목록 오류:', err?.message || err)
     res.status(500).json({ error: '승인 대기 목록을 불러오지 못했습니다.' })

@@ -8,7 +8,8 @@ import request from 'supertest'
 process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://test.supabase.co'
 process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'test-service-key'
 
-const db = vi.hoisted(() => ({ authUsers: new Map(), roles: new Map(), isAdminCaller: true }))
+// noProfile: users 행이 없는 id(커리큘럼 위버를 연 적 없는 계정), inCalls: in() 한 번에 넘긴 id 수
+const db = vi.hoisted(() => ({ authUsers: new Map(), roles: new Map(), noProfile: new Set(), inCalls: [], isAdminCaller: true }))
 
 vi.mock('../../middleware/auth.js', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -20,7 +21,10 @@ vi.mock('../../lib/supabaseAdmin.js', () => ({
   supabaseAdmin: {
     from: () => ({
       select() { return this },
-      in: async (_k, ids) => ({ data: ids.map((id) => ({ id, role: db.roles.get(id) || 'teacher' })), error: null }),
+      in: async (_k, ids) => {
+        db.inCalls.push(ids.length)
+        return { data: ids.filter((id) => !db.noProfile.has(id)).map((id) => ({ id, role: db.roles.get(id) || 'teacher' })), error: null }
+      },
     }),
     auth: {
       admin: {
@@ -36,7 +40,7 @@ vi.mock('../../lib/supabaseAdmin.js', () => ({
   },
 }))
 
-const { adminUsersRouter } = await import('../adminUsers.js')
+const { adminUsersRouter, PROFILE_LOOKUP_CHUNK } = await import('../adminUsers.js')
 const app = express()
 app.use(express.json())
 app.use('/api/admin/users', adminUsersRouter)
@@ -51,6 +55,8 @@ function add(n, extra = {}) {
 beforeEach(() => {
   db.authUsers.clear()
   db.roles.clear()
+  db.noProfile.clear()
+  db.inCalls.length = 0
   db.isAdminCaller = true
 })
 
@@ -68,6 +74,36 @@ describe('GET /api/admin/users/pending', () => {
     expect(res.body.pending[0]).toMatchObject({ email: 't6@school.kr', name: '교사6', provider: 'email', email_confirmed: true })
     expect(res.body.pending[1]).toMatchObject({ provider: 'google' })
     expect(res.body.total_users).toBe(6)
+    expect(res.body.without_profile).toBe(0)
+  })
+
+  it('users 행 없는 auth 계정(커리큘럼 위버를 연 적 없음)은 목록에서 빠지고 수만 알린다', async () => {
+    add(10)
+    add(11); db.noProfile.add(uid(11))                             // 커리큘럼 위버를 연 적 없음
+    add(12, { app_metadata: { approved: true } }); db.noProfile.add(uid(12)) // 대기 후보가 아니면 세지 않는다
+    const res = await request(app).get('/api/admin/users/pending')
+    expect(res.status).toBe(200)
+    expect(res.body.pending.map((u) => u.id)).toEqual([uid(10)])
+    expect(res.body.without_profile).toBe(1)
+    expect(res.body.total_users).toBe(3)
+  })
+
+  it('대기 후보가 많으면 users 조회를 나눠서 한다', async () => {
+    const n = PROFILE_LOOKUP_CHUNK * 2 + 5
+    for (let i = 1; i <= n; i++) add(100 + i)
+    db.noProfile.add(uid(101))
+    const res = await request(app).get('/api/admin/users/pending')
+    expect(res.status).toBe(200)
+    expect(db.inCalls).toEqual([PROFILE_LOOKUP_CHUNK, PROFILE_LOOKUP_CHUNK, 5])
+    expect(res.body.pending).toHaveLength(n - 1)
+    expect(res.body.without_profile).toBe(1)
+  })
+
+  it('대기 후보가 없으면 users를 조회하지 않는다', async () => {
+    add(13, { created_at: '2026-10-01T00:00:00Z' })
+    const res = await request(app).get('/api/admin/users/pending')
+    expect(res.body.pending).toEqual([])
+    expect(db.inCalls).toEqual([])
   })
 
   it('관리자가 아니면 403', async () => {
