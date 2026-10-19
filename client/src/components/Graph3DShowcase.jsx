@@ -18,7 +18,7 @@ import MathText from './MathText'
 import { createNebulaScene } from '../lib/nebulaScene'
 import {
   NEBULA_BG, SUBJECT_COLORS_DARK, FALLBACK_NODE_COLOR,
-  LINK_TYPE_COLORS_DARK, LINK_TYPE_LABELS, SIZE, TIMING, AUTOROTATE,
+  LINK_TYPE_COLORS_DARK, LINK_TYPE_LABELS, SIZE, TIMING, AUTOROTATE, orderTourGroups,
 } from '../lib/nebulaTheme'
 import ExplorationContextBar from './ExplorationContextBar'
 import Button from './ui/Button'
@@ -431,7 +431,8 @@ export default function Graph3DShowcase() {
   // ── 투어 ──
   const tourStops = useMemo(() => {
     if (!derived) return []
-    const stops = derived.groups.map(g => ({
+    // 산업수요전문·예술계열전문·교양은 뒤로(산업수요전문이 마지막) — nebulaTheme.orderTourGroups
+    const stops = orderTourGroups(derived.groups).map(g => ({
       group: g.name, color: g.color, centroid: g.centroid,
       stats: { nodes: g.count, links: g.links, topPartner: g.topPartner },
       story: buildStory(g.name, g.topPartner || '이웃 교과', g.topThemes),

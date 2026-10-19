@@ -19,6 +19,16 @@ export const SUBJECT_COLORS_DARK = {
 }
 export const FALLBACK_NODE_COLOR = '#9CA3AF'
 
+// 우주여행(자동 투어)에서 뒤로 보내는 교과군 — 성취기준 수가 많아 앞에 오던 것들(2026-10-19 사용자 요청).
+// 값이 클수록 뒤. 산업수요전문이 마지막(마무리 장면 바로 앞), 예술계열전문·교양은 그 앞에서 기존 순서를 지킨다
+export const TOUR_TAIL_RANK = { '예술계열전문': 1, '교양': 1, '산업수요전문': 2 }
+
+/** 투어 순서 — 일반 교과군은 받은 순서(성취기준 수 많은 순) 그대로, 뒤로 보낼 교과군만 끝으로 (안정 정렬) */
+export function orderTourGroups(groups) {
+  const rank = (g) => TOUR_TAIL_RANK[g?.name] || 0
+  return [...(groups || [])].sort((a, b) => rank(a) - rank(b))
+}
+
 export const LINK_TYPE_COLORS_DARK = {
   cross_subject: '#FBBF24', same_concept: '#60A5FA', prerequisite: '#F87171',
   application: '#4ADE80', extension: '#C084FC',
