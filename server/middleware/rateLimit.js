@@ -182,6 +182,19 @@ export const aiChatLimiter = rateLimit({
   validate: { xForwardedForHeader: false, default: true },
 })
 
+// ── 미래보기(관리자 전용): 분당 40회 (사용자당, GET 제외) ──
+// 여덟 관점을 한꺼번에 요청하고 조합을 바꿔 가며 넘기는 속도보다 넉넉하게 잡는다.
+export const futures2Limiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 40,
+  skip: (req) => req.method === 'GET',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userKey,
+  message: { error: '미래를 너무 빠르게 넘기고 있습니다. 잠시 후 다시 넘겨 주세요.' },
+  validate: { xForwardedForHeader: false, default: true },
+})
+
 // ── 수업 시나리오 생성: 분당 20회 (사용자당) ──
 // 카드를 여는 속도보다 넉넉하게 잡는다. 캐시된 응답도 같은 한도에 포함된다.
 export const scenarioLimiter = rateLimit({

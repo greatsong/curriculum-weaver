@@ -1,20 +1,23 @@
 /**
- * MainNav — 홈·탐색 화면 상단의 주 입구 두 개(아이디어 탐색 · 교육과정 성운).
+ * MainNav — 홈·탐색 화면 상단의 주 입구(아이디어 탐색 · 교육과정 성운, 관리자에게는 미래보기까지).
  * 같은 모양의 링크를 나란히 두고, 현재 화면은 aria-current로 표시한다. 이름은 UI_COPY.nav 한 곳에서 관리한다.
  */
 import { Link } from 'react-router-dom'
-import { Compass, Globe } from 'lucide-react'
+import { Compass, Globe, Sparkles } from 'lucide-react'
 import { UI_COPY } from '../lib/uiCopy'
+import { useIsSiteAdmin } from '../lib/siteAdmin'
 
 const LINKS = [
   { key: 'explore', to: '/explore', icon: Compass },
   { key: 'map', to: '/graph?mode=explore', icon: Globe },
+  { key: 'futures', to: '/futures-lab', icon: Sparkles, adminOnly: true }, // 관리자 전용 발표판(2026-10-19)
 ]
 
 export default function MainNav({ current = '', className = '' }) {
+  const { isAdmin } = useIsSiteAdmin()
   return (
     <nav aria-label="주요 기능" className={`flex flex-wrap items-center gap-0.5 ${className}`}>
-      {LINKS.map(({ key, to, icon: Icon }) => {
+      {LINKS.filter((link) => !link.adminOnly || isAdmin).map(({ key, to, icon: Icon }) => {
         const active = key === current
         return (
           <Link key={key} to={to} aria-current={active ? 'page' : undefined}

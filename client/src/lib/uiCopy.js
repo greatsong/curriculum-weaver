@@ -21,6 +21,7 @@ export const UI_COPY = {
   nav: {
     explore: '아이디어 탐색',
     map: '교육과정 성운',
+    futures: '미래보기', // 관리자에게만 보인다(MainNav)
   },
 
   // 주요 버튼 이름

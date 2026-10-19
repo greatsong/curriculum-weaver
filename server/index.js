@@ -24,7 +24,7 @@ import { resolveApproval } from './lib/approval.js'
 import { hydrateLinksFromDB } from './lib/linkService.js'
 
 // ── Rate Limiter 임포트 ──
-import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter, ipBackstopLimiter, scenarioLimiter } from './middleware/rateLimit.js'
+import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter, ipBackstopLimiter, scenarioLimiter, futures2Limiter } from './middleware/rateLimit.js'
 import { isValidRoomId, checkJoinAccess } from './lib/socketJoinGuard.js'
 import { buildMemberInfo, sanitizeRelayMessage, isValidRelayPayload } from './lib/socketRelay.js'
 import { parseAllowedOrigins, createOriginChecker } from './lib/corsOrigin.js'
@@ -40,6 +40,7 @@ import activityLogsRouter from './routes/activityLogs.js'
 import { chatRouter } from './routes/chat.js'
 import { adminUsageRouter } from './routes/adminUsage.js'
 import { adminUsersRouter } from './routes/adminUsers.js'
+import { futures2Router } from './routes/futures2.js'
 import { aiBudget } from './middleware/aiBudget.js'
 import { standardsRouter } from './routes/standards.js'
 import { materialsRouter } from './routes/materials.js'
@@ -377,6 +378,8 @@ app.use('/api/chat/procedure-intro', aiChatLimiter)
 app.use('/api/standards/recommend-ai', aiChatLimiter)
 // 수업 시나리오 생성 — 일반 한도(분당 240회)만 걸려 있던 AI 경로
 app.use('/api/standards/links/scenario', scenarioLimiter)
+// 미래보기(관리자 전용) — 생성 요청 분당 40회
+app.use('/api/futures2', futures2Limiter)
 
 // 파일 업로드: 분당 5회 (사용자당)
 app.use('/api/materials/upload', uploadLimiter)
@@ -441,6 +444,9 @@ app.use('/api/admin/ai-usage', adminUsageRouter)
 
 // 가입 승인 관리 (관리자 전용)
 app.use('/api/admin/users', adminUsersRouter)
+
+// 미래보기 — 관리자 전용 발표판 (2026-10-19, 라우터가 requireAuth·requireAdmin)
+app.use('/api/futures2', futures2Router)
 
 // 자료
 app.use('/api/materials', materialsRouter)
