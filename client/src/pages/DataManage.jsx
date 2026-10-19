@@ -42,7 +42,7 @@ export default function DataManage() {
   const [jsonInput, setJsonInput] = useState('')
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState(null)
-  const [tab, setTab] = useState('browse') // 'browse' | 'upload' | 'reports' | 'approvals' — 구 '연결 그래프'(react-force-graph-3d) 탭은 교육과정 성운으로 대체(2026-10-09)
+  const [tab, setTab] = useState('approvals') // 'approvals'(처음 화면, 2026-10-19) | 'browse' | 'upload' | 'reports' — 구 '연결 그래프'(react-force-graph-3d) 탭은 교육과정 성운으로 대체(2026-10-09)
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0) // 가입 승인 대기 수(탭 배지)
   // 배지 수는 탭을 열지 않아도 보이게 미리 읽는다(관리자가 아니면 403 → 0)
   useEffect(() => {
@@ -190,125 +190,14 @@ export default function DataManage() {
         {/* 오늘 AI 사용(비용·한도) — 관리자에게만 보인다 */}
         <AiBudgetStatus />
 
-        {/* 통계 */}
-        {stats && (
-          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
-            <h2 className="font-semibold text-gray-800 mb-3">현재 데이터</h2>
-            <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-sm">
-              <div>
-                <span className="text-2xl font-bold text-blue-600">{stats.total}</span>
-                <span className="text-gray-500 ml-1">개 성취기준</span>
-              </div>
-              <div>
-                <span className="text-2xl font-bold text-green-600">{stats.subjects.length}</span>
-                <span className="text-gray-500 ml-1">개 교과</span>
-              </div>
-              <div>
-                <span className="text-2xl font-bold text-purple-600">{stats.grades.length}</span>
-                <span className="text-gray-500 ml-1">개 학년군</span>
-              </div>
-            </div>
-            {stats.bySubject.length > 0 && (
-              <div className="mt-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <p className="text-xs text-gray-400">교과를 클릭하면 아래 성취기준 목록이 필터링되고, 2개 이상 선택 시 연결 그래프가 표시됩니다</p>
-                  {pickedSubjects.size > 0 && (
-                    <button
-                      onClick={() => setPickedSubjects(new Set())}
-                      className="text-xs text-blue-500 hover:text-blue-700 transition"
-                    >
-                      선택 초기화
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {stats.bySubject.filter((s) => !s.vocational).map((s) => {
-                    const picked = pickedSubjects.has(s.subject)
-                    return (
-                      <button
-                        key={s.subject}
-                        onClick={() => togglePickSubject(s.subject)}
-                        className={`px-2.5 py-1 rounded-full text-xs transition-all cursor-pointer border ${
-                          picked
-                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                            : 'bg-gray-100 text-gray-600 border-transparent hover:bg-blue-50 hover:text-blue-600'
-                        }`}
-                      >
-                        {s.subject} ({s.count})
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* 교과 1개 선택 시 안내 */}
-            {pickedSubjects.size === 1 && (
-              <p className="mt-3 text-xs text-blue-500 bg-blue-50 px-3 py-2 rounded-lg">
-                교과를 1개 더 선택하면 두 교과 간 연결 그래프가 표시됩니다.
-              </p>
-            )}
-
-            {/* 인라인 2D 그래프: 2개 이상 교과 선택 시 표시 */}
-            {pickedSubjects.size >= 2 && (
-              <div className="mt-4 border-t border-gray-100 pt-4">
-                <LinkGuideOverlay
-                  forceShow={showLinkGuide}
-                  onComplete={() => setShowLinkGuide(false)}
-                />
-                <div className="flex items-center gap-2 mb-2">
-                  <GitBranch size={16} className="text-blue-600" />
-                  <h3 className="text-sm font-semibold text-gray-700">
-                    선택 교과 간 연결 그래프
-                  </h3>
-                  <span className="text-xs text-gray-400">
-                    {[...pickedSubjects].join(' · ')}
-                  </span>
-                  <div className="ml-auto flex items-center gap-3">
-                    <button
-                      onClick={() => { resetLinkGuide(); setShowLinkGuide(true) }}
-                      className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-blue-500 transition"
-                      title="그래프 사용법 보기"
-                    >
-                      <HelpCircle size={13} />
-                      <span className="hidden sm:inline">가이드</span>
-                    </button>
-                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={showAllLinks}
-                        onChange={(e) => setShowAllLinks(e.target.checked)}
-                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-[11px] text-gray-500">AI 제안 포함</span>
-                    </label>
-                  </div>
-                </div>
-                <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm" style={{ height: '70vh' }}>
-                  <Suspense fallback={
-                    <div className="flex items-center justify-center h-full bg-white text-gray-400">
-                      <div className="text-center">
-                        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                        <p className="text-xs">그래프 로딩 중...</p>
-                      </div>
-                    </div>
-                  }>
-                    <InlineGraph2D subjects={[...pickedSubjects]} showAllLinks={showAllLinks} />
-                  </Suspense>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* 탭 + 교육과정 성운 링크(전체 연결 그래프는 성운이 맡는다) */}
         <div className="flex flex-wrap items-center gap-3 mb-6">
         <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-full sm:w-fit overflow-x-auto">
           {[
+            { id: 'approvals', label: '가입 승인', badge: pendingApprovalCount },
             { id: 'browse', label: '성취기준 보기' },
             { id: 'upload', label: '데이터 업로드' },
             { id: 'reports', label: '신고 검토', badge: reports?.items?.length || 0 },
-            { id: 'approvals', label: '가입 승인', badge: pendingApprovalCount },
           ].map((t) => (
             <button
               key={t.id}
@@ -516,6 +405,117 @@ export default function DataManage() {
         )}
 
         {/* 성취기준 보기 탭 */}
+        {/* 통계 — 성취기준 보기 탭에서만 보인다(아래 목록을 교과로 거르는 용도). 처음 화면은 가입 승인 */}
+        {tab === 'browse' && stats && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+            <h2 className="font-semibold text-gray-800 mb-3">현재 데이터</h2>
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-sm">
+              <div>
+                <span className="text-2xl font-bold text-blue-600">{stats.total}</span>
+                <span className="text-gray-500 ml-1">개 성취기준</span>
+              </div>
+              <div>
+                <span className="text-2xl font-bold text-green-600">{stats.subjects.length}</span>
+                <span className="text-gray-500 ml-1">개 교과</span>
+              </div>
+              <div>
+                <span className="text-2xl font-bold text-purple-600">{stats.grades.length}</span>
+                <span className="text-gray-500 ml-1">개 학년군</span>
+              </div>
+            </div>
+            {stats.bySubject.length > 0 && (
+              <div className="mt-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-xs text-gray-400">교과를 클릭하면 아래 성취기준 목록이 필터링되고, 2개 이상 선택 시 연결 그래프가 표시됩니다</p>
+                  {pickedSubjects.size > 0 && (
+                    <button
+                      onClick={() => setPickedSubjects(new Set())}
+                      className="text-xs text-blue-500 hover:text-blue-700 transition"
+                    >
+                      선택 초기화
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {stats.bySubject.filter((s) => !s.vocational).map((s) => {
+                    const picked = pickedSubjects.has(s.subject)
+                    return (
+                      <button
+                        key={s.subject}
+                        onClick={() => togglePickSubject(s.subject)}
+                        className={`px-2.5 py-1 rounded-full text-xs transition-all cursor-pointer border ${
+                          picked
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                            : 'bg-gray-100 text-gray-600 border-transparent hover:bg-blue-50 hover:text-blue-600'
+                        }`}
+                      >
+                        {s.subject} ({s.count})
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 교과 1개 선택 시 안내 */}
+            {pickedSubjects.size === 1 && (
+              <p className="mt-3 text-xs text-blue-500 bg-blue-50 px-3 py-2 rounded-lg">
+                교과를 1개 더 선택하면 두 교과 간 연결 그래프가 표시됩니다.
+              </p>
+            )}
+
+            {/* 인라인 2D 그래프: 2개 이상 교과 선택 시 표시 */}
+            {pickedSubjects.size >= 2 && (
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                <LinkGuideOverlay
+                  forceShow={showLinkGuide}
+                  onComplete={() => setShowLinkGuide(false)}
+                />
+                <div className="flex items-center gap-2 mb-2">
+                  <GitBranch size={16} className="text-blue-600" />
+                  <h3 className="text-sm font-semibold text-gray-700">
+                    선택 교과 간 연결 그래프
+                  </h3>
+                  <span className="text-xs text-gray-400">
+                    {[...pickedSubjects].join(' · ')}
+                  </span>
+                  <div className="ml-auto flex items-center gap-3">
+                    <button
+                      onClick={() => { resetLinkGuide(); setShowLinkGuide(true) }}
+                      className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-blue-500 transition"
+                      title="그래프 사용법 보기"
+                    >
+                      <HelpCircle size={13} />
+                      <span className="hidden sm:inline">가이드</span>
+                    </button>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={showAllLinks}
+                        onChange={(e) => setShowAllLinks(e.target.checked)}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-[11px] text-gray-500">AI 제안 포함</span>
+                    </label>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm" style={{ height: '70vh' }}>
+                  <Suspense fallback={
+                    <div className="flex items-center justify-center h-full bg-white text-gray-400">
+                      <div className="text-center">
+                        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                        <p className="text-xs">그래프 로딩 중...</p>
+                      </div>
+                    </div>
+                  }>
+                    <InlineGraph2D subjects={[...pickedSubjects]} showAllLinks={showAllLinks} />
+                  </Suspense>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {tab === 'browse' && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {/* 선택 교과 필터 표시줄 */}
