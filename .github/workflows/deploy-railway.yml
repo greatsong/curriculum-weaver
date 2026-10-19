@@ -19,6 +19,15 @@ jobs:
   deploy:
     needs: verify
     runs-on: ubuntu-latest
+    # 배포는 한 번에 하나씩 순서대로 — 머지가 연달아 들어와도 railway up이 겹치지 않게 한다.
+    # 실행 중인 배포는 끝까지 두고(cancel-in-progress: false), 기다리는 배포는 가장 최근 것 하나만 남는다
+    # (그 커밋이 앞 커밋의 변경을 모두 담고 있다). 2026-10-19: 두 배포가 겹쳐 앞 빌드가 Railway에서 취소된 뒤
+    # railway up이 끝나지 않고 71분 멈춘 일이 있었다.
+    concurrency:
+      group: railway-deploy-production
+      cancel-in-progress: false
+    # 정상 배포는 3~5분. 빌드가 취소돼도 CLI가 기다리기만 하는 경우를 20분에서 끊는다(기본값은 6시간)
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
