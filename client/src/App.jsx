@@ -215,6 +215,8 @@ export default function App() {
 
         {/* 미래보기 — 관리자 전용 발표판 (서버 /api/futures2도 관리자만) */}
         <Route path="/futures-lab" element={<AdminRoute><FuturesLabPage /></AdminRoute>} />
+        {/* s를 빠뜨린 주소도 미래보기로 잇는다(관리자가 아니면 AdminRoute가 연결 지도로 보낸다) */}
+        <Route path="/future-lab" element={<Navigate to="/futures-lab" replace />} />
 
         {/* 공개 페이지 */}
         <Route path="/guide" element={<GuidePage />} />

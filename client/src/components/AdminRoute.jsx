@@ -1,13 +1,28 @@
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import ProtectedRoute from './ProtectedRoute'
 import { useIsSiteAdmin } from '../lib/siteAdmin'
 
 function AdminGate({ children, fallback }) {
-  const { loading, isAdmin } = useIsSiteAdmin()
+  const { loading, isAdmin, error, retry } = useIsSiteAdmin()
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
         <div style={{ width: 28, height: 28, border: '3px solid var(--color-border)', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      </div>
+    )
+  }
+  // 확인 자체가 실패했으면(망·서버 오류) 다른 곳으로 보내지 않고 다시 시도를 안내한다. 화면 내용은 열지 않는다
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--color-bg-primary)' }} data-testid="admin-check-failed">
+        <div className="text-center" style={{ maxWidth: 360 }}>
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">화면을 열지 못했습니다</h2>
+          <p className="text-sm text-gray-500 mb-5">서버에 연결하지 못했습니다. 네트워크 상태를 확인하고 다시 시도해 주세요.</p>
+          <div className="flex items-center justify-center gap-2">
+            <button type="button" className="btn btn-primary" onClick={retry}>다시 시도</button>
+            <Link to="/workspaces" className="btn btn-secondary no-underline">워크스페이스로</Link>
+          </div>
+        </div>
       </div>
     )
   }
