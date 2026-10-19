@@ -61,6 +61,15 @@ describe('가입 승인 탭', () => {
     expect(apiPost).toHaveBeenCalledWith('/api/admin/users/u-2/reject', {})
   })
 
+  it('커리큘럼 위버에 로그인한 적 없는 계정 수가 있으면 안내하고, 0이면 숨긴다', async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce({ pending, without_profile: 62 })
+    await act(async () => root.render(<ApprovalQueue />))
+    expect(host.textContent).toContain('로그인한 적이 없는 계정 62개')
+    vi.mocked(apiGet).mockResolvedValueOnce({ pending, without_profile: 0 })
+    await act(async () => button('새로고침').click())
+    await vi.waitFor(() => expect(host.textContent).not.toContain('로그인한 적이 없는 계정'))
+  })
+
   it('관리자가 아니면(403) 안내만', async () => {
     vi.mocked(apiGet).mockRejectedValue(new Error('관리자 전용 기능입니다.'))
     await act(async () => root.render(<ApprovalQueue />))

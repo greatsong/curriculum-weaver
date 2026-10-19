@@ -15,7 +15,7 @@ export function providerLabel(provider) {
  * @param {{ onCountChange?: (n: number) => void }} props
  */
 export default function ApprovalQueue({ onCountChange }) {
-  const [data, setData] = useState(null) // null=로딩 전, { pending, since } | { error }
+  const [data, setData] = useState(null) // null=로딩 전, { pending, since, without_profile } | { error }
   const [busyId, setBusyId] = useState(null)
 
   const load = useCallback(async () => {
@@ -60,6 +60,12 @@ export default function ApprovalQueue({ onCountChange }) {
           새로고침
         </button>
       </div>
+      {data.without_profile > 0 && (
+        <p className="text-xs text-gray-400">
+          커리큘럼 위버에 로그인한 적이 없는 계정 {data.without_profile}개는 표시하지 않습니다.
+          이 계정으로 커리큘럼 위버에 로그인하면 목록에 나타납니다.
+        </p>
+      )}
       {data.pending.length === 0 ? (
         <div className="py-16 text-center text-sm text-gray-500 bg-white rounded-xl border border-gray-200">승인을 기다리는 계정이 없습니다</div>
       ) : (
