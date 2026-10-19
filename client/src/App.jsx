@@ -5,6 +5,7 @@ import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
 import ProtectedRoute from './components/ProtectedRoute'
+import AdminRoute from './components/AdminRoute'
 import InviteAcceptPage from './pages/InviteAcceptPage'
 
 // 즉시 로드 (핵심 페이지)
@@ -51,14 +52,16 @@ const GuidePage = lazyWithReload(() => import('./pages/GuidePage'), 'GuidePage')
 const PrivacyPolicyPage = lazyWithReload(() => import('./pages/PrivacyPolicyPage'), 'PrivacyPolicyPage')
 const AuthCallback = lazyWithReload(() => import('./pages/AuthCallback'), 'AuthCallback')
 const ExplorePage = lazyWithReload(() => import('./pages/ExplorePage'), 'ExplorePage')
+const FuturesLabPage = lazyWithReload(() => import('./pages/FuturesLabPage'), 'FuturesLabPage')
 
 // 레거시 호환: /session/:id 로 들어오면 워크스페이스로 돌려보냄
 function LegacySessionRedirect() {
   return <Navigate to="/workspaces" replace />
 }
 
-// 제거한 미래 보기 판(/futures-lab·/futures2·/futures·/future-map)의 옛 주소는 연결 지도로 보낸다
-const REMOVED_FUTURES_PATHS = ['/futures-lab', '/futures2', '/futures', '/future-map']
+// 제거한 미래 보기 판(/futures2·/futures·/future-map)의 옛 주소는 연결 지도로 보낸다.
+// /futures-lab은 2026-10-19 관리자 전용으로 되살렸다(관리자가 아니면 같은 곳으로 보낸다).
+const REMOVED_FUTURES_PATHS = ['/futures2', '/futures', '/future-map']
 
 /**
  * 루트 경로 핸들러
@@ -209,6 +212,9 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* 미래보기 — 관리자 전용 발표판 (서버 /api/futures2도 관리자만) */}
+        <Route path="/futures-lab" element={<AdminRoute><FuturesLabPage /></AdminRoute>} />
 
         {/* 공개 페이지 */}
         <Route path="/guide" element={<GuidePage />} />
