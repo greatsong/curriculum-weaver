@@ -7,7 +7,7 @@ import express from 'express'
 import request from 'supertest'
 import {
   createAiBudget, isAiBudgetRoute, kstDayKey, kstMidnightIso, dailyLimitBody, BUDGET_EXCEEDED_BODY,
-  getDailyUserLimit, getDailyBudgetUsd,
+  getDailyUserLimit, getDailyBudgetUsd, sumRowCosts, makeSumCostSince,
 } from '../aiBudget.js'
 
 const quietLogger = { warn: vi.fn() }
@@ -177,5 +177,51 @@ describe('미들웨어', () => {
     const ok = appWith(budget, 200)
     expect((await request(ok).post('/api/chat/message').set('Authorization', 'Bearer tok-u5')).status).toBe(200)
     expect((await request(ok).post('/api/chat/message').set('Authorization', 'Bearer tok-u5')).status).toBe(429)
+  })
+})
+
+describe('하루 비용 합계에서 관리자 사용분 빼기 (2026-10-19)', () => {
+  // claude-sonnet-5-5: 입력 $2·출력 $10 (백만 토큰당) → 입력 100만 + 출력 10만 = $3
+  const row = (user_id) => ({ model: 'claude-sonnet-5-5', user_id, input_tokens: 1_000_000, output_tokens: 100_000 })
+
+  it('관리자 행은 admin으로 따로 세고, 교사·user_id 없는 행은 total에 넣는다', () => {
+    const { total, admin } = sumRowCosts([row('admin-1'), row('teacher-1'), row(null)], new Set(['admin-1']))
+    expect(total).toBeCloseTo(6)
+    expect(admin).toBeCloseTo(3)
+  })
+
+  it('합계 함수는 관리자 행을 뺀 값을 돌려주고, 1,000행씩 끝까지 읽는다', async () => {
+    const pages = [Array.from({ length: 1000 }, () => row('teacher-1')), [row('admin-1'), row('teacher-2')]]
+    const fetchUsagePage = vi.fn(async (_since, off) => pages[off / 1000] || [])
+    const sum = makeSumCostSince({ loadAdminIds: async () => new Set(['admin-1']), fetchUsagePage, logger: quietLogger })
+    expect(await sum('2026-10-18T15:00:00.000Z')).toBeCloseTo(1001 * 3)
+    expect(fetchUsagePage).toHaveBeenCalledTimes(2)
+  })
+
+  it('관리자 목록을 못 읽으면 관리자 행도 합산한다(비용 쪽 안전)', async () => {
+    const warn = vi.fn()
+    const sum = makeSumCostSince({
+      loadAdminIds: async () => { throw new Error('DB 장애') },
+      fetchUsagePage: async () => [row('admin-1'), row('teacher-1')],
+      logger: { warn },
+    })
+    expect(await sum('2026-10-18T15:00:00.000Z')).toBeCloseTo(6)
+    expect(warn).toHaveBeenCalled()
+  })
+
+  it('관리자 사용분이 한도를 넘어도 교사 요청은 막지 않는다(교사 합계만 본다)', async () => {
+    const sum = makeSumCostSince({
+      loadAdminIds: async () => new Set(['admin-1']),
+      fetchUsagePage: async () => [row('admin-1'), row('admin-1'), row('admin-1'), row('admin-1'), row('teacher-1')],
+      logger: quietLogger,
+    })
+    const { budget } = setup({ sumCostSince: sum })
+    const result = await budget.checkUser('teacher-1')
+    expect(result.ok).toBe(true) // 교사 합계 $3 < 한도 $10 (관리자 $12는 제외)
+  })
+
+  it('관리자 화면 상태에 관리자 제외 표시', async () => {
+    const { budget } = setup()
+    expect((await budget.status()).admin_excluded).toBe(true)
   })
 })

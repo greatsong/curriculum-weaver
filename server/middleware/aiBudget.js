@@ -8,6 +8,8 @@
  *      통과할 때 1 올리고, 라우트가 요청을 거절(4xx·5xx)하면 되돌리고, 자정이 지나면 다시 초기화한다.
  *   2. 서비스 전체 하루 비용 — 오늘 ai_usage 비용 합계(lib/aiPricing.js 추정치)가 AI_DAILY_BUDGET_USD(기본 10)
  *      이상이면 모든 사용자 429 ai_budget_exceeded. 합계는 60초 캐시.
+ *      관리자(users.role='admin')가 쓴 행은 합계에서 뺀다(2026-10-19) — 관리자의 미래보기 탐색 등이
+ *      교사들의 하루 한도를 먼저 써 버리지 않게. 관리자 목록을 못 읽으면 관리자 행도 합산한다(비용 쪽 안전).
  *
  * index.js에서 라우터보다 먼저 실행되므로 토큰을 직접 검증(verifyTokenCached, 60초 캐시)해 사용자를 얻는다.
  * 토큰이 없거나 무효이거나 승인 대기면 판단하지 않고 넘긴다(뒤의 requireAuth가 401·403으로 막는다).
@@ -84,21 +86,60 @@ async function countUserCallsSinceDb(userId, sinceIso) {
   return Number.isFinite(count) ? count : 0
 }
 
-/** 오늘(한국 시간) 전체 AI 비용 추정 합계(달러) */
-async function sumCostSinceDb(sinceIso) {
-  let total = 0
-  for (let off = 0; off < 200_000; off += 1000) {
-    const { data, error } = await supabaseAdmin.from('ai_usage')
-      .select('model, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens')
-      .gte('created_at', sinceIso)
-      .order('id', { ascending: true })
-      .range(off, off + 999)
-    if (error) throw error
-    for (const row of data || []) total += estimateCost(row) || 0
-    if (!data || data.length < 1000) break
-  }
-  return total
+/** 관리자 id 집합 (하루 비용 합계에서 뺄 사용자) */
+async function loadAdminIdsDb() {
+  const { data, error } = await supabaseAdmin.from('users').select('id').eq('role', 'admin')
+  if (error) throw error
+  return new Set((data || []).map((r) => r.id))
 }
+
+/** 오늘 사용량 한 쪽(1,000행) */
+async function fetchUsagePageDb(sinceIso, off) {
+  const { data, error } = await supabaseAdmin.from('ai_usage')
+    .select('model, user_id, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens')
+    .gte('created_at', sinceIso)
+    .order('id', { ascending: true })
+    .range(off, off + 999)
+  if (error) throw error
+  return data || []
+}
+
+/**
+ * 행 비용 합계 — 관리자 행은 admin으로 따로 센다. user_id가 없는 행(자료 분석 등)은 total에 넣는다.
+ * @returns {{ total: number, admin: number }}
+ */
+export function sumRowCosts(rows, adminIds = new Set()) {
+  let total = 0
+  let admin = 0
+  for (const row of rows || []) {
+    const cost = estimateCost(row) || 0
+    if (row?.user_id && adminIds.has(row.user_id)) admin += cost
+    else total += cost
+  }
+  return { total, admin }
+}
+
+/** 오늘(한국 시간) 관리자를 뺀 AI 비용 추정 합계(달러)를 구하는 함수를 만든다(테스트에서 DB를 바꿔 끼운다) */
+export function makeSumCostSince({ loadAdminIds = loadAdminIdsDb, fetchUsagePage = fetchUsagePageDb, logger = console } = {}) {
+  return async function sumCostSince(sinceIso) {
+    let adminIds = new Set()
+    try {
+      adminIds = await loadAdminIds()
+    } catch (err) {
+      logger.warn?.('[ai-budget] 관리자 목록 조회 실패(관리자 사용분도 합산):', err?.message || err)
+    }
+    let total = 0
+    for (let off = 0; off < 200_000; off += 1000) {
+      const rows = await fetchUsagePage(sinceIso, off)
+      total += sumRowCosts(rows, adminIds).total
+      if (rows.length < 1000) break
+    }
+    return total
+  }
+}
+
+/** 오늘(한국 시간) 관리자를 뺀 AI 비용 추정 합계(달러) */
+const sumCostSinceDb = makeSumCostSince()
 
 /**
  * 상한 판단기를 만든다(테스트에서 의존성을 바꿔 끼울 수 있게).
@@ -239,6 +280,7 @@ export function createAiBudget(deps = {}) {
       today_cost_usd: Number(spent.toFixed(4)),
       budget_usd: budget,
       exceeded: spent >= budget,
+      admin_excluded: true, // 관리자 사용분은 합계에서 뺀다
       user_daily_limit: getDailyUserLimit(env),
       cost_checked_at: costCache.fetchedAt ? new Date(costCache.fetchedAt).toISOString() : null,
       cost_query_ok: costCache.ok,
