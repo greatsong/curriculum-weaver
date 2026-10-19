@@ -22,7 +22,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
  * @param {(workspaceId: string, userId: string) => Promise<string|null>} args.getMemberRole
  * @param {boolean} args.strict - Supabase가 설정된 환경이면 true (조회 실패 시 거절)
  * @param {number} [args.retryDelayMs] - 일시 장애 대비 재시도 전 대기
- * @returns {Promise<{ ok: boolean, reason?: 'invalid'|'unavailable'|'forbidden' }>}
+ * @returns {Promise<{ ok: boolean, reason?: 'invalid'|'unavailable'|'forbidden'|'not_found' }>}
  */
 export async function checkJoinAccess({ projectId, userId, getProject, getMemberRole, strict, retryDelayMs = 400 }) {
   if (!isValidRoomId(projectId)) return { ok: false, reason: 'invalid' }
@@ -41,7 +41,10 @@ export async function checkJoinAccess({ projectId, userId, getProject, getMember
     }
   }
 
-  if (project?.workspace_id) {
+  // 운영에서 없는 프로젝트(지워졌거나 잘못된 ID)는 참여시키지 않는다. 로컬 인메모리·레거시 세션은 종전처럼 통과
+  if (!project) return strict ? { ok: false, reason: 'not_found' } : { ok: true }
+
+  if (project.workspace_id) {
     const role = await getMemberRole(project.workspace_id, userId)
     if (!role) return { ok: false, reason: 'forbidden' }
   }

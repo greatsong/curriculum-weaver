@@ -67,6 +67,10 @@ function now() { return new Date().toISOString() }
  * @param {string} context - 에러 컨텍스트 메시지
  * @returns {any} data
  */
+// 프로젝트·워크스페이스 id는 DB에서 uuid 형식이다. 형식이 다르면 조회하지 않고 "없음"으로 본다
+// (uuid가 아닌 값으로 조회하면 Postgres가 형식 오류를 던져 404가 아니라 500이 된다)
+const ID_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 function handleResult({ data, error }, context) {
   if (error) {
     console.error(`[supabaseService] ${context}:`, error.message)
@@ -144,11 +148,13 @@ export async function getWorkspace(id) {
     }
     return { ...ws, members: membersList }
   }
+  // 없는 워크스페이스는 null(호출부가 404로 처리한다). .single()은 0행에서 오류를 던져 500이 됐다(2026-10-19)
+  if (typeof id !== 'string' || !ID_UUID_RE.test(id)) return null
   const data = handleResult(
     await sb.from('workspaces')
       .select('*, members(*, users(display_name, email, school_name, subject))')
       .eq('id', id)
-      .single(),
+      .maybeSingle(),
     '워크스페이스 조회 실패'
   )
   return data
@@ -319,11 +325,14 @@ export async function getProject(id) {
     }
     return { ...project, designs: designList }
   }
+  // 없는 프로젝트(지워졌거나 잘못된 id)는 null — 호출부가 모두 404로 처리한다.
+  // 종전 .single()은 0행에서 오류를 던져 500이 됐고, 홈 "이어서 하기"가 지운 프로젝트를 확인 실패로 계속 띄웠다(2026-10-19)
+  if (typeof id !== 'string' || !ID_UUID_RE.test(id)) return null
   return handleResult(
     await sb.from('projects')
       .select('*, designs(*)')
       .eq('id', id)
-      .single(),
+      .maybeSingle(),
     '프로젝트 조회 실패'
   )
 }

@@ -164,7 +164,9 @@ io.on('connection', (socket) => {
       socket.emit('error', {
         message: access.reason === 'unavailable'
           ? '프로젝트를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-          : '이 프로젝트에 접근 권한이 없습니다.',
+          : access.reason === 'not_found'
+            ? '프로젝트를 찾을 수 없습니다.'
+            : '이 프로젝트에 접근 권한이 없습니다.',
       })
       return
     }
