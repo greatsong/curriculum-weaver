@@ -43,7 +43,7 @@ export default function AiBudgetStatus() {
         <div className={`h-full ${exceeded ? 'bg-red-500' : ratio > 0.8 ? 'bg-amber-500' : 'bg-blue-500'}`} style={{ width: `${Math.round(ratio * 100)}%` }} />
       </div>
       <p className="mt-2 text-[11px] text-gray-400">
-        단가표 기준 추정치입니다(실제 청구액은 각 사 콘솔). 한도는 서버 환경 변수 AI_DAILY_BUDGET_USD·AI_DAILY_USER_LIMIT로 정합니다.
+        단가표 기준 추정치입니다(실제 청구액은 각 사 콘솔).{budget.admin_excluded && ' 관리자가 쓴 AI(미래보기 등)는 이 합계와 한도에서 빠집니다.'} 한도는 서버 환경 변수 AI_DAILY_BUDGET_USD·AI_DAILY_USER_LIMIT로 정합니다.
         {budget.cost_query_ok === false && ' 최근 비용 조회에 실패해 직전 값을 보여 줍니다.'}
       </p>
     </div>
