@@ -62,6 +62,18 @@ describe('checkJoinAccess', () => {
     expect(result).toEqual({ ok: true })
   })
 
+  it('운영에서 없는 프로젝트(null)는 not_found로 거절한다', async () => {
+    const getMemberRole = vi.fn()
+    const result = await checkJoinAccess({ ...base, projectId: UUID, strict: true, getProject: async () => null, getMemberRole })
+    expect(result).toEqual({ ok: false, reason: 'not_found' })
+    expect(getMemberRole).not.toHaveBeenCalled()
+  })
+
+  it('로컬(Supabase 미설정)에서는 없는 프로젝트(레거시 세션 등)도 통과시킨다', async () => {
+    const result = await checkJoinAccess({ ...base, projectId: 'proj-1', strict: false, getProject: async () => null, getMemberRole: vi.fn() })
+    expect(result).toEqual({ ok: true })
+  })
+
   it('로컬(Supabase 미설정)에서는 조회 실패를 통과시킨다', async () => {
     const result = await checkJoinAccess({
       ...base, projectId: 'proj-1', strict: false,
