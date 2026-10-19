@@ -3,7 +3,7 @@
  * 미래보기 관리자 전용 (2026-10-19)
  * - /futures-lab 경로는 관리자만 연다. 관리자가 아니면 연결 지도(/graph)로 보낸다
  * - 상단 주 메뉴의 미래보기 링크는 관리자에게만 보인다
- * - 관리자 여부 조회가 실패하면 관리자가 아닌 것으로 본다
+ * - 관리자 여부 조회가 실패하면 열지 않고 다시 시도를 안내한다(관리자 아님과 구분)
  */
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -50,6 +50,7 @@ async function renderAt(path, id = 'u1') {
         <Route path="/graph" element={<div id="graph">연결 지도</div>} />
         <Route path="/nav" element={<MainNav />} />
         <Route path="/login" element={<div id="login">로그인</div>} />
+        <Route path="/workspaces" element={<div id="workspaces">워크스페이스</div>} />
       </Routes>
     </MemoryRouter>,
   ))
@@ -70,9 +71,30 @@ describe('미래보기 경로', () => {
     expect(host.querySelector('#graph')).not.toBeNull()
   })
 
-  it('관리자 여부를 확인하지 못하면 열지 않는다', async () => {
+  it('관리자 여부를 확인하지 못하면 열지 않고, 다른 곳으로 보내지 않고 다시 시도를 안내한다', async () => {
     meResponds(new Error('네트워크'))
     await renderAt('/futures-lab', 'unknown-1')
+    expect(host.querySelector('#futures')).toBeNull()
+    expect(host.querySelector('#graph')).toBeNull()
+    expect(host.querySelector('[data-testid="admin-check-failed"]')).not.toBeNull()
+    expect(host.textContent).not.toContain('미래보기')
+  })
+
+  it('다시 시도해서 관리자로 확인되면 연다(실패한 조회는 캐시하지 않는다)', async () => {
+    meResponds(new Error('네트워크'))
+    await renderAt('/futures-lab', 'retry-1')
+    meResponds('admin')
+    const retry = [...host.querySelectorAll('button')].find((b) => b.textContent === '다시 시도')
+    await act(async () => { retry.click(); await new Promise((r) => setTimeout(r, 0)) })
+    expect(host.querySelector('#futures')).not.toBeNull()
+  })
+
+  it('다시 시도해서 교사로 확인되면 연결 지도로 보낸다', async () => {
+    meResponds(new Error('네트워크'))
+    await renderAt('/futures-lab', 'retry-2')
+    meResponds('teacher')
+    const retry = [...host.querySelectorAll('button')].find((b) => b.textContent === '다시 시도')
+    await act(async () => { retry.click(); await new Promise((r) => setTimeout(r, 0)) })
     expect(host.querySelector('#futures')).toBeNull()
     expect(host.querySelector('#graph')).not.toBeNull()
   })
