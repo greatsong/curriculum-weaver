@@ -8,6 +8,7 @@ import MathText from '../components/MathText'
 import LinkGuideOverlay, { resetLinkGuide } from '../components/LinkGuideOverlay'
 import ApprovalQueue from '../components/ApprovalQueue'
 import AiBudgetStatus from '../components/AiBudgetStatus'
+import UsageOverview from '../components/UsageOverview'
 
 const InlineGraph2D = lazy(() =>
   import('../components/InlineGraph2D').catch(() => {
@@ -42,7 +43,7 @@ export default function DataManage() {
   const [jsonInput, setJsonInput] = useState('')
   const [uploading, setUploading] = useState(false)
   const [result, setResult] = useState(null)
-  const [tab, setTab] = useState('approvals') // 'approvals'(처음 화면, 2026-10-19) | 'browse' | 'upload' | 'reports' — 구 '연결 그래프'(react-force-graph-3d) 탭은 교육과정 성운으로 대체(2026-10-09)
+  const [tab, setTab] = useState('approvals') // 'approvals'(처음 화면, 2026-10-19) | 'usage'(사용 현황, 2026-10-20) | 'browse' | 'upload' | 'reports' — 구 '연결 그래프'(react-force-graph-3d) 탭은 교육과정 성운으로 대체(2026-10-09)
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0) // 가입 승인 대기 수(탭 배지)
   // 배지 수는 탭을 열지 않아도 보이게 미리 읽는다(관리자가 아니면 403 → 0)
   useEffect(() => {
@@ -195,6 +196,7 @@ export default function DataManage() {
         <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-full sm:w-fit overflow-x-auto">
           {[
             { id: 'approvals', label: '가입 승인', badge: pendingApprovalCount },
+            { id: 'usage', label: '사용 현황' },
             { id: 'browse', label: '성취기준 보기' },
             { id: 'upload', label: '데이터 업로드' },
             { id: 'reports', label: '신고 검토', badge: reports?.items?.length || 0 },
@@ -220,6 +222,9 @@ export default function DataManage() {
 
         {/* 가입 승인 탭 — 기준 시각 이후 가입한 계정의 승인·거절 */}
         {tab === 'approvals' && <ApprovalQueue onCountChange={setPendingApprovalCount} />}
+
+        {/* 사용 현황 탭 — 워크스페이스·계정별 활동과 AI 비용 추정 */}
+        {tab === 'usage' && <UsageOverview />}
 
         {/* 신고 검토 탭 — 3D 쇼케이스 "이상해요" 신고 큐 */}
         {tab === 'reports' && (

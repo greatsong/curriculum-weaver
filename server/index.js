@@ -40,6 +40,7 @@ import activityLogsRouter from './routes/activityLogs.js'
 import { chatRouter } from './routes/chat.js'
 import { adminUsageRouter } from './routes/adminUsage.js'
 import { adminUsersRouter } from './routes/adminUsers.js'
+import { adminOverviewRouter } from './routes/adminOverview.js'
 import { futures2Router } from './routes/futures2.js'
 import { aiBudget } from './middleware/aiBudget.js'
 import { standardsRouter } from './routes/standards.js'
@@ -446,6 +447,9 @@ app.use('/api/admin/ai-usage', adminUsageRouter)
 
 // 가입 승인 관리 (관리자 전용)
 app.use('/api/admin/users', adminUsersRouter)
+
+// 사용 현황 — 워크스페이스·계정별 활동과 AI 비용 (관리자 전용)
+app.use('/api/admin/overview', adminOverviewRouter)
 
 // 미래보기 — 관리자 전용 발표판 (2026-10-19, 라우터가 requireAuth·requireAdmin)
 app.use('/api/futures2', futures2Router)
