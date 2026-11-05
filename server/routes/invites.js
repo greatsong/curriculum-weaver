@@ -81,7 +81,8 @@ router.post('/', requireAuth, async (req, res) => {
  * 초대 상세 조회 (수락 페이지용)
  *
  * 인증 불필요 — 토큰만으로 초대 정보 확인 가능.
- * 민감하지 않은 정보만 반환 (워크스페이스 이름, 역할 등).
+ * 민감하지 않은 정보만 반환 (워크스페이스 이름, 역할 등). 초대받은 사람의 이메일은 주지 않는다
+ * (링크가 메신저 등으로 전달되면 로그인 없이 이메일이 노출된다. 수락 판정은 서버가 한다).
  *
  * @param {string} token - 초대 토큰
  * @returns {object} 초대 정보
@@ -122,7 +123,6 @@ router.get('/:token', async (req, res) => {
       workspace_id: invite.workspace_id,
       workspace_name: workspaceName,
       workspace_description: workspaceDescription,
-      email: invite.email,
       role: invite.role,
       expires_at: invite.expires_at,
     })
