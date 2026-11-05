@@ -253,43 +253,6 @@ router.post('/:id/invite', requireRole('owner', 'host'), async (req, res) => {
 // ============================================================
 
 /**
- * POST /api/workspaces/:id/members
- * 멤버 추가 (owner/host만)
- *
- * @param {string} id - 워크스페이스 ID
- * @body {{ user_id: string, role: string }}
- * @returns {object} 추가된 멤버
- */
-router.post('/:id/members', requireRole('owner', 'host'), async (req, res) => {
-  try {
-    const { user_id, role } = req.body
-
-    if (!user_id || !role) {
-      return res.status(400).json({ error: '사용자 ID와 역할은 필수입니다.' })
-    }
-
-    const validRoles = ['host', 'editor', 'viewer']
-    if (!validRoles.includes(role)) {
-      return res.status(400).json({
-        error: `유효하지 않은 역할입니다. 허용: ${validRoles.join(', ')}`
-      })
-    }
-
-    // 이미 멤버인지 확인
-    const existingRole = await getMemberRole(req.params.id, user_id)
-    if (existingRole) {
-      return res.status(409).json({ error: '이미 이 워크스페이스의 멤버입니다.' })
-    }
-
-    const member = await addMember(req.params.id, user_id, role)
-    res.status(201).json(member)
-  } catch (err) {
-    console.error('[workspaces] 멤버 추가 오류:', err.message)
-    res.status(500).json({ error: '멤버 추가에 실패했습니다.' })
-  }
-})
-
-/**
  * PUT /api/workspaces/:id/members/:userId
  * 멤버 역할 변경 (owner/host만)
  *
