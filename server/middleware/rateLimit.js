@@ -236,6 +236,19 @@ export const uploadLimiter = rateLimit({
   validate: { xForwardedForHeader: false, default: true },
 })
 
+// ── 워크스페이스 이메일 초대: 10분에 20회 (사용자당) ──
+// 가입된 이메일은 바로 멤버가 되어 이름·소속이 보이므로, 이메일 목록을 넣어 교사 정보를 모으는 일을 줄인다.
+// 연수에서 호스트가 팀원을 초대하는 정상 사용은 이 한도에 닿지 않는다.
+export const inviteLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: userKey,
+  message: { error: '초대를 너무 많이 보냈습니다. 잠시 후 다시 시도해주세요.' },
+  validate: { xForwardedForHeader: false, default: true },
+})
+
 // 내부 테스트용 export
 export const _internal = {
   userKey,

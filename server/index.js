@@ -24,7 +24,7 @@ import { resolveApproval } from './lib/approval.js'
 import { hydrateLinksFromDB } from './lib/linkService.js'
 
 // ── Rate Limiter 임포트 ──
-import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter, ipBackstopLimiter, scenarioLimiter, futures2Limiter } from './middleware/rateLimit.js'
+import { apiLimiter, aiChatLimiter, authLimiter, uploadLimiter, ipBackstopLimiter, scenarioLimiter, futures2Limiter, inviteLimiter } from './middleware/rateLimit.js'
 import { isValidRoomId, checkJoinAccess } from './lib/socketJoinGuard.js'
 import { buildMemberInfo, sanitizeRelayMessage, isValidRelayPayload } from './lib/socketRelay.js'
 import { parseAllowedOrigins, createOriginChecker } from './lib/corsOrigin.js'
@@ -386,6 +386,7 @@ app.use('/api/futures2', futures2Limiter)
 
 // 파일 업로드: 분당 5회 (사용자당)
 app.use('/api/materials/upload', uploadLimiter)
+app.use('/api/workspaces/:id/invite', inviteLimiter)
 
 // AI 사용 상한 (사용자별 하루 호출 수 + 서비스 전체 하루 비용) — 대상 경로는 middleware/aiBudget.js
 // 분당 한도(위 limiter)를 통과한 요청만 센다

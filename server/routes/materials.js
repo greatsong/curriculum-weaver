@@ -23,6 +23,7 @@ import path from 'path'
 import { requireAuth } from '../middleware/auth.js'
 import { Materials, Messages } from '../lib/store.js'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
+import { removeUnreferencedFiles, toBucketPath } from '../lib/projectStorage.js'
 import { getProject, getMemberRole, createMessage } from '../lib/supabaseService.js'
 import { analyzeMaterial, analyzeUrlMaterial } from '../services/materialAnalyzer.js'
 import {
@@ -823,7 +824,10 @@ materialsRouter.delete('/:id', async (req, res) => {
   } catch { /* fallthrough */ }
 
   if (!row) {
-    // 인메모리 폴백 삭제
+    // 인메모리 폴백 삭제 — 권한 검사가 없는 경로라 Supabase 없는 로컬에서만 쓴다
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return errorResponse(res, 404, E.NOT_FOUND, '자료를 찾을 수 없습니다.')
+    }
     const removed = Materials.remove(id)
     if (!removed) return errorResponse(res, 404, E.NOT_FOUND, '자료를 찾을 수 없습니다.')
     return res.json({ success: true })
@@ -832,24 +836,25 @@ materialsRouter.delete('/:id', async (req, res) => {
   const access = await assertProjectAccess(row.project_id, req.user.id, { write: true })
   if (!access.ok) return errorResponse(res, access.status, access.code, access.message)
 
-  // Storage 삭제 시도 (실패해도 DB 삭제는 진행)
-  if (row.storage_path) {
-    try {
-      const bucketPath = row.storage_path.startsWith('materials/')
-        ? row.storage_path.slice('materials/'.length)
-        : row.storage_path
-      await supabaseAdmin.storage.from('materials').remove([bucketPath])
-    } catch (err) {
-      console.warn('[materials/delete] Storage 삭제 실패(무시):', err?.message || err)
-    }
-  }
-
+  // DB 행을 먼저 지운다. 파일을 먼저 지우면 DB 삭제 실패 때 행이 파일을 잃는다
   try {
     const { error } = await supabaseAdmin.from('materials').delete().eq('id', id)
     if (error) throw error
   } catch (err) {
     return errorResponse(res, 500, E.INTERNAL, `DB 삭제 실패: ${err?.message || err}`)
   }
+
+  // 시뮬레이션 복제본이 같은 파일을 가리킬 수 있으므로 남은 자료 행이 없는 파일만 지운다.
+  // 실패해도 응답은 성공이다. 남은 파일은 scripts/cleanup-orphan-material-files.mjs 가 찾는다
+  if (row.storage_path && row.file_type !== 'url') {
+    try {
+      const removal = await removeUnreferencedFiles(supabaseAdmin, [toBucketPath(row.storage_path)])
+      if (removal.failed.length) console.warn('[materials/delete] Storage 정리 일부 실패:', JSON.stringify(removal.failed))
+    } catch (err) {
+      console.warn('[materials/delete] Storage 삭제 실패(무시):', err?.message || err)
+    }
+  }
+
   globalThis.__cwIo?.to(row.project_id).emit('material_updated', { id, project_id: row.project_id, deleted: true })
   return res.json({ success: true })
 })
