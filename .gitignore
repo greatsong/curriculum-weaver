@@ -32,3 +32,9 @@ scripts/results/
 
 # 복원 파이프라인 재현가능 산출물
 scripts/reconcile/results/
+
+# 환경변수 사본(.env.bak-* 등). 예시 파일만 추적한다
+.env*
+!.env.example
+**/.env*
+!**/.env.example
