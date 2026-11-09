@@ -253,7 +253,7 @@ export async function apiStreamPost(path, body, handlers) {
   }
 }
 
-async function streamPost(path, body, { onText, onPrinciples, onBoardSuggestions, onStageAdvance, onCoherenceCheck, onMessageSaved, onDone, onError }) {
+async function streamPost(path, body, { onText, onPrinciples, onBoardSuggestions, onStageAdvance, onCoherenceCheck, onMessageSaved, onStandardsWarning, onDone, onError }) {
   // Authorization 헤더 추가
   const headers = { 'Content-Type': 'application/json' }
   try {
@@ -315,6 +315,7 @@ async function streamPost(path, body, { onText, onPrinciples, onBoardSuggestions
           else if (parsed.type === 'step_advance') onStageAdvance?.(parsed)
           else if (parsed.type === 'coherence_check') onCoherenceCheck?.(parsed)
           else if (parsed.type === 'message_saved') onMessageSaved?.(parsed)
+          else if (parsed.type === 'standards_warning') onStandardsWarning?.(parsed)
           else if (parsed.type === 'error') onError?.(parsed.message)
         } catch {
           // 파싱 실패 무시

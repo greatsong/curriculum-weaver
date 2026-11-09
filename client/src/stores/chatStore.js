@@ -206,6 +206,31 @@ function noteExplorationOutcome(projectId, suggestion, persisted) {
   })
 }
 
+// 수락 처리 중인 제안 — 기존 보드를 받아 오는 동안 같은 제안을 두 번 누르는 것을 막는다
+const suggestionsBeingAccepted = new Set()
+
+/**
+ * 제안을 보드에 얹기 전에 그 절차의 기존 보드를 확보한다(procedureStore.ensureBoardForMerge).
+ * 기존 보드를 확인하지 못하면 수락을 멈추고 알린다 — 빈 보드에 얹어 저장하면 기존 칸이 지워진다.
+ * @returns {Promise<boolean>} 수락을 이어가도 되면 true
+ */
+async function prepareBoardForSuggestion(get, suggestionId, projectId) {
+  const suggestion = get().pendingSuggestions.find((s) => s.id === suggestionId)
+  if (!suggestion || suggestion.status !== 'pending') return false
+  if (!suggestion.procedureCode) return true
+  if (suggestionsBeingAccepted.has(suggestionId)) return false
+  suggestionsBeingAccepted.add(suggestionId)
+  try {
+    const ready = await useProcedureStore.getState().ensureBoardForMerge(projectId, suggestion.procedureCode)
+    if (!ready) {
+      pushToast({ kind: 'error', message: '기존 보드 내용을 불러오지 못해 제안을 반영하지 않았어요. 잠시 후 다시 수락해 주세요.', duration: 6_000 })
+    }
+    return ready
+  } finally {
+    suggestionsBeingAccepted.delete(suggestionId)
+  }
+}
+
 export const useChatStore = create((set, get) => ({
   messages: [],
   loadingMessages: false,
@@ -538,6 +563,14 @@ export const useChatStore = create((set, get) => ({
         savedMessageId = data.messageId
         if (isCurrent()) set({ _lastAiMessageId: data.messageId })
       },
+      // AI 답에 성취기준 목록에 없는 코드가 섞였다 — 그대로 믿고 사용하지 않게 알린다
+      onStandardsWarning: (data) => {
+        if (!isCurrent()) return
+        const codes = (Array.isArray(data?.invalidCodes) ? data.invalidCodes : []).map((c) => c?.code).filter(Boolean)
+        if (codes.length === 0) return
+        const shown = codes.slice(0, 3).join(', ') + (codes.length > 3 ? ` 외 ${codes.length - 3}개` : '')
+        pushToast({ kind: 'error', message: `AI 답에 성취기준 목록에서 찾지 못한 코드(${shown})가 있습니다. 사용하기 전에 성취기준 검색에서 확인해 주세요.`, duration: 10_000 })
+      },
       onDone: () => {
         if (!isCurrent()) return
         const streamedText = get().streamingText
@@ -733,6 +766,7 @@ export const useChatStore = create((set, get) => ({
   // ── AI 제안 수락/편집/거부 ────
 
   acceptSuggestion: async (suggestionId, projectId) => {
+    if (!(await prepareBoardForSuggestion(get, suggestionId, projectId))) return
     const state = get()
     const suggestion = state.pendingSuggestions.find((s) => s.id === suggestionId)
     // 이미 처리된 제안은 무시 — 빠른 연타/이중 렌더(채팅+캔버스)로 인한 중복 실행 방지
@@ -799,6 +833,7 @@ export const useChatStore = create((set, get) => ({
   },
 
   editAcceptSuggestion: async (suggestionId, editedValue, projectId) => {
+    if (!(await prepareBoardForSuggestion(get, suggestionId, projectId))) return
     const state = get()
     const suggestion = state.pendingSuggestions.find((s) => s.id === suggestionId)
     // 이미 처리된 제안은 무시 (acceptSuggestion과 동일한 중복 실행 가드)

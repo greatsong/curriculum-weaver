@@ -12,6 +12,7 @@ import InviteAcceptPage from './pages/InviteAcceptPage'
 import LoginPage from './pages/LoginPage'
 import ToastContainer from './components/ToastContainer'
 import DeployWatcher from './components/DeployWatcher'
+import ServerStatusBanner from './components/ServerStatusBanner'
 import PolicyNoticeBanner from './components/PolicyNoticeBanner'
 import WorkspacesPage from './pages/WorkspacesPage'
 import WorkspaceDetailPage from './pages/WorkspaceDetailPage'
@@ -118,6 +119,8 @@ export default function App() {
     {/* 새 배포 감시 — 열린 탭이 새 배포를 알아채고 안전할 때 최신 코드로 바뀐다.
         Routes보다 앞에 두어야 경로 이동 판정이 새 페이지의 effect보다 먼저 돈다(DeployWatcher.jsx 참고). */}
     <DeployWatcher />
+    {/* 화면은 열렸는데 API 서버에 닿지 않을 때(망 차단 등) 알린다 */}
+    <ServerStatusBanner />
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -207,9 +210,9 @@ export default function App() {
         <Route
           path="/data"
           element={
-            <ProtectedRoute>
+            <AdminRoute fallback="/workspaces">
               <DataManage />
-            </ProtectedRoute>
+            </AdminRoute>
           }
         />
 

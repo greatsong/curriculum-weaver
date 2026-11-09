@@ -21,14 +21,14 @@ import { resolveApproval, isAdminUser, isSupabaseConfigured } from '../lib/appro
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { estimateCost } from '../lib/aiPricing.js'
 
-/** 상한을 거는 경로 — AI를 실제로 부르는 POST 요청만. 정적 절차 안내(procedure-intro·stage-intro)는 AI를 부르지 않아 제외한다 */
+/** 상한을 거는 경로 — AI를 실제로 부르는 POST 요청만. Express가 경로 대소문자를 구분하지 않으므로 여기도 구분하지 않는다(i). 정적 절차 안내(procedure-intro·stage-intro)는 AI를 부르지 않아 제외한다 */
 export const AI_BUDGET_ROUTES = Object.freeze([
-  /^\/api\/chat\/message\/?$/,
-  /^\/api\/standards\/recommend-ai\/?$/,
-  /^\/api\/standards\/links\/scenario\/?$/,
-  /^\/api\/materials\/upload\/?$/,
-  /^\/api\/materials\/url\/?$/,
-  /^\/api\/materials\/[^/]+\/reanalyze\/?$/,
+  /^\/api\/chat\/message\/?$/i,
+  /^\/api\/standards\/recommend-ai\/?$/i,
+  /^\/api\/standards\/links\/scenario\/?$/i,
+  /^\/api\/materials\/upload\/?$/i,
+  /^\/api\/materials\/url\/?$/i,
+  /^\/api\/materials\/[^/]+\/reanalyze\/?$/i,
 ])
 
 const DEFAULT_USER_LIMIT = 400

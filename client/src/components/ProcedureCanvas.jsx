@@ -27,6 +27,9 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
   const { boards, currentStep, setStep, updateBoard, skippedProcedures, skipProcedure, unskipProcedure } = useProcedureStore()
   const { pendingSuggestions, coherenceCheckResult, acceptSuggestion, editAcceptSuggestion, rejectSuggestion, sendMessage, examinerLens, setExaminerLens, requestProcedureIntro } = useChatStore()
   const [editing, setEditing] = useState(false)
+  // 이 절차의 보드 조회가 실패했는지 — 실패를 "아직 내용이 없습니다"로 보여 주지 않는다
+  const boardsLoadError = useProcedureStore((s) => s.boardsLoadError)
+  const loadBoards = useProcedureStore((s) => s.loadBoards)
   const [skipBusy, setSkipBusy] = useState(false)
   const [showStepsInBrief, setShowStepsInBrief] = useState(false)
   const currentProject = useProjectStore((s) => s.currentProject)
@@ -39,6 +42,11 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
   useEffect(() => {
     setEditing(false)
   }, [procedureCode])
+
+  // 읽기 전용(보기 전용 열람 포함)으로 바뀌면 열려 있던 편집기를 닫는다
+  useEffect(() => {
+    if (readOnly) setEditing(false)
+  }, [readOnly])
 
   // 시연 모드 자립 보드(demo_lesson_plan·demo_script)는 PROCEDURES에 없다 — 보드 라벨로 최소 헤더를 합성해 렌더.
   const isDemo = isDemoBoardCode(procedureCode)
@@ -397,6 +405,8 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
           schema={schema}
           board={board}
           loading={loading}
+          loadFailed={!board && boardsLoadError === procedureCode}
+          onRetryLoad={() => loadBoards(projectId, procedureCode)}
           editing={editing}
           setEditing={setEditing}
           readOnly={readOnly || isSkipped}
@@ -748,7 +758,7 @@ function CoherenceCheckCard({ result }) {
 }
 
 // ── 보드 카드 ──
-function BoardCard({ boardType, schema, board, loading = false, editing, setEditing, onUpdate, onRequestAI, readOnly = false }) {
+function BoardCard({ boardType, schema, board, loading = false, loadFailed = false, onRetryLoad, editing, setEditing, onUpdate, onRequestAI, readOnly = false }) {
   const label = BOARD_TYPE_LABELS[boardType] || boardType
   const hasContent = board?.content && Object.keys(board.content).length > 0 &&
     Object.values(board.content).some((v) => (Array.isArray(v) ? v.length > 0 : v !== '' && v !== null && v !== 0))
@@ -809,6 +819,14 @@ function BoardCard({ boardType, schema, board, loading = false, editing, setEdit
             <div style={{ width: 22, height: 22, border: '2px solid #D1D5DB', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
             <p style={{ fontSize: 13, margin: '0 0 4px' }}>시뮬레이션 결과를 불러오는 중입니다</p>
             <p style={{ fontSize: 12, margin: 0 }}>잠시만 기다려 주세요</p>
+          </div>
+        ) : loadFailed ? (
+          <div data-testid="board-load-failed" style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-text-secondary)' }}>
+            <p style={{ fontSize: 13, margin: '0 0 4px' }}>보드를 불러오지 못했습니다</p>
+            <p style={{ fontSize: 12, margin: '0 0 16px' }}>저장된 내용이 있을 수 있습니다. 다시 불러온 뒤 작업해 주세요.</p>
+            <button onClick={onRetryLoad} className="btn btn-secondary" style={{ fontSize: 12, padding: '6px 14px', margin: '0 auto' }}>
+              다시 시도
+            </button>
           </div>
         ) : (
           <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--color-text-tertiary)' }}>

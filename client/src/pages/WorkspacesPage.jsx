@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import PendingApprovalNotice from '../components/PendingApprovalNotice'
 import { Inbox } from 'lucide-react'
 import Notice from '../components/ui/Notice'
 import ContinueProjects from '../components/ContinueProjects'
@@ -173,6 +174,8 @@ export default function WorkspacesPage() {
       </header>
 
       <main style={{ maxWidth: 1120, margin: '0 auto', padding: '32px 24px' }}>
+        {/* 관리자: 가입 승인 대기 안내 — 화면을 열자마자 보이도록 맨 위에 둔다 */}
+        {isSiteAdmin && <PendingApprovalNotice />}
         {/* 새 프로젝트로 담아 온 성취기준 안내 — 아직 저장 전임을 알린다 */}
         {basketCount > 0 && (
           <Notice tone="info" icon={Inbox} className="mb-5 animate-fade-in" role="status"

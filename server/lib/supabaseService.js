@@ -442,11 +442,14 @@ export async function getDesign(projectId, procedureCode) {
   if (!sb) {
     return mem.designs.get(`${projectId}:${procedureCode}`) || null
   }
-  const { data } = await sb.from('designs')
+  // 조회 오류와 "행 없음"을 구분한다. 예전에는 .single()의 error를 읽지 않아 DB가 잠깐 실패해도
+  // null(보드 없음)을 돌려줬고, 화면이 빈 보드를 정상으로 받아 저장하면 기존 내용을 덮어썼다.
+  const { data, error } = await sb.from('designs')
     .select('*')
     .eq('project_id', projectId)
     .eq('procedure_code', procedureCode)
-    .single()
+    .maybeSingle()
+  if (error) throw error
   return data || null
 }
 
@@ -1304,11 +1307,19 @@ export async function getMemberRole(workspaceId, userId) {
     const member = mem.members.get(`${workspaceId}:${userId}`)
     return member?.role || null
   }
-  const { data } = await sb.from('members')
+  // 조회 오류를 "멤버 아님"으로 돌려주지 않는다. 예전에는 error를 읽지 않아 DB가 잠깐 실패하면
+  // 정상 멤버가 403을 받았다. 한 번 다시 시도하고, 그래도 실패하면 던져서 호출부가 5xx로 답하게 한다.
+  const query = () => sb.from('members')
     .select('role')
     .eq('workspace_id', workspaceId)
     .eq('user_id', userId)
-    .single()
+    .maybeSingle()
+  let { data, error } = await query()
+  if (error) {
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    ;({ data, error } = await query())
+  }
+  if (error) throw error
   return data?.role || null
 }
 
