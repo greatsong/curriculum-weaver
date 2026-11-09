@@ -20,8 +20,9 @@ export async function pingServer({ fetchImpl = globalThis.fetch, timeoutMs = HEA
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    // no-cors: 응답 내용은 읽지 않고 닿았는지만 본다. CORS 설정과 무관하게 연결 실패만 예외가 된다.
-    await fetchImpl(`${API_BASE}/api/health`, { method: 'GET', mode: 'no-cors', cache: 'no-store', signal: controller.signal })
+    // 일반(cors) 요청으로 보낸다. no-cors로 보내면 서버의 Cross-Origin-Resource-Policy: same-origin(helmet 기본값)에
+    // 막혀 서버가 정상이어도 항상 실패한다(2026-11-10 로컬 실측에서 정상 서버에 안내가 뜬 원인).
+    await fetchImpl(`${API_BASE}/api/health`, { method: 'GET', cache: 'no-store', signal: controller.signal })
     return true
   } catch {
     return false

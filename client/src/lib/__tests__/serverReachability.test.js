@@ -9,6 +9,8 @@ describe('서버 연결 확인', () => {
     const fetchImpl = vi.fn(async () => ({ ok: false, status: 503 }))
     expect(await pingServer({ fetchImpl })).toBe(true)
     expect(fetchImpl.mock.calls[0][0]).toBe('https://api.example/api/health')
+    // no-cors로 보내면 서버의 Cross-Origin-Resource-Policy에 막혀 정상 서버도 실패로 보인다
+    expect(fetchImpl.mock.calls[0][1].mode).toBeUndefined()
   })
 
   it('연결 자체가 실패하면 닿지 못한 것으로 본다', async () => {
