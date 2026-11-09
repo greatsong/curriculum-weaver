@@ -41,7 +41,7 @@ const CATEGORY_COLORS = {
   '융합선택': 'bg-orange-50 text-orange-600',
 }
 
-export default function StandardSearch({ sessionId, onClose }) {
+export default function StandardSearch({ sessionId, onClose, readOnly: readOnlyProp = false }) {
   const [query, setQuery] = useState('')
   const [subject, setSubject] = useState('')
   const [schoolLevel, setSchoolLevel] = useState('')
@@ -104,7 +104,8 @@ export default function StandardSearch({ sessionId, onClose }) {
   const [saveError, setSaveError] = useState('')
   const writePending = useRef(false)
   const readVersion = useRef(0)
-  const readOnly = currentProject?.id === sessionId && (currentProject.my_role === 'viewer' || ['simulation', 'generating', 'failed'].includes(currentProject.status) || currentProject.title?.startsWith('[시뮬레이션]'))
+  // readOnlyProp: 보기 전용 열람(?view=1)
+  const readOnly = readOnlyProp || currentProject?.id === sessionId && (currentProject.my_role === 'viewer' || ['simulation', 'generating', 'failed'].includes(currentProject.status) || currentProject.title?.startsWith('[시뮬레이션]'))
 
   // 에러 메시지 자동 사라짐 (4초)
   useEffect(() => {

@@ -33,6 +33,9 @@ function setup(over = {}) {
 describe('대상 경로', () => {
   it('AI를 부르는 POST 경로만 대상', () => {
     expect(isAiBudgetRoute('POST', '/api/chat/message')).toBe(true)
+    // Express는 경로 대소문자를 구분하지 않는다 — 대소문자를 바꿔 상한을 피하지 못한다
+    expect(isAiBudgetRoute('POST', '/api/Chat/Message')).toBe(true)
+    expect(isAiBudgetRoute('POST', '/API/MATERIALS/UPLOAD')).toBe(true)
     expect(isAiBudgetRoute('POST', '/api/standards/recommend-ai')).toBe(true)
     expect(isAiBudgetRoute('POST', '/api/standards/links/scenario')).toBe(true)
     expect(isAiBudgetRoute('POST', '/api/materials/upload')).toBe(true)

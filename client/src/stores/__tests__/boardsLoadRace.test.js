@@ -38,8 +38,6 @@ describe('보드 불러오기', () => {
   it('지금 절차를 불러오지 못하면 boardsLoadError로 알리고, 다시 불러오면 풀린다', async () => {
     const p = useProcedureStore.getState().loadBoards('p1', 'E-2-1')
     pending.get('/api/projects/p1/designs/E-2-1').reject(new Error('연결 실패'))
-    await new Promise((r) => setTimeout(r, 0))
-    pending.get('/api/boards/p1/E-2-1').reject(new Error('연결 실패'))
     await p
     expect(useProcedureStore.getState().boardsLoadError).toBe('E-2-1')
     expect(useProcedureStore.getState().boardsLoadedFor).not.toBe('E-2-1')
@@ -57,8 +55,6 @@ describe('보드 불러오기', () => {
     pending.get('/api/projects/p1/designs/E-2-1').resolve({ procedure_code: 'E-2-1', content: {} })
     await second
     pending.get('/api/projects/p1/designs/T-1-1').reject(new Error('x'))
-    await new Promise((r) => setTimeout(r, 0))
-    pending.get('/api/boards/p1/T-1-1')?.reject(new Error('x'))
     await first
     expect(useProcedureStore.getState().boardsLoadError).toBeNull()
     expect(useProcedureStore.getState().boardsLoadedFor).toBe('E-2-1')

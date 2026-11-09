@@ -40,6 +40,11 @@ export default function ProcedureCanvas({ projectId, procedureCode, readOnly = f
     setEditing(false)
   }, [procedureCode])
 
+  // 읽기 전용(보기 전용 열람 포함)으로 바뀌면 열려 있던 편집기를 닫는다
+  useEffect(() => {
+    if (readOnly) setEditing(false)
+  }, [readOnly])
+
   // 시연 모드 자립 보드(demo_lesson_plan·demo_script)는 PROCEDURES에 없다 — 보드 라벨로 최소 헤더를 합성해 렌더.
   const isDemo = isDemoBoardCode(procedureCode)
   const boardType = BOARD_TYPES[procedureCode]

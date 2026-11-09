@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import PendingApprovalNotice from '../components/PendingApprovalNotice'
 import { Inbox } from 'lucide-react'
 import Notice from '../components/ui/Notice'
 import ContinueProjects from '../components/ContinueProjects'
@@ -232,6 +233,8 @@ export default function WorkspacesPage() {
             )}
           </div>
         </div>
+
+        {isSiteAdmin && <PendingApprovalNotice />}
 
         {/* 워크스페이스 목록 */}
         {loading ? (

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo, Component } from 'react'
 import { createPortal } from 'react-dom'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useProjectStore, consumeQuietCursor } from '../stores/projectStore'
 import { useProcedureStore } from '../stores/procedureStore'
 import { useChatStore } from '../stores/chatStore'
@@ -9,7 +9,7 @@ import { useAuthStore } from '../stores/authStore'
 import { useSessionStore } from '../stores/sessionStore'
 import { pushToast } from '../stores/toastStore'
 import { socket, joinSession, leaveSession } from '../lib/socket'
-import { PROCEDURES, PROCEDURE_LIST } from 'curriculum-weaver-shared/constants.js'
+import { PROCEDURES, PROCEDURE_LIST, getProcedureLabel } from 'curriculum-weaver-shared/constants.js'
 import { isMoveNote } from 'curriculum-weaver-shared/procedureMove.js'
 import Logo from '../components/Logo'
 import ProcedureNav from '../components/ProcedureNav'
@@ -24,7 +24,8 @@ import ReportDownload from '../components/ReportDownload'
 import MaterialUploadBar from '../components/MaterialUploadBar'
 import InteractiveTour from '../components/InteractiveTour'
 import ExplorationDraftStrip from '../components/ExplorationDraftStrip'
-import { Compass } from 'lucide-react'
+import { Compass, Eye } from 'lucide-react'
+import { listUnsavedWork } from '../lib/unsavedWork'
 import { EXPLORE_COPY } from '../lib/explorationCopy'
 import { exploreHubUrl, projectDestination } from '../lib/exploreDestination'
 import { recordRecentProject } from '../lib/recentProjects'
@@ -178,6 +179,16 @@ function NicknameModal({ onConfirm }) {
 export default function ProjectPage() {
   const { workspaceId, projectId } = useParams()
   const navigate = useNavigate()
+  // 보기 전용 열람(?view=1) — 절차를 눌러도 팀 진행 위치·이동 기록·안내 메시지를 만들지 않고,
+  // 채팅·보드·자료·성취기준을 읽기만 한다. 실제 팀 기록을 둘러보거나 시연할 때 사용한다.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const viewOnly = searchParams.get('view') === '1'
+  const viewOnlyRef = useRef(viewOnly)
+  viewOnlyRef.current = viewOnly
+  // 보기 전용에서는 처음 한 번만 팀 진행 위치로 맞추고, 그 뒤 팀원의 이동은 따라가지 않는다
+  const followedTeamOnceRef = useRef(false)
+  // 프로젝트를 열지 못한 이유 — { pid, status }. 없으면 null
+  const [loadFailure, setLoadFailure] = useState(null)
   const { user, markTourDone } = useAuthStore()
   const { currentProject, fetchProject, updateProcedure } = useProjectStore()
   const { currentWorkspace, fetchWorkspace } = useWorkspaceStore()
@@ -351,7 +362,7 @@ export default function ProjectPage() {
       // 시연 모드는 투어를 아예 노출하지 않으므로 cw_tour_done을 요구하면 코치 인트로가
       // 영영 뜨지 않는다 → 데모는 투어 완료 조건 없이 바로 인트로.
       const introReady = projIsDemo || !!localStorage.getItem('cw_tour_done')
-      if (!isReadOnly && !hasContent && !introCache[proc] && introReady) {
+      if (!isReadOnly && !viewOnlyRef.current && !hasContent && !introCache[proc] && introReady) {
         if (proc) requestProcedureIntro(projectId, proc)
       }
     }
@@ -359,13 +370,40 @@ export default function ProjectPage() {
 
   // 새로고침 직후 auth 토큰 초기화/배포 재시작 등으로 첫 호출이 실패하면 currentProject가
   // null로 남아 절차 복원이 안 되고 1단계로 리셋된다. 메시지 로드처럼 1회 재시도한다.
+  // 두 번 모두 실패하고 화면에 보여 줄 프로젝트도 없으면 이유를 남긴다. 예전에는 없는 프로젝트·
+  // 권한 없는 프로젝트 주소에서 안내 없이 로딩 표시만 계속됐다.
   const fetchProjectWithRetry = useCallback(async (pid) => {
-    const ok = await fetchProject(pid).then(() => true).catch(() => false)
-    if (!ok) {
+    setLoadFailure(null)
+    const attempt = () => fetchProject(pid).then(() => null).catch((err) => err || new Error('프로젝트 조회 실패'))
+    let failure = await attempt()
+    if (failure) {
       await new Promise((r) => setTimeout(r, 1500))
-      await fetchProject(pid).catch(() => null)
+      failure = await attempt()
+    }
+    if (failure && useProjectStore.getState().currentProject?.id !== pid) {
+      setLoadFailure({ pid, status: Number(failure.status) || 0 })
     }
   }, [fetchProject])
+
+  // 팀 진행 위치를 화면에 반영한다(팀원의 이동, 탭 복귀 때 받은 새 위치).
+  // 저장하지 않은 보드 편집이 있으면 화면을 옮기지 않는다 — 절차가 바뀌면 편집기가 닫혀 초안이 사라진다.
+  const followTeamProcedure = (stage) => {
+    if (useProcedureStore.getState().currentProcedure === stage) {
+      followedTeamOnceRef.current = true
+      return
+    }
+    if (viewOnlyRef.current && followedTeamOnceRef.current) return
+    if (listUnsavedWork().includes('board-edit')) {
+      pushToast({
+        kind: 'info',
+        message: `팀이 ${getProcedureLabel(stage)} 절차로 이동했습니다. 편집 중인 보드를 저장한 뒤 절차 목록에서 이동해 주세요.`,
+        duration: 10_000,
+      })
+      return
+    }
+    followedTeamOnceRef.current = true
+    setProcedure(stage)
+  }
 
   const reloadProjectArtifacts = useCallback(async ({ forceReadonlyReload = false } = {}) => {
     const project = useProjectStore.getState().currentProject
@@ -397,6 +435,7 @@ export default function ProjectPage() {
 
   useEffect(() => {
     allBoardsLoadedRef.current = false
+    followedTeamOnceRef.current = false
     loadStepMemory(projectId)
     fetchProjectWithRetry(projectId)
     if (workspaceId) fetchWorkspace(workspaceId)
@@ -424,7 +463,7 @@ export default function ProjectPage() {
     if (isDemo) return
     const cursor = currentProject?.current_procedure
     const quiet = consumeQuietCursor(currentProject?.id, cursor)
-    if (cursor && !quiet) setProcedure(cursor)
+    if (cursor && !quiet) followTeamProcedure(cursor)
   }, [currentProject?.current_procedure, isDemo, setProcedure])
 
   const connectSocket = useCallback(({ name: nickname, subject: subjectName }) => {
@@ -446,7 +485,7 @@ export default function ProjectPage() {
           ? { currentProject: { ...state.currentProject, current_procedure: stage } }
           : {}
       ))
-      setProcedure(stage)
+      followTeamProcedure(stage)
     }
     // 워크스페이스에서 빠졌다(서버가 이 프로젝트 방에서 내보냄) — 알리고 목록으로 돌아간다
     const handleAccessRevoked = (payload) => {
@@ -573,6 +612,9 @@ export default function ProjectPage() {
 
   const handleProcedureChange = async (code) => {
     const from = useProcedureStore.getState().currentProcedure
+    // 절차가 바뀌면 편집기가 닫혀 저장하지 않은 초안이 사라진다 — 먼저 묻는다
+    if (code !== from && listUnsavedWork().includes('board-edit')
+      && !window.confirm('저장하지 않은 보드 편집이 있습니다. 지금 이동하면 편집 내용이 사라집니다. 이동할까요?')) return
     setProcedure(code)
     // 시연 모드: 팀 커서(current_procedure) PATCH·소켓 전파·인트로 생성을 건너뛴다.
     // 로컬 뷰 전환만 수행(개인 단독이라 공유 커서 개념 없음).
@@ -580,7 +622,16 @@ export default function ProjectPage() {
     // 생략(스킵)된 절차는 열람만 — 팀 커서(current_procedure) PATCH·소켓 전파·
     // AI 인트로 생성을 모두 건너뛴다. (서버도 스킵 절차 PATCH를 400으로 거부)
     if (skippedCodes.has(code)) return
-    await updateProcedure(projectId, code)
+    // 보기 전용 열람과 열람 전용 멤버는 내 화면만 옮긴다(서버도 열람 전용 멤버의 이동은 403으로 막는다)
+    if (viewOnly || currentProject?.my_role === 'viewer') return
+    try {
+      await updateProcedure(projectId, code)
+    } catch (err) {
+      // 저장에 실패하면 팀 진행 위치·팀원 화면은 그대로다. 내 화면만 옮겨졌음을 알린다.
+      console.warn('절차 이동 저장 실패:', err?.message || err)
+      pushToast({ kind: 'error', message: '팀 진행 위치를 저장하지 못해 내 화면만 이동했습니다. 잠시 후 절차를 다시 눌러 주세요.', duration: 8_000 })
+      return
+    }
     socket.emit('stage_changed', { sessionId: projectId, stage: code })
     // 시뮬레이션/generating/failed 프로젝트에서는 AI 인트로 요청하지 않음
     // introCache에 이미 있으면 스킵 (requestProcedureIntro 내부에서도 체크하지만 명시적으로)
@@ -596,6 +647,22 @@ export default function ProjectPage() {
         if (!useChatStore.getState().introCache[code]) await atMost(requestProcedureIntro(projectId, code))
       }).catch((err) => console.warn('절차 이동 처리 실패:', err?.message || err))
     }
+  }
+
+  // 보기 전용 열람 켜기·끄기 — 주소의 view=1로 기록한다(새로 고쳐도 유지, 주소로 바로 열 수 있다)
+  const toggleViewOnly = () => {
+    if (!viewOnly && listUnsavedWork().includes('board-edit')
+      && !window.confirm('저장하지 않은 보드 편집이 있습니다. 보기 전용으로 바꾸면 편집 내용이 사라집니다. 바꿀까요?')) return
+    const next = new URLSearchParams(searchParams)
+    if (viewOnly) {
+      next.delete('view')
+      // 편집 화면으로 돌아오면 팀 진행 위치로 맞춘다 — 둘러보던 절차에서 대화를 보내 팀과 어긋나지 않게
+      const cursor = currentProject?.current_procedure
+      if (cursor && !isDemo) setProcedure(cursor)
+    } else {
+      next.set('view', '1')
+    }
+    setSearchParams(next, { replace: true })
   }
 
   const handleCopyInvite = () => {
@@ -652,6 +719,27 @@ export default function ProjectPage() {
   const isReadOnlyLoading = isReadOnlyProject && (procedureLoading || loadingMessages || resumeRefreshing)
 
   if (!currentProject) {
+    if (loadFailure?.pid === projectId) {
+      const reason = loadFailure.status === 404
+        ? { title: '프로젝트를 찾을 수 없습니다', body: '삭제되었거나 주소가 잘못되었습니다.' }
+        : loadFailure.status === 403
+          ? { title: '이 프로젝트를 볼 권한이 없습니다', body: '같은 워크스페이스의 멤버만 열 수 있습니다. 워크스페이스 호스트에게 초대를 요청해 주세요.' }
+          : { title: '프로젝트를 불러오지 못했습니다', body: '연결 상태를 확인한 뒤 다시 시도해 주세요.' }
+      return (
+        <div data-testid="project-load-failure" className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)', padding: 24 }}>
+          <div style={{ maxWidth: 420, textAlign: 'center' }}>
+            <h1 style={{ fontSize: 18, fontWeight: 600, color: 'var(--color-text-primary)', margin: '0 0 8px' }}>{reason.title}</h1>
+            <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', margin: '0 0 20px', lineHeight: 1.6 }}>{reason.body}</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              {loadFailure.status !== 404 && loadFailure.status !== 403 && (
+                <button className="btn btn-primary" style={{ fontSize: 13 }} onClick={() => fetchProjectWithRetry(projectId)}>다시 시도</button>
+              )}
+              <Link to="/workspaces" className="btn btn-ghost" style={{ fontSize: 13 }}>워크스페이스 목록으로</Link>
+            </div>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--color-bg-primary)' }}>
         <div style={{ width: 28, height: 28, border: '3px solid var(--color-border)', borderTopColor: '#3B82F6', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
@@ -739,6 +827,8 @@ export default function ProjectPage() {
             ...(isDemo ? [] : [{ onClick: () => navigate(exploreHubUrl(projectDestination(projectId))), color: '#1D4ED8', icon: <Compass size={15} strokeWidth={2} aria-hidden="true" />, label: EXPLORE_COPY.projectHeader.explore, title: EXPLORE_COPY.projectHeader.exploreTitle }]),
             { onClick: () => setShowStandardSearch(true), color: '#16A34A', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>, label: '성취기준', title: '성취기준 탐색' },
             // 공유는 협력(팀 워크스페이스) 전용 — 개인 시연 준비에서는 은닉.
+            // 보기 전용 열람 — 실제 팀 기록을 바꾸지 않고 둘러본다(개인 시연 준비에서는 은닉)
+            ...(isDemo || isReadOnlyProject ? [] : [{ onClick: toggleViewOnly, color: '#0F766E', active: viewOnly, icon: <Eye size={15} strokeWidth={2} aria-hidden="true" />, title: viewOnly ? '편집 화면으로 돌아가기' : '보기 전용으로 열기: 절차를 눌러도 팀 진행 위치와 대화 기록이 바뀌지 않습니다' }]),
             ...(isDemo ? [] : [{ onClick: handleCopyInvite, color: '#3B82F6', icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>, label: '공유', title: '프로젝트 링크 복사' }]),
           ].map(({ onClick, color, icon, label, title, active, tour }) => (
             <button
@@ -856,8 +946,30 @@ export default function ProjectPage() {
         </div>
       )}
 
+      {viewOnly && !isReadOnlyProject && (
+        <div data-testid="view-only-banner" style={{
+          background: '#F0FDFA',
+          borderBottom: '1px solid #99F6E4',
+          color: '#115E59',
+          padding: '7px 16px',
+          fontSize: 12.5,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 10,
+          flexShrink: 0,
+          flexWrap: 'wrap',
+        }}>
+          <Eye size={14} strokeWidth={2} aria-hidden="true" />
+          보기 전용으로 열었습니다. 절차를 눌러도 팀 진행 위치와 대화 기록은 바뀌지 않습니다.
+          <button onClick={toggleViewOnly} style={{ border: '1px solid #5EEAD4', background: '#fff', color: '#115E59', borderRadius: 6, padding: '2px 10px', fontSize: 12, cursor: 'pointer' }}>
+            편집 화면으로
+          </button>
+        </div>
+      )}
+
       {/* 자료 관리 바 */}
-      <MaterialUploadBar projectId={projectId} open={materialsOpen} onOpenChange={setMaterialsOpen} hideToggle memberRole={currentProject?.my_role} />
+      <MaterialUploadBar projectId={projectId} open={materialsOpen} onOpenChange={setMaterialsOpen} hideToggle memberRole={viewOnly ? 'viewer' : currentProject?.my_role} />
 
       {/* 절차 네비게이션 — 시연 모드에서는 19절차 트랙 대신 얕은 스텝 네비를 노출(단일 차시 준비) */}
       {isDemo ? (
@@ -879,7 +991,7 @@ export default function ProjectPage() {
       )}
 
       {/* 탐색 초안 안내 줄 — 이 브라우저에 도착한 초안이 있을 때만 보이고 절차를 옮기지 않는다(A-3에서만 입력창에 넣기) */}
-      <ExplorationDraftStrip project={currentProject} procedure={currentProcedure} readOnly={isReadOnlyProject}
+      <ExplorationDraftStrip project={currentProject} procedure={currentProcedure} readOnly={isReadOnlyProject || viewOnly}
         onInserted={() => setActivePanel('chat')} />
 
       {/* 후행 절차 재검토 안내 — 앞 절차가 이 절차보다 나중에 수정된 경우 */}
@@ -926,7 +1038,7 @@ export default function ProjectPage() {
               <ProcedureCanvas
                 projectId={projectId}
                 procedureCode={currentProcedure}
-                readOnly={isReadOnlyProject}
+                readOnly={isReadOnlyProject || viewOnly}
                 loading={isReadOnlyLoading}
                 memberRole={currentProject?.my_role}
               />
@@ -970,6 +1082,7 @@ export default function ProjectPage() {
               stage={currentProcedure}
               onStageChange={handleProcedureChange}
               readOnly={isReadOnlyProject}
+              viewOnly={viewOnly}
               loading={isReadOnlyLoading}
               onOpenReport={() => setShowReport(true)}
               memberRole={currentProject?.my_role}
@@ -1099,6 +1212,7 @@ export default function ProjectPage() {
         <StandardSearch
           key={projectId}
           sessionId={projectId}
+          readOnly={viewOnly}
           onClose={() => { setShowStandardSearch(false); loadStandards(projectId) }}
         />
       )}

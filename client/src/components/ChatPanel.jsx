@@ -92,12 +92,13 @@ function PreBlock({ node, children, ...props }) {
 
 const markdownComponents = { pre: PreBlock }
 
-export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, onStageChange, readOnly: projectReadOnly = false, loading = false, onOpenReport, memberRole }) {
+export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, onStageChange, readOnly: projectReadOnly = false, viewOnly = false, loading = false, onOpenReport, memberRole }) {
   const projectId = projectIdProp || sessionId
   // 열람 전용 멤버(viewer)는 대화를 읽기만 한다 — 입력창·올리기·제안 처리 대신 안내를 보여 준다.
   // 서버도 viewer의 쓰기 요청을 403으로 막는다(routes/chat.js·materials.js).
   const isViewer = memberRole === 'viewer'
-  const readOnly = projectReadOnly || isViewer
+  // 보기 전용 열람(?view=1)도 같은 읽기 전용 화면을 쓴다
+  const readOnly = projectReadOnly || isViewer || viewOnly
   // ── 성능: 슬라이스별 셀렉터 구독 ──
   // 과거엔 useChatStore()로 스토어 전체를 구독해, streamingText가 토큰마다 갱신될 때마다
   // ChatPanel 전체(=누적 N개 메시지 목록)가 리렌더+마크다운 재파싱되어 오래 쓸수록 느려졌다.
@@ -770,7 +771,7 @@ export default function ChatPanel({ sessionId, projectId: projectIdProp, stage, 
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
           </svg>
           <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
-            {projectReadOnly ? '시뮬레이션 프로젝트는 읽기 전용입니다' : '열람 전용 멤버입니다. 대화와 보드를 볼 수 있지만 글을 쓰거나 자료를 올릴 수는 없습니다.'}
+            {projectReadOnly ? '시뮬레이션 프로젝트는 읽기 전용입니다' : viewOnly && !isViewer ? '보기 전용으로 열었습니다. 글을 쓰려면 위의 [편집 화면으로]를 눌러 주세요.' : '열람 전용 멤버입니다. 대화와 보드를 볼 수 있지만 글을 쓰거나 자료를 올릴 수는 없습니다.'}
           </span>
         </div>
       ) : (

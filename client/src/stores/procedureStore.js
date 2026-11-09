@@ -215,22 +215,10 @@ export const useProcedureStore = create((set, get) => ({
     set({ loading: true })
     const code = procedureCode || get().currentProcedure
     try {
-      // 새 API 우선, 실패 시 레거시 폴백
-      let design = null
-      try {
-        design = await apiGet(`/api/projects/${projectId}/designs/${code}`)
-      } catch {
-        // 레거시 폴백
-        const data = await apiGet(`/api/boards/${projectId}/${code}`)
-        if (!isLatest()) return true
-        const boardList = Array.isArray(data) ? data : (data?.boards ?? [])
-        const boards = {}
-        for (const board of boardList) {
-          boards[board.board_type || board.procedure_code] = board
-        }
-        set({ boards, loading: false, boardsLoadedFor: code, boardsLoadError: null })
-        return true
-      }
+      // 실패하면 바깥 catch가 boardsLoadError로 알린다. 예전에는 레거시 /api/boards로 다시 조회했는데,
+      // 그 주소는 운영에서 늘 빈 목록을 200으로 돌려줘 조회 실패가 "빈 보드"로 바뀌었고,
+      // 그 화면에서 저장하면 기존 보드를 덮어썼다.
+      const design = await apiGet(`/api/projects/${projectId}/designs/${code}`)
       if (!isLatest()) return true
       // 새 API: 단일 design 객체 → boards에 BOARD_TYPES 키로 저장 (ProcedureCanvas 호환)
       const boards = {}
@@ -248,6 +236,34 @@ export const useProcedureStore = create((set, get) => ({
     } catch {
       if (!isLatest()) return false
       set((state) => ({ boards: state.boards, loading: false, boardsLoadError: code }))
+      return false
+    }
+  },
+
+  /**
+   * AI 제안을 얹기 전에 그 절차의 기존 보드가 메모리에 있는지 확인하고, 없으면 서버에서 받아 둔다.
+   * loadBoards는 지금 절차의 보드만 남기므로, 절차를 옮긴 뒤 이전 절차의 제안을 수락하면
+   * 기존 내용 없이 "빈 보드 + 제안"이 통째로 저장되어 제안에 없던 칸이 지워졌다.
+   * @returns {Promise<boolean>} 얹어도 되면 true, 기존 보드를 확인하지 못했으면 false(수락을 멈춘다)
+   */
+  ensureBoardForMerge: async (projectId, procedureCode) => {
+    const boardType = BOARD_TYPES[procedureCode]
+    if (!boardType || !projectId) return true
+    const state = get()
+    if (state.boards[boardType]) return true
+    // 지금 절차를 정상적으로 불러왔는데 보드가 없으면 실제로 빈 보드다
+    const loadedCurrent = state.currentProcedure === procedureCode && state.boardsLoadedFor === procedureCode
+      && !state.boardsLoadError && !state.loading
+    if (loadedCurrent) return true
+    try {
+      const design = await apiGet(`/api/projects/${projectId}/designs/${procedureCode}`)
+      if (design?.content && Object.keys(design.content).length > 0) {
+        set((s) => (s.boards[boardType]
+          ? {}
+          : { boards: { ...s.boards, [boardType]: { ...design, board_type: boardType, content: design.content } } }))
+      }
+      return true
+    } catch {
       return false
     }
   },

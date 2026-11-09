@@ -45,7 +45,13 @@ export async function checkJoinAccess({ projectId, userId, getProject, getMember
   if (!project) return strict ? { ok: false, reason: 'not_found' } : { ok: true }
 
   if (project.workspace_id) {
-    const role = await getMemberRole(project.workspace_id, userId)
+    let role
+    try {
+      role = await getMemberRole(project.workspace_id, userId)
+    } catch {
+      // 멤버 조회 자체가 실패했다 — 권한 없음이 아니라 일시 오류로 알린다
+      return { ok: false, reason: 'unavailable' }
+    }
     if (!role) return { ok: false, reason: 'forbidden' }
   }
   return { ok: true }
