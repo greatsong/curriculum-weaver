@@ -8,6 +8,7 @@ import crypto from 'node:crypto'
 import { supabaseAdmin } from '../lib/supabaseAdmin.js'
 import { getMemberRole } from '../lib/supabaseService.js'
 import { resolveApproval, onApprovalChange } from '../lib/approval.js'
+import { notifyApprovalPending } from '../lib/approvalNotify.js'
 
 /** 승인 대기·거절 사용자에게 돌려주는 응답 본문 (클라이언트가 code로 승인 대기 화면을 띄운다) */
 export const APPROVAL_PENDING_BODY = Object.freeze({ code: 'approval_pending', error: '관리자 승인을 기다리고 있습니다.' })
@@ -252,6 +253,8 @@ function createRequireAuth({ allowPending = false } = {}) {
     req.user = user
     req.token = token
     req.approval = approval
+    // 승인 대기 사용자가 들어왔다 — 관리자에게 메일로 알린다(사용자당 한 번, 응답을 기다리지 않는다)
+    if (approval.status === 'pending') notifyApprovalPending(user)
     if (!approval.approved && !allowPending) {
       return res.status(403).json({ ...APPROVAL_PENDING_BODY, approval_status: approval.status })
     }
