@@ -209,6 +209,11 @@ export async function rejectUser(userId, { by = null } = {}) {
   })
 }
 
+/** 관리자에게 승인 요청 메일을 보낸 시각을 남긴다(같은 사용자로 다시 보내지 않게, lib/approvalNotify.js) */
+export async function markApprovalNotified(userId) {
+  return writeAppMetadata(userId, { approval_notified_at: new Date().toISOString() })
+}
+
 /**
  * 승인 대기인 사용자만 승인한다(초대·참여 요청·멤버 직접 추가 경로용).
  * 이미 승인된 사용자는 그대로 두고, 관리자가 거절한 사용자는 이 경로로 되살리지 않는다.

@@ -995,7 +995,7 @@ export default function ProjectPage() {
         onInserted={() => setActivePanel('chat')} />
 
       {/* 후행 절차 재검토 안내 — 앞 절차가 이 절차보다 나중에 수정된 경우 */}
-      {currentIsStale && !isReadOnlyProject && (
+      {currentIsStale && !isReadOnlyProject && !viewOnly && (
         <div style={{
           background: '#FFFBEB',
           borderBottom: '1px solid #FDE68A',
