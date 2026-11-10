@@ -1,8 +1,6 @@
 /**
  * 프런트(Vercel) 보안 헤더 — 저장소 루트 vercel.json
- * - 모든 경로: nosniff, Referrer-Policy, X-Frame-Options SAMEORIGIN
- *   (2026-11-10: 시연 안내 페이지 /demo-guide가 앱 화면을 프레임에 넣는다. 같은 출처만 허용하고
- *    다른 사이트의 프레임은 계속 막는다 — 'self' 말고 다른 출처를 더하지 않는다)
+ * - 모든 경로: nosniff, Referrer-Policy, X-Frame-Options DENY
  * - 강제 CSP는 화면을 깨뜨리지 않는 지시어만(frame-ancestors·object-src·base-uri)
  * - 전체 정책은 Report-Only로 두고, 앱이 실제로 쓰는 출처(API·Supabase·Google Fonts)를 허용
  */
@@ -26,12 +24,12 @@ describe('vercel.json 보안 헤더', () => {
     expect(allPaths).toBeTruthy()
     expect(header('X-Content-Type-Options')).toBe('nosniff')
     expect(header('Referrer-Policy')).toBe('strict-origin-when-cross-origin')
-    expect(header('X-Frame-Options')).toBe('SAMEORIGIN')
+    expect(header('X-Frame-Options')).toBe('DENY')
   })
 
-  it("강제 CSP: frame-ancestors 'self'만 허용, 스크립트·스타일·연결 제한은 넣지 않는다", () => {
+  it("강제 CSP: frame-ancestors 'none' 포함, 스크립트·스타일·연결 제한은 넣지 않는다", () => {
     const d = directives(header('Content-Security-Policy'))
-    expect(d['frame-ancestors']).toEqual(["'self'"])
+    expect(d['frame-ancestors']).toEqual(["'none'"])
     expect(d['object-src']).toEqual(["'none'"])
     expect(d['base-uri']).toEqual(["'self'"])
     for (const risky of ['default-src', 'script-src', 'style-src', 'connect-src']) expect(d[risky]).toBeUndefined()
@@ -47,7 +45,7 @@ describe('vercel.json 보안 헤더', () => {
     expect(d['script-src']).toEqual(["'self'"])
     expect(d['style-src']).toEqual(expect.arrayContaining(["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com']))
     expect(d['font-src']).toEqual(expect.arrayContaining(['https://fonts.gstatic.com']))
-    expect(d['frame-ancestors']).toEqual(["'self'"])
+    expect(d['frame-ancestors']).toEqual(["'none'"])
     expect(JSON.stringify(d)).not.toContain('unsafe-eval')
   })
 
